@@ -1,0 +1,22 @@
+# Single-service deployment for Unraid (Docker Compose Manager) or local.
+# The image bundles the API and the built UI; data persists on the named volume.
+services:
+  tco:
+    build: .
+    image: m365-tco:1.0.0
+    container_name: m365-tco
+    ports:
+      - "8080:8000"          # Unraid: map host 8080 -> container 8000
+    environment:
+      TCO_DATABASE_URL: sqlite:////data/tco.db
+      TCO_DATA_DIR: /data
+      # Operator master secret unlocks the encrypted secret store. Set this in
+      # the Unraid template / an .env file — never commit a real value.
+      TCO_MASTER_SECRET: ${TCO_MASTER_SECRET:-}
+      TCO_CORS_ORIGINS: "*"
+    volumes:
+      - tco-data:/data        # SQLite DB + encrypted secrets.enc
+    restart: unless-stopped
+
+volumes:
+  tco-data:

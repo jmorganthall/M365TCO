@@ -1,0 +1,85 @@
+{
+  "version": "2026-06-seed-v1",
+  "note": "Starter Blue Mantis Microsoft SKU -> outcome coverage library. Final mappings pending from the practice; replace this file (bump version) to update. Seeded (ratified) into engagement-scoped CoverageMapEntry rows for Microsoft SKUs on engagement creation. outcome keys reference outcomes.json.",
+  "skus": [
+    {
+      "sku_reference": "F1",
+      "title": "Microsoft 365 F1",
+      "coverage": [
+        { "outcome": "identity-mfa", "coverage": "Full" },
+        { "outcome": "collaboration", "coverage": "Partial" },
+        { "outcome": "file-storage", "coverage": "Partial" },
+        { "outcome": "ediscovery-compliance", "coverage": "Partial" }
+      ]
+    },
+    {
+      "sku_reference": "F3",
+      "title": "Microsoft 365 F3",
+      "coverage": [
+        { "outcome": "identity-mfa", "coverage": "Full" },
+        { "outcome": "email-security", "coverage": "Partial" },
+        { "outcome": "endpoint-management", "coverage": "Full" },
+        { "outcome": "productivity-apps", "coverage": "Partial" },
+        { "outcome": "collaboration", "coverage": "Full" },
+        { "outcome": "file-storage", "coverage": "Full" },
+        { "outcome": "ediscovery-compliance", "coverage": "Partial" }
+      ]
+    },
+    {
+      "sku_reference": "E3",
+      "title": "Microsoft 365 E3",
+      "coverage": [
+        { "outcome": "identity-mfa", "coverage": "Full" },
+        { "outcome": "email-security", "coverage": "Partial" },
+        { "outcome": "endpoint-management", "coverage": "Full" },
+        { "outcome": "information-protection", "coverage": "Partial" },
+        { "outcome": "productivity-apps", "coverage": "Full" },
+        { "outcome": "collaboration", "coverage": "Full" },
+        { "outcome": "file-storage", "coverage": "Full" },
+        { "outcome": "ediscovery-compliance", "coverage": "Partial" }
+      ]
+    },
+    {
+      "sku_reference": "E5",
+      "title": "Microsoft 365 E5",
+      "coverage": [
+        { "outcome": "identity-mfa", "coverage": "Full" },
+        { "outcome": "email-security", "coverage": "Full" },
+        { "outcome": "endpoint-management", "coverage": "Full" },
+        { "outcome": "endpoint-security", "coverage": "Full" },
+        { "outcome": "information-protection", "coverage": "Full" },
+        { "outcome": "threat-protection", "coverage": "Full" },
+        { "outcome": "secure-web-gateway", "coverage": "Partial" },
+        { "outcome": "productivity-apps", "coverage": "Full" },
+        { "outcome": "collaboration", "coverage": "Full" },
+        { "outcome": "file-storage", "coverage": "Full" },
+        { "outcome": "voip-calling", "coverage": "Partial" },
+        { "outcome": "ediscovery-compliance", "coverage": "Full" },
+        { "outcome": "privileged-access", "coverage": "Partial" }
+      ]
+    },
+    {
+      "sku_reference": "Entra ID P2",
+      "title": "Microsoft Entra ID P2 (add-on)",
+      "coverage": [
+        { "outcome": "identity-mfa", "coverage": "Full" },
+        { "outcome": "privileged-access", "coverage": "Full" }
+      ]
+    },
+    {
+      "sku_reference": "Defender for Endpoint P2",
+      "title": "Microsoft Defender for Endpoint P2 (add-on)",
+      "coverage": [
+        { "outcome": "endpoint-security", "coverage": "Full" },
+        { "outcome": "threat-protection", "coverage": "Partial" }
+      ]
+    },
+    {
+      "sku_reference": "Sentinel",
+      "title": "Microsoft Sentinel (add-on)",
+      "coverage": [
+        { "outcome": "siem-soar", "coverage": "Full" }
+      ]
+    }
+  ]
+}
