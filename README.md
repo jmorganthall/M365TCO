@@ -25,6 +25,13 @@ A SharePoint / Power Platform port is a new front end + a Dataverse/list
 rendering of the Section 5 model executing the same engine spec. The model and
 algorithm port; the code does not.
 
+**Authoritative references:**
+- [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) — every first-class data set, the
+  relationships between them, field ownership, and the repeatable CRUD module
+  contract that keeps new data from becoming a snowflake.
+- [`docs/ENGINE_SPEC.md`](docs/ENGINE_SPEC.md) — the language-neutral calculation
+  algorithm.
+
 ## Quick start (Docker — Unraid / local)
 
 ```bash

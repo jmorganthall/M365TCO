@@ -83,6 +83,9 @@ class Engagement(Base):
     dispositions: Mapped[list["ProductDisposition"]] = relationship(
         back_populates="engagement", cascade="all, delete-orphan"
     )
+    snapshots: Mapped[list["EngagementSnapshot"]] = relationship(
+        back_populates="engagement", cascade="all, delete-orphan"
+    )
 
 
 class Persona(Base):
@@ -276,3 +279,5 @@ class EngagementSnapshot(Base):
     label: Mapped[str] = mapped_column(String, default="")
     catalog_version: Mapped[str] = mapped_column(String, default="")
     payload_json: Mapped[str] = mapped_column(Text, default="{}")
+
+    engagement: Mapped[Engagement] = relationship(back_populates="snapshots")

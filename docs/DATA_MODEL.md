@@ -1,0 +1,335 @@
+# Data Model & First-Class Data Sets
+
+This is the canonical reference for every first-class data set in the M365 TCO
+Tool, the relationships between them, and the **repeatable module contract** that
+each one obeys. The goal is the one stated by the practice: build robust data
+structures and repeatable CRUD modules so we never hand-roll a one-off
+("snowflake") path every time we touch a particular piece of data.
+
+Read this alongside:
+- [`ENGINE_SPEC.md`](ENGINE_SPEC.md) — the language-neutral calculation algorithm.
+- `backend/app/models.py` — the SQLAlchemy rendering of everything below.
+
+---
+
+## 1. Principles (why this document exists)
+
+1. **One shape per data set.** Every first-class data set has exactly one schema,
+   one identity strategy, one CRUD surface, one write-normalization path, and one
+   provenance field. If you need the data somewhere new, you reuse that module —
+   you do not invent a parallel representation.
+2. **The Engagement is the aggregate root.** Almost all customer data is scoped to
+   an Engagement and lives and dies with it. Global reference data (the SKU
+   catalog, seed libraries) is the only thing that lives outside an engagement.
+3. **Derive on write, never on read.** Money is normalized to annualized USD and
+   all derived fields (per-unit cost, effective cost, annual prices) are computed
+   once, at write time, in a single function. Reads and the engine never
+   re-derive.
+4. **Separate who owns each field.** Every field is owned by exactly one of:
+   _user-entered_, _seeded_, _derived-on-write_, or _engine-output_. Modules that
+   recompute must preserve fields they do not own.
+5. **Provenance is universal.** Every value-bearing, user-entered record carries a
+   `source_tag` so hard inputs are separable from soft ones on the readout.
+6. **The ratify gate is the only door to the math.** Unratified coverage (AI
+   suggestions) is real data but is invisible to the engine until a human
+   ratifies it.
+
+---
+
+## 2. The Entity Module Contract
+
+Every first-class data set is defined by answering the same eight questions. When
+you add a new data set (e.g. a future migration-ROM overlay), fill in this
+contract — that is what keeps it from becoming a snowflake.
+
+| # | Contract field | What it pins down |
+| --- | --- | --- |
+| 1 | **Identity** | Primary key strategy. Default: server-generated `uuid` string. Catalog rows add a **natural key** for upsert. |
+| 2 | **Scope / owner** | Which aggregate owns the row. Default: `engagement_id` FK, cascade-deleted with the engagement. Global data sets say "global". |
+| 3 | **Relationships** | FKs out, and whether each link is a **hard FK** or a **soft reference** (string). |
+| 4 | **Field ownership** | Each field tagged user-entered / seeded / derived-on-write / engine-output. |
+| 5 | **Write-normalization** | The single function that runs on every create/update to compute derived fields and normalize periods. |
+| 6 | **CRUD surface** | The uniform REST verbs, plus any domain actions (e.g. `ratify`, `override`). |
+| 7 | **Provenance** | `source_tag` (value-bearing user data) and/or `ai_suggested` + `ratified` (proposed data). |
+| 8 | **Lifecycle** | Created when? Copied from a library? Recomputed by the engine? Snapshotted? |
+
+---
+
+## 3. Entity-Relationship overview
+
+```mermaid
+erDiagram
+    ENGAGEMENT ||--o{ PERSONA : owns
+    ENGAGEMENT ||--o{ OUTCOME : owns
+    ENGAGEMENT ||--o{ CURRENT_MICROSOFT_LICENSE : owns
+    ENGAGEMENT ||--o{ THIRD_PARTY_PRODUCT : owns
+    ENGAGEMENT ||--o{ COVERAGE_MAP_ENTRY : owns
+    ENGAGEMENT ||--o{ PERSONA_SCENARIO : owns
+    ENGAGEMENT ||--o{ PRODUCT_DISPOSITION : owns
+    ENGAGEMENT ||--o{ ENGAGEMENT_SNAPSHOT : owns
+
+    PERSONA ||--o| PERSONA_SCENARIO : "targeted by (1:1 in practice)"
+    PERSONA ||--o{ CURRENT_MICROSOFT_LICENSE : "holds (optional)"
+
+    OUTCOME ||--o{ COVERAGE_MAP_ENTRY : "mapped by"
+    THIRD_PARTY_PRODUCT ||--o{ COVERAGE_MAP_ENTRY : "covered by (third-party)"
+    THIRD_PARTY_PRODUCT ||--o| PRODUCT_DISPOSITION : "disposition of"
+
+    MICROSOFT_SKU }o..o{ COVERAGE_MAP_ENTRY : "soft ref by sku_reference"
+    MICROSOFT_SKU }o..o{ CURRENT_MICROSOFT_LICENSE : "soft ref by sku_reference"
+    MICROSOFT_SKU }o..o{ PERSONA_SCENARIO : "soft ref by target_sku_reference"
+
+    GLOBAL_DEFAULTS ||..|| ENGAGEMENT : "seeds defaults into"
+    SEED_LIBRARY ||..o{ OUTCOME : "copied into"
+    SEED_LIBRARY ||..o{ COVERAGE_MAP_ENTRY : "copied into (MS coverage)"
+```
+
+Solid lines are hard foreign keys with cascade delete. **Dotted lines are soft
+references** — a string (`sku_reference`) resolved by lookup, not a database FK
+(see §5).
+
+---
+
+## 4. First-class data sets
+
+Each section states the contract. "Engagement-scoped" everywhere means: `engagement_id`
+FK, UUID PK, cascade-deleted with the engagement.
+
+### 4.1 Engagement — the aggregate root
+- **Identity:** `uuid`. **Scope:** root (owns everything else).
+- **Relationships:** one-to-many to all eight child sets, all `cascade="all, delete-orphan"`.
+- **Field ownership:** user-entered (`customer_name`, `market`, `currency`,
+  `notes`, `global_tooling_pct`, `modeling_horizon_years`); derived
+  (`created_at`, `updated_at`).
+- **CRUD:** `GET/POST/PATCH/DELETE /api/engagements`, plus `duplicate`, `compute`,
+  `readout.html`, `readout.xlsx`, `snapshots`.
+- **Lifecycle:** on create, seeds outcomes + Microsoft coverage from the seed
+  library (§6). `duplicate` deep-copies every child with id remapping.
+- **Note:** `global_tooling_pct` is the engagement default for the managed split;
+  individual third-party rows may override it.
+
+### 4.2 Persona
+- **Identity:** `uuid`. **Scope:** engagement-scoped.
+- **Field ownership:** user-entered (`name`, `headcount`, `description`); provenance (`source_tag`).
+- **CRUD:** `GET/POST/PATCH/DELETE /api/engagements/{eid}/personas`.
+- **Relationships:** referenced by `PersonaScenario.persona_id` and optionally
+  `CurrentMicrosoftLicense.persona_id`.
+
+### 4.3 Outcome — capability buckets
+- **Identity:** `uuid`. **Scope:** engagement-scoped (5.3.1 — scoped copies so
+  edits never mutate the global library).
+- **Field ownership:** seeded (`name`, `description`, `seed_key` from the library);
+  user-entered when added mid-workshop (`is_custom = true`).
+- **CRUD:** `GET/POST/PATCH/DELETE …/outcomes`.
+- **Lifecycle:** copied from `seeds/outcomes.json` on engagement creation; freely
+  extended at runtime.
+
+### 4.4 MicrosoftSku — the global catalog
+- **Identity:** `uuid` PK **plus a natural key** for upsert:
+  `product_id + sku_id + term_duration + billing_plan + market`.
+- **Scope:** **global** (not engagement-scoped). Shared reference data.
+- **Field ownership:** ingested (`product_title`, `unit_price_monthly`,
+  `erp_price_monthly`, …); derived-on-import (`annual_unit_price`,
+  `annual_erp_price`, normalized per §8.3 of the PRD).
+- **Write-normalization:** `services/pricesheet.py` — header-mapped parse,
+  Commercial filter, annualization, upsert by natural key keeping the latest
+  active row by `effective_end_date`.
+- **CRUD:** read-only over the API (`GET /api/catalog/skus`); written only by the
+  CSV import and Partner Center refresh.
+- **Why global:** the catalog is large, versioned, and identical across customers;
+  duplicating it per engagement would be the opposite of repeatable.
+
+### 4.5 CurrentMicrosoftLicense — the customer's existing licensing
+- **Identity:** `uuid`. **Scope:** engagement-scoped.
+- **Relationships:** **soft ref** to a `MicrosoftSku` via `sku_reference` (free
+  text); optional **hard FK** to a `Persona`.
+- **Field ownership:** user-entered (`quantity_assigned` ← model on this not
+  purchased, `unit_price_paid_annual`, `price_basis`, `discount_pct`); provenance.
+- **CRUD:** `GET/POST/PATCH/DELETE …/current-licenses`.
+- **Engine role:** the persona's `Σ(quantity_assigned × unit_price_paid_annual)`
+  is the Microsoft side of current spend.
+
+### 4.6 ThirdPartyProduct — non-Microsoft spend
+- **Identity:** `uuid`. **Scope:** engagement-scoped.
+- **Field ownership:** user-entered (`name`, `raw_cost`, `cost_period`,
+  `covered_count`, `is_managed`, `tooling_pct`, `renewal_date`); **derived-on-write**
+  (`annual_cost`, `effective_annual_cost`, `per_unit_annual_cost`); provenance.
+- **Write-normalization:** `_normalize_third_party()` in `routers/entities.py` —
+  the single place that: annualizes (`×12` if monthly), applies the managed split
+  (`effective = annual × tooling_pct` when managed, else `annual`), and computes
+  `per_unit = effective / covered_count`. Every create/update calls it; nothing
+  else computes these.
+- **CRUD:** `GET/POST/PATCH/DELETE …/third-party`.
+- **Relationships:** target of `CoverageMapEntry` (third-party) and of exactly one
+  `ProductDisposition`.
+
+### 4.7 CoverageMapEntry — the product↔outcome matrix
+- **Identity:** `uuid`. **Scope:** engagement-scoped.
+- **Relationships:** hard FK `outcome_id`; **polymorphic product link** keyed by
+  `product_kind`: `MicrosoftSku` → soft ref `microsoft_sku_reference` (string);
+  `ThirdParty` → hard FK `third_party_product_id`.
+- **Field ownership:** seeded (Microsoft coverage, `ratified = true`); user-entered
+  or AI-proposed (third-party).
+- **Provenance / gate:** `ai_suggested` + `ratified`. **Only `ratified = true`
+  rows hydrate into the engine.** This is the single ratify gate.
+- **CRUD:** `GET/POST/PATCH/DELETE …/coverage`, plus the domain action
+  `POST …/coverage/{id}/ratify`.
+
+### 4.8 PersonaScenario — the target-state plan
+- **Identity:** `uuid`. **Scope:** engagement-scoped. One per persona in practice.
+- **Relationships:** hard FK `persona_id`; **soft ref** to the target SKU via
+  `target_sku_reference`.
+- **Field ownership:** user-entered (`target_sku_reference`,
+  `target_unit_price_annual`, `in_scope`); **engine-output cache**
+  (`current_spend_annual`, `target_spend_annual`, `delta_annual`).
+- **CRUD:** `GET/POST/PATCH/DELETE …/scenarios`. Toggling `in_scope` and calling
+  `compute` triggers a **total** recompute (engine §6.7).
+
+### 4.9 ProductDisposition — split ownership, by design
+This is the canonical example of the field-ownership rule, because one row mixes
+operator-owned and engine-owned fields.
+- **Identity:** `uuid`. **Scope:** engagement-scoped. One per third-party product.
+- **Operator-owned (survive recompute):** `override`, `override_reason`,
+  `residual_intent`.
+- **Engine-output (overwritten every compute):** `displaced_users`,
+  `disposition`, `residual_count`, `residual_annual_cost`.
+- **Module rule:** `services/compute.py` reads the operator-owned fields **into**
+  the engine and writes only the engine-output fields **back** — it never clobbers
+  an operator's choice. The override endpoint writes only operator fields.
+- **CRUD:** upserted by `compute`; operator fields set via
+  `PUT …/dispositions/{tp_id}/override` (which enforces "reason required for
+  ForceFullElimination").
+
+### 4.10 EngagementSnapshot — reproducible readout
+- **Identity:** `uuid`. **Scope:** engagement-scoped (now cascades with the
+  engagement like every other child).
+- **Field ownership:** engine-output frozen at capture time (`payload_json`),
+  plus `label`, `catalog_version`, `created_at`.
+- **CRUD:** `POST/GET …/snapshots`, `GET …/snapshots/{id}`. Immutable once written
+  — a snapshot is a record, not editable state.
+
+### 4.11 Out-of-band data sets
+- **GlobalDefaults / Settings (PRD 5.10):** currently realized as the versioned
+  **seed files** (`outcomes.json`, `coverage.json`) plus `config.py` constants and
+  the per-engagement defaults on the Engagement row. If these need to become
+  operator-editable at runtime, promote them to a single-row `GlobalDefaults`
+  table following this same contract — do not scatter the values.
+- **Secrets:** the OpenRouter key and Partner Center tokens live in the encrypted
+  store (`services/secrets.py`), not the relational DB. Same get/set/delete
+  contract, swappable for Azure Key Vault.
+
+---
+
+## 5. Hard FKs vs soft references (an explicit rule)
+
+Two link styles exist on purpose:
+
+- **Hard FK** (`persona_id`, `third_party_product_id`, `outcome_id`): both rows
+  live in the same engagement; integrity and cascade matter; resolution is a join.
+- **Soft reference** (`sku_reference`, `target_sku_reference`,
+  `microsoft_sku_reference`): a **string** naming a Microsoft SKU. We use a soft
+  ref because:
+  1. the catalog is **global and versioned** while the reference is
+     **engagement-local**, so a hard FK would couple a customer row to a specific
+     catalog row that may be superseded next month;
+  2. a customer may name a SKU the current catalog does not (yet) contain;
+  3. the engine's displacement test keys off the **coverage map**, which is itself
+     keyed by the same `sku_reference` string — so the string is the join key
+     across coverage, scenarios, and current licenses consistently.
+
+Rule of thumb: **same-engagement → hard FK; reference to global/versioned catalog
+→ soft string ref.** Resolve soft refs through one lookup helper, never ad hoc.
+
+---
+
+## 6. Lifecycle flows
+
+### 6.1 Engagement creation (library → scoped copy)
+`POST /api/engagements` → `services/seeds.seed_engagement()`:
+1. copy every `outcomes.json` entry into an engagement-scoped **Outcome** (carry
+   `seed_key`);
+2. copy every `coverage.json` Microsoft-SKU mapping into an engagement-scoped
+   **CoverageMapEntry** (`ratified = true`).
+The global library is never mutated by workshop edits — this is the
+"scoped copy, not shared mutable state" pattern.
+
+### 6.2 Compute (hydrate → engine → persist)
+`compute.compute_and_persist()`:
+1. **Hydrate** ORM rows into pure engine dataclasses, applying the **ratify gate**
+   (only `ratified` coverage becomes outcome sets) and reading operator-owned
+   disposition fields.
+2. Run the pure engine (`tco_engine.compute`).
+3. **Persist back** only engine-output fields (scenario spend cache + disposition
+   outputs), preserving operator-owned fields.
+
+### 6.3 Snapshot
+`POST …/snapshots` computes, then freezes the serialized result + `catalog_version`
+so the readout reproduces even after the global catalog updates.
+
+---
+
+## 7. CRUD surface conventions (the repeatable module)
+
+Every engagement-scoped data set exposes the **same** REST shape, implemented the
+same way in `routers/entities.py`:
+
+```
+GET    /api/engagements/{eid}/{collection}            list
+POST   /api/engagements/{eid}/{collection}            create  (+ write-normalization)
+PATCH  /api/engagements/{eid}/{collection}/{id}       partial update (+ write-normalization)
+DELETE /api/engagements/{eid}/{collection}/{id}       delete
+```
+
+Conventions that make it repeatable, not snowflaked:
+- Every handler first calls `_require_engagement(db, eid)` — one ownership guard.
+- Every sub-resource handler re-checks `row.engagement_id == eid` before mutating,
+  so an id from another engagement 404s instead of leaking.
+- Create/update for any data set with derived fields routes through that set's
+  single write-normalization function (e.g. `_normalize_third_party`).
+- **Domain actions are explicit verbs**, not magic fields: `…/ratify`,
+  `…/dispositions/{id}/override`, `…/duplicate`, `…/compute`.
+
+**Adding a new first-class data set:** define the §2 contract, add the ORM model
+(UUID PK, `engagement_id` FK, cascade relationship on Engagement), add Pydantic
+in/out schemas, and add the four CRUD routes + any write-normalization. Do not
+introduce a second way to represent or fetch that data.
+
+---
+
+## 8. Field-ownership cheat sheet
+
+| Ownership | Who writes it | Examples | Recompute behavior |
+| --- | --- | --- | --- |
+| **User-entered** | The SA in the workshop | headcount, raw_cost, target price, `in_scope`, override choice | Never overwritten by compute |
+| **Seeded** | Library copy on create | Outcome name, Microsoft coverage | Editable; `is_custom`/`seed_key` track origin |
+| **Derived-on-write** | Normalization fn at write | annual_cost, per_unit, effective cost, annual prices | Recomputed on every create/update |
+| **Engine-output** | `compute` only | disposition, residual, scenario spend cache | Overwritten on every compute |
+
+If a field's owner is ambiguous, that is a design smell — pick one before shipping.
+
+---
+
+## 9. Provenance & confidence
+
+- `source_tag ∈ {Invoice, CustomerStated, ListPrice, Estimate,
+  AISuggestedUnconfirmed}` on every value-bearing user record. The readout can
+  filter/annotate by it so hard inputs are separable from soft ones.
+- `ai_suggested` + `ratified` on coverage entries gate AI proposals out of the
+  math until a human confirms.
+- Together these mean **every number on the readout is traceable** to who asserted
+  it and how confident we are — which is what survives a CFO review.
+
+---
+
+## 10. Future overlays (extend without rebuild)
+
+The deferred modules attach as **new first-class data sets following this same
+contract**, never as edits to the engine's core tables:
+- **Migration cost ROM** — a one-time-cost overlay table, engagement-scoped,
+  joined into the readout as a separate line.
+- **ECIF / funding offset** — an offset-line table, same pattern.
+- **Soft savings (Forrester TEI)** — its own scoped data set, segregated from hard
+  savings on the readout.
+
+Each is added by filling in the §2 contract and the §7 CRUD surface — proving the
+point of this document: new data is a new module, not a new snowflake.
