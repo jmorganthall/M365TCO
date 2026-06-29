@@ -26,6 +26,8 @@ rendering of the Section 5 model executing the same engine spec. The model and
 algorithm port; the code does not.
 
 **Authoritative references:**
+- [`docs/DATA_ARCHITECTURE.md`](docs/DATA_ARCHITECTURE.md) — the data architecture
+  law: everything is a first-class object; minimize data that lives outside one.
 - [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) — every first-class data set, the
   relationships between them, field ownership, and the repeatable CRUD module
   contract that keeps new data from becoming a snowflake.
@@ -34,15 +36,26 @@ algorithm port; the code does not.
 
 ## Quick start (Docker — Unraid / local)
 
+The image is published to GHCR (`ghcr.io/jmorganthall/m365tco:latest`) by the
+`docker-publish` workflow on every push to `main` and on `v*` tags.
+
 ```bash
 cp .env.example .env          # set TCO_MASTER_SECRET to a long random value
-docker compose up --build     # http://localhost:8080
+
+# Pull and run the published image:
+docker compose up -d          # http://localhost:8080
+
+# …or build the same image locally instead of pulling:
+docker compose up --build -d
 ```
 
-The single image bundles the API and the built UI; data (SQLite DB + encrypted
-secret store) persists on the `tco-data` volume. On Unraid, deploy via the
-Compose Manager plugin or add a container mapping host `8080` → container `8000`
-with a `/data` volume.
+The single image bundles the API and the built UI; all state (SQLite DB +
+encrypted `secrets.enc`) persists under `/data`.
+
+**Unraid:** deploy via the Compose Manager plugin, or run the published image with
+host `${M365TCO_WEB_PORT:-8080}` → container `8000` and the appdata volume
+`${M365TCO_DATA_DIR:-/mnt/cache/appdata/m365tco}` → `/data`. All tunables are env
+vars with sane defaults (see `.env.example`); only `TCO_MASTER_SECRET` is required.
 
 ### Azure Container Apps (future rehost)
 

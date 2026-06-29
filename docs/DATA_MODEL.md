@@ -7,6 +7,8 @@ structures and repeatable CRUD modules so we never hand-roll a one-off
 ("snowflake") path every time we touch a particular piece of data.
 
 Read this alongside:
+- [`DATA_ARCHITECTURE.md`](DATA_ARCHITECTURE.md) — the law this model obeys:
+  everything is a first-class object; minimize data that lives outside one.
 - [`ENGINE_SPEC.md`](ENGINE_SPEC.md) — the language-neutral calculation algorithm.
 - `backend/app/models.py` — the SQLAlchemy rendering of everything below.
 
