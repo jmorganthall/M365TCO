@@ -93,6 +93,9 @@ class SecretStore:
 
 # Well-known secret keys.
 OPENROUTER_API_KEY = "openrouter_api_key"
+# Price-sheet sync credential (one of these), set via the GUI, encrypted at rest.
+PRICESYNC_CLIENT_SECRET = "pricesync_client_secret"
+PRICESYNC_CLIENT_CERT_PEM = "pricesync_client_cert_pem"
 
 
 _store: Optional[SecretStore] = None

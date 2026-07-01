@@ -26,10 +26,10 @@ class AuthError(RuntimeError):
 
 
 def _client_credential(cfg: PriceSyncConfig):
-    """Build an MSAL client_credential: cert dict (preferred) or secret string."""
-    if cfg.client_cert_path:
-        with open(cfg.client_cert_path, "rb") as fh:
-            pem = fh.read()
+    """Build an MSAL client_credential: cert dict (preferred) or secret string.
+    The certificate PEM (private key + cert) comes from the encrypted store."""
+    if cfg.client_cert_pem:
+        pem = cfg.client_cert_pem.encode()
         private_key = serialization.load_pem_private_key(pem, password=None)
         cert = x509.load_pem_x509_certificate(pem)
         thumbprint = cert.fingerprint(hashes.SHA1()).hex()
@@ -44,7 +44,7 @@ def _client_credential(cfg: PriceSyncConfig):
         }
     if cfg.client_secret:
         return cfg.client_secret
-    raise AuthError("No client credential configured (set CLIENT_CERT_PATH or CLIENT_SECRET).")
+    raise AuthError("No client credential configured. Set a certificate or client secret in Settings.")
 
 
 def _app(cfg: PriceSyncConfig):

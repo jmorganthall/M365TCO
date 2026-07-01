@@ -26,11 +26,13 @@ async def _daily_freshness_timer():
     (PRD §6.4 FR-AGE-4 / §6.5 FR-UI-4). Disabled unless a webhook is configured."""
     import asyncio
 
+    from .db import SessionLocal
     from .pricesync import config as ps_config, freshness as ps_fresh, notify as ps_notify, storage as ps_storage
 
     while True:
+        db = SessionLocal()
         try:
-            cfg = ps_config.load_config()
+            cfg = ps_config.load_config(db)
             if cfg.notify_webhook_url:
                 meta = ps_storage.read_latest(cfg)
                 fr = ps_fresh.classify(
@@ -42,6 +44,8 @@ async def _daily_freshness_timer():
                 ps_notify.notify_if_stale(cfg, fr)
         except Exception:
             pass  # a monitoring loop must never crash the app
+        finally:
+            db.close()
         await asyncio.sleep(24 * 3600)
 
 

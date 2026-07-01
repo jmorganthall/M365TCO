@@ -225,3 +225,23 @@ class CoverageSuggestRequest(BaseModel):
 class BundleAnalysisRequest(BaseModel):
     # Optional per-bundle price override map: {sku_reference: annual_per_seat}.
     prices: Optional[dict[str, float]] = None
+
+
+# ---- Price-sheet sync GUI config ----
+class PriceSyncConfigUpdate(BaseModel):
+    tenant_id: Optional[str] = None
+    client_id: Optional[str] = None
+    redirect_uri: Optional[str] = None
+    pricesheet_view: Optional[str] = None
+    market: Optional[str] = None
+    timeline: Optional[str] = None
+    aging_days: Optional[int] = None
+    stale_days: Optional[int] = None
+    use_month_rule: Optional[bool] = None
+    retention_count: Optional[int] = None
+    notify_webhook_url: Optional[str] = None
+
+
+class PriceSyncCredentialIn(BaseModel):
+    kind: str  # "secret" | "certificate"
+    value: str  # the client secret string, or the certificate PEM (key + cert)

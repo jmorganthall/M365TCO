@@ -142,10 +142,52 @@ export default function AdminPanel({ onClose }) {
 
 function PricingSync({ onMsg, onErr }) {
   const [s, setS] = useState(null)
+  const [cfg, setCfg] = useState(null)
+  const [cred, setCred] = useState({ kind: 'certificate', value: '' })
   const [busy, setBusy] = useState(false)
-  const load = () => api.get('/api/pricesync/status').then(setS).catch(() => {})
-  useEffect(() => { load() }, [])
+  const certFile = useRef()
 
+  function load() {
+    api.get('/api/pricesync/status').then(setS).catch(() => {})
+    api.get('/api/pricesync/config').then(setCfg).catch(() => {})
+  }
+  useEffect(() => { load() }, [])
+  const setField = (k, v) => setCfg((c) => ({ ...c, [k]: v }))
+
+  async function saveConfig() {
+    onErr('')
+    try {
+      const body = {
+        tenant_id: cfg.tenant_id, client_id: cfg.client_id, redirect_uri: cfg.redirect_uri,
+        pricesheet_view: cfg.pricesheet_view, market: cfg.market,
+        aging_days: Number(cfg.aging_days), stale_days: Number(cfg.stale_days),
+        use_month_rule: cfg.use_month_rule, retention_count: Number(cfg.retention_count),
+        notify_webhook_url: cfg.notify_webhook_url,
+      }
+      await api.put('/api/pricesync/config', body)
+      onMsg('Pricing settings saved.'); load()
+    } catch (e) { onErr(e.message) }
+  }
+  async function saveCredential() {
+    onErr('')
+    if (!cred.value.trim()) { onErr('Enter the credential value first.'); return }
+    try {
+      const r = await api.put('/api/pricesync/credential', cred)
+      setCred({ ...cred, value: '' })
+      onMsg(`Credential saved (${r.credential_kind}).`); load()
+    } catch (e) { onErr(e.message) }
+  }
+  async function clearCredential() {
+    try { await api.del('/api/pricesync/credential'); onMsg('Credential cleared.'); load() }
+    catch (e) { onErr(e.message) }
+  }
+  function loadCertFile() {
+    const f = certFile.current?.files?.[0]
+    if (!f) return
+    const r = new FileReader()
+    r.onload = () => setCred({ kind: 'certificate', value: String(r.result) })
+    r.readAsText(f)
+  }
   async function refresh() {
     setBusy(true); onErr('')
     try {
@@ -169,44 +211,101 @@ function PricingSync({ onMsg, onErr }) {
   return (
     <div className="card">
       <h2>Pricing sync (Partner Center)</h2>
-      <p className="hint">Interactive sign-in fetches the current price sheet to the
-        data volume; a local age check (no login, no API call) flags staleness. No
-        refresh token is ever stored. Configure via environment variables
-        (TENANT_ID, CLIENT_ID, REDIRECT_URI, PRICESHEET_VIEW, CLIENT_CERT_PATH or
-        CLIENT_SECRET).</p>
+      <p className="hint">Interactive sign-in fetches the current price sheet to the data
+        volume; a local age check (no login, no API call) flags staleness. No refresh token
+        is stored. Everything below is configured here — nothing in environment variables.
+        The values come from an Azure app registration in your partner tenant (see
+        docs/PRICE_SYNC.md).</p>
+
       {s && (
         <div className="muted" style={{ fontSize: '.84rem', marginBottom: '.6rem' }}>
           Status: <span className={`badge ${stateCls}`}>{s.state}</span>{' '}
-          {s.configured
-            ? <>configured ({s.credential_kind}) · view <b>{s.pricesheet_view || '—'}</b> · market {s.market}</>
-            : <b className="warn">not configured</b>}
+          {s.configured ? <>configured ({s.credential_kind})</> : <b className="warn">not configured — complete the fields below</b>}
           {s.latest && <> · sheet {s.latest.data_month} · {(s.latest.file_bytes / 1e6).toFixed(1)} MB · MFA {String(s.latest.mfa_compliant)}</>}
           {s.age_days != null && <> · {s.age_days} days old</>}
         </div>
       )}
 
-      {s && !s.configured && (
-        <div className="card" style={{ background: 'var(--panel2)', borderColor: 'var(--warn)' }}>
-          <b className="warn">Not configured — sign-in is disabled until these are set.</b>
-          <p className="hint" style={{ marginTop: '.4rem' }}>
-            Set these environment variables (in your <code>.env</code> / Unraid template),
-            then restart the container. They come from an Azure app registration in your
-            partner tenant — see <code>docs/PRICE_SYNC.md</code>.
-          </p>
-          <ul style={{ margin: '.3rem 0 .5rem', fontSize: '.82rem' }}>
-            {s.missing.map((m) => <li key={m}><code>{m}</code> — missing</li>)}
-          </ul>
-          <p className="hint" style={{ margin: 0 }}>
-            <code>REDIRECT_URI</code> must be registered on the app and point to
-            <code> {`{your-host}`}/auth/callback</code>. The login account needs the
-            Admin Agent or Sales Agent role. Certificate credential is preferred over a secret.
-          </p>
-        </div>
+      {cfg && (
+        <>
+          <div className="grid c2">
+            <div><label>Tenant ID</label>
+              <input value={cfg.tenant_id} placeholder="guid"
+                onChange={(e) => setField('tenant_id', e.target.value)} /></div>
+            <div><label>Client (application) ID</label>
+              <input value={cfg.client_id} placeholder="guid"
+                onChange={(e) => setField('client_id', e.target.value)} /></div>
+            <div><label>Redirect URI (must be registered on the app → /auth/callback)</label>
+              <input value={cfg.redirect_uri} placeholder="https://your-host/auth/callback"
+                onChange={(e) => setField('redirect_uri', e.target.value)} /></div>
+            <div><label>Price sheet view</label>
+              <select value={cfg.pricesheet_view} onChange={(e) => setField('pricesheet_view', e.target.value)}>
+                <option value="">— select —</option>
+                {(cfg.valid_views || []).map((v) => <option key={v}>{v}</option>)}
+              </select></div>
+            <div><label>Market</label>
+              <input value={cfg.market} onChange={(e) => setField('market', e.target.value)} /></div>
+            <div><label>Notify webhook (optional, Teams/generic)</label>
+              <input value={cfg.notify_webhook_url} placeholder="empty disables"
+                onChange={(e) => setField('notify_webhook_url', e.target.value)} /></div>
+          </div>
+          <div className="grid c4" style={{ marginTop: '.5rem' }}>
+            <div><label>Aging at (days)</label>
+              <input type="number" value={cfg.aging_days} onChange={(e) => setField('aging_days', e.target.value)} /></div>
+            <div><label>Stale at (days)</label>
+              <input type="number" value={cfg.stale_days} onChange={(e) => setField('stale_days', e.target.value)} /></div>
+            <div><label>Retention (sheets)</label>
+              <input type="number" value={cfg.retention_count} onChange={(e) => setField('retention_count', e.target.value)} /></div>
+            <div><label><input type="checkbox" style={{ width: 'auto', marginRight: 6 }}
+              checked={cfg.use_month_rule} onChange={(e) => setField('use_month_rule', e.target.checked)} />Month rule</label></div>
+          </div>
+          <button style={{ marginTop: '.6rem' }} onClick={saveConfig}>Save settings</button>
+
+          <div className="card" style={{ background: 'var(--panel2)', marginTop: '.8rem' }}>
+            <b>Credential</b>{' '}
+            {cfg.credential_set
+              ? <span className="badge pos">{cfg.credential_kind} set</span>
+              : <span className="badge muted">not set</span>}
+            {!cfg.secret_store_enabled && <b className="warn"> — set TCO_MASTER_SECRET to store credentials encrypted.</b>}
+            <p className="hint" style={{ margin: '.3rem 0' }}>Certificate preferred over a client
+              secret. Stored encrypted at rest; never returned by the API.</p>
+            <div className="toolbar">
+              <div>
+                <label>Type</label>
+                <select value={cred.kind} onChange={(e) => setCred({ kind: e.target.value, value: '' })}>
+                  <option value="certificate">Certificate (PEM: key + cert)</option>
+                  <option value="secret">Client secret</option>
+                </select>
+              </div>
+              {cred.kind === 'secret' ? (
+                <div style={{ flex: 2 }}>
+                  <label>Client secret</label>
+                  <input type="password" value={cred.value} disabled={!cfg.secret_store_enabled}
+                    onChange={(e) => setCred({ ...cred, value: e.target.value })} />
+                </div>
+              ) : (
+                <div style={{ flex: 2 }}>
+                  <label>Certificate PEM — upload or paste</label>
+                  <input type="file" accept=".pem,.crt,.key,.txt" ref={certFile}
+                    disabled={!cfg.secret_store_enabled} onChange={loadCertFile} />
+                </div>
+              )}
+              <button className="sm" disabled={!cfg.secret_store_enabled} onClick={saveCredential}>Save credential</button>
+              {cfg.credential_set && <button className="danger sm" onClick={clearCredential}>Clear</button>}
+            </div>
+            {cred.kind === 'certificate' && (
+              <textarea rows={3} value={cred.value} disabled={!cfg.secret_store_enabled}
+                placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----BEGIN CERTIFICATE-----&#10;..."
+                style={{ marginTop: '.4rem', fontFamily: 'monospace', fontSize: '.75rem' }}
+                onChange={(e) => setCred({ kind: 'certificate', value: e.target.value })} />
+            )}
+          </div>
+        </>
       )}
 
       <div className="row" style={{ gap: '.4rem', marginTop: '.6rem' }}>
         <button className="sm" disabled={!s?.configured || busy} onClick={refresh}
-          title={s?.configured ? '' : 'Configure the environment variables above first'}>
+          title={s?.configured ? '' : 'Complete the settings and credential above first'}>
           Refresh pricing (sign in)
         </button>
         <button className="ghost sm" disabled={!s?.latest} onClick={importLatest}>Import latest into catalog</button>

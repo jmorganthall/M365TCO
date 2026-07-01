@@ -15,7 +15,7 @@ UTC = timezone.utc
 def _cfg(tmp_path) -> PriceSyncConfig:
     return PriceSyncConfig(
         tenant_id="t", client_id="c", redirect_uri="https://h/auth/callback",
-        client_cert_path="", client_secret="s", market="US",
+        client_cert_pem="", client_secret="s", market="US",
         pricesheet_view="updatedlicensebased", timeline="current",
         data_dir=str(tmp_path), aging_days=25, stale_days=30,
         use_month_rule=True, retention_count=2, notify_webhook_url="",
@@ -130,3 +130,46 @@ def test_ac8_failed_fetch_leaves_previous_intact(tmp_path):
     assert latest["file_name"] == good["file_name"]
     with open(os.path.join(cfg.data_dir, good["file_name"])) as fh:
         assert fh.read() == "GOOD"
+
+
+# ---- GUI config path (no env vars) ----
+def test_gui_config_enables_signin(client):
+    # Initially unconfigured.
+    st = client.get("/api/pricesync/status").json()
+    assert st["configured"] is False
+    assert "Tenant ID" in st["missing"]
+
+    # Set the non-secret settings via the GUI endpoint.
+    client.put("/api/pricesync/config", json={
+        "tenant_id": "11111111-1111-1111-1111-111111111111",
+        "client_id": "22222222-2222-2222-2222-222222222222",
+        "redirect_uri": "https://app.example/auth/callback",
+        "pricesheet_view": "updatedlicensebased",
+        "market": "US",
+    })
+    # Still not configured — no credential yet.
+    assert client.get("/api/pricesync/status").json()["configured"] is False
+
+    # Set a client secret credential (encrypted store).
+    r = client.put("/api/pricesync/credential", json={"kind": "secret", "value": "shh"})
+    assert r.status_code == 200 and r.json()["credential_kind"] == "secret"
+
+    st = client.get("/api/pricesync/status").json()
+    assert st["configured"] is True
+    assert st["credential_kind"] == "secret"
+
+    cfg = client.get("/api/pricesync/config").json()
+    assert cfg["credential_set"] is True
+    assert cfg["pricesheet_view"] == "updatedlicensebased"
+    # The secret value is never returned.
+    assert "value" not in cfg and "client_secret" not in cfg
+
+
+def test_invalid_view_rejected(client):
+    r = client.put("/api/pricesync/config", json={"pricesheet_view": "not_a_view"})
+    assert r.status_code == 422
+
+
+def test_invalid_certificate_pem_rejected(client):
+    r = client.put("/api/pricesync/credential", json={"kind": "certificate", "value": "not a pem"})
+    assert r.status_code == 422
