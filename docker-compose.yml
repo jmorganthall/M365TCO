@@ -31,6 +31,24 @@ services:
       TCO_CORS_ORIGINS: "${TCO_CORS_ORIGINS:-*}"
       TCO_OPENROUTER_MODEL: "${TCO_OPENROUTER_MODEL:-anthropic/claude-3.5-sonnet}"
 
+      # --- Price-sheet sync (Partner Center). Optional; leave blank to disable.
+      # Interactive login only — no refresh token is stored. Cert preferred.
+      TENANT_ID: "${TENANT_ID:-}"
+      CLIENT_ID: "${CLIENT_ID:-}"
+      REDIRECT_URI: "${REDIRECT_URI:-}"
+      PRICESHEET_VIEW: "${PRICESHEET_VIEW:-}"
+      CLIENT_CERT_PATH: "${CLIENT_CERT_PATH:-}"
+      CLIENT_SECRET: "${CLIENT_SECRET:-}"
+      MARKET: "${MARKET:-US}"
+      DATA_DIR: "${PRICESYNC_DATA_DIR:-/data/pricesheets}"
+      AGE_AGING_DAYS: "${AGE_AGING_DAYS:-25}"
+      AGE_STALE_DAYS: "${AGE_STALE_DAYS:-30}"
+      AGE_USE_MONTH_RULE: "${AGE_USE_MONTH_RULE:-true}"
+      RETENTION_COUNT: "${RETENTION_COUNT:-2}"
+      NOTIFY_WEBHOOK_URL: "${NOTIFY_WEBHOOK_URL:-}"
+
     volumes:
-      # Host appdata dir -> /data (SQLite DB + encrypted secrets.enc).
+      # Host appdata dir -> /data (SQLite DB + encrypted secrets.enc + pricesheets/).
       - "${M365TCO_DATA_DIR:-/mnt/cache/appdata/m365tco}:/data"
+      # Mount the app certificate read-only if using cert auth for pricing sync:
+      # - "${CLIENT_CERT_HOST_PATH:-/mnt/cache/appdata/m365tco/app.pem}:/secrets/app.pem:ro"

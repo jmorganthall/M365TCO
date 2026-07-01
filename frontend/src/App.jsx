@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { api } from './api'
 import Sidebar from './components/Sidebar.jsx'
+import PricingBanner from './components/PricingBanner.jsx'
 import NewEngagement from './components/NewEngagement.jsx'
 import Personas from './components/Personas.jsx'
 import CurrentLicensing from './components/CurrentLicensing.jsx'
@@ -66,6 +67,7 @@ export default function App() {
       <main className="main">
         {!active && (
           <div className="container">
+            <PricingBanner onOpenSettings={() => setShowAdmin(true)} />
             <div className="welcome">
               <h1>Model a Microsoft 365 total cost of ownership.</h1>
               <p className="muted">Create an engagement, then work through personas,
@@ -78,6 +80,7 @@ export default function App() {
 
         {active && (
           <div className="container">
+            <PricingBanner onOpenSettings={() => setShowAdmin(true)} />
             <div className="work-header">
               <div>
                 <h2 style={{ margin: 0 }}>{active.customer_name || 'Untitled engagement'}</h2>

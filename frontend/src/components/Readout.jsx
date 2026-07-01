@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { api, usd, pct } from '../api'
+import { PricingBadge } from './PricingBanner.jsx'
 
 export default function Readout({ engagement }) {
   const eid = engagement.id
@@ -39,7 +40,7 @@ export default function Readout({ engagement }) {
       <div className="card">
         <div className="flex-between">
           <div>
-            <div className="muted">Net TCO delta · annualized USD</div>
+            <div className="muted">Net TCO delta · annualized USD <PricingBadge /></div>
             <div className={`headline ${pos ? 'pos' : 'neg'}`}>{usd(r.net_tco_delta_annual)}</div>
             <div className="muted">{pos ? 'Hard-dollar annual savings' : 'Annual cost increase — shown honestly'}</div>
           </div>
