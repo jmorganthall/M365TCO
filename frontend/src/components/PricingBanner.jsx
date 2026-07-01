@@ -14,9 +14,10 @@ export default function PricingBanner({ onOpenSettings }) {
   async function refresh() {
     setBusy(true); setErr('')
     try {
-      const { auth_url } = await api.post('/api/pricesync/login-url')
-      window.location.href = auth_url  // interactive Microsoft login
-    } catch (e) { setErr(e.message); setBusy(false) }
+      await api.post('/api/pricesync/refresh')  // CSP server-side token exchange
+      const s = await api.get('/api/pricesync/status')
+      setStatus(s)
+    } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
 
   if (!status || !status.configured || status.state === 'fresh') return null

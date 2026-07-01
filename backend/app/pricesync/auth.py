@@ -1,24 +1,20 @@
-"""Interactive authentication (PRD §6.1) — authorization code flow with PKCE,
-confidential client. Certificate credential preferred; client secret is a
-fallback only. The access token is used once per fetch and discarded; no refresh
-token is ever persisted (SEC-3).
+"""Cloud Solution Provider authentication (Secure Application Model).
 
-MSAL for Python manages PKCE (code_verifier/challenge) and state via
-initiate_auth_code_flow / acquire_token_by_auth_code_flow.
+A one-time interactive partner consent (MFA, dedicated service account holding
+Admin Agent / Sales Agent) produces a refresh token. The app stores that token
+(encrypted) and exchanges it for an access token on the partner's behalf at fetch
+time — no per-fetch browser redirect. Certificate credential preferred; client
+secret is a fallback.
+
+The refresh token is confidential and lives only in the encrypted secret store.
 """
 
 from __future__ import annotations
-
-import hashlib
-from typing import Optional
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 
 from .config import AUTHORITY, TOKEN_SCOPE, PriceSyncConfig
-
-# In-memory, short-lived login flows keyed by OAuth state. Never persisted.
-_PENDING_FLOWS: dict[str, dict] = {}
 
 
 class AuthError(RuntimeError):
@@ -44,56 +40,42 @@ def _client_credential(cfg: PriceSyncConfig):
         }
     if cfg.client_secret:
         return cfg.client_secret
-    raise AuthError("No client credential configured. Set a certificate or client secret in Settings.")
+    raise AuthError("No app credential configured. Set a certificate or client secret in Settings.")
 
 
 def _app(cfg: PriceSyncConfig):
-    # Imported lazily so the module loads even if msal isn't installed yet.
     from msal import ConfidentialClientApplication
 
-    # When the tenant isn't known yet, sign in against `organizations`; the tenant
-    # is then read from the token's tid claim and persisted.
-    tenant = cfg.tenant_id or "organizations"
     return ConfidentialClientApplication(
         client_id=cfg.client_id,
-        authority=AUTHORITY.format(tenant_id=tenant),
+        authority=AUTHORITY.format(tenant_id=cfg.tenant_id),
         client_credential=_client_credential(cfg),
     )
 
 
-def begin_login(cfg: PriceSyncConfig, redirect_uri: str) -> str:
-    """Start an auth-code + PKCE flow. Returns the authorization URL to redirect
-    the user's browser to. The flow (incl. PKCE verifier + state + redirect_uri)
-    is stashed in memory keyed by state until the callback."""
-    if not cfg.auth_configured:
-        raise AuthError("Price sync is not configured (need client id, a view, and a credential).")
-    if not redirect_uri:
-        raise AuthError("No redirect URI available.")
-    flow = _app(cfg).initiate_auth_code_flow(
-        scopes=[TOKEN_SCOPE], redirect_uri=redirect_uri
-    )
-    if "auth_uri" not in flow or "state" not in flow:
-        raise AuthError("Failed to initiate authorization code flow.")
-    _PENDING_FLOWS[flow["state"]] = flow
-    return flow["auth_uri"]
+def acquire_access_token(cfg: PriceSyncConfig) -> tuple[str, str | None, dict]:
+    """Exchange the stored refresh token for a price-sheet API access token.
 
-
-def redeem_code(cfg: PriceSyncConfig, auth_response: dict) -> tuple[str, dict]:
-    """Exchange the callback's authorization code for an access token.
-
-    Returns (access_token, id_token_claims). The token is NOT stored; the caller
-    uses it once. The claims carry `tid` (tenant), `preferred_username`, `name`.
+    Returns (access_token, rotated_refresh_token_or_None, id_token_claims).
+    The token is used once for the fetch and discarded; a rotated refresh token
+    (if returned) should be persisted by the caller.
     """
-    state = auth_response.get("state")
-    flow = _PENDING_FLOWS.pop(state, None)
-    if flow is None:
-        raise AuthError("Unknown or expired login state. Start the refresh again.")
-    result = _app(cfg).acquire_token_by_auth_code_flow(flow, auth_response)
+    if not cfg.auth_configured:
+        raise AuthError(
+            "Price sync is not configured — need partner tenant, app id, a "
+            "credential, and a consent refresh token."
+        )
+    result = _app(cfg).acquire_token_by_refresh_token(
+        cfg.refresh_token, scopes=[TOKEN_SCOPE]
+    )
     if "access_token" not in result:
         desc = result.get("error_description") or result.get("error") or "unknown error"
-        raise AuthError(f"Token exchange failed: {desc}")
-    return result["access_token"], result.get("id_token_claims", {}) or {}
-
-
-def pending_count() -> int:
-    return len(_PENDING_FLOWS)
+        raise AuthError(
+            f"Token request failed: {desc}. The refresh token may be expired or "
+            "revoked — re-run the partner consent to obtain a new one."
+        )
+    return (
+        result["access_token"],
+        result.get("refresh_token"),
+        result.get("id_token_claims", {}) or {},
+    )
