@@ -175,3 +175,16 @@ def test_invalid_view_rejected(client):
 def test_invalid_certificate_pem_rejected(client):
     r = client.put("/api/pricesync/credential", json={"kind": "certificate", "value": "not a pem"})
     assert r.status_code == 422
+
+
+def test_redirect_uri_registrability_rules():
+    from app.routers.pricesync import _redirect_registrable
+
+    # Bare IP over http -> Entra rejects.
+    ok, note = _redirect_registrable("http://192.168.1.50:8080/auth/callback")
+    assert ok is False and "HTTPS" in note
+    # HTTPS hostname -> fine.
+    assert _redirect_registrable("https://tco.example.com/auth/callback")[0] is True
+    # Loopback http -> allowed (with a caveat note).
+    ok, note = _redirect_registrable("http://localhost:8080/auth/callback")
+    assert ok is True and note

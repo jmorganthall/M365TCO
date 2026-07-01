@@ -12,6 +12,8 @@ Configuration is GUI-managed (no env vars):
 
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -56,6 +58,28 @@ def _effective_redirect_uri(request: Request, row) -> str:
     return (row.redirect_uri or "").strip() or _derive_redirect_uri(request)
 
 
+def _redirect_registrable(uri: str) -> tuple[bool, str]:
+    """Whether Microsoft Entra will accept this redirect URI. Entra requires
+    HTTPS (any hostname; self-signed OK) or http://localhost. A bare IP over
+    HTTP — common when reaching the app by LAN address — will NOT register."""
+    p = urlparse(uri)
+    host = (p.hostname or "").lower()
+    if p.scheme == "https":
+        return True, ""
+    if p.scheme == "http" and host in ("localhost", "127.0.0.1"):
+        return True, (
+            "Loopback http is accepted by Entra, but the redirect only reaches the "
+            "app if you browse from this host (or via an SSH tunnel)."
+        )
+    return False, (
+        "Microsoft Entra will reject this redirect URI. It must be HTTPS with a "
+        "hostname (a self-signed cert is fine) or http://localhost — a bare IP over "
+        "HTTP cannot be registered. Put the app behind a reverse proxy with a "
+        "hostname + HTTPS, browse via http://localhost, or use manual CSV import "
+        "instead (no sign-in required)."
+    )
+
+
 def _freshness_for(cfg: config.PriceSyncConfig) -> freshness.Freshness:
     meta = storage.read_latest(cfg)
     return freshness.classify(
@@ -97,6 +121,8 @@ def _config_payload(request: Request, db: Session) -> dict:
         "redirect_uri": row.redirect_uri,
         "effective_redirect_uri": _effective_redirect_uri(request, row),
         "suggested_redirect_uri": _derive_redirect_uri(request),
+        "redirect_uri_ok": _redirect_registrable(_effective_redirect_uri(request, row))[0],
+        "redirect_uri_note": _redirect_registrable(_effective_redirect_uri(request, row))[1],
         "signed_in_user": row.signed_in_user,
         "pricesheet_view": row.pricesheet_view,
         "market": row.market,
