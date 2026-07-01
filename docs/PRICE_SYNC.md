@@ -29,6 +29,17 @@ Code: `backend/app/pricesync/` (`config`, `auth`, `fetch`, `storage`,
 | POST | `/api/pricesync/import-latest` | Parses the stored sheet into the SKU catalog (existing parser). |
 | POST | `/api/pricesync/check-notify` | Runs the local age check and posts one webhook if Stale. No API call. |
 
+## Near one-click sign-in
+The only value the operator must enter is the **Client (application) ID** plus a
+credential. Everything else is handled automatically:
+- **Tenant ID** — sign-in starts against the `organizations` authority, and the
+  tenant is read from the token's `tid` claim and persisted on first success.
+- **Redirect URI** — auto-derived from the app's own request origin (honoring
+  `X-Forwarded-Proto`/`-Host` behind a reverse proxy). Editable for edge cases;
+  it must still be registered on the app in Azure.
+- **Price sheet view** — defaults to `updatedlicensebased`.
+- The signed-in account is captured from the token claims and shown in Settings.
+
 ## Configuration (in-app GUI — no environment variables)
 Everything is configured in **Settings › Pricing sync**, not via env vars:
 - **Non-secret settings** — tenant id, client id, redirect URI, price sheet view,

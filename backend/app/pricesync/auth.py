@@ -51,21 +51,26 @@ def _app(cfg: PriceSyncConfig):
     # Imported lazily so the module loads even if msal isn't installed yet.
     from msal import ConfidentialClientApplication
 
+    # When the tenant isn't known yet, sign in against `organizations`; the tenant
+    # is then read from the token's tid claim and persisted.
+    tenant = cfg.tenant_id or "organizations"
     return ConfidentialClientApplication(
         client_id=cfg.client_id,
-        authority=AUTHORITY.format(tenant_id=cfg.tenant_id),
+        authority=AUTHORITY.format(tenant_id=tenant),
         client_credential=_client_credential(cfg),
     )
 
 
-def begin_login(cfg: PriceSyncConfig) -> str:
+def begin_login(cfg: PriceSyncConfig, redirect_uri: str) -> str:
     """Start an auth-code + PKCE flow. Returns the authorization URL to redirect
-    the user's browser to. The flow (incl. PKCE verifier + state) is stashed in
-    memory keyed by state until the callback."""
+    the user's browser to. The flow (incl. PKCE verifier + state + redirect_uri)
+    is stashed in memory keyed by state until the callback."""
     if not cfg.auth_configured:
-        raise AuthError("Price sync is not configured (missing tenant/client/redirect/view/credential).")
+        raise AuthError("Price sync is not configured (need client id, a view, and a credential).")
+    if not redirect_uri:
+        raise AuthError("No redirect URI available.")
     flow = _app(cfg).initiate_auth_code_flow(
-        scopes=[TOKEN_SCOPE], redirect_uri=cfg.redirect_uri
+        scopes=[TOKEN_SCOPE], redirect_uri=redirect_uri
     )
     if "auth_uri" not in flow or "state" not in flow:
         raise AuthError("Failed to initiate authorization code flow.")
@@ -73,11 +78,11 @@ def begin_login(cfg: PriceSyncConfig) -> str:
     return flow["auth_uri"]
 
 
-def redeem_code(cfg: PriceSyncConfig, auth_response: dict) -> str:
+def redeem_code(cfg: PriceSyncConfig, auth_response: dict) -> tuple[str, dict]:
     """Exchange the callback's authorization code for an access token.
 
-    `auth_response` is the dict of query params from the redirect. Returns the
-    access token string. The token is NOT stored; the caller uses it once.
+    Returns (access_token, id_token_claims). The token is NOT stored; the caller
+    uses it once. The claims carry `tid` (tenant), `preferred_username`, `name`.
     """
     state = auth_response.get("state")
     flow = _PENDING_FLOWS.pop(state, None)
@@ -87,7 +92,7 @@ def redeem_code(cfg: PriceSyncConfig, auth_response: dict) -> str:
     if "access_token" not in result:
         desc = result.get("error_description") or result.get("error") or "unknown error"
         raise AuthError(f"Token exchange failed: {desc}")
-    return result["access_token"]
+    return result["access_token"], result.get("id_token_claims", {}) or {}
 
 
 def pending_count() -> int:

@@ -134,10 +134,12 @@ def test_ac8_failed_fetch_leaves_previous_intact(tmp_path):
 
 # ---- GUI config path (no env vars) ----
 def test_gui_config_enables_signin(client):
-    # Initially unconfigured.
+    # Initially unconfigured — Client ID is the required field (tenant/redirect
+    # are auto-handled, view is defaulted).
     st = client.get("/api/pricesync/status").json()
     assert st["configured"] is False
-    assert "Tenant ID" in st["missing"]
+    assert "Client (application) ID" in st["missing"]
+    assert not any("Tenant" in m for m in st["missing"])
 
     # Set the non-secret settings via the GUI endpoint.
     client.put("/api/pricesync/config", json={

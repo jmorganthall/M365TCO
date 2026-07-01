@@ -228,24 +228,38 @@ function PricingSync({ onMsg, onErr }) {
 
       {cfg && (
         <>
+          {cfg.signed_in_user && (
+            <div className="muted" style={{ fontSize: '.82rem', marginBottom: '.4rem' }}>
+              Signed in as <b>{cfg.signed_in_user}</b>
+              {cfg.tenant_id && <> · tenant <code>{cfg.tenant_id}</code></>}
+            </div>
+          )}
+          <p className="hint" style={{ marginTop: 0 }}>
+            The only value you must enter is the <b>Client (application) ID</b> and a
+            credential. Tenant ID is detected automatically on first sign-in, and the
+            redirect URI is derived from this app's address.
+          </p>
           <div className="grid c2">
-            <div><label>Tenant ID</label>
-              <input value={cfg.tenant_id} placeholder="guid"
-                onChange={(e) => setField('tenant_id', e.target.value)} /></div>
-            <div><label>Client (application) ID</label>
-              <input value={cfg.client_id} placeholder="guid"
+            <div><label>Client (application) ID <span className="warn">· required</span></label>
+              <input value={cfg.client_id} placeholder="guid from your app registration"
                 onChange={(e) => setField('client_id', e.target.value)} /></div>
-            <div><label>Redirect URI (must be registered on the app → /auth/callback)</label>
-              <input value={cfg.redirect_uri} placeholder="https://your-host/auth/callback"
-                onChange={(e) => setField('redirect_uri', e.target.value)} /></div>
             <div><label>Price sheet view</label>
               <select value={cfg.pricesheet_view} onChange={(e) => setField('pricesheet_view', e.target.value)}>
                 <option value="">— select —</option>
                 {(cfg.valid_views || []).map((v) => <option key={v}>{v}</option>)}
               </select></div>
+            <div><label>Tenant ID (auto-detected after sign-in)</label>
+              <input value={cfg.tenant_id} placeholder="auto — leave blank"
+                onChange={(e) => setField('tenant_id', e.target.value)} /></div>
             <div><label>Market</label>
               <input value={cfg.market} onChange={(e) => setField('market', e.target.value)} /></div>
-            <div><label>Notify webhook (optional, Teams/generic)</label>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label>Redirect URI — register this exact value on the app's Authentication</label>
+              <input value={cfg.redirect_uri} placeholder={cfg.suggested_redirect_uri}
+                onChange={(e) => setField('redirect_uri', e.target.value)} />
+              <small className="src">Will use: <code>{cfg.effective_redirect_uri}</code> — leave blank to auto-derive; override only for proxy edge cases.</small>
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}><label>Notify webhook (optional, Teams/generic)</label>
               <input value={cfg.notify_webhook_url} placeholder="empty disables"
                 onChange={(e) => setField('notify_webhook_url', e.target.value)} /></div>
           </div>

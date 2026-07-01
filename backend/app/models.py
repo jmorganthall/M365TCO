@@ -308,11 +308,15 @@ class PriceSyncSettings(Base):
     __tablename__ = "price_sync_settings"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default="singleton")
+    # Auto-discovered from the token (tid) on first sign-in; not asked upfront.
     tenant_id: Mapped[str] = mapped_column(String, default="")
     client_id: Mapped[str] = mapped_column(String, default="")
+    # Blank = auto-derive from the app's request origin at sign-in time.
     redirect_uri: Mapped[str] = mapped_column(String, default="")
-    pricesheet_view: Mapped[str] = mapped_column(String, default="")
+    pricesheet_view: Mapped[str] = mapped_column(String, default="updatedlicensebased")
     market: Mapped[str] = mapped_column(String, default="US")
+    # Captured from the token claims after a successful sign-in (display only).
+    signed_in_user: Mapped[str] = mapped_column(String, default="")
     timeline: Mapped[str] = mapped_column(String, default="current")
     aging_days: Mapped[int] = mapped_column(Integer, default=25)
     stale_days: Mapped[int] = mapped_column(Integer, default=30)

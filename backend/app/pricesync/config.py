@@ -57,9 +57,12 @@ class PriceSyncConfig:
 
     @property
     def auth_configured(self) -> bool:
+        # Tenant is auto-discovered (organizations authority + tid claim) and the
+        # redirect URI is auto-derived from the request origin, so neither is
+        # required upfront — only the client id, a view, and a credential.
         return bool(
-            self.tenant_id and self.client_id and self.redirect_uri
-            and self.pricesheet_view and (self.client_cert_pem or self.client_secret)
+            self.client_id and self.pricesheet_view
+            and (self.client_cert_pem or self.client_secret)
         )
 
     @property

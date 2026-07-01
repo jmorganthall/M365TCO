@@ -27,14 +27,33 @@ router = APIRouter(tags=["pricesync"])
 
 
 def _missing_config(cfg: config.PriceSyncConfig) -> list[str]:
+    # Tenant ID (auto-discovered) and Redirect URI (auto-derived) are not required.
     required = {
-        "Tenant ID": cfg.tenant_id,
         "Client (application) ID": cfg.client_id,
-        "Redirect URI": cfg.redirect_uri,
         "Price sheet view": cfg.pricesheet_view,
         "Credential (certificate or client secret)": cfg.client_cert_pem or cfg.client_secret,
     }
     return [name for name, value in required.items() if not value]
+
+
+def _derive_redirect_uri(request: Request) -> str:
+    """The app's own callback URL, honoring reverse-proxy forwarded headers so it
+    matches the origin the browser actually used. uvicorn's proxy-headers handles
+    X-Forwarded-Proto but not X-Forwarded-Host, so read both explicitly."""
+    proto = (
+        request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+        or request.url.scheme
+    )
+    host = (
+        request.headers.get("x-forwarded-host", "").split(",")[0].strip()
+        or request.headers.get("host", "").strip()
+        or request.url.netloc
+    )
+    return f"{proto}://{host}/auth/callback"
+
+
+def _effective_redirect_uri(request: Request, row) -> str:
+    return (row.redirect_uri or "").strip() or _derive_redirect_uri(request)
 
 
 def _freshness_for(cfg: config.PriceSyncConfig) -> freshness.Freshness:
@@ -67,8 +86,7 @@ def status(db: Session = Depends(get_db)):
     }
 
 
-@router.get("/api/pricesync/config")
-def get_config(db: Session = Depends(get_db)):
+def _config_payload(request: Request, db: Session) -> dict:
     """Non-secret settings for the editor. Secrets are never returned — only
     whether a credential is set."""
     row = config.get_or_create_settings(db)
@@ -77,6 +95,9 @@ def get_config(db: Session = Depends(get_db)):
         "tenant_id": row.tenant_id,
         "client_id": row.client_id,
         "redirect_uri": row.redirect_uri,
+        "effective_redirect_uri": _effective_redirect_uri(request, row),
+        "suggested_redirect_uri": _derive_redirect_uri(request),
+        "signed_in_user": row.signed_in_user,
         "pricesheet_view": row.pricesheet_view,
         "market": row.market,
         "timeline": row.timeline,
@@ -101,8 +122,15 @@ def get_config(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/api/pricesync/config")
+def get_config(request: Request, db: Session = Depends(get_db)):
+    return _config_payload(request, db)
+
+
 @router.put("/api/pricesync/config")
-def update_config(payload: schemas.PriceSyncConfigUpdate, db: Session = Depends(get_db)):
+def update_config(
+    payload: schemas.PriceSyncConfigUpdate, request: Request, db: Session = Depends(get_db)
+):
     row = config.get_or_create_settings(db)
     data = payload.model_dump(exclude_unset=True)
     if "pricesheet_view" in data and data["pricesheet_view"] and data["pricesheet_view"] not in config.VALID_VIEWS:
@@ -111,7 +139,7 @@ def update_config(payload: schemas.PriceSyncConfigUpdate, db: Session = Depends(
         if v is not None:
             setattr(row, k, v)
     db.commit()
-    return get_config(db)
+    return _config_payload(request, db)
 
 
 @router.put("/api/pricesync/credential")
@@ -149,12 +177,14 @@ def clear_credential():
 
 
 @router.post("/api/pricesync/login-url")
-def login_url(db: Session = Depends(get_db)):
+def login_url(request: Request, db: Session = Depends(get_db)):
     cfg = config.load_config(db)
     if not cfg.auth_configured:
-        raise HTTPException(400, "Price sync is not configured. Complete the settings and set a credential.")
+        raise HTTPException(400, "Price sync is not configured. Enter the Client ID and a credential.")
+    row = config.get_or_create_settings(db)
+    redirect_uri = _effective_redirect_uri(request, row)
     try:
-        return {"auth_url": auth.begin_login(cfg)}
+        return {"auth_url": auth.begin_login(cfg, redirect_uri), "redirect_uri": redirect_uri}
     except auth.AuthError as exc:
         raise HTTPException(400, str(exc))
     except ImportError:
@@ -168,13 +198,29 @@ def auth_callback(request: Request, db: Session = Depends(get_db)):
     if "error" in params:
         return _page(False, params.get("error_description", params["error"]))
     try:
-        token = auth.redeem_code(cfg, params)
+        token, claims = auth.redeem_code(cfg, params)
+        # Auto-capture the tenant (if not set yet) and the signed-in account.
+        row = config.get_or_create_settings(db)
+        tid = claims.get("tid")
+        who = claims.get("preferred_username") or claims.get("name") or ""
+        changed = False
+        if tid and not row.tenant_id:
+            row.tenant_id = tid
+            changed = True
+        if who and who != row.signed_in_user:
+            row.signed_in_user = who
+            changed = True
+        if changed:
+            db.commit()
+        # Re-load config so the freshly captured tenant is used for the fetch.
+        cfg = config.load_config(db)
         meta = fetch.fetch_and_store(cfg, token)
         del token  # used once, discarded (no refresh token stored)
+        who_note = f" Signed in as {who}." if who else ""
         return _page(
             True,
             f"Price sheet {meta['file_name']} stored "
-            f"({meta['file_bytes']:,} bytes, MFA compliant: {meta.get('mfa_compliant')}).",
+            f"({meta['file_bytes']:,} bytes, MFA compliant: {meta.get('mfa_compliant')}).{who_note}",
         )
     except (auth.AuthError, fetch.FetchError) as exc:
         return _page(False, str(exc))
