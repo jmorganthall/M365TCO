@@ -36,7 +36,7 @@ export default function EngagementList({ onOpen }) {
     <>
       <div className="card">
         <h2>New engagement</h2>
-        <p className="hint">Creates an engagement and seeds the Blue Mantis outcome
+        <p className="hint">Creates an engagement and seeds the default outcome
           library + Microsoft SKU coverage. Everything is editable mid-workshop.</p>
         <div className="toolbar">
           <div style={{ flex: 2 }}>

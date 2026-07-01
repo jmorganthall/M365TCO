@@ -1,7 +1,7 @@
 # M365 TCO Tool
 
-A quantitative Microsoft 365 Total Cost of Ownership tool for the Blue Mantis
-Microsoft Practice. It compares a customer's current licensing spend against a
+A quantitative Microsoft 365 Total Cost of Ownership tool for a Microsoft partner
+practice. It compares a customer's current licensing spend against a
 target-state M365 licensing spend, persona by persona, and rolls the scenarios
 into a single hard-dollar savings story: current spend, target spend, net delta,
 third-party tools eliminated, and renewal cycles removed.

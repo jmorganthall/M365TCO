@@ -1,6 +1,6 @@
 {
   "version": "2026-06-seed-v1",
-  "note": "Starter Blue Mantis outcome library. Final list pending from the practice; replace this file (bump version) to update. Copied into engagement-scoped Outcome rows on engagement creation.",
+  "note": "Starter default outcome library. Final list pending from the practice; replace this file (bump version) to update. Copied into engagement-scoped Outcome rows on engagement creation.",
   "outcomes": [
     { "key": "identity-mfa", "name": "Identity and MFA", "description": "User identity, single sign-on, multi-factor authentication, conditional access." },
     { "key": "email-security", "name": "Email Security", "description": "Anti-phishing, anti-malware, safe links/attachments, anti-spam." },
