@@ -24,6 +24,15 @@ from .services import seeds
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
+    # Seed the global default outcome library on first run.
+    from .db import SessionLocal
+    from .services import seeds as seeds_service
+
+    db = SessionLocal()
+    try:
+        seeds_service.seed_default_outcomes(db)
+    finally:
+        db.close()
     yield
 
 

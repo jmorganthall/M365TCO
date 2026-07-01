@@ -12,7 +12,9 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
-from ..services import ai, defaults, secrets
+from sqlalchemy import func
+
+from ..services import ai, defaults, secrets, seeds
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -84,6 +86,66 @@ def update_global_defaults(
 def _resolved_model(db: Session) -> str:
     from ..config import settings
     return defaults.get_defaults(db).openrouter_model or settings.openrouter_model
+
+
+# ---- Global default outcome library (template for new engagements) ----
+@router.get("/default-outcomes", response_model=list[schemas.DefaultOutcomeOut])
+def list_default_outcomes(db: Session = Depends(get_db)):
+    seeds.seed_default_outcomes(db)
+    return db.execute(
+        select(models.DefaultOutcome).order_by(models.DefaultOutcome.sort_order)
+    ).scalars().all()
+
+
+@router.post("/default-outcomes", response_model=schemas.DefaultOutcomeOut, status_code=201)
+def create_default_outcome(payload: schemas.DefaultOutcomeIn, db: Session = Depends(get_db)):
+    seeds.seed_default_outcomes(db)
+    # Generate a stable, unique key from the name.
+    base = seeds.slugify(payload.name)
+    key, n = base, 2
+    while db.execute(
+        select(models.DefaultOutcome.id).where(models.DefaultOutcome.key == key)
+    ).first():
+        key = f"{base}-{n}"
+        n += 1
+    if payload.sort_order is None:
+        max_order = db.execute(select(func.max(models.DefaultOutcome.sort_order))).scalar()
+        sort_order = (max_order or 0) + 1
+    else:
+        sort_order = payload.sort_order
+    row = models.DefaultOutcome(
+        key=key, name=payload.name, description=payload.description, sort_order=sort_order
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.patch("/default-outcomes/{outcome_id}", response_model=schemas.DefaultOutcomeOut)
+def update_default_outcome(
+    outcome_id: str, payload: schemas.DefaultOutcomeIn, db: Session = Depends(get_db)
+):
+    row = db.get(models.DefaultOutcome, outcome_id)
+    if row is None:
+        raise HTTPException(404, "Default outcome not found")
+    # key is immutable (coverage references it); only name/description/order edit.
+    row.name = payload.name
+    row.description = payload.description
+    if payload.sort_order is not None:
+        row.sort_order = payload.sort_order
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.delete("/default-outcomes/{outcome_id}", status_code=204)
+def delete_default_outcome(outcome_id: str, db: Session = Depends(get_db)):
+    row = db.get(models.DefaultOutcome, outcome_id)
+    if row is None:
+        raise HTTPException(404, "Default outcome not found")
+    db.delete(row)
+    db.commit()
 
 
 @router.get("/ai/status")

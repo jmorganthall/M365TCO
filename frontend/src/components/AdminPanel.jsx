@@ -90,6 +90,8 @@ export default function AdminPanel({ onClose }) {
           )}
         </div>
 
+        <DefaultOutcomes onMsg={setMsg} onErr={setErr} />
+
         <div className="card">
           <h2>AI assist (OpenRouter)</h2>
           <p className="hint">Coverage suggestions are advisory and written as unratified
@@ -145,6 +147,70 @@ export default function AdminPanel({ onClose }) {
           ))}
         </div>
       </div>
+    </div>
+  )
+}
+
+function DefaultOutcomes({ onMsg, onErr }) {
+  const base = '/api/admin/default-outcomes'
+  const [items, setItems] = useState([])
+  const [name, setName] = useState('')
+  const [desc, setDesc] = useState('')
+
+  const load = () => api.get(base).then(setItems).catch((e) => onErr(e.message))
+  useEffect(() => { load() }, [])
+
+  async function add() {
+    if (!name.trim()) return
+    try {
+      await api.post(base, { name, description: desc })
+      setName(''); setDesc(''); onMsg('Outcome added to the default library.'); load()
+    } catch (e) { onErr(e.message) }
+  }
+  async function update(id, patch, current) {
+    try { await api.patch(`${base}/${id}`, { name: current.name, description: current.description, ...patch }) }
+    catch (e) { onErr(e.message) }
+  }
+  async function remove(id) {
+    if (!confirm('Remove from the default library? Existing engagements are unaffected.')) return
+    try { await api.del(`${base}/${id}`); load() } catch (e) { onErr(e.message) }
+  }
+
+  return (
+    <div className="card">
+      <h2>Outcomes (default library)</h2>
+      <p className="hint">The capability buckets seeded into every <b>new</b> engagement.
+        Editing here is the template only — existing engagements keep their own copy and
+        are never changed. Outcomes drive the coverage map and the best-bundle analysis.</p>
+
+      <table>
+        <thead><tr><th>Outcome</th><th>Description</th><th></th></tr></thead>
+        <tbody>
+          {items.map((o) => (
+            <tr key={o.id}>
+              <td style={{ width: '32%' }}>
+                <input defaultValue={o.name}
+                  onBlur={(e) => update(o.id, { name: e.target.value }, o)} />
+              </td>
+              <td>
+                <input defaultValue={o.description}
+                  onBlur={(e) => update(o.id, { description: e.target.value }, o)} />
+              </td>
+              <td className="num"><button className="danger sm" onClick={() => remove(o.id)}>Remove</button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="grid c2" style={{ marginTop: '.6rem' }}>
+        <div><label>New outcome name</label>
+          <input value={name} placeholder="e.g. Data Backup & Recovery"
+            onChange={(e) => setName(e.target.value)} /></div>
+        <div><label>Description</label>
+          <input value={desc} placeholder="short description"
+            onChange={(e) => setDesc(e.target.value)} /></div>
+      </div>
+      <button style={{ marginTop: '.6rem' }} onClick={add}>Add outcome</button>
     </div>
   )
 }

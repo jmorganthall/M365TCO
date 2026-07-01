@@ -37,6 +37,20 @@ class GlobalDefaultsUpdate(BaseModel):
     openrouter_model: Optional[str] = None
 
 
+class DefaultOutcomeIn(BaseModel):
+    name: str
+    description: str = ""
+    sort_order: Optional[int] = None
+
+
+class DefaultOutcomeOut(ORMModel):
+    id: str
+    key: str
+    name: str
+    description: str
+    sort_order: int
+
+
 class EngagementUpdate(BaseModel):
     customer_name: Optional[str] = None
     market: Optional[str] = None

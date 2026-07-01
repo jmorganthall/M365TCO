@@ -297,3 +297,18 @@ class GlobalDefaults(Base):
     # Operator-selected OpenRouter model for AI assist. Empty = use the env
     # default (settings.openrouter_model). Operational config, runtime-editable.
     openrouter_model: Mapped[str] = mapped_column(String, default="")
+
+
+class DefaultOutcome(Base):
+    """Global default outcome library (PRD 5.3.1) as a first-class, editable
+    table rather than a static file. It is the TEMPLATE copied into engagement-
+    scoped Outcome rows on engagement creation. Editing it never touches existing
+    engagements. Seeded from seeds/outcomes.json on first run."""
+
+    __tablename__ = "default_outcomes"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    key: Mapped[str] = mapped_column(String, unique=True)
+    name: Mapped[str] = mapped_column(String)
+    description: Mapped[str] = mapped_column(Text, default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
