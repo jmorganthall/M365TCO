@@ -2,7 +2,8 @@
 
 No secrets in config files. For self-hosted Unraid, an encrypted-at-rest local
 store keyed by an operator-supplied master secret is acceptable for v1. The
-OpenRouter API key and the Partner Center refresh token live here.
+OpenRouter API key lives here. (Price-sheet sync uses interactive login and
+stores no token — see app/pricesync/.)
 
 Azure Key Vault is the documented alternative; this module exposes a small
 get/set interface so a Key Vault backend can be dropped in without touching
@@ -11,7 +12,7 @@ callers (swap _LocalStore for an AzureKeyVaultStore).
 Encryption: Fernet (AES-128-CBC + HMAC) with a key derived from the master
 secret via PBKDF2-HMAC-SHA256. The store is unreadable without the master
 secret. If no master secret is configured, the store degrades to empty/read-only
-and dependent features (AI, Partner Center) report themselves disabled.
+and dependent features (AI assist) report themselves disabled.
 """
 
 from __future__ import annotations
@@ -92,10 +93,6 @@ class SecretStore:
 
 # Well-known secret keys.
 OPENROUTER_API_KEY = "openrouter_api_key"
-PARTNER_CENTER_REFRESH_TOKEN = "partner_center_refresh_token"
-PARTNER_CENTER_APP_ID = "partner_center_app_id"
-PARTNER_CENTER_APP_SECRET = "partner_center_app_secret"
-PARTNER_CENTER_TENANT_ID = "partner_center_tenant_id"
 
 
 _store: Optional[SecretStore] = None

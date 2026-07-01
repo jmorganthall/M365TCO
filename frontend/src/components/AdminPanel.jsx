@@ -46,14 +46,6 @@ export default function AdminPanel({ onClose }) {
       load()
     } catch (e) { setErr(e.message); setMsg('') }
   }
-  async function refreshPC() {
-    setErr(''); setMsg('Pulling from Partner Center…')
-    try {
-      const res = await api.post('/api/catalog/refresh-partner-center')
-      setMsg(res.status === 'no-change' ? res.detail : `Imported ${res.inserted} new, ${res.updated} updated.`)
-      load()
-    } catch (e) { setErr(e.message); setMsg('') }
-  }
 
   return (
     <div style={overlay} onClick={onClose}>
@@ -116,9 +108,9 @@ export default function AdminPanel({ onClose }) {
 
         <div className="card">
           <h2>Microsoft SKU catalog</h2>
-          <p className="hint">Day-one path: import the new-commerce license-based price list
-            CSV from the Partner Center Pricing workspace. Phase-two: automated Partner Center
-            pull (requires operator consent + stored refresh token).</p>
+          <p className="hint">Import the new-commerce license-based price list CSV from the
+            Partner Center Pricing workspace. For automated acquisition, use <b>Pricing
+            sync</b> above (interactive login), then "Import latest into catalog".</p>
           <div className="muted">Current catalog: <b>{catalog?.catalog_version || 'none'}</b> · {catalog?.sku_count || 0} SKUs</div>
           <div className="toolbar" style={{ marginTop: '.6rem' }}>
             <div style={{ flex: 2 }}>
@@ -130,11 +122,6 @@ export default function AdminPanel({ onClose }) {
               <input value={version} placeholder="2026-06" onChange={(e) => setVersion(e.target.value)} />
             </div>
             <button onClick={importCsv}>Import CSV</button>
-          </div>
-          <div style={{ marginTop: '.6rem' }}>
-            <button className="ghost sm" disabled={!catalog?.partner_center_configured} onClick={refreshPC}>
-              {catalog?.partner_center_configured ? 'Refresh from Partner Center API' : 'Partner Center not configured'}
-            </button>
           </div>
         </div>
 

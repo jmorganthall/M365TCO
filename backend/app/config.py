@@ -1,9 +1,10 @@
 """Application configuration.
 
-No secrets in config files (PRD 12). The OpenRouter key and Partner Center
-refresh token live in the encrypted secret store (app/services/secrets.py),
-not here. This module holds only non-secret operational settings, sourced from
-environment variables so the same image runs on Unraid or Azure Container Apps.
+No secrets in config files (PRD 12). The OpenRouter key lives in the encrypted
+secret store (app/services/secrets.py), not here. This module holds only
+non-secret operational settings, sourced from environment variables so the same
+image runs on Unraid or Azure Container Apps. (Price-sheet sync reads its own
+env vars in app/pricesync/config.py.)
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ class Settings(BaseSettings):
 
     # Master secret that unlocks the local encrypted secret store. Operator
     # supplied (env var or Docker/Unraid secret). If unset, the secret store is
-    # read-only/empty and AI + Partner Center features are disabled gracefully.
+    # read-only/empty and AI assist is disabled gracefully.
     master_secret: str | None = None
 
     # CORS origins for the React dev/prod front end.

@@ -23,7 +23,7 @@ services:
       TCO_DATA_DIR: "/data"
 
       # --- Secret store ---
-      # Unlocks the encrypted-at-rest store (OpenRouter key, Partner Center tokens).
+      # Unlocks the encrypted-at-rest store (OpenRouter key).
       # REQUIRED. Set in .env or the Unraid template; never commit a real value.
       TCO_MASTER_SECRET: "${TCO_MASTER_SECRET}"
 
