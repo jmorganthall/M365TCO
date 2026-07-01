@@ -137,7 +137,7 @@ FK, UUID PK, cascade-deleted with the engagement.
   Commercial filter, annualization, upsert by natural key keeping the latest
   active row by `effective_end_date`.
 - **CRUD:** read-only over the API (`GET /api/catalog/skus`); written only by the
-  CSV import and Partner Center refresh.
+  CSV import and the price-sheet sync module.
 - **Why global:** the catalog is large, versioned, and identical across customers;
   duplicating it per engagement would be the opposite of repeatable.
 
@@ -233,9 +233,10 @@ analysis itself is transient.
   the per-engagement defaults on the Engagement row. If these need to become
   operator-editable at runtime, promote them to a single-row `GlobalDefaults`
   table following this same contract — do not scatter the values.
-- **Secrets:** the OpenRouter key and Partner Center tokens live in the encrypted
-  store (`services/secrets.py`), not the relational DB. Same get/set/delete
-  contract, swappable for Azure Key Vault.
+- **Secrets:** the OpenRouter key lives in the encrypted store
+  (`services/secrets.py`), not the relational DB. Same get/set/delete contract,
+  swappable for Azure Key Vault. Price-sheet sync uses interactive login and
+  stores no token.
 
 ---
 

@@ -71,7 +71,7 @@ These are deliberate, bounded exceptions. Anything not on this list must be mode
 | Exception | Why it's allowed | Guardrail |
 | --- | --- | --- |
 | **Operational config** (`config.py` / env: `TCO_DATABASE_URL`, ports, `TCO_DATA_DIR`, CORS) | It's about *running* the app, not the domain | Never put domain data here |
-| **Secrets** (OpenRouter key, Partner Center tokens) | Must be out of the relational store by nature | Behind the secret-store contract; write-only; swappable for Key Vault |
+| **Secrets** (OpenRouter key) | Must be out of the relational store by nature | Behind the secret-store contract; write-only; swappable for Key Vault. Price-sheet sync stores no token. |
 | **`EngagementSnapshot.payload_json`** | A frozen, immutable record for reproducibility | It is itself a first-class object; the blob is opaque and never edited as live state |
 | **Seed files** (`outcomes.json`, `coverage.json`) | Versioned *source* for first-class objects | Copied into scoped objects on engagement creation; never read at runtime as live data |
 

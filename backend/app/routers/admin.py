@@ -1,4 +1,4 @@
-"""Operator/admin: secret store, OpenRouter AI assist, Partner Center consent.
+"""Operator/admin: secret store, global defaults/outcomes, OpenRouter AI assist.
 
 Secrets are write-only over the API — values are never read back, only their
 presence is reported (PRD 4.4 / 12: no secrets in config, encrypted at rest).
@@ -21,10 +21,6 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 # Keys the operator may set, with friendly labels.
 _ALLOWED_SECRETS = {
     secrets.OPENROUTER_API_KEY: "OpenRouter API key",
-    secrets.PARTNER_CENTER_REFRESH_TOKEN: "Partner Center refresh token",
-    secrets.PARTNER_CENTER_APP_ID: "Partner Center application id",
-    secrets.PARTNER_CENTER_APP_SECRET: "Partner Center client secret",
-    secrets.PARTNER_CENTER_TENANT_ID: "Partner Center tenant id",
 }
 
 

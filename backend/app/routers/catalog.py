@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..db import get_db
-from ..services import partner_center, pricesheet
+from ..services import pricesheet
 
 router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 
@@ -47,8 +47,7 @@ def list_skus(
 def catalog_version(db: Session = Depends(get_db)):
     version = db.execute(select(models.MicrosoftSku.catalog_version).limit(1)).scalar()
     count = db.execute(select(models.MicrosoftSku.id)).scalars().all()
-    return {"catalog_version": version or "", "sku_count": len(count),
-            "partner_center_configured": partner_center.is_configured()}
+    return {"catalog_version": version or "", "sku_count": len(count)}
 
 
 @router.post("/import-csv")
@@ -69,23 +68,6 @@ async def import_csv(
     except pricesheet.PriceSheetError as exc:
         raise HTTPException(422, str(exc))
 
-
-@router.post("/refresh-partner-center")
-def refresh_partner_center(
-    market: str = "US", timeline: str = "current", month: str | None = None,
-    db: Session = Depends(get_db),
-):
-    """Phase-two path (8.2): pull the price sheet from the Partner Center API and
-    feed the same parser."""
-    if not partner_center.is_configured():
-        raise HTTPException(
-            400, "Partner Center not configured. Complete operator consent first."
-        )
-    try:
-        text = partner_center.fetch_price_sheet(market=market, timeline=timeline, month=month)
-    except partner_center.PartnerCenterNotConfigured as exc:
-        raise HTTPException(400, str(exc))
-    if not text:
-        return {"status": "no-change", "detail": "No price sheet returned (404 on future = no upcoming change)."}
-    version = f"pc-{timeline}-{month or ''}".strip("-")
-    return pricesheet.import_price_sheet(db, text, version or "partner-center")
+# Automated price-sheet acquisition now lives in the price-sync module
+# (app/pricesync/, interactive login, no stored token). This router keeps only
+# the manual CSV import path (the permanent fallback) plus catalog listing.

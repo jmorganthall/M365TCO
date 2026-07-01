@@ -19,7 +19,7 @@ Three hard-separated layers (PRD Section 4):
 | --- | --- | --- |
 | **Calculation engine** | `backend/tco_engine/` | Pure functions, no I/O, no framework imports. The asset that survives a platform change. Specified language-neutrally in [`docs/ENGINE_SPEC.md`](docs/ENGINE_SPEC.md). |
 | **Data layer** | `backend/app/models.py` (SQLAlchemy) | Relational. SQLite for v1; swap to Postgres via `TCO_DATABASE_URL` only. |
-| **Presentation / integration** | `backend/app/` (FastAPI) + `frontend/` (React/Vite) | REST API, CSV import, Partner Center client, OpenRouter client, HTML/xlsx export. |
+| **Presentation / integration** | `backend/app/` (FastAPI) + `frontend/` (React/Vite) | REST API, CSV import, price-sheet sync, OpenRouter client, HTML/xlsx export. |
 
 A SharePoint / Power Platform port is a new front end + a Dataverse/list
 rendering of the Section 5 model executing the same engine spec. The model and
@@ -114,12 +114,14 @@ Key rules:
 
 ## Catalog & integrations (PRD Sections 8–9)
 
-- **Price-sheet CSV import** (day-one + permanent fallback): Settings → import the
+- **Price-sheet CSV import** (permanent fallback): Settings → import the
   new-commerce license-based price list. The parser maps by column name and
   tolerates Microsoft's column drift; prices are annualized on import.
-- **Partner Center pricing API** (phase two): App+User via the Secure Application
-  Model. Store the refresh token + app id + tenant in Settings; the same parser
-  ingests the API stream. Re-consent via Settings if the token expires.
+- **Partner Center price-sheet sync** (automated acquisition): interactive
+  authorization-code + PKCE login fetches the current sheet to the data volume;
+  a local age check flags staleness. **No refresh token is stored.** See
+  [`docs/PRICE_SYNC.md`](docs/PRICE_SYNC.md). "Import latest into catalog" then
+  feeds the same parser.
 - **OpenRouter AI assist**: proposes third-party → outcome coverage as *unratified*
   suggestions. AI never writes a final number.
 
@@ -132,7 +134,8 @@ into engagement-scoped rows so edits never mutate the global library.
 
 ## Security
 
-No secrets in config files. The OpenRouter key and Partner Center refresh token
-live in an encrypted-at-rest local store (Fernet + PBKDF2) unlocked by
-`TCO_MASTER_SECRET`. Values are write-only over the API. Azure Key Vault is the
+No secrets in config files. The OpenRouter key lives in an encrypted-at-rest
+local store (Fernet + PBKDF2) unlocked by `TCO_MASTER_SECRET`; values are
+write-only over the API. Price-sheet sync uses interactive login and stores no
+token. Azure Key Vault is the
 documented alternative.
