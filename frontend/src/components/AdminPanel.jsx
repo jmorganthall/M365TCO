@@ -184,8 +184,31 @@ function PricingSync({ onMsg, onErr }) {
           {s.age_days != null && <> · {s.age_days} days old</>}
         </div>
       )}
-      <div className="row" style={{ gap: '.4rem' }}>
-        <button className="sm" disabled={!s?.configured || busy} onClick={refresh}>Refresh pricing (sign in)</button>
+
+      {s && !s.configured && (
+        <div className="card" style={{ background: 'var(--panel2)', borderColor: 'var(--warn)' }}>
+          <b className="warn">Not configured — sign-in is disabled until these are set.</b>
+          <p className="hint" style={{ marginTop: '.4rem' }}>
+            Set these environment variables (in your <code>.env</code> / Unraid template),
+            then restart the container. They come from an Azure app registration in your
+            partner tenant — see <code>docs/PRICE_SYNC.md</code>.
+          </p>
+          <ul style={{ margin: '.3rem 0 .5rem', fontSize: '.82rem' }}>
+            {s.missing.map((m) => <li key={m}><code>{m}</code> — missing</li>)}
+          </ul>
+          <p className="hint" style={{ margin: 0 }}>
+            <code>REDIRECT_URI</code> must be registered on the app and point to
+            <code> {`{your-host}`}/auth/callback</code>. The login account needs the
+            Admin Agent or Sales Agent role. Certificate credential is preferred over a secret.
+          </p>
+        </div>
+      )}
+
+      <div className="row" style={{ gap: '.4rem', marginTop: '.6rem' }}>
+        <button className="sm" disabled={!s?.configured || busy} onClick={refresh}
+          title={s?.configured ? '' : 'Configure the environment variables above first'}>
+          Refresh pricing (sign in)
+        </button>
         <button className="ghost sm" disabled={!s?.latest} onClick={importLatest}>Import latest into catalog</button>
         <button className="ghost sm" onClick={ageCheck}>Run age check</button>
       </div>
