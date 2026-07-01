@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { api } from './api'
-import EngagementList from './components/EngagementList.jsx'
+import Sidebar from './components/Sidebar.jsx'
+import NewEngagement from './components/NewEngagement.jsx'
 import Personas from './components/Personas.jsx'
 import CurrentLicensing from './components/CurrentLicensing.jsx'
 import ThirdParty from './components/ThirdParty.jsx'
@@ -19,45 +20,70 @@ const STEPS = [
 ]
 
 export default function App() {
-  const [engagement, setEngagement] = useState(null)
+  const [engagements, setEngagements] = useState([])
+  const [active, setActive] = useState(null)
   const [tab, setTab] = useState('personas')
   const [meta, setMeta] = useState(null)
   const [showAdmin, setShowAdmin] = useState(false)
 
   useEffect(() => { api.get('/api/meta').then(setMeta).catch(() => {}) }, [])
 
-  function openEngagement(e) {
-    setEngagement(e)
-    setTab('personas')
+  function reload() {
+    return api.get('/api/engagements').then(setEngagements).catch(() => {})
+  }
+  useEffect(() => { reload() }, [])
+
+  function open(e) { setActive(e); setTab('personas') }
+
+  async function duplicate(id) {
+    const copy = await api.post(`/api/engagements/${id}/duplicate`)
+    await reload()
+    open(copy)
+  }
+  async function remove(id) {
+    if (!confirm('Delete this engagement and all its data?')) return
+    await api.del(`/api/engagements/${id}`)
+    if (active?.id === id) setActive(null)
+    reload()
+  }
+  async function created(e) {
+    await reload()
+    open(e)
   }
 
   return (
-    <>
-      <header className="app">
-        <div className="brand">
-          <h1>M365 TCO Tool <small>Microsoft Practice</small></h1>
-        </div>
-        <div className="row" style={{ gap: '.5rem' }}>
-          {engagement && (
-            <button className="ghost sm" onClick={() => setEngagement(null)}>
-              ← Engagements
-            </button>
-          )}
-          <button className="ghost sm" onClick={() => setShowAdmin(true)}>Settings</button>
-        </div>
-      </header>
+    <div className="app-shell">
+      <Sidebar
+        engagements={engagements}
+        activeId={active?.id}
+        onNew={() => setActive(null)}
+        onSelect={open}
+        onDuplicate={duplicate}
+        onDelete={remove}
+        onSettings={() => setShowAdmin(true)}
+      />
 
-      <div className="container">
-        {!engagement && <EngagementList onOpen={openEngagement} />}
+      <main className="main">
+        {!active && (
+          <div className="container">
+            <div className="welcome">
+              <h1>Model a Microsoft 365 total cost of ownership.</h1>
+              <p className="muted">Create an engagement, then work through personas,
+                current licensing, third-party spend, the coverage map, scenarios, and the
+                readout. Pick an engagement from the left or start a new one.</p>
+            </div>
+            <NewEngagement onCreated={created} />
+          </div>
+        )}
 
-        {engagement && (
-          <>
-            <div className="flex-between">
+        {active && (
+          <div className="container">
+            <div className="work-header">
               <div>
-                <h2 style={{ margin: 0 }}>{engagement.customer_name || 'Untitled engagement'}</h2>
+                <h2 style={{ margin: 0 }}>{active.customer_name || 'Untitled engagement'}</h2>
                 <span className="muted">
-                  {engagement.market}/{engagement.currency} · annualized USD ·
-                  tooling split default {Math.round(engagement.global_tooling_pct * 100)}%
+                  {active.market}/{active.currency} · annualized USD ·
+                  tooling split {Math.round(active.global_tooling_pct * 100)}%
                 </span>
               </div>
             </div>
@@ -70,17 +96,17 @@ export default function App() {
               ))}
             </div>
 
-            {tab === 'personas' && <Personas engagement={engagement} meta={meta} />}
-            {tab === 'licensing' && <CurrentLicensing engagement={engagement} meta={meta} />}
-            {tab === 'thirdparty' && <ThirdParty engagement={engagement} meta={meta} />}
-            {tab === 'coverage' && <CoverageMap engagement={engagement} meta={meta} />}
-            {tab === 'scenarios' && <Scenarios engagement={engagement} meta={meta} />}
-            {tab === 'readout' && <Readout engagement={engagement} />}
-          </>
+            {tab === 'personas' && <Personas engagement={active} meta={meta} />}
+            {tab === 'licensing' && <CurrentLicensing engagement={active} meta={meta} />}
+            {tab === 'thirdparty' && <ThirdParty engagement={active} meta={meta} />}
+            {tab === 'coverage' && <CoverageMap engagement={active} meta={meta} />}
+            {tab === 'scenarios' && <Scenarios engagement={active} meta={meta} />}
+            {tab === 'readout' && <Readout engagement={active} />}
+          </div>
         )}
-      </div>
+      </main>
 
-      {showAdmin && <AdminPanel engagement={engagement} onClose={() => setShowAdmin(false)} />}
-    </>
+      {showAdmin && <AdminPanel onClose={() => { setShowAdmin(false); api.get('/api/meta').then(setMeta).catch(() => {}) }} />}
+    </div>
   )
 }

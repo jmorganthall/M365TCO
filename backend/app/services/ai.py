@@ -24,19 +24,47 @@ def is_enabled() -> bool:
     return store.enabled and bool(store.get(secrets.OPENROUTER_API_KEY))
 
 
-def suggest_coverage(product_name: str, outcomes: list[dict]) -> list[dict]:
+def _api_key() -> str:
+    store = secrets.get_store()
+    key = store.get(secrets.OPENROUTER_API_KEY) if store.enabled else None
+    if not key:
+        raise AIDisabledError(
+            "OpenRouter key not configured. Set it via the secret store."
+        )
+    return key
+
+
+def list_models() -> list[dict]:
+    """Fetch the operator's available OpenRouter models so the UI can offer a
+    live picker (avoids hardcoding a model slug that may be retired)."""
+    key = _api_key()
+    resp = httpx.get(
+        f"{settings.openrouter_base_url}/models",
+        headers={"Authorization": f"Bearer {key}"},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    out = []
+    for m in resp.json().get("data", []):
+        mid = m.get("id")
+        if mid:
+            out.append({"id": mid, "name": m.get("name", mid)})
+    # Anthropic models first, then alphabetical.
+    out.sort(key=lambda m: (not m["id"].startswith("anthropic/"), m["id"]))
+    return out
+
+
+def suggest_coverage(
+    product_name: str, outcomes: list[dict], model: str | None = None
+) -> list[dict]:
     """Ask the model which outcomes a third-party product delivers.
 
     `outcomes` is a list of {id, name, description}. Returns a list of
     {outcome_id, coverage, rationale}. Caller persists these as unratified
-    ai_suggested CoverageMapEntry rows.
+    ai_suggested CoverageMapEntry rows. `model` overrides the configured model.
     """
-    store = secrets.get_store()
-    api_key = store.get(secrets.OPENROUTER_API_KEY) if store.enabled else None
-    if not api_key:
-        raise AIDisabledError(
-            "OpenRouter key not configured. Set it via the secret store."
-        )
+    api_key = _api_key()
+    model = model or settings.openrouter_model
 
     outcome_lines = "\n".join(
         f"- id={o['id']} | {o['name']}: {o.get('description', '')}" for o in outcomes
@@ -60,7 +88,7 @@ def suggest_coverage(product_name: str, outcomes: list[dict]) -> list[dict]:
             "X-Title": "M365 TCO Tool",
         },
         json={
-            "model": settings.openrouter_model,
+            "model": model,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
@@ -70,7 +98,14 @@ def suggest_coverage(product_name: str, outcomes: list[dict]) -> list[dict]:
         },
         timeout=60,
     )
-    resp.raise_for_status()
+    try:
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        # Surface OpenRouter's own message (e.g. an invalid/retired model id)
+        # instead of a bare "404 Not Found".
+        raise RuntimeError(
+            f"OpenRouter {resp.status_code} for model '{model}': {resp.text[:400]}"
+        ) from exc
     content = resp.json()["choices"][0]["message"]["content"]
     try:
         data = json.loads(content)

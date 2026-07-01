@@ -95,6 +95,18 @@ def test_unratified_ai_suggestion_does_not_feed_math(client):
     assert result["dispositions"][0]["disposition"] == "Unchanged"
 
 
+def test_global_default_tooling_pct_flows_to_new_engagement(client):
+    # Set the global default, then a new engagement (no tooling in the form)
+    # inherits it.
+    client.put("/api/admin/defaults", json={"default_tooling_pct": 0.25})
+    meta = client.get("/api/meta").json()
+    assert meta["default_tooling_pct"] == 0.25
+    eng = client.post("/api/engagements", json={"customer_name": "Defaults Co"}).json()
+    assert float(eng["global_tooling_pct"]) == 0.25
+    # Reset so other tests are unaffected.
+    client.put("/api/admin/defaults", json={"default_tooling_pct": 0.30})
+
+
 def test_price_sheet_csv_import(client):
     csv_text = (
         "ProductTitle,ProductId,SkuId,SkuTitle,TermDuration,BillingPlan,Market,"

@@ -10,13 +10,13 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse
 
 from .config import settings
-from .db import init_db
+from .db import get_db, init_db
 from .routers import admin, catalog, engagements, entities
 from .services import seeds
 
@@ -55,10 +55,12 @@ def health() -> dict:
 
 
 @app.get("/api/meta")
-def meta() -> dict:
-    """Static metadata the UI needs: enum values, defaults, seed versions."""
+def meta(db=Depends(get_db)) -> dict:
+    """Metadata the UI needs: enum values, defaults, seed versions."""
     from . import models as m
+    from .services import defaults as defaults_service
 
+    gd = defaults_service.get_defaults(db)
     return {
         "source_tags": list(m.SOURCE_TAGS),
         "price_basis": list(m.PRICE_BASIS),
@@ -66,7 +68,7 @@ def meta() -> dict:
         "unit_basis": list(m.UNIT_BASIS),
         "coverage": list(m.COVERAGE),
         "term_durations": list(m.TERM_DURATIONS),
-        "default_tooling_pct": 0.30,
+        "default_tooling_pct": float(gd.default_tooling_pct),
         "default_market": settings.default_market,
         "default_currency": settings.default_currency,
         "outcome_library_version": seeds.outcome_library_version(),

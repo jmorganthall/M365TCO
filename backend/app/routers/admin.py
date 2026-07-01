@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
-from ..services import ai, secrets
+from ..services import ai, defaults, secrets
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -63,9 +63,43 @@ def delete_secret(key: str):
     return {"ok": True, "key": key, "set": False}
 
 
+@router.get("/defaults", response_model=schemas.GlobalDefaultsOut)
+def get_global_defaults(db: Session = Depends(get_db)):
+    return defaults.get_defaults(db)
+
+
+@router.put("/defaults", response_model=schemas.GlobalDefaultsOut)
+def update_global_defaults(
+    payload: schemas.GlobalDefaultsUpdate, db: Session = Depends(get_db)
+):
+    row = defaults.get_defaults(db)
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        if v is not None:
+            setattr(row, k, v)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def _resolved_model(db: Session) -> str:
+    from ..config import settings
+    return defaults.get_defaults(db).openrouter_model or settings.openrouter_model
+
+
 @router.get("/ai/status")
-def ai_status():
-    return {"enabled": ai.is_enabled()}
+def ai_status(db: Session = Depends(get_db)):
+    return {"enabled": ai.is_enabled(), "model": _resolved_model(db)}
+
+
+@router.get("/ai/models")
+def ai_models():
+    """Live OpenRouter model list for the Settings picker."""
+    if not ai.is_enabled():
+        raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
+    try:
+        return {"models": ai.list_models()}
+    except Exception as exc:  # network/model errors surface cleanly
+        raise HTTPException(502, f"Could not list OpenRouter models: {exc}")
 
 
 @router.post("/engagements/{engagement_id}/ai/suggest-coverage")
@@ -89,7 +123,9 @@ def suggest_coverage(
     outcome_dicts = [{"id": o.id, "name": o.name, "description": o.description} for o in outcomes]
 
     try:
-        suggestions = ai.suggest_coverage(tp.name, outcome_dicts)
+        suggestions = ai.suggest_coverage(
+            tp.name, outcome_dicts, model=_resolved_model(db)
+        )
     except Exception as exc:  # network/model errors surface cleanly
         raise HTTPException(502, f"AI suggestion failed: {exc}")
 
