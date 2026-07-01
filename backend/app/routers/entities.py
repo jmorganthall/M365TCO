@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
+from ..services import compute
 
 router = APIRouter(prefix="/api/engagements/{engagement_id}", tags=["entities"])
 
@@ -75,6 +76,23 @@ def delete_persona(engagement_id: str, persona_id: str, db: Session = Depends(ge
         raise HTTPException(404, "Persona not found")
     db.delete(row)
     db.commit()
+
+
+@router.post("/personas/{persona_id}/bundle-analysis")
+def bundle_analysis(
+    engagement_id: str, persona_id: str,
+    payload: schemas.BundleAnalysisRequest | None = None,
+    db: Session = Depends(get_db),
+):
+    """Evaluate every candidate Microsoft bundle as this persona's target and
+    rank by TCO (best-bundle optimizer). Optional per-bundle price overrides."""
+    _require_engagement(db, engagement_id)
+    try:
+        return compute.analyze_persona_bundles(
+            db, engagement_id, persona_id, prices=(payload.prices if payload else None)
+        )
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
 
 
 # ---------- Outcomes ----------

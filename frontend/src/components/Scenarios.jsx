@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { api, usd } from '../api'
+import BundleAnalysis from './BundleAnalysis.jsx'
 
 export default function Scenarios({ engagement, meta }) {
   const eid = engagement.id
@@ -8,6 +9,7 @@ export default function Scenarios({ engagement, meta }) {
   const [skus, setSkus] = useState([])
   const [result, setResult] = useState(null)
   const [err, setErr] = useState('')
+  const [analyzePersona, setAnalyzePersona] = useState(null)
 
   function load() {
     api.get(`/api/engagements/${eid}/personas`).then(setPersonas)
@@ -32,6 +34,19 @@ export default function Scenarios({ engagement, meta }) {
   async function compute() {
     setErr('')
     try { setResult(await api.post(`/api/engagements/${eid}/compute`)) } catch (e) { setErr(e.message) }
+  }
+
+  async function applyBundle(persona, skuRef, price) {
+    setErr('')
+    try {
+      const existing = scenarioFor(persona.id)
+      const body = { target_sku_reference: skuRef, target_unit_price_annual: price, in_scope: true }
+      if (existing) await api.patch(`/api/engagements/${eid}/scenarios/${existing.id}`, body)
+      else await api.post(`/api/engagements/${eid}/scenarios`, { persona_id: persona.id, ...body })
+      setAnalyzePersona(null)
+      await load()
+      compute()
+    } catch (e) { setErr(e.message) }
   }
 
   // SKU references known to the seeded coverage library + catalog titles.
@@ -59,7 +74,10 @@ export default function Scenarios({ engagement, meta }) {
             if (!s) return (
               <tr key={p.id}>
                 <td>{p.name}</td><td className="num">{p.headcount}</td>
-                <td colSpan={6}><button className="sm" onClick={() => createScenario(p.id)}>+ Create scenario</button></td>
+                <td colSpan={6}>
+                  <button className="sm" onClick={() => createScenario(p.id)}>+ Create scenario</button>{' '}
+                  <button className="ghost sm" onClick={() => setAnalyzePersona(p)}>⚡ Best bundle</button>
+                </td>
               </tr>
             )
             const r = resultFor(s.id)
@@ -78,12 +96,21 @@ export default function Scenarios({ engagement, meta }) {
                 <td className="num">{r ? usd(r.current_spend_annual) : '—'}</td>
                 <td className="num">{r ? usd(r.target_spend_annual) : '—'}</td>
                 <td className={`num ${r && r.delta_annual >= 0 ? 'pos' : 'neg'}`}>{r ? usd(r.delta_annual) : '—'}</td>
-                <td className="num"><button className="danger sm" onClick={() => remove(s.id)}>Remove</button></td>
+                <td className="num">
+                  <button className="ghost sm" onClick={() => setAnalyzePersona(p)}>⚡</button>{' '}
+                  <button className="danger sm" onClick={() => remove(s.id)}>Remove</button>
+                </td>
               </tr>
             )
           })}
         </tbody>
       </table>
+
+      {analyzePersona && (
+        <BundleAnalysis engagement={engagement} persona={analyzePersona}
+          onApply={(ref, price) => applyBundle(analyzePersona, ref, price)}
+          onClose={() => setAnalyzePersona(null)} />
+      )}
       <datalist id="sku-list">
         {skuOptions.map((o) => <option key={o} value={o} />)}
       </datalist>

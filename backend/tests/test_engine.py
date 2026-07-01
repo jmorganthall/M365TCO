@@ -12,6 +12,7 @@ from decimal import Decimal
 import pytest
 
 from tco_engine import (
+    CandidateBundle,
     Coverage,
     CurrentLicenseLine,
     Disposition,
@@ -21,6 +22,7 @@ from tco_engine import (
     PersonaScenario,
     ResidualIntent,
     ThirdPartyProduct,
+    analyze_bundles,
     compute,
 )
 
@@ -360,3 +362,66 @@ def test_product_with_no_outcomes_is_never_displaced():
     )
     res = compute(_engagement([kw], [tool], [scenario]))
     assert res.dispositions[0].disposition == Disposition.UNCHANGED
+
+
+# ---- Best-bundle optimizer (tco_engine.optimizer) ----
+A, B, C = "outcome-a", "outcome-b", "outcome-c"
+
+
+def test_analyze_bundles_recommends_max_savings_no_gap():
+    # One third-party product P delivers A at $100/user/yr effective.
+    p = ThirdPartyProduct(
+        id="p", name="P", annual_cost=D("10000"), covered_count=100,
+        delivered_outcome_ids=frozenset({A}),
+    )
+    candidates = [
+        # E5-like: covers A+B, $60/seat
+        CandidateBundle("E5", frozenset({A, B}), D("60")),
+        # F-like: covers A only, $30/seat (cheaper, still displaces P)
+        CandidateBundle("F", frozenset({A}), D("30")),
+        # G-like: covers C only -> gap on required A, $10/seat
+        CandidateBundle("G", frozenset({C}), D("10")),
+    ]
+    res = analyze_bundles(
+        headcount=100,
+        current_microsoft_annual=D("0"),
+        required_outcome_ids=frozenset({A}),
+        current_capability_outcome_ids=frozenset({A}),
+        candidates=candidates,
+        third_party_products=[p],
+    )
+    by_ref = {b.sku_reference: b for b in res}
+
+    # F: target 3000, offset 10000, delta 7000 (best no-gap)
+    assert by_ref["F"].delta_annual == D("7000.00")
+    # E5: target 6000, offset 10000, delta 4000; adds outcome B
+    assert by_ref["E5"].delta_annual == D("4000.00")
+    assert B in by_ref["E5"].added_outcome_ids
+    # G: does not cover required A -> gap, not recommended
+    assert by_ref["G"].covers_all_required is False
+    assert A in by_ref["G"].gap_outcome_ids
+    assert by_ref["G"].recommended is False
+
+    # Recommended = highest-delta, no-gap, priced bundle = F, sorted first.
+    assert res[0].sku_reference == "F"
+    assert res[0].recommended is True
+
+
+def test_analyze_bundles_net_increase_still_shows_added_outcomes():
+    # No third party; current MS cheap; bundle pricier but adds capabilities.
+    candidates = [CandidateBundle("E5", frozenset({A, B, C}), D("50"))]
+    res = analyze_bundles(
+        headcount=100,
+        current_microsoft_annual=D("1000"),  # they pay little today
+        required_outcome_ids=frozenset({A}),
+        current_capability_outcome_ids=frozenset({A}),
+        candidates=candidates,
+        third_party_products=[],
+    )
+    b = res[0]
+    # target 5000 > current 1000 -> negative delta (net increase), shown honestly
+    assert b.delta_annual == D("-4000.00")
+    # but new capabilities B and C surface as the upside
+    assert set(b.added_outcome_ids) == {B, C}
+    # net increase with no no-gap-priced... it still covers required A (no gap)
+    assert b.covers_all_required is True
