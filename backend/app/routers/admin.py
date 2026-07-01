@@ -1,0 +1,119 @@
+"""Operator/admin: secret store, OpenRouter AI assist, Partner Center consent.
+
+Secrets are write-only over the API — values are never read back, only their
+presence is reported (PRD 4.4 / 12: no secrets in config, encrypted at rest).
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from .. import models, schemas
+from ..db import get_db
+from ..services import ai, secrets
+
+router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+# Keys the operator may set, with friendly labels.
+_ALLOWED_SECRETS = {
+    secrets.OPENROUTER_API_KEY: "OpenRouter API key",
+    secrets.PARTNER_CENTER_REFRESH_TOKEN: "Partner Center refresh token",
+    secrets.PARTNER_CENTER_APP_ID: "Partner Center application id",
+    secrets.PARTNER_CENTER_APP_SECRET: "Partner Center client secret",
+    secrets.PARTNER_CENTER_TENANT_ID: "Partner Center tenant id",
+}
+
+
+@router.get("/secrets")
+def list_secret_status():
+    store = secrets.get_store()
+    present = set(store.keys()) if store.enabled else set()
+    return {
+        "store_enabled": store.enabled,
+        "secrets": [
+            {"key": k, "label": label, "set": k in present}
+            for k, label in _ALLOWED_SECRETS.items()
+        ],
+    }
+
+
+@router.put("/secrets")
+def set_secret(payload: schemas.SecretIn):
+    store = secrets.get_store()
+    if not store.enabled:
+        raise HTTPException(
+            400, "Secret store disabled: configure TCO_MASTER_SECRET to enable it."
+        )
+    if payload.key not in _ALLOWED_SECRETS:
+        raise HTTPException(422, f"Unknown secret key: {payload.key}")
+    store.set(payload.key, payload.value)
+    return {"ok": True, "key": payload.key, "set": True}
+
+
+@router.delete("/secrets/{key}")
+def delete_secret(key: str):
+    store = secrets.get_store()
+    if not store.enabled:
+        raise HTTPException(400, "Secret store disabled.")
+    if key not in _ALLOWED_SECRETS:
+        raise HTTPException(422, f"Unknown secret key: {key}")
+    store.delete(key)
+    return {"ok": True, "key": key, "set": False}
+
+
+@router.get("/ai/status")
+def ai_status():
+    return {"enabled": ai.is_enabled()}
+
+
+@router.post("/engagements/{engagement_id}/ai/suggest-coverage")
+def suggest_coverage(
+    engagement_id: str, payload: schemas.CoverageSuggestRequest, db: Session = Depends(get_db)
+):
+    """AI coverage suggestion (PRD Section 9). Writes unratified ai_suggested
+    CoverageMapEntry rows; they do NOT feed the math until a human ratifies."""
+    eng = db.get(models.Engagement, engagement_id)
+    if eng is None:
+        raise HTTPException(404, "Engagement not found")
+    tp = db.get(models.ThirdPartyProduct, payload.third_party_product_id)
+    if tp is None or tp.engagement_id != engagement_id:
+        raise HTTPException(404, "Third-party product not found")
+    if not ai.is_enabled():
+        raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
+
+    outcomes = db.execute(
+        select(models.Outcome).where(models.Outcome.engagement_id == engagement_id)
+    ).scalars().all()
+    outcome_dicts = [{"id": o.id, "name": o.name, "description": o.description} for o in outcomes]
+
+    try:
+        suggestions = ai.suggest_coverage(tp.name, outcome_dicts)
+    except Exception as exc:  # network/model errors surface cleanly
+        raise HTTPException(502, f"AI suggestion failed: {exc}")
+
+    created = []
+    for s in suggestions:
+        # Skip if an entry already exists for this product+outcome.
+        existing = db.execute(
+            select(models.CoverageMapEntry).where(
+                models.CoverageMapEntry.engagement_id == engagement_id,
+                models.CoverageMapEntry.product_kind == "ThirdParty",
+                models.CoverageMapEntry.third_party_product_id == tp.id,
+                models.CoverageMapEntry.outcome_id == s["outcome_id"],
+            )
+        ).scalar_one_or_none()
+        if existing:
+            continue
+        row = models.CoverageMapEntry(
+            engagement_id=engagement_id, outcome_id=s["outcome_id"],
+            product_kind="ThirdParty", third_party_product_id=tp.id,
+            coverage=s["coverage"], ai_suggested=True, ratified=False,
+        )
+        db.add(row)
+        db.flush()
+        created.append({"id": row.id, "outcome_id": row.outcome_id,
+                        "coverage": row.coverage, "rationale": s.get("rationale", "")})
+    db.commit()
+    return {"suggestions": created}

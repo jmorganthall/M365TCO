@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "m365-tco-backend"
+version = "1.0.0"
+description = "M365 TCO Tool backend — pure engine, FastAPI API, data layer"
+requires-python = ">=3.11"
+
+[tool.setuptools]
+packages = ["tco_engine", "app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

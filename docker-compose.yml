@@ -1,0 +1,36 @@
+# M365 TCO Tool — single-service deployment (Unraid / local).
+#
+# The image is published to GHCR by .github/workflows/docker-publish.yml. On
+# Unraid, deploy via the Compose Manager plugin (or the equivalent docker run).
+# The image bundles the API and the built UI; all state persists under /data.
+#
+# Copy .env.example to .env and set at least TCO_MASTER_SECRET before `up`.
+services:
+  m365tco:
+    image: ghcr.io/jmorganthall/m365tco:latest
+    # `build: .` lets you build the same image locally with `docker compose build`.
+    # Unraid/production just pulls the published image and can ignore this.
+    build: .
+    container_name: m365tco
+    restart: unless-stopped
+
+    ports:
+      - "${M365TCO_WEB_PORT:-8080}:8000"
+
+    environment:
+      # --- Persistence (paths inside the container; /data is the mounted volume) ---
+      TCO_DATABASE_URL: "sqlite:////data/tco.db"
+      TCO_DATA_DIR: "/data"
+
+      # --- Secret store ---
+      # Unlocks the encrypted-at-rest store (OpenRouter key, Partner Center tokens).
+      # REQUIRED. Set in .env or the Unraid template; never commit a real value.
+      TCO_MASTER_SECRET: "${TCO_MASTER_SECRET}"
+
+      # --- Operational config (sensible defaults; override via .env) ---
+      TCO_CORS_ORIGINS: "${TCO_CORS_ORIGINS:-*}"
+      TCO_OPENROUTER_MODEL: "${TCO_OPENROUTER_MODEL:-anthropic/claude-3.5-sonnet}"
+
+    volumes:
+      # Host appdata dir -> /data (SQLite DB + encrypted secrets.enc).
+      - "${M365TCO_DATA_DIR:-/mnt/cache/appdata/m365tco}:/data"

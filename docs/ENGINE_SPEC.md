@@ -1,0 +1,133 @@
+# Reconciliation Engine Specification (language-neutral)
+
+This is the authoritative, platform-independent specification of the M365 TCO
+reconciliation engine (PRD Section 6). The Python implementation in
+`backend/tco_engine/` is one rendering of it. A SharePoint / Power Platform /
+Dataverse port reimplements **this algorithm** against the Section 5 data model
+and must reproduce identical numbers. The code does not port; the model and the
+algorithm port.
+
+All money is annualized USD. Period normalization (monthly → annual) happens at
+the data layer on input, never inside the engine.
+
+## Inputs (hydrated)
+
+- **Personas**: `{id, name, headcount}`.
+- **CurrentLicenseLines per persona**: `{quantity_assigned, unit_price_paid_annual}`.
+- **ThirdPartyProducts**: `{id, name, annual_cost, covered_count, is_managed,
+  tooling_pct, renewal_date, delivered_outcome_ids, override, override_reason,
+  residual_intent}`. `delivered_outcome_ids` are **ratified** coverage outcomes
+  only.
+- **PersonaScenarios**: `{id, persona_id, target_sku_reference,
+  target_unit_price_annual, in_scope, target_covered_outcome_ids}`.
+  `target_covered_outcome_ids` are the **ratified** Full|Partial outcomes the
+  target SKU covers.
+
+> Ratified-only rule (6.6 / 5.7): unratified AI suggestions must be excluded by
+> the caller before hydration. They never reach the engine, so they can never
+> affect the math.
+
+## Derived per-product cost (6.5 managed split)
+
+```
+effective_annual_cost = is_managed ? annual_cost * tooling_pct : annual_cost
+per_unit_annual_cost  = covered_count > 0 ? effective_annual_cost / covered_count : 0
+```
+
+`tooling_pct` defaults to 0.30 and applies only when `is_managed`.
+
+## Displacement test (6.6)
+
+A scenario displaces a product **iff** the product delivers at least one outcome
+**and** every outcome the product delivers is in the scenario's target covered
+set:
+
+```
+displaces(scenario, product) =
+    product.delivered_outcome_ids is non-empty
+    AND product.delivered_outcome_ids ⊆ scenario.target_covered_outcome_ids
+```
+
+A product that delivers an outcome the SKU does not cover is **not** displaced by
+that scenario.
+
+## Per-product disposition (6.4), in-scope set only
+
+```
+displacing = in-scope scenarios s where displaces(s, product)
+displaced_users = Σ headcount(persona(s)) for s in displacing
+residual_count  = max(covered_count - displaced_users, 0)
+
+if override == ForceFullElimination:
+    disposition = FullyEliminated;  residual_count = 0;  residual_cost = 0
+    (override_reason is required and prints on the readout)
+elif displaced_users == 0:
+    disposition = Unchanged;        residual_cost = 0
+elif residual_count == 0:
+    disposition = FullyEliminated;  residual_cost = 0
+else:
+    disposition = PartiallyReduced
+    residual_cost = residual_count * per_unit_annual_cost
+    if residual_intent == None: requires_residual_classification = true
+```
+
+## Per-persona scenario math (6.2 / 6.3)
+
+```
+current_microsoft = Σ (line.quantity_assigned * line.unit_price_paid_annual)
+                      over the persona's current license lines
+
+# Linear-by-user offset: for each product this scenario displaces, credit
+# headcount * per_unit_annual_cost. This is the persona's allocated share of
+# third-party cost it consumes today.
+offset = Σ (persona.headcount * product.per_unit_annual_cost)
+           over products where displaces(scenario, product)
+
+current_spend_annual = current_microsoft + offset
+target_spend_annual  = persona.headcount * scenario.target_unit_price_annual
+delta_annual         = current_spend_annual - target_spend_annual   # +saving / -cost
+```
+
+A negative delta is shown honestly as a cost; the M365 uplift can exceed the
+third-party cost it offsets.
+
+## Rollup (6.8) with integrity rules (6.9)
+
+```
+net_tco_delta_annual = Σ delta_annual over IN-SCOPE scenarios
+fully_eliminated_tools = products with disposition == FullyEliminated
+
+# Rule 1 — renewal-elimination gating: a renewal cycle is eliminated ONLY when
+# its product is FullyEliminated. Any residual users → the product still renews.
+eliminated_renewal_cycles = renewal entries of FullyEliminated products only
+
+residual_third_party_cost_annual = Σ residual_cost over PartiallyReduced products
+
+population_check = {
+    in_scope_persona_headcount: Σ headcount of in-scope scenarios' personas,
+    third_party_covered_population: Σ covered_count over all products
+}
+```
+
+> Rule 2 — override disclosure: a ForceFullElimination override asserts savings
+> on users the data did not displace; it is permitted, requires a reason, and the
+> reason prints on the readout. An intended residual (e.g. Okta users who are not
+> M365 users) is recorded as `residual_intent = IntendedOutOfScope` and is **not**
+> an override. When a residual exists the tool must force the operator to choose
+> which case applies (`requires_residual_classification`).
+
+## Recompute is total, not incremental (6.7)
+
+Toggling a scenario in/out of scope recomputes **all** dispositions from scratch.
+A product can flip FullyEliminated → PartiallyReduced when a persona is removed.
+
+## Worked example (Okta 500-vs-450)
+
+Okta covers 500 at effective per-unit cost $100/yr (`$50,000 / 500`). 450
+Knowledge Workers displace it.
+
+- `displaced_users = 450`, `residual_count = 50`, disposition `PartiallyReduced`,
+  `residual_cost = 50 * 100 = $5,000`.
+- Persona offset credited = `450 * 100 = $45,000`.
+- Renewal **not** eliminated (partial). This case is covered by the unit tests in
+  `backend/tests/test_engine.py`.

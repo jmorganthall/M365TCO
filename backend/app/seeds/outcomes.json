@@ -1,0 +1,21 @@
+{
+  "version": "2026-06-seed-v1",
+  "note": "Starter Blue Mantis outcome library. Final list pending from the practice; replace this file (bump version) to update. Copied into engagement-scoped Outcome rows on engagement creation.",
+  "outcomes": [
+    { "key": "identity-mfa", "name": "Identity and MFA", "description": "User identity, single sign-on, multi-factor authentication, conditional access." },
+    { "key": "email-security", "name": "Email Security", "description": "Anti-phishing, anti-malware, safe links/attachments, anti-spam." },
+    { "key": "endpoint-management", "name": "Endpoint Management", "description": "Device enrollment, configuration, compliance, MDM/MAM." },
+    { "key": "endpoint-security", "name": "Endpoint Security / EDR", "description": "Endpoint detection and response, antivirus, threat protection on devices." },
+    { "key": "information-protection", "name": "Information Protection / DLP", "description": "Data classification, labeling, data loss prevention." },
+    { "key": "threat-protection", "name": "Threat Protection / XDR", "description": "Extended detection and response across identity, email, endpoint, cloud." },
+    { "key": "siem-soar", "name": "SIEM / SOAR", "description": "Security information and event management, automated response." },
+    { "key": "secure-web-gateway", "name": "Secure Web Gateway / SSE", "description": "Web filtering, secure access service edge, private access." },
+    { "key": "productivity-apps", "name": "Productivity Apps", "description": "Word, Excel, PowerPoint, Outlook, OneNote." },
+    { "key": "collaboration", "name": "Collaboration / Meetings", "description": "Teams chat, meetings, calling, channels." },
+    { "key": "file-storage", "name": "File Storage and Sharing", "description": "OneDrive, SharePoint document storage and sharing." },
+    { "key": "voip-calling", "name": "Voice / Calling", "description": "PSTN calling, phone system, contact center." },
+    { "key": "ediscovery-compliance", "name": "eDiscovery and Compliance", "description": "Legal hold, content search, audit, retention, insider risk." },
+    { "key": "backup-recovery", "name": "Backup and Recovery", "description": "Backup of M365 data, point-in-time recovery." },
+    { "key": "privileged-access", "name": "Privileged Access Management", "description": "PAM, PIM, just-in-time elevation, secrets/password management." }
+  ]
+}
