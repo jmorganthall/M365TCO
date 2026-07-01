@@ -1,6 +1,6 @@
 {
   "version": "2026-06-seed-v1",
-  "note": "Starter Blue Mantis Microsoft SKU -> outcome coverage library. Final mappings pending from the practice; replace this file (bump version) to update. Seeded (ratified) into engagement-scoped CoverageMapEntry rows for Microsoft SKUs on engagement creation. outcome keys reference outcomes.json.",
+  "note": "Starter default Microsoft SKU -> outcome coverage library. Final mappings pending from the practice; replace this file (bump version) to update. Seeded (ratified) into engagement-scoped CoverageMapEntry rows for Microsoft SKUs on engagement creation. outcome keys reference outcomes.json.",
   "skus": [
     {
       "sku_reference": "F1",

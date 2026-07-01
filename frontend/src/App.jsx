@@ -35,7 +35,7 @@ export default function App() {
     <>
       <header className="app">
         <div className="brand">
-          <h1>M365 TCO Tool <small>Blue Mantis · Microsoft Practice</small></h1>
+          <h1>M365 TCO Tool <small>Microsoft Practice</small></h1>
         </div>
         <div className="row" style={{ gap: '.5rem' }}>
           {engagement && (

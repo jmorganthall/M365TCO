@@ -36,7 +36,7 @@ jobs:
           # metadata-action lowercases the image name, so M365TCO -> m365tco.
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=sha,format=short
