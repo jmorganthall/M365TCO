@@ -14,8 +14,8 @@ UTC = timezone.utc
 
 def _cfg(tmp_path) -> PriceSyncConfig:
     return PriceSyncConfig(
-        tenant_id="t", client_id="c", redirect_uri="https://h/auth/callback",
-        client_cert_pem="", client_secret="s", market="US",
+        tenant_id="t", client_id="c", client_cert_pem="", client_secret="s",
+        refresh_token="rt", market="US",
         pricesheet_view="updatedlicensebased", timeline="current",
         data_dir=str(tmp_path), aging_days=25, stale_days=30,
         use_month_rule=True, retention_count=2, notify_webhook_url="",
@@ -132,39 +132,39 @@ def test_ac8_failed_fetch_leaves_previous_intact(tmp_path):
         assert fh.read() == "GOOD"
 
 
-# ---- GUI config path (no env vars) ----
-def test_gui_config_enables_signin(client):
-    # Initially unconfigured — Client ID is the required field (tenant/redirect
-    # are auto-handled, view is defaulted).
+# ---- CSP config path (GUI, no env vars) ----
+def test_gui_csp_config_enables_refresh(client):
+    # Initially unconfigured.
     st = client.get("/api/pricesync/status").json()
     assert st["configured"] is False
-    assert "Client (application) ID" in st["missing"]
-    assert not any("Tenant" in m for m in st["missing"])
+    for field in ("Partner tenant ID", "Client (application) ID", "Consent refresh token"):
+        assert field in st["missing"]
 
-    # Set the non-secret settings via the GUI endpoint.
+    # Non-secret settings.
     client.put("/api/pricesync/config", json={
         "tenant_id": "11111111-1111-1111-1111-111111111111",
         "client_id": "22222222-2222-2222-2222-222222222222",
-        "redirect_uri": "https://app.example/auth/callback",
-        "pricesheet_view": "updatedlicensebased",
-        "market": "US",
+        "pricesheet_view": "updatedlicensebased", "market": "US",
     })
-    # Still not configured — no credential yet.
     assert client.get("/api/pricesync/status").json()["configured"] is False
 
-    # Set a client secret credential (encrypted store).
+    # App credential (secret).
     r = client.put("/api/pricesync/credential", json={"kind": "secret", "value": "shh"})
-    assert r.status_code == 200 and r.json()["credential_kind"] == "secret"
+    assert r.status_code == 200
+    assert client.get("/api/pricesync/status").json()["configured"] is False  # still no token
+
+    # Consent refresh token.
+    r = client.put("/api/pricesync/refresh-token", json={"value": "the-refresh-token"})
+    assert r.status_code == 200 and r.json()["refresh_token_set"] is True
 
     st = client.get("/api/pricesync/status").json()
     assert st["configured"] is True
-    assert st["credential_kind"] == "secret"
 
     cfg = client.get("/api/pricesync/config").json()
     assert cfg["credential_set"] is True
-    assert cfg["pricesheet_view"] == "updatedlicensebased"
-    # The secret value is never returned.
-    assert "value" not in cfg and "client_secret" not in cfg
+    assert cfg["refresh_token_set"] is True
+    # Neither the secret nor the refresh token is ever returned.
+    assert "client_secret" not in cfg and "refresh_token" not in cfg
 
 
 def test_invalid_view_rejected(client):
@@ -177,14 +177,6 @@ def test_invalid_certificate_pem_rejected(client):
     assert r.status_code == 422
 
 
-def test_redirect_uri_registrability_rules():
-    from app.routers.pricesync import _redirect_registrable
-
-    # Bare IP over http -> Entra rejects.
-    ok, note = _redirect_registrable("http://192.168.1.50:8080/auth/callback")
-    assert ok is False and "HTTPS" in note
-    # HTTPS hostname -> fine.
-    assert _redirect_registrable("https://tco.example.com/auth/callback")[0] is True
-    # Loopback http -> allowed (with a caveat note).
-    ok, note = _redirect_registrable("http://localhost:8080/auth/callback")
-    assert ok is True and note
+def test_empty_refresh_token_rejected(client):
+    r = client.put("/api/pricesync/refresh-token", json={"value": "   "})
+    assert r.status_code == 422

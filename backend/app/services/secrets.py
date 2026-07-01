@@ -93,9 +93,12 @@ class SecretStore:
 
 # Well-known secret keys.
 OPENROUTER_API_KEY = "openrouter_api_key"
-# Price-sheet sync credential (one of these), set via the GUI, encrypted at rest.
+# Price-sheet sync — CSP (Secure Application Model). The app credential is one of
+# {cert, secret}; the refresh token comes from the one-time partner consent. All
+# set via the GUI, encrypted at rest.
 PRICESYNC_CLIENT_SECRET = "pricesync_client_secret"
 PRICESYNC_CLIENT_CERT_PEM = "pricesync_client_cert_pem"
+PRICESYNC_REFRESH_TOKEN = "pricesync_refresh_token"
 
 
 _store: Optional[SecretStore] = None

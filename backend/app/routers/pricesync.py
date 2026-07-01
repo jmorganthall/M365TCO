@@ -1,23 +1,20 @@
-"""Price-sheet sync endpoints.
+"""Price-sheet sync endpoints — Cloud Solution Provider (Secure App Model) auth.
 
 Configuration is GUI-managed (no env vars):
-- GET/PUT /api/pricesync/config     non-secret settings (first-class singleton).
-- PUT/DELETE /api/pricesync/credential  client secret or certificate PEM (encrypted store).
-- GET  /api/pricesync/status        freshness state; no auth, no API call.
-- POST /api/pricesync/login-url     begin interactive login; returns the auth URL.
-- GET  /auth/callback               OAuth redirect; exchanges code, fetches, stores.
-- POST /api/pricesync/import-latest  parse the stored sheet into the SKU catalog.
-- POST /api/pricesync/check-notify   local age check + optional webhook. No API call.
+- GET/PUT /api/pricesync/config       non-secret settings (first-class singleton).
+- PUT/DELETE /api/pricesync/credential  app credential: client secret or cert PEM.
+- PUT/DELETE /api/pricesync/refresh-token  the consent refresh token (encrypted).
+- POST /api/pricesync/refresh          exchange refresh token -> fetch -> store.
+- GET  /api/pricesync/status           freshness state; no auth, no API call.
+- POST /api/pricesync/import-latest     parse the stored sheet into the SKU catalog.
+- POST /api/pricesync/check-notify      local age check + optional webhook. No API call.
 """
 
 from __future__ import annotations
 
-from urllib.parse import urlparse
-
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from .. import schemas
@@ -29,55 +26,14 @@ router = APIRouter(tags=["pricesync"])
 
 
 def _missing_config(cfg: config.PriceSyncConfig) -> list[str]:
-    # Tenant ID (auto-discovered) and Redirect URI (auto-derived) are not required.
     required = {
+        "Partner tenant ID": cfg.tenant_id,
         "Client (application) ID": cfg.client_id,
         "Price sheet view": cfg.pricesheet_view,
-        "Credential (certificate or client secret)": cfg.client_cert_pem or cfg.client_secret,
+        "App credential (certificate or client secret)": cfg.client_cert_pem or cfg.client_secret,
+        "Consent refresh token": cfg.refresh_token,
     }
     return [name for name, value in required.items() if not value]
-
-
-def _derive_redirect_uri(request: Request) -> str:
-    """The app's own callback URL, honoring reverse-proxy forwarded headers so it
-    matches the origin the browser actually used. uvicorn's proxy-headers handles
-    X-Forwarded-Proto but not X-Forwarded-Host, so read both explicitly."""
-    proto = (
-        request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
-        or request.url.scheme
-    )
-    host = (
-        request.headers.get("x-forwarded-host", "").split(",")[0].strip()
-        or request.headers.get("host", "").strip()
-        or request.url.netloc
-    )
-    return f"{proto}://{host}/auth/callback"
-
-
-def _effective_redirect_uri(request: Request, row) -> str:
-    return (row.redirect_uri or "").strip() or _derive_redirect_uri(request)
-
-
-def _redirect_registrable(uri: str) -> tuple[bool, str]:
-    """Whether Microsoft Entra will accept this redirect URI. Entra requires
-    HTTPS (any hostname; self-signed OK) or http://localhost. A bare IP over
-    HTTP — common when reaching the app by LAN address — will NOT register."""
-    p = urlparse(uri)
-    host = (p.hostname or "").lower()
-    if p.scheme == "https":
-        return True, ""
-    if p.scheme == "http" and host in ("localhost", "127.0.0.1"):
-        return True, (
-            "Loopback http is accepted by Entra, but the redirect only reaches the "
-            "app if you browse from this host (or via an SSH tunnel)."
-        )
-    return False, (
-        "Microsoft Entra will reject this redirect URI. It must be HTTPS with a "
-        "hostname (a self-signed cert is fine) or http://localhost — a bare IP over "
-        "HTTP cannot be registered. Put the app behind a reverse proxy with a "
-        "hostname + HTTPS, browse via http://localhost, or use manual CSV import "
-        "instead (no sign-in required)."
-    )
 
 
 def _freshness_for(cfg: config.PriceSyncConfig) -> freshness.Freshness:
@@ -110,19 +66,12 @@ def status(db: Session = Depends(get_db)):
     }
 
 
-def _config_payload(request: Request, db: Session) -> dict:
-    """Non-secret settings for the editor. Secrets are never returned — only
-    whether a credential is set."""
+def _config_payload(db: Session) -> dict:
     row = config.get_or_create_settings(db)
     store = secrets.get_store()
     return {
         "tenant_id": row.tenant_id,
         "client_id": row.client_id,
-        "redirect_uri": row.redirect_uri,
-        "effective_redirect_uri": _effective_redirect_uri(request, row),
-        "suggested_redirect_uri": _derive_redirect_uri(request),
-        "redirect_uri_ok": _redirect_registrable(_effective_redirect_uri(request, row))[0],
-        "redirect_uri_note": _redirect_registrable(_effective_redirect_uri(request, row))[1],
         "signed_in_user": row.signed_in_user,
         "pricesheet_view": row.pricesheet_view,
         "market": row.market,
@@ -133,6 +82,7 @@ def _config_payload(request: Request, db: Session) -> dict:
         "retention_count": row.retention_count,
         "notify_webhook_url": row.notify_webhook_url,
         "valid_views": list(config.VALID_VIEWS),
+        "token_scope": config.TOKEN_SCOPE,
         "secret_store_enabled": store.enabled,
         "credential_set": bool(
             store.enabled and (
@@ -145,44 +95,42 @@ def _config_payload(request: Request, db: Session) -> dict:
             else "secret" if store.enabled and store.get(secrets.PRICESYNC_CLIENT_SECRET)
             else "none"
         ),
+        "refresh_token_set": bool(store.enabled and store.get(secrets.PRICESYNC_REFRESH_TOKEN)),
     }
 
 
 @router.get("/api/pricesync/config")
-def get_config(request: Request, db: Session = Depends(get_db)):
-    return _config_payload(request, db)
+def get_config(db: Session = Depends(get_db)):
+    return _config_payload(db)
 
 
 @router.put("/api/pricesync/config")
-def update_config(
-    payload: schemas.PriceSyncConfigUpdate, request: Request, db: Session = Depends(get_db)
-):
+def update_config(payload: schemas.PriceSyncConfigUpdate, db: Session = Depends(get_db)):
     row = config.get_or_create_settings(db)
     data = payload.model_dump(exclude_unset=True)
-    if "pricesheet_view" in data and data["pricesheet_view"] and data["pricesheet_view"] not in config.VALID_VIEWS:
+    if data.get("pricesheet_view") and data["pricesheet_view"] not in config.VALID_VIEWS:
         raise HTTPException(422, f"Invalid price sheet view. Valid: {', '.join(config.VALID_VIEWS)}")
     for k, v in data.items():
         if v is not None:
             setattr(row, k, v)
     db.commit()
-    return _config_payload(request, db)
+    return _config_payload(db)
 
 
 @router.put("/api/pricesync/credential")
 def set_credential(payload: schemas.PriceSyncCredentialIn):
-    """Store the client secret or certificate PEM in the encrypted store."""
+    """Store the app credential: a certificate PEM or a client secret."""
     store = secrets.get_store()
     if not store.enabled:
         raise HTTPException(400, "Secret store disabled: set TCO_MASTER_SECRET to store credentials.")
     if payload.kind == "certificate":
-        # Validate the PEM contains a usable private key + certificate.
         try:
             serialization.load_pem_private_key(payload.value.encode(), password=None)
             x509.load_pem_x509_certificate(payload.value.encode())
         except Exception:
             raise HTTPException(422, "Not a valid PEM containing a private key and certificate.")
         store.set(secrets.PRICESYNC_CLIENT_CERT_PEM, payload.value)
-        store.delete(secrets.PRICESYNC_CLIENT_SECRET)  # cert supersedes secret
+        store.delete(secrets.PRICESYNC_CLIENT_SECRET)
         return {"ok": True, "credential_kind": "certificate"}
     if payload.kind == "secret":
         if not payload.value.strip():
@@ -202,54 +150,67 @@ def clear_credential():
     return {"ok": True, "credential_kind": "none"}
 
 
-@router.post("/api/pricesync/login-url")
-def login_url(request: Request, db: Session = Depends(get_db)):
+@router.put("/api/pricesync/refresh-token")
+def set_refresh_token(payload: schemas.PriceSyncRefreshTokenIn):
+    """Store the refresh token obtained from the one-time partner consent."""
+    store = secrets.get_store()
+    if not store.enabled:
+        raise HTTPException(400, "Secret store disabled: set TCO_MASTER_SECRET to store the token.")
+    if not payload.value.strip():
+        raise HTTPException(422, "Refresh token is empty.")
+    store.set(secrets.PRICESYNC_REFRESH_TOKEN, payload.value.strip())
+    return {"ok": True, "refresh_token_set": True}
+
+
+@router.delete("/api/pricesync/refresh-token")
+def clear_refresh_token():
+    store = secrets.get_store()
+    if store.enabled:
+        store.delete(secrets.PRICESYNC_REFRESH_TOKEN)
+    return {"ok": True, "refresh_token_set": False}
+
+
+@router.post("/api/pricesync/refresh")
+def refresh(db: Session = Depends(get_db)):
+    """Exchange the refresh token for an access token and fetch the price sheet.
+    Server-side — no browser redirect, so it works regardless of how the app is
+    reached (IP or hostname)."""
     cfg = config.load_config(db)
     if not cfg.auth_configured:
-        raise HTTPException(400, "Price sync is not configured. Enter the Client ID and a credential.")
-    row = config.get_or_create_settings(db)
-    redirect_uri = _effective_redirect_uri(request, row)
+        raise HTTPException(400, "Price sync is not configured. Complete the settings, credential, and refresh token.")
     try:
-        return {"auth_url": auth.begin_login(cfg, redirect_uri), "redirect_uri": redirect_uri}
+        token, rotated, claims = auth.acquire_access_token(cfg)
     except auth.AuthError as exc:
         raise HTTPException(400, str(exc))
     except ImportError:
         raise HTTPException(500, "msal is not installed in this image.")
+    except Exception as exc:  # network / MSAL failures surface cleanly, no trace
+        raise HTTPException(502, f"Token request failed: {exc}")
 
+    # Rotate the refresh token if Entra issued a new one.
+    store = secrets.get_store()
+    if rotated and rotated != cfg.refresh_token and store.enabled:
+        store.set(secrets.PRICESYNC_REFRESH_TOKEN, rotated)
+    # Capture tenant/account for display.
+    row = config.get_or_create_settings(db)
+    who = claims.get("preferred_username") or claims.get("name") or ""
+    tid = claims.get("tid")
+    changed = False
+    if tid and not row.tenant_id:
+        row.tenant_id = tid; changed = True
+    if who and who != row.signed_in_user:
+        row.signed_in_user = who; changed = True
+    if changed:
+        db.commit()
 
-@router.get("/auth/callback", response_class=HTMLResponse)
-def auth_callback(request: Request, db: Session = Depends(get_db)):
-    cfg = config.load_config(db)
-    params = dict(request.query_params)
-    if "error" in params:
-        return _page(False, params.get("error_description", params["error"]))
+    cfg = config.load_config(db)  # pick up a rotated token
     try:
-        token, claims = auth.redeem_code(cfg, params)
-        # Auto-capture the tenant (if not set yet) and the signed-in account.
-        row = config.get_or_create_settings(db)
-        tid = claims.get("tid")
-        who = claims.get("preferred_username") or claims.get("name") or ""
-        changed = False
-        if tid and not row.tenant_id:
-            row.tenant_id = tid
-            changed = True
-        if who and who != row.signed_in_user:
-            row.signed_in_user = who
-            changed = True
-        if changed:
-            db.commit()
-        # Re-load config so the freshly captured tenant is used for the fetch.
-        cfg = config.load_config(db)
         meta = fetch.fetch_and_store(cfg, token)
-        del token  # used once, discarded (no refresh token stored)
-        who_note = f" Signed in as {who}." if who else ""
-        return _page(
-            True,
-            f"Price sheet {meta['file_name']} stored "
-            f"({meta['file_bytes']:,} bytes, MFA compliant: {meta.get('mfa_compliant')}).{who_note}",
-        )
-    except (auth.AuthError, fetch.FetchError) as exc:
-        return _page(False, str(exc))
+    except fetch.FetchError as exc:
+        raise HTTPException(400, str(exc))
+    finally:
+        del token  # used once, discarded
+    return {"ok": True, "metadata": meta}
 
 
 @router.post("/api/pricesync/import-latest")
@@ -274,17 +235,3 @@ def check_notify(db: Session = Depends(get_db)):
     fr = _freshness_for(cfg)
     sent = notify.notify_if_stale(cfg, fr)
     return {"state": fr.state, "notified": sent}
-
-
-def _page(ok: bool, message: str) -> HTMLResponse:
-    color = "#127436" if ok else "#b00020"
-    title = "Pricing refreshed" if ok else "Refresh failed"
-    return HTMLResponse(
-        f"""<!doctype html><html><head><meta charset="utf-8"><title>{title}</title>
-<style>body{{font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0f1226;
-color:#e8ebff;display:flex;min-height:100vh;align-items:center;justify-content:center}}
-.card{{background:#1a1f3c;border:1px solid #2c3566;border-radius:12px;padding:2rem;max-width:520px}}
-h1{{color:{color};margin-top:0}} a{{color:#5b7cff}}</style></head>
-<body><div class="card"><h1>{title}</h1><p>{message}</p>
-<p><a href="/">Return to the app</a></p></div></body></html>"""
-    )

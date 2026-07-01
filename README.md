@@ -117,11 +117,12 @@ Key rules:
 - **Price-sheet CSV import** (permanent fallback): Settings → import the
   new-commerce license-based price list. The parser maps by column name and
   tolerates Microsoft's column drift; prices are annualized on import.
-- **Partner Center price-sheet sync** (automated acquisition): interactive
-  authorization-code + PKCE login fetches the current sheet to the data volume;
-  a local age check flags staleness. **No refresh token is stored.** See
-  [`docs/PRICE_SYNC.md`](docs/PRICE_SYNC.md). "Import latest into catalog" then
-  feeds the same parser.
+- **Partner Center price-sheet sync** (automated acquisition): Cloud Solution
+  Provider auth (Secure Application Model). A one-time partner consent yields a
+  refresh token (stored encrypted) that the app exchanges for access tokens
+  server-side — no per-fetch browser redirect, so it works over IP or hostname.
+  A local age check flags staleness. See [`docs/PRICE_SYNC.md`](docs/PRICE_SYNC.md).
+  "Import latest into catalog" then feeds the same parser.
 - **OpenRouter AI assist**: proposes third-party → outcome coverage as *unratified*
   suggestions. AI never writes a final number.
 
@@ -134,8 +135,8 @@ into engagement-scoped rows so edits never mutate the global library.
 
 ## Security
 
-No secrets in config files. The OpenRouter key lives in an encrypted-at-rest
-local store (Fernet + PBKDF2) unlocked by `TCO_MASTER_SECRET`; values are
-write-only over the API. Price-sheet sync uses interactive login and stores no
-token. Azure Key Vault is the
+No secrets in config files. The OpenRouter key, the pricing app credential
+(certificate/secret), and the CSP consent refresh token live in an
+encrypted-at-rest local store (Fernet + PBKDF2) unlocked by `TCO_MASTER_SECRET`;
+values are write-only over the API. Azure Key Vault is the
 documented alternative.

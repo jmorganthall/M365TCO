@@ -231,7 +231,6 @@ class BundleAnalysisRequest(BaseModel):
 class PriceSyncConfigUpdate(BaseModel):
     tenant_id: Optional[str] = None
     client_id: Optional[str] = None
-    redirect_uri: Optional[str] = None
     pricesheet_view: Optional[str] = None
     market: Optional[str] = None
     timeline: Optional[str] = None
@@ -245,3 +244,7 @@ class PriceSyncConfigUpdate(BaseModel):
 class PriceSyncCredentialIn(BaseModel):
     kind: str  # "secret" | "certificate"
     value: str  # the client secret string, or the certificate PEM (key + cert)
+
+
+class PriceSyncRefreshTokenIn(BaseModel):
+    value: str  # the refresh token from the one-time partner consent

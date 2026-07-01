@@ -110,7 +110,7 @@ export default function AdminPanel({ onClose }) {
           <h2>Microsoft SKU catalog</h2>
           <p className="hint">Import the new-commerce license-based price list CSV from the
             Partner Center Pricing workspace. For automated acquisition, use <b>Pricing
-            sync</b> above (interactive login), then "Import latest into catalog".</p>
+            sync</b> above (CSP refresh token), then "Import latest into catalog".</p>
           <div className="muted">Current catalog: <b>{catalog?.catalog_version || 'none'}</b> · {catalog?.sku_count || 0} SKUs</div>
           <div className="toolbar" style={{ marginTop: '.6rem' }}>
             <div style={{ flex: 2 }}>
@@ -144,6 +144,7 @@ function PricingSync({ onMsg, onErr }) {
   const [s, setS] = useState(null)
   const [cfg, setCfg] = useState(null)
   const [cred, setCred] = useState({ kind: 'certificate', value: '' })
+  const [rt, setRt] = useState('')
   const [busy, setBusy] = useState(false)
   const certFile = useRef()
 
@@ -157,14 +158,13 @@ function PricingSync({ onMsg, onErr }) {
   async function saveConfig() {
     onErr('')
     try {
-      const body = {
-        tenant_id: cfg.tenant_id, client_id: cfg.client_id, redirect_uri: cfg.redirect_uri,
+      await api.put('/api/pricesync/config', {
+        tenant_id: cfg.tenant_id, client_id: cfg.client_id,
         pricesheet_view: cfg.pricesheet_view, market: cfg.market,
         aging_days: Number(cfg.aging_days), stale_days: Number(cfg.stale_days),
         use_month_rule: cfg.use_month_rule, retention_count: Number(cfg.retention_count),
         notify_webhook_url: cfg.notify_webhook_url,
-      }
-      await api.put('/api/pricesync/config', body)
+      })
       onMsg('Pricing settings saved.'); load()
     } catch (e) { onErr(e.message) }
   }
@@ -173,49 +173,50 @@ function PricingSync({ onMsg, onErr }) {
     if (!cred.value.trim()) { onErr('Enter the credential value first.'); return }
     try {
       const r = await api.put('/api/pricesync/credential', cred)
-      setCred({ ...cred, value: '' })
-      onMsg(`Credential saved (${r.credential_kind}).`); load()
+      setCred({ ...cred, value: '' }); onMsg(`App credential saved (${r.credential_kind}).`); load()
     } catch (e) { onErr(e.message) }
   }
   async function clearCredential() {
-    try { await api.del('/api/pricesync/credential'); onMsg('Credential cleared.'); load() }
+    try { await api.del('/api/pricesync/credential'); onMsg('Credential cleared.'); load() } catch (e) { onErr(e.message) }
+  }
+  async function saveRefreshToken() {
+    onErr('')
+    if (!rt.trim()) { onErr('Paste the refresh token first.'); return }
+    try { await api.put('/api/pricesync/refresh-token', { value: rt }); setRt(''); onMsg('Refresh token saved.'); load() }
     catch (e) { onErr(e.message) }
   }
+  async function clearRefreshToken() {
+    try { await api.del('/api/pricesync/refresh-token'); onMsg('Refresh token cleared.'); load() } catch (e) { onErr(e.message) }
+  }
   function loadCertFile() {
-    const f = certFile.current?.files?.[0]
-    if (!f) return
-    const r = new FileReader()
-    r.onload = () => setCred({ kind: 'certificate', value: String(r.result) })
-    r.readAsText(f)
+    const f = certFile.current?.files?.[0]; if (!f) return
+    const r = new FileReader(); r.onload = () => setCred({ kind: 'certificate', value: String(r.result) }); r.readAsText(f)
   }
   async function refresh() {
     setBusy(true); onErr('')
     try {
-      const { auth_url } = await api.post('/api/pricesync/login-url')
-      window.location.href = auth_url
-    } catch (e) { onErr(e.message); setBusy(false) }
+      const r = await api.post('/api/pricesync/refresh')
+      onMsg(`Price sheet fetched: ${r.metadata.file_name} (${(r.metadata.file_bytes / 1e6).toFixed(1)} MB, MFA ${String(r.metadata.mfa_compliant)}).`)
+      load()
+    } catch (e) { onErr(e.message) } finally { setBusy(false) }
   }
   async function importLatest() {
     onErr('')
-    try {
-      const r = await api.post('/api/pricesync/import-latest')
-      onMsg(`Imported into catalog: ${r.inserted} new, ${r.updated} updated, ${r.skipped} skipped.`)
-    } catch (e) { onErr(e.message) }
+    try { const r = await api.post('/api/pricesync/import-latest'); onMsg(`Imported into catalog: ${r.inserted} new, ${r.updated} updated, ${r.skipped} skipped.`) }
+    catch (e) { onErr(e.message) }
   }
   async function ageCheck() {
-    try { const r = await api.post('/api/pricesync/check-notify'); onMsg(`Age check: ${r.state}${r.notified ? ' — notification sent' : ''}.`) }
-    catch (e) { onErr(e.message) }
+    try { const r = await api.post('/api/pricesync/check-notify'); onMsg(`Age check: ${r.state}${r.notified ? ' — notification sent' : ''}.`) } catch (e) { onErr(e.message) }
   }
 
   const stateCls = s?.state === 'stale' ? 'neg' : s?.state === 'aging' ? 'warn' : 'pos'
   return (
     <div className="card">
-      <h2>Pricing sync (Partner Center)</h2>
-      <p className="hint">Interactive sign-in fetches the current price sheet to the data
-        volume; a local age check (no login, no API call) flags staleness. No refresh token
-        is stored. Everything below is configured here — nothing in environment variables.
-        The values come from an Azure app registration in your partner tenant (see
-        docs/PRICE_SYNC.md).</p>
+      <h2>Pricing sync (Partner Center · CSP)</h2>
+      <p className="hint">Cloud Solution Provider authentication (Secure Application Model):
+        a one-time partner consent yields a refresh token the app exchanges for access
+        tokens on your behalf — no per-fetch browser redirect, so it works whether the app
+        is reached by IP or hostname. All configured here; nothing in environment variables.</p>
 
       {s && (
         <div className="muted" style={{ fontSize: '.84rem', marginBottom: '.6rem' }}>
@@ -230,85 +231,52 @@ function PricingSync({ onMsg, onErr }) {
         <>
           {cfg.signed_in_user && (
             <div className="muted" style={{ fontSize: '.82rem', marginBottom: '.4rem' }}>
-              Signed in as <b>{cfg.signed_in_user}</b>
-              {cfg.tenant_id && <> · tenant <code>{cfg.tenant_id}</code></>}
+              Last consent account: <b>{cfg.signed_in_user}</b>
             </div>
           )}
-          <p className="hint" style={{ marginTop: 0 }}>
-            The only value you must enter is the <b>Client (application) ID</b> and a
-            credential. Tenant ID is detected automatically on first sign-in, and the
-            redirect URI is derived from this app's address.
-          </p>
           <div className="grid c2">
+            <div><label>Partner tenant ID <span className="warn">· required</span></label>
+              <input value={cfg.tenant_id} placeholder="partner tenant guid"
+                onChange={(e) => setField('tenant_id', e.target.value)} /></div>
             <div><label>Client (application) ID <span className="warn">· required</span></label>
-              <input value={cfg.client_id} placeholder="guid from your app registration"
+              <input value={cfg.client_id} placeholder="app id from App Management"
                 onChange={(e) => setField('client_id', e.target.value)} /></div>
             <div><label>Price sheet view</label>
               <select value={cfg.pricesheet_view} onChange={(e) => setField('pricesheet_view', e.target.value)}>
                 <option value="">— select —</option>
                 {(cfg.valid_views || []).map((v) => <option key={v}>{v}</option>)}
               </select></div>
-            <div><label>Tenant ID (auto-detected after sign-in)</label>
-              <input value={cfg.tenant_id} placeholder="auto — leave blank"
-                onChange={(e) => setField('tenant_id', e.target.value)} /></div>
             <div><label>Market</label>
               <input value={cfg.market} onChange={(e) => setField('market', e.target.value)} /></div>
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label>Redirect URI — register this exact value on the app's Authentication</label>
-              <input value={cfg.redirect_uri} placeholder={cfg.suggested_redirect_uri}
-                onChange={(e) => setField('redirect_uri', e.target.value)} />
-              <small className="src">Will use: <code>{cfg.effective_redirect_uri}</code> — leave blank to auto-derive; override only for proxy edge cases.</small>
-              {cfg.redirect_uri_ok === false && (
-                <div className="err" style={{ marginTop: '.3rem' }}>⚠ {cfg.redirect_uri_note}</div>
-              )}
-              {cfg.redirect_uri_ok === true && cfg.redirect_uri_note && (
-                <small className="src warn" style={{ display: 'block' }}>{cfg.redirect_uri_note}</small>
-              )}
-            </div>
             <div style={{ gridColumn: '1 / -1' }}><label>Notify webhook (optional, Teams/generic)</label>
               <input value={cfg.notify_webhook_url} placeholder="empty disables"
                 onChange={(e) => setField('notify_webhook_url', e.target.value)} /></div>
           </div>
           <div className="grid c4" style={{ marginTop: '.5rem' }}>
-            <div><label>Aging at (days)</label>
-              <input type="number" value={cfg.aging_days} onChange={(e) => setField('aging_days', e.target.value)} /></div>
-            <div><label>Stale at (days)</label>
-              <input type="number" value={cfg.stale_days} onChange={(e) => setField('stale_days', e.target.value)} /></div>
-            <div><label>Retention (sheets)</label>
-              <input type="number" value={cfg.retention_count} onChange={(e) => setField('retention_count', e.target.value)} /></div>
-            <div><label><input type="checkbox" style={{ width: 'auto', marginRight: 6 }}
-              checked={cfg.use_month_rule} onChange={(e) => setField('use_month_rule', e.target.checked)} />Month rule</label></div>
+            <div><label>Aging at (days)</label><input type="number" value={cfg.aging_days} onChange={(e) => setField('aging_days', e.target.value)} /></div>
+            <div><label>Stale at (days)</label><input type="number" value={cfg.stale_days} onChange={(e) => setField('stale_days', e.target.value)} /></div>
+            <div><label>Retention (sheets)</label><input type="number" value={cfg.retention_count} onChange={(e) => setField('retention_count', e.target.value)} /></div>
+            <div><label><input type="checkbox" style={{ width: 'auto', marginRight: 6 }} checked={cfg.use_month_rule} onChange={(e) => setField('use_month_rule', e.target.checked)} />Month rule</label></div>
           </div>
           <button style={{ marginTop: '.6rem' }} onClick={saveConfig}>Save settings</button>
 
           <div className="card" style={{ background: 'var(--panel2)', marginTop: '.8rem' }}>
-            <b>Credential</b>{' '}
-            {cfg.credential_set
-              ? <span className="badge pos">{cfg.credential_kind} set</span>
-              : <span className="badge muted">not set</span>}
-            {!cfg.secret_store_enabled && <b className="warn"> — set TCO_MASTER_SECRET to store credentials encrypted.</b>}
-            <p className="hint" style={{ margin: '.3rem 0' }}>Certificate preferred over a client
-              secret. Stored encrypted at rest; never returned by the API.</p>
+            <b>App credential</b>{' '}
+            {cfg.credential_set ? <span className="badge pos">{cfg.credential_kind} set</span> : <span className="badge muted">not set</span>}
+            {!cfg.secret_store_enabled && <b className="warn"> — set TCO_MASTER_SECRET to store secrets.</b>}
+            <p className="hint" style={{ margin: '.3rem 0' }}>The app registration's credential. Certificate preferred; stored encrypted, never returned.</p>
             <div className="toolbar">
-              <div>
-                <label>Type</label>
+              <div><label>Type</label>
                 <select value={cred.kind} onChange={(e) => setCred({ kind: e.target.value, value: '' })}>
                   <option value="certificate">Certificate (PEM: key + cert)</option>
                   <option value="secret">Client secret</option>
-                </select>
-              </div>
+                </select></div>
               {cred.kind === 'secret' ? (
-                <div style={{ flex: 2 }}>
-                  <label>Client secret</label>
-                  <input type="password" value={cred.value} disabled={!cfg.secret_store_enabled}
-                    onChange={(e) => setCred({ ...cred, value: e.target.value })} />
-                </div>
+                <div style={{ flex: 2 }}><label>Client secret</label>
+                  <input type="password" value={cred.value} disabled={!cfg.secret_store_enabled} onChange={(e) => setCred({ ...cred, value: e.target.value })} /></div>
               ) : (
-                <div style={{ flex: 2 }}>
-                  <label>Certificate PEM — upload or paste</label>
-                  <input type="file" accept=".pem,.crt,.key,.txt" ref={certFile}
-                    disabled={!cfg.secret_store_enabled} onChange={loadCertFile} />
-                </div>
+                <div style={{ flex: 2 }}><label>Certificate PEM — upload or paste</label>
+                  <input type="file" accept=".pem,.crt,.key,.txt" ref={certFile} disabled={!cfg.secret_store_enabled} onChange={loadCertFile} /></div>
               )}
               <button className="sm" disabled={!cfg.secret_store_enabled} onClick={saveCredential}>Save credential</button>
               {cfg.credential_set && <button className="danger sm" onClick={clearCredential}>Clear</button>}
@@ -320,13 +288,32 @@ function PricingSync({ onMsg, onErr }) {
                 onChange={(e) => setCred({ kind: 'certificate', value: e.target.value })} />
             )}
           </div>
+
+          <div className="card" style={{ background: 'var(--panel2)', marginTop: '.6rem' }}>
+            <b>Consent refresh token</b>{' '}
+            {cfg.refresh_token_set ? <span className="badge pos">set</span> : <span className="badge muted">not set</span>}
+            <p className="hint" style={{ margin: '.3rem 0' }}>
+              From a <b>one-time partner consent</b> with an MFA-enabled dedicated service
+              account holding Admin Agent or Sales Agent. Obtain it via the Secure Application
+              Model consent for scope <code>{cfg.token_scope}</code> (plus offline_access),
+              then paste the refresh token here. Stored encrypted; rotates automatically on use.
+            </p>
+            <div className="toolbar">
+              <div style={{ flex: 2 }}><label>Refresh token</label>
+                <input type="password" value={rt} disabled={!cfg.secret_store_enabled}
+                  placeholder={cfg.refresh_token_set ? '•••••• (replace)' : 'paste refresh token'}
+                  onChange={(e) => setRt(e.target.value)} /></div>
+              <button className="sm" disabled={!cfg.secret_store_enabled || !rt} onClick={saveRefreshToken}>Save token</button>
+              {cfg.refresh_token_set && <button className="danger sm" onClick={clearRefreshToken}>Clear</button>}
+            </div>
+          </div>
         </>
       )}
 
       <div className="row" style={{ gap: '.4rem', marginTop: '.6rem' }}>
         <button className="sm" disabled={!s?.configured || busy} onClick={refresh}
-          title={s?.configured ? '' : 'Complete the settings and credential above first'}>
-          Refresh pricing (sign in)
+          title={s?.configured ? '' : 'Complete settings, credential, and refresh token first'}>
+          {busy ? 'Fetching…' : 'Refresh pricing now'}
         </button>
         <button className="ghost sm" disabled={!s?.latest} onClick={importLatest}>Import latest into catalog</button>
         <button className="ghost sm" onClick={ageCheck}>Run age check</button>
@@ -334,7 +321,6 @@ function PricingSync({ onMsg, onErr }) {
     </div>
   )
 }
-
 function DefaultOutcomes({ onMsg, onErr }) {
   const base = '/api/admin/default-outcomes'
   const [items, setItems] = useState([])
