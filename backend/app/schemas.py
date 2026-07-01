@@ -19,9 +19,22 @@ class EngagementCreate(BaseModel):
     customer_name: str = ""
     market: str = "US"
     currency: str = "USD"
-    modeling_horizon_years: int = 3
-    global_tooling_pct: Decimal = Decimal("0.30")
+    # When omitted, these inherit from GlobalDefaults at creation time.
+    modeling_horizon_years: Optional[int] = None
+    global_tooling_pct: Optional[Decimal] = None
     notes: str = ""
+
+
+class GlobalDefaultsOut(ORMModel):
+    default_tooling_pct: Decimal
+    default_modeling_horizon_years: int
+    openrouter_model: str
+
+
+class GlobalDefaultsUpdate(BaseModel):
+    default_tooling_pct: Optional[Decimal] = None
+    default_modeling_horizon_years: Optional[int] = None
+    openrouter_model: Optional[str] = None
 
 
 class EngagementUpdate(BaseModel):

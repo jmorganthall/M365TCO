@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
-from ..services import compute, exporter, seeds
+from ..services import compute, defaults, exporter, seeds
 from ..services.serialize import result_to_dict
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
@@ -33,7 +33,15 @@ def list_engagements(db: Session = Depends(get_db)):
 
 @router.post("", response_model=schemas.EngagementOut, status_code=201)
 def create_engagement(payload: schemas.EngagementCreate, db: Session = Depends(get_db)):
-    eng = models.Engagement(**payload.model_dump())
+    data = payload.model_dump()
+    # Inherit engagement-level defaults from the global defaults when omitted
+    # (the New-engagement form no longer asks for the tooling split).
+    gd = defaults.get_defaults(db)
+    if data.get("global_tooling_pct") is None:
+        data["global_tooling_pct"] = gd.default_tooling_pct
+    if data.get("modeling_horizon_years") is None:
+        data["modeling_horizon_years"] = gd.default_modeling_horizon_years
+    eng = models.Engagement(**data)
     db.add(eng)
     db.flush()
     seeds.seed_engagement(db, eng)  # copy default outcomes + MS coverage (5.3.1)

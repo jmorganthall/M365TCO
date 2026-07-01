@@ -19,13 +19,57 @@ body {
   font-size: 14px;
 }
 a { color: var(--accent); }
-header.app {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0.7rem 1.2rem; background: var(--panel); border-bottom: 1px solid var(--border);
-}
-header.app h1 { font-size: 1.05rem; margin: 0; }
-header.app .brand small { color: var(--muted); font-weight: 400; margin-left: .5rem; }
+/* ---- App shell: fixed left sidebar + scrollable main ---- */
+.app-shell { display: flex; min-height: 100vh; }
+.main { flex: 1; min-width: 0; height: 100vh; overflow-y: auto; }
 .container { max-width: 1180px; margin: 0 auto; padding: 1.2rem; }
+
+.sidebar {
+  width: 264px; flex-shrink: 0; height: 100vh; position: sticky; top: 0;
+  background: var(--panel); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; padding: .8rem .7rem;
+}
+.side-brand { padding: .3rem .4rem .8rem; }
+.side-title { font-weight: 700; font-size: 1rem; }
+.side-sub { color: var(--muted); font-size: .76rem; }
+.side-new {
+  width: 100%; text-align: left; background: var(--panel2); border: 1px solid var(--border);
+  color: var(--ink); border-radius: 8px; padding: .5rem .6rem; margin-bottom: .8rem;
+}
+.side-new .plus { color: var(--accent); font-weight: 700; margin-right: .4rem; }
+.side-new:hover { border-color: var(--accent); }
+.side-section {
+  text-transform: uppercase; letter-spacing: .04em; font-size: .68rem;
+  color: var(--muted); padding: .2rem .4rem .3rem;
+}
+.side-list { flex: 1; overflow-y: auto; margin: 0 -.3rem; }
+.side-empty { color: var(--muted); font-size: .8rem; padding: .3rem .5rem; }
+.side-item {
+  display: flex; align-items: center; border-radius: 7px; margin: 1px .3rem;
+}
+.side-item:hover { background: var(--panel2); }
+.side-item.active { background: var(--panel2); box-shadow: inset 2px 0 0 var(--accent); }
+.side-item-name {
+  flex: 1; min-width: 0; background: transparent; border: none; color: var(--ink);
+  text-align: left; padding: .45rem .5rem; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-size: .86rem;
+}
+.side-item-actions { display: none; gap: .1rem; padding-right: .2rem; }
+.side-item:hover .side-item-actions, .side-item.active .side-item-actions { display: flex; }
+.side-item-actions button {
+  background: transparent; border: none; color: var(--muted); padding: .2rem .35rem;
+  font-size: .9rem; line-height: 1; border-radius: 5px;
+}
+.side-item-actions button:hover { color: var(--ink); background: var(--border); }
+.side-settings {
+  margin-top: .6rem; background: transparent; border: 1px solid var(--border);
+  color: var(--muted); text-align: left; padding: .45rem .6rem;
+}
+.side-settings:hover { color: var(--ink); border-color: var(--accent); }
+
+.welcome { padding: 1.4rem .2rem .4rem; }
+.welcome h1 { font-size: 1.5rem; margin: 0 0 .3rem; }
+.work-header { display: flex; align-items: center; justify-content: space-between; padding-top: .4rem; }
 .row { display: flex; gap: 1rem; flex-wrap: wrap; }
 .card {
   background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
@@ -72,3 +116,18 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .toolbar > div { min-width: 120px; }
 .pill-list { display: flex; flex-wrap: wrap; gap: .3rem; }
 small.src { color: var(--muted); font-size: .72rem; }
+
+/* ---- Searchable combobox (AI model picker) ---- */
+.combo { position: relative; }
+.combo-list {
+  position: absolute; z-index: 60; top: 100%; left: 0; right: 0; margin-top: 2px;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+  max-height: 260px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+}
+.combo-item {
+  display: flex; flex-direction: column; gap: 1px; padding: .4rem .6rem; cursor: pointer;
+}
+.combo-item:hover, .combo-item.sel { background: var(--accent); }
+.combo-id { font-size: .84rem; font-variant-numeric: tabular-nums; }
+.combo-name { font-size: .72rem; color: var(--muted); }
+.combo-item:hover .combo-name, .combo-item.sel .combo-name { color: #e8ebff; }

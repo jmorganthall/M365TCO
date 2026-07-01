@@ -281,3 +281,19 @@ class EngagementSnapshot(Base):
     payload_json: Mapped[str] = mapped_column(Text, default="{}")
 
     engagement: Mapped[Engagement] = relationship(back_populates="snapshots")
+
+
+class GlobalDefaults(Base):
+    """System-wide operator-editable defaults (PRD 5.10) as a first-class,
+    single-row object rather than scattered constants. New engagements seed
+    their own copy of these values on creation ("seed, then own")."""
+
+    __tablename__ = "global_defaults"
+
+    # Single well-known row.
+    id: Mapped[str] = mapped_column(String, primary_key=True, default="singleton")
+    default_tooling_pct: Mapped[float] = mapped_column(Numeric(6, 4), default=0.30)
+    default_modeling_horizon_years: Mapped[int] = mapped_column(Integer, default=3)
+    # Operator-selected OpenRouter model for AI assist. Empty = use the env
+    # default (settings.openrouter_model). Operational config, runtime-editable.
+    openrouter_model: Mapped[str] = mapped_column(String, default="")
