@@ -32,4 +32,8 @@ RUN mkdir -p /data
 VOLUME ["/data"]
 
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --proxy-headers + trusting forwarded IPs so the app sees the external origin
+# (X-Forwarded-Proto/Host) behind a reverse proxy — needed for the auto-derived
+# OAuth redirect URI to match what the browser used.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", \
+     "--proxy-headers", "--forwarded-allow-ips", "*"]
