@@ -258,6 +258,12 @@ function PricingSync({ onMsg, onErr }) {
               <input value={cfg.redirect_uri} placeholder={cfg.suggested_redirect_uri}
                 onChange={(e) => setField('redirect_uri', e.target.value)} />
               <small className="src">Will use: <code>{cfg.effective_redirect_uri}</code> — leave blank to auto-derive; override only for proxy edge cases.</small>
+              {cfg.redirect_uri_ok === false && (
+                <div className="err" style={{ marginTop: '.3rem' }}>⚠ {cfg.redirect_uri_note}</div>
+              )}
+              {cfg.redirect_uri_ok === true && cfg.redirect_uri_note && (
+                <small className="src warn" style={{ display: 'block' }}>{cfg.redirect_uri_note}</small>
+              )}
             </div>
             <div style={{ gridColumn: '1 / -1' }}><label>Notify webhook (optional, Teams/generic)</label>
               <input value={cfg.notify_webhook_url} placeholder="empty disables"

@@ -29,6 +29,18 @@ Code: `backend/app/pricesync/` (`config`, `auth`, `fetch`, `storage`,
 | POST | `/api/pricesync/import-latest` | Parses the stored sheet into the SKU catalog (existing parser). |
 | POST | `/api/pricesync/check-notify` | Runs the local age check and posts one webhook if Stale. No API call. |
 
+## Deployment requirement for interactive sign-in
+Microsoft Entra only accepts a redirect URI that is **HTTPS** (any hostname; a
+self-signed cert is fine) or **`http://localhost`**. A bare LAN IP over plain
+HTTP (e.g. `http://192.168.1.50:8080/auth/callback`) **cannot be registered**, so
+interactive sign-in won't work when the app is reached by IP. Options:
+- Front the container with a reverse proxy giving it a hostname + HTTPS
+  (recommended on Unraid — SWAG / Nginx Proxy Manager / Traefik). The app honors
+  `X-Forwarded-Proto/Host`, so the redirect URI derives correctly.
+- Browse via `http://localhost:<port>` (from the host or an SSH tunnel).
+- Or skip sign-in entirely and use **manual CSV import** (no auth) — the
+  permanent fallback. Settings warns when the redirect URI isn't registrable.
+
 ## Near one-click sign-in
 The only value the operator must enter is the **Client (application) ID** plus a
 credential. Everything else is handled automatically:
