@@ -19,6 +19,18 @@ from ..services import pricesheet
 router = APIRouter(tags=["pricesync"])
 
 
+def _missing_config(cfg: config.PriceSyncConfig) -> list[str]:
+    """Which required config fields are absent (for actionable UI guidance)."""
+    required = {
+        "TENANT_ID": cfg.tenant_id,
+        "CLIENT_ID": cfg.client_id,
+        "REDIRECT_URI": cfg.redirect_uri,
+        "PRICESHEET_VIEW": cfg.pricesheet_view,
+        "CLIENT_CERT_PATH or CLIENT_SECRET": cfg.client_cert_path or cfg.client_secret,
+    }
+    return [name for name, value in required.items() if not value]
+
+
 def _status_payload() -> dict:
     cfg = config.load_config()
     meta = storage.read_latest(cfg)
@@ -30,6 +42,7 @@ def _status_payload() -> dict:
     )
     return {
         "configured": cfg.auth_configured,
+        "missing": _missing_config(cfg),
         "credential_kind": cfg.credential_kind,
         "market": cfg.market,
         "pricesheet_view": cfg.pricesheet_view,
