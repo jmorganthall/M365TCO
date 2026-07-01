@@ -299,6 +299,28 @@ class GlobalDefaults(Base):
     openrouter_model: Mapped[str] = mapped_column(String, default="")
 
 
+class PriceSyncSettings(Base):
+    """In-app, GUI-editable configuration for the price-sheet sync module — a
+    first-class singleton so none of it lives in environment variables. The
+    credential (client secret / certificate PEM) is NOT here; it lives in the
+    encrypted secret store."""
+
+    __tablename__ = "price_sync_settings"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default="singleton")
+    tenant_id: Mapped[str] = mapped_column(String, default="")
+    client_id: Mapped[str] = mapped_column(String, default="")
+    redirect_uri: Mapped[str] = mapped_column(String, default="")
+    pricesheet_view: Mapped[str] = mapped_column(String, default="")
+    market: Mapped[str] = mapped_column(String, default="US")
+    timeline: Mapped[str] = mapped_column(String, default="current")
+    aging_days: Mapped[int] = mapped_column(Integer, default=25)
+    stale_days: Mapped[int] = mapped_column(Integer, default=30)
+    use_month_rule: Mapped[bool] = mapped_column(Boolean, default=True)
+    retention_count: Mapped[int] = mapped_column(Integer, default=2)
+    notify_webhook_url: Mapped[str] = mapped_column(String, default="")
+
+
 class DefaultOutcome(Base):
     """Global default outcome library (PRD 5.3.1) as a first-class, editable
     table rather than a static file. It is the TEMPLATE copied into engagement-

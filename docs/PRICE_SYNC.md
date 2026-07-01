@@ -21,18 +21,24 @@ Code: `backend/app/pricesync/` (`config`, `auth`, `fetch`, `storage`,
 ## Endpoints
 | Method | Path | Notes |
 | --- | --- | --- |
+| GET/PUT | `/api/pricesync/config` | Non-secret settings (GUI editor). Secrets never returned. |
+| PUT/DELETE | `/api/pricesync/credential` | Set/clear the certificate PEM or client secret (encrypted store). |
 | GET | `/api/pricesync/status` | Freshness state. No auth, no API call. |
 | POST | `/api/pricesync/login-url` | Begins the interactive flow; returns the Microsoft authorization URL. |
 | GET | `/auth/callback` | OAuth redirect. Exchanges the code, fetches one sheet, stores it, discards the token. |
 | POST | `/api/pricesync/import-latest` | Parses the stored sheet into the SKU catalog (existing parser). |
 | POST | `/api/pricesync/check-notify` | Runs the local age check and posts one webhook if Stale. No API call. |
 
-## Configuration (environment variables)
-`TENANT_ID`, `CLIENT_ID`, `REDIRECT_URI`, `PRICESHEET_VIEW`, `CLIENT_CERT_PATH`
-(or `CLIENT_SECRET`), `MARKET` (US), `DATA_DIR` (`/data/pricesheets`),
-`AGE_AGING_DAYS` (25), `AGE_STALE_DAYS` (30), `AGE_USE_MONTH_RULE` (true),
-`RETENTION_COUNT` (2), `NOTIFY_WEBHOOK_URL`. Secrets are injected at runtime,
-never committed. See `.env.example`.
+## Configuration (in-app GUI — no environment variables)
+Everything is configured in **Settings › Pricing sync**, not via env vars:
+- **Non-secret settings** — tenant id, client id, redirect URI, price sheet view,
+  market, aging/stale thresholds, month rule, retention, notify webhook — persist
+  in the first-class `PriceSyncSettings` singleton (`GET/PUT /api/pricesync/config`).
+- **Credential** — a certificate PEM (key + cert, preferred) or a client secret —
+  is stored in the encrypted secret store (`PUT/DELETE /api/pricesync/credential`),
+  encrypted at rest and never returned by the API. Requires `TCO_MASTER_SECRET`.
+- Only `DATA_DIR` (the storage path on the volume, default `/data/pricesheets`) is
+  infrastructure; it may come from the environment.
 
 ## Freshness rules
 - **Day rule**: Fresh < `AGE_AGING_DAYS` ≤ Aging < `AGE_STALE_DAYS` ≤ Stale (or no sheet → Stale).

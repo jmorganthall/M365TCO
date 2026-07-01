@@ -1,9 +1,12 @@
-"""Configuration for the price-sheet sync module (PRD §7).
+"""Configuration for the price-sheet sync module.
 
-All configuration is via environment variables using the exact names from the
-PRD, read directly from the environment (not the TCO_ settings prefix) so the
-operator's env matches the spec. No secrets are committed; they are injected at
-runtime.
+Configuration is GUI-managed and persisted, NOT in environment variables:
+  - Non-secret settings (tenant, client id, redirect URI, view, market, freshness
+    thresholds, webhook) live in the first-class PriceSyncSettings singleton.
+  - The credential (client secret or certificate PEM) lives in the encrypted
+    secret store.
+Only DATA_DIR (the storage path on the persistent volume) is infrastructure and
+may come from the environment; it defaults to <TCO_DATA_DIR>/pricesheets.
 """
 
 from __future__ import annotations
@@ -11,9 +14,12 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from ..config import settings
+from sqlalchemy.orm import Session
 
-# Fixed technical facts (PRD §2) — do not deviate.
+from ..config import settings
+from ..services import secrets
+
+# Fixed technical facts (do not deviate).
 PRICE_SHEET_ENDPOINT = (
     "https://api.partner.microsoft.com/v1.0/sales/pricesheets"
     "(Market='{market}',PricesheetView='{view}')/$value"
@@ -32,26 +38,12 @@ VALID_VIEWS = (
 )
 
 
-def _bool(name: str, default: bool) -> bool:
-    v = os.environ.get(name)
-    if v is None:
-        return default
-    return v.strip().lower() in ("1", "true", "yes", "on")
-
-
-def _int(name: str, default: int) -> int:
-    try:
-        return int(os.environ.get(name, "").strip())
-    except (ValueError, AttributeError):
-        return default
-
-
 @dataclass
 class PriceSyncConfig:
     tenant_id: str
     client_id: str
     redirect_uri: str
-    client_cert_path: str
+    client_cert_pem: str
     client_secret: str
     market: str
     pricesheet_view: str
@@ -65,36 +57,52 @@ class PriceSyncConfig:
 
     @property
     def auth_configured(self) -> bool:
-        """Enough to attempt an interactive login + fetch."""
         return bool(
             self.tenant_id and self.client_id and self.redirect_uri
-            and self.pricesheet_view and (self.client_cert_path or self.client_secret)
+            and self.pricesheet_view and (self.client_cert_pem or self.client_secret)
         )
 
     @property
     def credential_kind(self) -> str:
-        if self.client_cert_path:
+        if self.client_cert_pem:
             return "certificate"
         if self.client_secret:
             return "secret"
         return "none"
 
 
-def load_config() -> PriceSyncConfig:
+def get_or_create_settings(db: Session):
+    from .. import models
+
+    row = db.get(models.PriceSyncSettings, "singleton")
+    if row is None:
+        row = models.PriceSyncSettings(id="singleton")
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+    return row
+
+
+def load_config(db: Session) -> PriceSyncConfig:
+    row = get_or_create_settings(db)
+    store = secrets.get_store()
+    cert_pem = store.get(secrets.PRICESYNC_CLIENT_CERT_PEM) if store.enabled else None
+    client_secret = store.get(secrets.PRICESYNC_CLIENT_SECRET) if store.enabled else None
+
     default_data_dir = os.path.join(settings.data_dir, "pricesheets")
     return PriceSyncConfig(
-        tenant_id=os.environ.get("TENANT_ID", "").strip(),
-        client_id=os.environ.get("CLIENT_ID", "").strip(),
-        redirect_uri=os.environ.get("REDIRECT_URI", "").strip(),
-        client_cert_path=os.environ.get("CLIENT_CERT_PATH", "").strip(),
-        client_secret=os.environ.get("CLIENT_SECRET", "").strip(),
-        market=os.environ.get("MARKET", "US").strip() or "US",
-        pricesheet_view=os.environ.get("PRICESHEET_VIEW", "").strip(),
-        timeline=os.environ.get("PRICESHEET_TIMELINE", "current").strip() or "current",
+        tenant_id=row.tenant_id,
+        client_id=row.client_id,
+        redirect_uri=row.redirect_uri,
+        client_cert_pem=cert_pem or "",
+        client_secret=client_secret or "",
+        market=row.market or "US",
+        pricesheet_view=row.pricesheet_view,
+        timeline=row.timeline or "current",
         data_dir=os.environ.get("DATA_DIR", default_data_dir).strip() or default_data_dir,
-        aging_days=_int("AGE_AGING_DAYS", 25),
-        stale_days=_int("AGE_STALE_DAYS", 30),
-        use_month_rule=_bool("AGE_USE_MONTH_RULE", True),
-        retention_count=_int("RETENTION_COUNT", 2),
-        notify_webhook_url=os.environ.get("NOTIFY_WEBHOOK_URL", "").strip(),
+        aging_days=row.aging_days,
+        stale_days=row.stale_days,
+        use_month_rule=row.use_month_rule,
+        retention_count=row.retention_count,
+        notify_webhook_url=row.notify_webhook_url,
     )

@@ -1,45 +1,57 @@
-"""Price-sheet sync endpoints (PRD §6.5).
+"""Price-sheet sync endpoints.
 
-- GET  /api/pricesync/status     freshness state; no auth, no API call.
-- POST /api/pricesync/login-url  begin interactive login; returns the auth URL.
-- GET  /auth/callback            OAuth redirect; exchanges code, fetches, stores.
+Configuration is GUI-managed (no env vars):
+- GET/PUT /api/pricesync/config     non-secret settings (first-class singleton).
+- PUT/DELETE /api/pricesync/credential  client secret or certificate PEM (encrypted store).
+- GET  /api/pricesync/status        freshness state; no auth, no API call.
+- POST /api/pricesync/login-url     begin interactive login; returns the auth URL.
+- GET  /auth/callback               OAuth redirect; exchanges code, fetches, stores.
 - POST /api/pricesync/import-latest  parse the stored sheet into the SKU catalog.
+- POST /api/pricesync/check-notify   local age check + optional webhook. No API call.
 """
 
 from __future__ import annotations
 
+from cryptography import x509
+from cryptography.hazmat.primitives import serialization
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
+from .. import schemas
 from ..db import get_db
 from ..pricesync import auth, config, fetch, freshness, notify, storage
-from ..services import pricesheet
+from ..services import pricesheet, secrets
 
 router = APIRouter(tags=["pricesync"])
 
 
 def _missing_config(cfg: config.PriceSyncConfig) -> list[str]:
-    """Which required config fields are absent (for actionable UI guidance)."""
     required = {
-        "TENANT_ID": cfg.tenant_id,
-        "CLIENT_ID": cfg.client_id,
-        "REDIRECT_URI": cfg.redirect_uri,
-        "PRICESHEET_VIEW": cfg.pricesheet_view,
-        "CLIENT_CERT_PATH or CLIENT_SECRET": cfg.client_cert_path or cfg.client_secret,
+        "Tenant ID": cfg.tenant_id,
+        "Client (application) ID": cfg.client_id,
+        "Redirect URI": cfg.redirect_uri,
+        "Price sheet view": cfg.pricesheet_view,
+        "Credential (certificate or client secret)": cfg.client_cert_pem or cfg.client_secret,
     }
     return [name for name, value in required.items() if not value]
 
 
-def _status_payload() -> dict:
-    cfg = config.load_config()
+def _freshness_for(cfg: config.PriceSyncConfig) -> freshness.Freshness:
     meta = storage.read_latest(cfg)
-    fr = freshness.classify(
+    return freshness.classify(
         meta.get("fetched_at") if meta else None,
         meta.get("data_month") if meta else None,
         aging_days=cfg.aging_days, stale_days=cfg.stale_days,
         use_month_rule=cfg.use_month_rule,
     )
+
+
+@router.get("/api/pricesync/status")
+def status(db: Session = Depends(get_db)):
+    """Freshness — automatic, local, no auth, no API call."""
+    cfg = config.load_config(db)
+    fr = _freshness_for(cfg)
     return {
         "configured": cfg.auth_configured,
         "missing": _missing_config(cfg),
@@ -51,24 +63,96 @@ def _status_payload() -> dict:
         "data_month": fr.data_month,
         "current_month": fr.current_month,
         "reasons": fr.reasons,
-        "thresholds": {"aging_days": cfg.aging_days, "stale_days": cfg.stale_days,
-                       "use_month_rule": cfg.use_month_rule},
-        "latest": meta,
+        "latest": storage.read_latest(cfg),
     }
 
 
-@router.get("/api/pricesync/status")
-def status():
-    """Freshness — automatic, local, no auth, no API call (PRD §6.4)."""
-    return _status_payload()
+@router.get("/api/pricesync/config")
+def get_config(db: Session = Depends(get_db)):
+    """Non-secret settings for the editor. Secrets are never returned — only
+    whether a credential is set."""
+    row = config.get_or_create_settings(db)
+    store = secrets.get_store()
+    return {
+        "tenant_id": row.tenant_id,
+        "client_id": row.client_id,
+        "redirect_uri": row.redirect_uri,
+        "pricesheet_view": row.pricesheet_view,
+        "market": row.market,
+        "timeline": row.timeline,
+        "aging_days": row.aging_days,
+        "stale_days": row.stale_days,
+        "use_month_rule": row.use_month_rule,
+        "retention_count": row.retention_count,
+        "notify_webhook_url": row.notify_webhook_url,
+        "valid_views": list(config.VALID_VIEWS),
+        "secret_store_enabled": store.enabled,
+        "credential_set": bool(
+            store.enabled and (
+                store.get(secrets.PRICESYNC_CLIENT_CERT_PEM)
+                or store.get(secrets.PRICESYNC_CLIENT_SECRET)
+            )
+        ),
+        "credential_kind": (
+            "certificate" if store.enabled and store.get(secrets.PRICESYNC_CLIENT_CERT_PEM)
+            else "secret" if store.enabled and store.get(secrets.PRICESYNC_CLIENT_SECRET)
+            else "none"
+        ),
+    }
+
+
+@router.put("/api/pricesync/config")
+def update_config(payload: schemas.PriceSyncConfigUpdate, db: Session = Depends(get_db)):
+    row = config.get_or_create_settings(db)
+    data = payload.model_dump(exclude_unset=True)
+    if "pricesheet_view" in data and data["pricesheet_view"] and data["pricesheet_view"] not in config.VALID_VIEWS:
+        raise HTTPException(422, f"Invalid price sheet view. Valid: {', '.join(config.VALID_VIEWS)}")
+    for k, v in data.items():
+        if v is not None:
+            setattr(row, k, v)
+    db.commit()
+    return get_config(db)
+
+
+@router.put("/api/pricesync/credential")
+def set_credential(payload: schemas.PriceSyncCredentialIn):
+    """Store the client secret or certificate PEM in the encrypted store."""
+    store = secrets.get_store()
+    if not store.enabled:
+        raise HTTPException(400, "Secret store disabled: set TCO_MASTER_SECRET to store credentials.")
+    if payload.kind == "certificate":
+        # Validate the PEM contains a usable private key + certificate.
+        try:
+            serialization.load_pem_private_key(payload.value.encode(), password=None)
+            x509.load_pem_x509_certificate(payload.value.encode())
+        except Exception:
+            raise HTTPException(422, "Not a valid PEM containing a private key and certificate.")
+        store.set(secrets.PRICESYNC_CLIENT_CERT_PEM, payload.value)
+        store.delete(secrets.PRICESYNC_CLIENT_SECRET)  # cert supersedes secret
+        return {"ok": True, "credential_kind": "certificate"}
+    if payload.kind == "secret":
+        if not payload.value.strip():
+            raise HTTPException(422, "Client secret is empty.")
+        store.set(secrets.PRICESYNC_CLIENT_SECRET, payload.value)
+        store.delete(secrets.PRICESYNC_CLIENT_CERT_PEM)
+        return {"ok": True, "credential_kind": "secret"}
+    raise HTTPException(422, "kind must be 'certificate' or 'secret'.")
+
+
+@router.delete("/api/pricesync/credential")
+def clear_credential():
+    store = secrets.get_store()
+    if store.enabled:
+        store.delete(secrets.PRICESYNC_CLIENT_SECRET)
+        store.delete(secrets.PRICESYNC_CLIENT_CERT_PEM)
+    return {"ok": True, "credential_kind": "none"}
 
 
 @router.post("/api/pricesync/login-url")
-def login_url():
-    cfg = config.load_config()
+def login_url(db: Session = Depends(get_db)):
+    cfg = config.load_config(db)
     if not cfg.auth_configured:
-        raise HTTPException(400, "Price sync is not configured. Set TENANT_ID, "
-                                 "CLIENT_ID, REDIRECT_URI, PRICESHEET_VIEW and a credential.")
+        raise HTTPException(400, "Price sync is not configured. Complete the settings and set a credential.")
     try:
         return {"auth_url": auth.begin_login(cfg)}
     except auth.AuthError as exc:
@@ -78,17 +162,15 @@ def login_url():
 
 
 @router.get("/auth/callback", response_class=HTMLResponse)
-def auth_callback(request: Request):
-    """OAuth redirect target. Exchanges the code, fetches one sheet, stores it,
-    and discards the token. Errors render as a friendly page, not a stack trace."""
-    cfg = config.load_config()
+def auth_callback(request: Request, db: Session = Depends(get_db)):
+    cfg = config.load_config(db)
     params = dict(request.query_params)
     if "error" in params:
         return _page(False, params.get("error_description", params["error"]))
     try:
         token = auth.redeem_code(cfg, params)
         meta = fetch.fetch_and_store(cfg, token)
-        del token  # used once, discarded (SEC-3)
+        del token  # used once, discarded (no refresh token stored)
         return _page(
             True,
             f"Price sheet {meta['file_name']} stored "
@@ -100,9 +182,7 @@ def auth_callback(request: Request):
 
 @router.post("/api/pricesync/import-latest")
 def import_latest(catalog_version: str = "", db: Session = Depends(get_db)):
-    """Parse the most recent stored sheet into the Microsoft SKU catalog using
-    the existing header-mapped parser (keeps acquisition and parsing separate)."""
-    cfg = config.load_config()
+    cfg = config.load_config(db)
     path = storage.latest_csv_path(cfg)
     if not path:
         raise HTTPException(404, "No stored price sheet to import.")
@@ -117,16 +197,9 @@ def import_latest(catalog_version: str = "", db: Session = Depends(get_db)):
 
 
 @router.post("/api/pricesync/check-notify")
-def check_notify():
-    """Run the local age check and, if Stale, post one webhook. No API call."""
-    cfg = config.load_config()
-    meta = storage.read_latest(cfg)
-    fr = freshness.classify(
-        meta.get("fetched_at") if meta else None,
-        meta.get("data_month") if meta else None,
-        aging_days=cfg.aging_days, stale_days=cfg.stale_days,
-        use_month_rule=cfg.use_month_rule,
-    )
+def check_notify(db: Session = Depends(get_db)):
+    cfg = config.load_config(db)
+    fr = _freshness_for(cfg)
     sent = notify.notify_if_stale(cfg, fr)
     return {"state": fr.state, "notified": sent}
 
