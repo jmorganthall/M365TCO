@@ -112,6 +112,8 @@ export default function AdminPanel({ onClose }) {
           )}
         </div>
 
+        <PricingSync onMsg={setMsg} onErr={setErr} />
+
         <div className="card">
           <h2>Microsoft SKU catalog</h2>
           <p className="hint">Day-one path: import the new-commerce license-based price list
@@ -146,6 +148,59 @@ export default function AdminPanel({ onClose }) {
               onSave={saveSecret} onClear={clearSecret} />
           ))}
         </div>
+      </div>
+    </div>
+  )
+}
+
+function PricingSync({ onMsg, onErr }) {
+  const [s, setS] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const load = () => api.get('/api/pricesync/status').then(setS).catch(() => {})
+  useEffect(() => { load() }, [])
+
+  async function refresh() {
+    setBusy(true); onErr('')
+    try {
+      const { auth_url } = await api.post('/api/pricesync/login-url')
+      window.location.href = auth_url
+    } catch (e) { onErr(e.message); setBusy(false) }
+  }
+  async function importLatest() {
+    onErr('')
+    try {
+      const r = await api.post('/api/pricesync/import-latest')
+      onMsg(`Imported into catalog: ${r.inserted} new, ${r.updated} updated, ${r.skipped} skipped.`)
+    } catch (e) { onErr(e.message) }
+  }
+  async function ageCheck() {
+    try { const r = await api.post('/api/pricesync/check-notify'); onMsg(`Age check: ${r.state}${r.notified ? ' — notification sent' : ''}.`) }
+    catch (e) { onErr(e.message) }
+  }
+
+  const stateCls = s?.state === 'stale' ? 'neg' : s?.state === 'aging' ? 'warn' : 'pos'
+  return (
+    <div className="card">
+      <h2>Pricing sync (Partner Center)</h2>
+      <p className="hint">Interactive sign-in fetches the current price sheet to the
+        data volume; a local age check (no login, no API call) flags staleness. No
+        refresh token is ever stored. Configure via environment variables
+        (TENANT_ID, CLIENT_ID, REDIRECT_URI, PRICESHEET_VIEW, CLIENT_CERT_PATH or
+        CLIENT_SECRET).</p>
+      {s && (
+        <div className="muted" style={{ fontSize: '.84rem', marginBottom: '.6rem' }}>
+          Status: <span className={`badge ${stateCls}`}>{s.state}</span>{' '}
+          {s.configured
+            ? <>configured ({s.credential_kind}) · view <b>{s.pricesheet_view || '—'}</b> · market {s.market}</>
+            : <b className="warn">not configured</b>}
+          {s.latest && <> · sheet {s.latest.data_month} · {(s.latest.file_bytes / 1e6).toFixed(1)} MB · MFA {String(s.latest.mfa_compliant)}</>}
+          {s.age_days != null && <> · {s.age_days} days old</>}
+        </div>
+      )}
+      <div className="row" style={{ gap: '.4rem' }}>
+        <button className="sm" disabled={!s?.configured || busy} onClick={refresh}>Refresh pricing (sign in)</button>
+        <button className="ghost sm" disabled={!s?.latest} onClick={importLatest}>Import latest into catalog</button>
+        <button className="ghost sm" onClick={ageCheck}>Run age check</button>
       </div>
     </div>
   )

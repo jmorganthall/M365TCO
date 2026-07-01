@@ -33,6 +33,8 @@ algorithm port; the code does not.
   contract that keeps new data from becoming a snowflake.
 - [`docs/ENGINE_SPEC.md`](docs/ENGINE_SPEC.md) — the language-neutral calculation
   algorithm.
+- [`docs/PRICE_SYNC.md`](docs/PRICE_SYNC.md) — Partner Center price-sheet
+  acquisition (interactive login, no stored token) and local freshness monitoring.
 
 ## Quick start (Docker — Unraid / local)
 

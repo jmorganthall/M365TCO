@@ -17,12 +17,38 @@ from starlette.responses import FileResponse
 
 from .config import settings
 from .db import get_db, init_db
-from .routers import admin, catalog, engagements, entities
+from .routers import admin, catalog, engagements, entities, pricesync
 from .services import seeds
+
+
+async def _daily_freshness_timer():
+    """Local, no-auth, no-API daily age check that notifies once when Stale
+    (PRD §6.4 FR-AGE-4 / §6.5 FR-UI-4). Disabled unless a webhook is configured."""
+    import asyncio
+
+    from .pricesync import config as ps_config, freshness as ps_fresh, notify as ps_notify, storage as ps_storage
+
+    while True:
+        try:
+            cfg = ps_config.load_config()
+            if cfg.notify_webhook_url:
+                meta = ps_storage.read_latest(cfg)
+                fr = ps_fresh.classify(
+                    meta.get("fetched_at") if meta else None,
+                    meta.get("data_month") if meta else None,
+                    aging_days=cfg.aging_days, stale_days=cfg.stale_days,
+                    use_month_rule=cfg.use_month_rule,
+                )
+                ps_notify.notify_if_stale(cfg, fr)
+        except Exception:
+            pass  # a monitoring loop must never crash the app
+        await asyncio.sleep(24 * 3600)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    import asyncio
+
     init_db()
     # Seed the global default outcome library on first run.
     from .db import SessionLocal
@@ -33,7 +59,12 @@ async def lifespan(_app: FastAPI):
         seeds_service.seed_default_outcomes(db)
     finally:
         db.close()
-    yield
+
+    timer = asyncio.create_task(_daily_freshness_timer())
+    try:
+        yield
+    finally:
+        timer.cancel()
 
 
 app = FastAPI(title="M365 TCO Tool", version="1.0.0", lifespan=lifespan)
@@ -50,6 +81,7 @@ app.include_router(engagements.router)
 app.include_router(entities.router)
 app.include_router(catalog.router)
 app.include_router(admin.router)
+app.include_router(pricesync.router)
 
 
 @app.get("/api/health")
