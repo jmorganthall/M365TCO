@@ -210,6 +210,23 @@ operator-owned and engine-owned fields.
 - **CRUD:** `POST/GET …/snapshots`, `GET …/snapshots/{id}`. Immutable once written
   — a snapshot is a record, not editable state.
 
+### 4.10a Best-bundle analysis (derived, persists nothing)
+The optimizer (`tco_engine/optimizer.py`) evaluates every candidate Microsoft
+bundle as a persona's target and ranks by TCO. It is a **pure computation over
+existing first-class objects** — it stores no new state, which is the correct
+"don't create second-class data" outcome:
+- **Candidate bundles**: the `is_bundle` Microsoft SKUs from the coverage seed,
+  intersected with the engagement's ratified `CoverageMapEntry` rows.
+- **Required outcomes** (v1): derived from the outcomes the persona's current
+  Microsoft licenses deliver (gap detection baseline). *If explicit per-persona
+  requirements are later wanted, add a `PersonaOutcomeRequirement` first-class
+  join following §2 — do not stash them in a blob.*
+- **Added outcomes**: bundle coverage minus everything the persona has today
+  (MS + third-party) — the upside story.
+- **Prices**: catalog annual ERP by best-effort match, overridable per request.
+The chosen bundle is applied by writing a normal `PersonaScenario` (§4.8); the
+analysis itself is transient.
+
 ### 4.11 Out-of-band data sets
 - **GlobalDefaults / Settings (PRD 5.10):** currently realized as the versioned
   **seed files** (`outcomes.json`, `coverage.json`) plus `config.py` constants and

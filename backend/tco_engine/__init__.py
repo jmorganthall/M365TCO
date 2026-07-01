@@ -27,6 +27,11 @@ from .engine import (
     RollupResult,
     EngineResult,
 )
+from .optimizer import (
+    analyze_bundles,
+    CandidateBundle,
+    BundleAnalysis,
+)
 
 __all__ = [
     "Coverage",

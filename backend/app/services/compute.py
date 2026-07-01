@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from tco_engine import (
+    CandidateBundle,
     CurrentLicenseLine,
     Engagement as EngEngagement,
     Override,
@@ -20,11 +21,13 @@ from tco_engine import (
     PersonaScenario as EngScenario,
     ResidualIntent,
     ThirdPartyProduct as EngThirdParty,
+    analyze_bundles,
     compute as engine_compute,
 )
 from tco_engine.engine import EngineResult
 
 from .. import models
+from . import seeds
 
 
 def _dec(value) -> Decimal:
@@ -138,6 +141,133 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
         scenarios=scenarios,
         current_licenses_by_persona=current_by_persona,
     )
+
+
+def _bundle_refs() -> list[str]:
+    """Candidate bundle sku_references from the seed library (is_bundle=true)."""
+    return [s["sku_reference"] for s in seeds.load_coverage()["skus"] if s.get("is_bundle")]
+
+
+def _catalog_annual_erp(db: Session, sku_reference: str) -> Decimal:
+    """Best-effort catalog price for a bundle: the annual ERP of a P1Y row whose
+    title contains the reference. 0 if the catalog isn't loaded / no match."""
+    like = f"%{sku_reference}%"
+    row = db.execute(
+        select(models.MicrosoftSku)
+        .where(
+            (models.MicrosoftSku.sku_title.ilike(like))
+            | (models.MicrosoftSku.product_title.ilike(like))
+        )
+        .order_by(models.MicrosoftSku.term_duration.desc())  # prefer P1Y over P1M/P3Y-ish
+    ).scalars().first()
+    return _dec(row.annual_erp_price) if row else Decimal("0")
+
+
+def analyze_persona_bundles(
+    db: Session, engagement_id: str, persona_id: str, prices: dict | None = None
+) -> dict:
+    """Evaluate every candidate bundle as this persona's target and rank by TCO."""
+    eng = db.get(models.Engagement, engagement_id)
+    if eng is None:
+        raise ValueError("Engagement not found")
+    persona = db.get(models.Persona, persona_id)
+    if persona is None or persona.engagement_id != engagement_id:
+        raise ValueError("Persona not found")
+
+    sku_outcomes = _ratified_sku_outcomes(db, engagement_id)  # ref -> {outcome_id}
+    tp_outcomes = _ratified_thirdparty_outcomes(db, engagement_id)
+    outcome_names = {o.id: o.name for o in eng.outcomes}
+
+    # Candidate bundles present in this engagement's coverage map.
+    candidate_refs = [r for r in _bundle_refs() if r in sku_outcomes]
+
+    # Required outcomes = what the persona's current Microsoft licenses deliver
+    # (the "don't lose capability" baseline used for gap detection).
+    persona_lines = [l for l in eng.current_licenses if l.persona_id == persona_id]
+    required: set[str] = set()
+    current_ms = Decimal("0")
+    for line in persona_lines:
+        required |= sku_outcomes.get(line.sku_reference, set())
+        current_ms += Decimal(line.quantity_assigned) * _dec(line.unit_price_paid_annual)
+
+    # Everything they have today (MS + third-party) — used to compute the ADDED
+    # outcomes a bundle brings that they don't have at all.
+    current_capability = set(required)
+    for tp_id, outs in tp_outcomes.items():
+        current_capability |= outs
+
+    third_party = [
+        EngThirdParty(
+            id=tp.id, name=tp.name, annual_cost=_dec(tp.annual_cost),
+            covered_count=tp.covered_count, is_managed=tp.is_managed,
+            tooling_pct=_dec(tp.tooling_pct),
+            delivered_outcome_ids=frozenset(tp_outcomes.get(tp.id, set())),
+        )
+        for tp in eng.third_party_products
+    ]
+    tp_names = {tp.id: tp.name for tp in eng.third_party_products}
+
+    prices = prices or {}
+    candidates = []
+    for ref in candidate_refs:
+        override = prices.get(ref)
+        price = Decimal(str(override)) if override is not None else _catalog_annual_erp(db, ref)
+        candidates.append(
+            CandidateBundle(
+                sku_reference=ref,
+                covered_outcome_ids=frozenset(sku_outcomes.get(ref, set())),
+                target_unit_price_annual=price,
+            )
+        )
+
+    analyses = analyze_bundles(
+        persona.headcount, current_ms, frozenset(required),
+        frozenset(current_capability), candidates, third_party,
+    )
+
+    def names(ids):
+        return [outcome_names.get(i, i) for i in ids]
+
+    def positioning(b) -> str:
+        """The value story to lead with for this bundle."""
+        saves = b.delta_annual >= 0
+        added = bool(b.added_outcome_ids)
+        if saves and added:
+            return "Lower TCO + new capabilities"
+        if saves:
+            return "Lower TCO"
+        if added:
+            return "New capabilities + integrated ecosystem"
+        return "Higher cost — consider reimagining required outcomes"
+
+    return {
+        "persona_id": persona.id,
+        "persona_name": persona.name,
+        "headcount": persona.headcount,
+        "current_microsoft_annual": float(current_ms),
+        "required_outcomes": [
+            {"id": i, "name": outcome_names.get(i, i)} for i in sorted(required)
+        ],
+        "bundles": [
+            {
+                "sku_reference": b.sku_reference,
+                "target_unit_price_annual": float(b.target_unit_price_annual),
+                "target_spend_annual": float(b.target_spend_annual),
+                "current_spend_annual": float(b.current_spend_annual),
+                "delta_annual": float(b.delta_annual),
+                "third_party_offset_annual": float(b.third_party_offset_annual),
+                "covered_required_outcomes": names(b.covered_required_outcome_ids),
+                "gap_outcomes": names(b.gap_outcome_ids),
+                "added_outcomes": names(b.added_outcome_ids),
+                "displaced_products": [tp_names.get(i, i) for i in b.displaced_product_ids],
+                "covers_all_required": b.covers_all_required,
+                "price_known": b.price_known,
+                "recommended": b.recommended,
+                "positioning": positioning(b),
+            }
+            for b in analyses
+        ],
+    }
 
 
 def compute_and_persist(db: Session, engagement_id: str) -> EngineResult:

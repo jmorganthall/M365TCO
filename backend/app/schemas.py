@@ -220,3 +220,8 @@ class SecretIn(BaseModel):
 # ---- AI ----
 class CoverageSuggestRequest(BaseModel):
     third_party_product_id: str
+
+
+class BundleAnalysisRequest(BaseModel):
+    # Optional per-bundle price override map: {sku_reference: annual_per_seat}.
+    prices: Optional[dict[str, float]] = None
