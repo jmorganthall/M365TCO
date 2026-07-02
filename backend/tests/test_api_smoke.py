@@ -193,3 +193,24 @@ def test_csv_last_updated_date_drives_data_month(client):
     st = client.get("/api/pricesync/status").json()
     assert st["data_month"] == "2020-03"
     assert st["data_source"] == "CSV upload"
+
+
+def test_current_license_persona_tags_roundtrip(client):
+    eng = client.post("/api/engagements", json={"customer_name": "Tags Co"}).json()
+    eid = eng["id"]
+    kw = client.post(f"/api/engagements/{eid}/personas", json={"name": "KW", "headcount": 500}).json()
+    fl = client.post(f"/api/engagements/{eid}/personas", json={"name": "FL", "headcount": 200}).json()
+    lic = client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "E3", "quantity_assigned": 700, "quantity_purchased": 700,
+        "unit_price_paid_annual": 100, "persona_ids": [kw["id"], fl["id"]],
+    }).json()
+    assert set(lic["persona_ids"]) == {kw["id"], fl["id"]}
+    # Patch replaces the tag set.
+    upd = client.patch(f"/api/engagements/{eid}/current-licenses/{lic['id']}",
+                       json={"persona_ids": [kw["id"]]}).json()
+    assert upd["persona_ids"] == [kw["id"]]
+    # A patch that doesn't mention persona_ids leaves the tags untouched.
+    upd2 = client.patch(f"/api/engagements/{eid}/current-licenses/{lic['id']}",
+                        json={"quantity_assigned": 650}).json()
+    assert upd2["persona_ids"] == [kw["id"]]
+    assert upd2["quantity_assigned"] == 650

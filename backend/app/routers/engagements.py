@@ -124,14 +124,19 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
         tp_map[tp.id] = ntp.id
 
     for lic in src.current_licenses:
-        db.add(models.CurrentMicrosoftLicense(
+        nlic = models.CurrentMicrosoftLicense(
             engagement_id=dst.id, sku_reference=lic.sku_reference,
             quantity_purchased=lic.quantity_purchased, quantity_assigned=lic.quantity_assigned,
             unit_price_paid_annual=lic.unit_price_paid_annual, price_basis=lic.price_basis,
-            discount_pct=lic.discount_pct,
-            persona_id=persona_map.get(lic.persona_id) if lic.persona_id else None,
-            source_tag=lic.source_tag,
-        ))
+            discount_pct=lic.discount_pct, source_tag=lic.source_tag,
+        )
+        # Carry the persona tags across, remapped to the cloned personas.
+        src_pids = lic.persona_ids or ([lic.persona_id] if lic.persona_id else [])
+        for pid in src_pids:
+            mapped = persona_map.get(pid)
+            if mapped:
+                nlic.persona_links.append(models.CurrentLicensePersona(persona_id=mapped))
+        db.add(nlic)
 
     for ce in src.coverage_entries:
         db.add(models.CoverageMapEntry(

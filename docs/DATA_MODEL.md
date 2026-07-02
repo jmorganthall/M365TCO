@@ -159,12 +159,25 @@ FK, UUID PK, cascade-deleted with the engagement.
 ### 4.5 CurrentMicrosoftLicense — the customer's existing licensing
 - **Identity:** `uuid`. **Scope:** engagement-scoped.
 - **Relationships:** **soft ref** to a `MicrosoftSku` via `sku_reference` (free
-  text); optional **hard FK** to a `Persona`.
+  text, validated against the catalog in the UI); **many-to-many** to `Persona`
+  via `CurrentLicensePersona` (§4.5a). The legacy single `persona_id` column is
+  deprecated (kept only for the one-time backfill).
 - **Field ownership:** user-entered (`quantity_assigned` ← model on this not
   purchased, `unit_price_paid_annual`, `price_basis`, `discount_pct`); provenance.
-- **CRUD:** `GET/POST/PATCH/DELETE …/current-licenses`.
-- **Engine role:** the persona's `Σ(quantity_assigned × unit_price_paid_annual)`
-  is the Microsoft side of current spend.
+  API exposes `persona_ids` (the tags), not `persona_id`.
+- **CRUD:** `GET/POST/PATCH/DELETE …/current-licenses`; `persona_ids` on the body
+  replaces the tag set.
+- **Engine role:** the Microsoft side of a persona's current spend. A line's
+  total cost is distributed across its tagged personas by headcount (ENGINE_SPEC
+  6.2), so a shared line is never double-counted.
+
+### 4.5a CurrentLicensePersona — license↔persona tags
+- **Identity:** `uuid` plus a unique `(current_license_id, persona_id)`.
+  **Scope:** engagement-scoped (via the license). **Association object** — the
+  first-class many-to-many so one line can apply to several personas.
+- **Why first-class:** it's the seam where the future **partial application**
+  (e.g. "5% of Knowledge Workers") will live as an `applies_pct` field on the
+  tag, without reshaping the license or the engine contract.
 
 ### 4.6 ThirdPartyProduct — non-Microsoft spend
 - **Identity:** `uuid`. **Scope:** engagement-scoped.

@@ -13,7 +13,9 @@ the data layer on input, never inside the engine.
 ## Inputs (hydrated)
 
 - **Personas**: `{id, name, headcount}`.
-- **CurrentLicenseLines per persona**: `{quantity_assigned, unit_price_paid_annual}`.
+- **CurrentLicenseLines**: `{quantity_assigned, unit_price_paid_annual, persona_ids}`.
+  A line may apply to several personas; its cost is distributed across their
+  combined headcount (see 6.2).
 - **ThirdPartyProducts**: `{id, name, annual_cost, covered_count, is_managed,
   tooling_pct, renewal_date, delivered_outcome_ids, override, override_reason,
   residual_intent}`. `delivered_outcome_ids` are **ratified** coverage outcomes
@@ -74,8 +76,15 @@ else:
 ## Per-persona scenario math (6.2 / 6.3)
 
 ```
-current_microsoft = Σ (line.quantity_assigned * line.unit_price_paid_annual)
-                      over the persona's current license lines
+# A current license line applies to one or more personas. Its total annual cost
+# (quantity_assigned * unit_price_paid_annual) is distributed across the combined
+# headcount of its tagged personas, so this persona's share is its headcount over
+# the tagged total. A single-persona line therefore counts in full, and a shared
+# line is never double-counted across personas. (If the tagged personas have zero
+# total headcount, the line is split evenly by count so cost is not lost.)
+current_microsoft = Σ over lines tagged with this persona of
+      line_total * (persona.headcount / Σ headcount of the line's tagged personas)
+    where line_total = line.quantity_assigned * line.unit_price_paid_annual
 
 # Linear-by-user offset: for each product this scenario displaces, credit
 # headcount * per_unit_annual_cost. This is the persona's allocated share of

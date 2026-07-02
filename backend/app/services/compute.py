@@ -87,17 +87,15 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
         EngPersona(id=p.id, name=p.name, headcount=p.headcount) for p in eng.personas
     ]
 
-    current_by_persona: dict[str, list[CurrentLicenseLine]] = {}
-    for lic in eng.current_licenses:
-        if not lic.persona_id:
-            continue
-        current_by_persona.setdefault(lic.persona_id, []).append(
-            CurrentLicenseLine(
-                quantity_assigned=lic.quantity_assigned,
-                unit_price_paid_annual=_dec(lic.unit_price_paid_annual),
-                sku_reference=lic.sku_reference,
-            )
+    current_lines = [
+        CurrentLicenseLine(
+            quantity_assigned=lic.quantity_assigned,
+            unit_price_paid_annual=_dec(lic.unit_price_paid_annual),
+            sku_reference=lic.sku_reference,
+            persona_ids=tuple(lic.persona_ids),
         )
+        for lic in eng.current_licenses
+    ]
 
     third_party = []
     for tp in eng.third_party_products:
@@ -139,7 +137,7 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
         personas=personas,
         third_party_products=third_party,
         scenarios=scenarios,
-        current_licenses_by_persona=current_by_persona,
+        current_licenses=current_lines,
     )
 
 
@@ -182,13 +180,21 @@ def analyze_persona_bundles(
     candidate_refs = [r for r in _bundle_refs() if r in sku_outcomes]
 
     # Required outcomes = what the persona's current Microsoft licenses deliver
-    # (the "don't lose capability" baseline used for gap detection).
-    persona_lines = [l for l in eng.current_licenses if l.persona_id == persona_id]
+    # (the "don't lose capability" baseline used for gap detection). A line may be
+    # tagged to several personas; its cost is split across their combined headcount
+    # (mirrors the engine's §6.2 allocation).
+    hc = {p.id: p.headcount for p in eng.personas}
+    persona_lines = [l for l in eng.current_licenses if persona_id in l.persona_ids]
     required: set[str] = set()
     current_ms = Decimal("0")
     for line in persona_lines:
         required |= sku_outcomes.get(line.sku_reference, set())
-        current_ms += Decimal(line.quantity_assigned) * _dec(line.unit_price_paid_annual)
+        line_total = Decimal(line.quantity_assigned) * _dec(line.unit_price_paid_annual)
+        tagged = [pid for pid in line.persona_ids if pid in hc]
+        tagged_hc = sum(hc[pid] for pid in tagged)
+        share = (Decimal(hc.get(persona_id, 0)) / Decimal(tagged_hc)) if tagged_hc > 0 \
+            else Decimal(1) / Decimal(len(tagged) or 1)
+        current_ms += line_total * share
 
     # Everything they have today (MS + third-party) — used to compute the ADDED
     # outcomes a bundle brings that they don't have at all.

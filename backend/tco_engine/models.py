@@ -39,14 +39,17 @@ class ResidualIntent(str, Enum):
 
 @dataclass(frozen=True)
 class CurrentLicenseLine:
-    """A persona's existing Microsoft license holding (already normalized).
+    """An existing Microsoft license holding (already normalized).
 
-    Model on assigned, not purchased — shelfware is a savings source.
+    Model on assigned, not purchased — shelfware is a savings source. A line may
+    apply to several personas (`persona_ids`); its total cost is distributed
+    across the combined headcount of those personas (see engine §6.2).
     """
 
     quantity_assigned: int
     unit_price_paid_annual: Decimal
     sku_reference: str = ""
+    persona_ids: tuple[str, ...] = ()
 
 
 @dataclass
@@ -120,7 +123,6 @@ class Engagement:
     personas: list[Persona] = field(default_factory=list)
     third_party_products: list[ThirdPartyProduct] = field(default_factory=list)
     scenarios: list[PersonaScenario] = field(default_factory=list)
-    # current MS licenses keyed by persona_id
-    current_licenses_by_persona: dict[str, list[CurrentLicenseLine]] = field(
-        default_factory=dict
-    )
+    # Existing MS licenses as a flat list; each line carries the personas it
+    # applies to. The engine allocates each line across its personas by headcount.
+    current_licenses: list[CurrentLicenseLine] = field(default_factory=list)

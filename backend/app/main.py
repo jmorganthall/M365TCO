@@ -44,6 +44,27 @@ async def _daily_freshness_timer():
         await asyncio.sleep(24 * 3600)
 
 
+def _backfill_license_persona_tags(db) -> None:
+    """One-time migration: seed the many-to-many persona tags from the deprecated
+    single persona_id for any license that doesn't have tags yet. Idempotent."""
+    from sqlalchemy import select
+
+    from . import models
+
+    rows = db.execute(
+        select(models.CurrentMicrosoftLicense).where(
+            models.CurrentMicrosoftLicense.persona_id.isnot(None)
+        )
+    ).scalars().all()
+    changed = False
+    for lic in rows:
+        if lic.persona_id and not lic.persona_links:
+            lic.persona_links.append(models.CurrentLicensePersona(persona_id=lic.persona_id))
+            changed = True
+    if changed:
+        db.commit()
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     import asyncio
@@ -59,6 +80,7 @@ async def lifespan(_app: FastAPI):
     try:
         seeds_service.seed_default_outcomes(db)
         ai_prompts_service.seed_defaults(db)
+        _backfill_license_persona_tags(db)
     finally:
         db.close()
 
