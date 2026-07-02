@@ -53,12 +53,25 @@ Everything is configured in **Settings › Pricing sync**, not via env vars:
 - Only `DATA_DIR` (the storage path, default `/data/pricesheets`) is infrastructure.
 
 ## Obtaining the refresh token (one-time)
-Run the Secure Application Model consent with the MFA-enabled service account for
-the pricing scope (`https://api.partner.microsoft.com/.default` plus
-`offline_access`) and capture the refresh token — e.g. via the MSAL/PartnerCenter
-consent tooling. Paste it into Settings. Ensure the app registration (Partner
-Center App Management) has permission to the pricing API and the consent covered
-it, or the token exchange to `api.partner.microsoft.com` will fail.
+**Settings › Pricing sync** has a "How do I get a refresh token?" helper that
+prints the exact PowerShell, pre-filled with your tenant/app IDs. In brief, on any
+machine with a browser, signed in as the MFA-enabled Admin Agent / Sales Agent
+service account:
+
+```powershell
+Install-Module PartnerCenter -Scope CurrentUser -Force
+$secret = ConvertTo-SecureString "<APP_SECRET>" -AsPlainText -Force
+$cred   = New-Object System.Management.Automation.PSCredential("<CLIENT_ID>", $secret)
+$token  = New-PartnerAccessToken -ApplicationId "<CLIENT_ID>" -Credential $cred `
+  -Scopes "https://api.partner.microsoft.com/user_impersonation" `
+  -Tenant "<TENANT_ID>" -UseAuthorizationCode
+$token.RefreshToken   # paste into Settings
+```
+
+Certificate apps use `-CertificateThumbprint <thumbprint>` instead of the
+credential. Ensure the app registration (Partner Center App Management) has the
+pricing-API permission and the consent covered it, or the exchange to
+`api.partner.microsoft.com` will fail.
 
 ## Freshness rules
 - **Day rule**: Fresh < `AGE_AGING_DAYS` ≤ Aging < `AGE_STALE_DAYS` ≤ Stale (or no sheet → Stale).
