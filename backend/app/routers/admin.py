@@ -250,20 +250,21 @@ def suggest_coverage_all(engagement_id: str, db: Session = Depends(get_db)):
     outcome_dicts = _outcome_dicts(db, engagement_id)
     instructions = ai_prompts.get_instructions(db, "coverage_suggest")
     model = _resolved_model(db)
-    created_total, processed, errors = 0, 0, []
+    created_total, results, errors = 0, [], []
     for tp in unmapped:
         try:
-            created_total += len(
-                _suggest_and_persist(db, engagement_id, tp, outcome_dicts, instructions, model)
-            )
-            processed += 1
+            created = _suggest_and_persist(db, engagement_id, tp, outcome_dicts, instructions, model)
+            created_total += len(created)
+            # created == 0 means the model found no correlation for this product.
+            results.append({"name": tp.name, "created": len(created)})
         except Exception as exc:  # one bad product must not abort the rest
             errors.append(f"{tp.name}: {exc}")
     db.commit()
     return {
-        "products_processed": processed,
+        "products_processed": len(results),
         "suggestions_created": created_total,
         "skipped_mapped": len(products) - len(unmapped),
+        "results": results,
         "errors": errors,
     }
 
