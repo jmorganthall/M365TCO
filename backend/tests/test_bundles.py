@@ -36,3 +36,31 @@ def test_map_catalog_sku_to_bundle(client):
 
     # Unknown bundle rejected.
     assert client.patch(f"/api/catalog/skus/{sku['id']}/bundle", json={"bundle_id": "nope"}).status_code == 422
+
+
+def test_scenario_targeting_bundle_name_resolves_and_displaces(client):
+    """The bug fix: a scenario target that names the bundle ("Microsoft 365 E3"),
+    not the old "E3" shortcode, now resolves to the bundle and displaces."""
+    eng = client.post("/api/engagements", json={"customer_name": "Bundle Displace"}).json()
+    eid = eng["id"]
+    outcomes = client.get(f"/api/engagements/{eid}/outcomes").json()
+    identity = next(o for o in outcomes if "Identity" in o["name"])
+    kw = client.post(f"/api/engagements/{eid}/personas",
+                     json={"name": "KW", "headcount": 100}).json()
+    okta = client.post(f"/api/engagements/{eid}/third-party",
+                       json={"name": "Okta", "raw_cost": 10000, "covered_count": 100}).json()
+    client.post(f"/api/engagements/{eid}/coverage",
+                json={"outcome_id": identity["id"], "product_kind": "ThirdParty",
+                      "third_party_product_id": okta["id"], "coverage": "Full", "ratified": True})
+    # Target the full bundle NAME (previously would not match the "E3"-keyed map).
+    client.post(f"/api/engagements/{eid}/scenarios",
+                json={"persona_id": kw["id"], "target_sku_reference": "Microsoft 365 E3",
+                      "target_unit_price_annual": 0, "in_scope": True})
+    result = client.post(f"/api/engagements/{eid}/compute").json()
+    assert result["dispositions"][0]["disposition"] == "FullyEliminated"
+
+    # The seeded MS coverage is now bundle-keyed (readable bundle names shown).
+    cov = client.get(f"/api/engagements/{eid}/coverage").json()
+    ms = [c for c in cov if c["product_kind"] == "MicrosoftSku"]
+    assert any(c["microsoft_sku_reference"] == "Microsoft 365 E3" for c in ms)
+    assert all(c.get("bundle_id") for c in ms)  # every seeded MS entry maps to a bundle

@@ -27,7 +27,7 @@ from tco_engine import (
 from tco_engine.engine import EngineResult
 
 from .. import models
-from . import seeds
+from . import bundles, seeds
 
 
 def _dec(value) -> Decimal:
@@ -35,7 +35,9 @@ def _dec(value) -> Decimal:
 
 
 def _ratified_sku_outcomes(db: Session, engagement_id: str) -> dict[str, set[str]]:
-    """sku_reference -> set of outcome_ids it covers (ratified, Full|Partial)."""
+    """coverage key -> set of outcome_ids it covers (ratified, Full|Partial). The
+    key is the Bundle id when set (the canonical SKU → Bundle → Outcomes spine),
+    else the free-text microsoft_sku_reference (custom/unmapped entries)."""
     rows = db.execute(
         select(models.CoverageMapEntry).where(
             models.CoverageMapEntry.engagement_id == engagement_id,
@@ -45,8 +47,15 @@ def _ratified_sku_outcomes(db: Session, engagement_id: str) -> dict[str, set[str
     ).scalars()
     out: dict[str, set[str]] = {}
     for r in rows:
-        out.setdefault(r.microsoft_sku_reference or "", set()).add(r.outcome_id)
+        out.setdefault(r.bundle_id or r.microsoft_sku_reference or "", set()).add(r.outcome_id)
     return out
+
+
+def _cover_key(db: Session, ref: str) -> str:
+    """Resolve a SKU/bundle reference string to its coverage key: the Bundle id if
+    it maps to a bundle, else the raw string. This is what bridges a scenario's
+    target or a license's sku_reference to the bundle-keyed coverage map."""
+    return bundles.resolve_bundle(db, ref) or (ref or "")
 
 
 def _ratified_thirdparty_outcomes(db: Session, engagement_id: str) -> dict[str, set[str]]:
@@ -126,7 +135,7 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
             target_unit_price_annual=_dec(s.target_unit_price_annual),
             in_scope=s.in_scope,
             target_covered_outcome_ids=frozenset(
-                sku_outcomes.get(s.target_sku_reference, set())
+                sku_outcomes.get(_cover_key(db, s.target_sku_reference), set())
             ),
         )
         for s in eng.scenarios
@@ -139,11 +148,6 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
         scenarios=scenarios,
         current_licenses=current_lines,
     )
-
-
-def _bundle_refs() -> list[str]:
-    """Candidate bundle sku_references from the seed library (is_bundle=true)."""
-    return [s["sku_reference"] for s in seeds.load_coverage()["skus"] if s.get("is_bundle")]
 
 
 def _catalog_annual_erp(db: Session, sku_reference: str) -> Decimal:
@@ -176,8 +180,10 @@ def analyze_persona_bundles(
     tp_outcomes = _ratified_thirdparty_outcomes(db, engagement_id)
     outcome_names = {o.id: o.name for o in eng.outcomes}
 
-    # Candidate bundles present in this engagement's coverage map.
-    candidate_refs = [r for r in _bundle_refs() if r in sku_outcomes]
+    # Candidate bundles = full bundles (kind='bundle') that have coverage here.
+    candidate_bundles = [
+        b for b in bundles.list_bundles(db) if b.kind == "bundle" and b.id in sku_outcomes
+    ]
 
     # Required outcomes = what the persona's current Microsoft licenses deliver
     # (the "don't lose capability" baseline used for gap detection). A line may be
@@ -188,7 +194,7 @@ def analyze_persona_bundles(
     required: set[str] = set()
     current_ms = Decimal("0")
     for line in persona_lines:
-        required |= sku_outcomes.get(line.sku_reference, set())
+        required |= sku_outcomes.get(_cover_key(db, line.sku_reference), set())
         line_total = Decimal(line.quantity_assigned) * _dec(line.unit_price_paid_annual)
         tagged = [pid for pid in line.persona_ids if pid in hc]
         tagged_hc = sum(hc[pid] for pid in tagged)
@@ -215,13 +221,13 @@ def analyze_persona_bundles(
 
     prices = prices or {}
     candidates = []
-    for ref in candidate_refs:
-        override = prices.get(ref)
-        price = Decimal(str(override)) if override is not None else _catalog_annual_erp(db, ref)
+    for b in candidate_bundles:
+        override = prices.get(b.name)
+        price = Decimal(str(override)) if override is not None else _catalog_annual_erp(db, b.name)
         candidates.append(
             CandidateBundle(
-                sku_reference=ref,
-                covered_outcome_ids=frozenset(sku_outcomes.get(ref, set())),
+                sku_reference=b.name,  # the bundle name is what a scenario targets
+                covered_outcome_ids=frozenset(sku_outcomes.get(b.id, set())),
                 target_unit_price_annual=price,
             )
         )

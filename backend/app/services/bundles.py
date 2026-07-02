@@ -59,3 +59,46 @@ def list_bundles(db: Session) -> list[models.Bundle]:
     return db.execute(
         select(models.Bundle).order_by(models.Bundle.sort_order, models.Bundle.name)
     ).scalars().all()
+
+
+def _norm(s: str) -> str:
+    return (s or "").lower().replace(" ", " ").replace("  ", " ").strip()
+
+
+# Legacy shortcodes / common aliases → bundle key, so existing scenario targets
+# and current-license references still resolve after the re-key.
+_ALIASES = {
+    "f1": "m365-f1", "f3": "m365-f3", "e3": "m365-e3", "e5": "m365-e5",
+    "e7": "m365-e7", "business premium": "m365-business-premium",
+    "entra id p2": "entra-id-p2", "defender for endpoint p2": "defender-endpoint-p2",
+    "defender for office 365 p2": "defender-office-p2", "sentinel": "sentinel",
+    "teams phone": "teams-phone", "power bi pro": "power-bi-pro",
+    "power automate premium": "power-automate-premium",
+}
+
+
+def resolve_bundle(db: Session, ref: str) -> str | None:
+    """Resolve a free-text SKU/bundle reference to a Bundle id, or None. Tiered:
+    exact key, legacy alias, exact bundle name, then a mapped catalog SKU whose
+    title matches. Read-only (assumes bundles are seeded)."""
+    if not ref:
+        return None
+    r = _norm(ref)
+    rows = db.execute(select(models.Bundle)).scalars().all()
+    by_key = {b.key: b.id for b in rows}
+    if r in by_key:
+        return by_key[r]
+    if r in _ALIASES and _ALIASES[r] in by_key:
+        return by_key[_ALIASES[r]]
+    for b in rows:
+        if _norm(b.name) == r:
+            return b.id
+    like = f"%{ref}%"
+    row = db.execute(
+        select(models.MicrosoftSku).where(
+            models.MicrosoftSku.bundle_id.isnot(None),
+            (models.MicrosoftSku.sku_title.ilike(like))
+            | (models.MicrosoftSku.product_title.ilike(like)),
+        )
+    ).scalars().first()
+    return row.bundle_id if row else None

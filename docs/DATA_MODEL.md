@@ -219,6 +219,12 @@ FK, UUID PK, cascade-deleted with the engagement.
   covered-population) is a deliberate open decision, so the math is unchanged.
 
 ### 4.7 CoverageMapEntry — the product↔outcome matrix
+> **Bundle-keyed (slice B):** Microsoft SKU coverage now carries `bundle_id` (the
+> canonical §4.4b Bundle it applies to); `microsoft_sku_reference` holds the bundle
+> name for display. The engine keys coverage by `bundle_id or microsoft_sku_reference`
+> and resolves scenario/license references through `services/bundles.resolve_bundle`
+> — so `Microsoft 365 E3`, `E3`, or a mapped catalog title all land on the same
+> coverage. Existing rows are backfilled onto bundles on startup.
 - **Identity:** `uuid`. **Scope:** engagement-scoped.
 - **Relationships:** hard FK `outcome_id`; **polymorphic product link** keyed by
   `product_kind`: `MicrosoftSku` → soft ref `microsoft_sku_reference` (string);

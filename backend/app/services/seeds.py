@@ -80,18 +80,24 @@ def seed_engagement(db: Session, engagement: models.Engagement) -> None:
         db.flush()  # assign id
         key_to_outcome[o.key] = row
 
-    coverage = load_coverage()["skus"]
-    for sku in coverage:
-        for entry in sku["coverage"]:
+    from . import bundles as bundles_service
+
+    bundle_by_key = {b.key: b for b in bundles_service.list_bundles(db)}
+    for item in load_coverage()["bundles"]:
+        bundle = bundle_by_key.get(item["bundle"])
+        if bundle is None:
+            continue  # coverage references a bundle not in the library
+        for entry in item["coverage"]:
             outcome = key_to_outcome.get(entry["outcome"])
             if outcome is None:
-                continue  # coverage references a key not in the current library
+                continue  # coverage references an outcome key not in the library
             db.add(
                 models.CoverageMapEntry(
                     engagement_id=engagement.id,
                     outcome_id=outcome.id,
                     product_kind="MicrosoftSku",
-                    microsoft_sku_reference=sku["sku_reference"],
+                    bundle_id=bundle.id,
+                    microsoft_sku_reference=bundle.name,  # display / back-compat
                     coverage=entry["coverage"],
                     ai_suggested=False,
                     ratified=True,  # default library is pre-ratified

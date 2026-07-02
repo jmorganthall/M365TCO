@@ -41,6 +41,7 @@ _LABELS = {
     "product_kind": "Product kind", "microsoft_sku_reference": "Microsoft SKU",
     "third_party_product_id": "Third-party product", "coverage": "Coverage",
     "ai_suggested": "AI-suggested", "ratified": "Ratified", "persona_id": "Persona",
+    "bundle_id": "Bundle",
     "target_sku_reference": "Target SKU", "target_unit_price_annual": "Target $/seat/yr",
     "in_scope": "In scope", "delta_annual": "Δ TCO/yr", "override": "Override",
     "override_reason": "Override reason", "residual_intent": "Residual intent",
@@ -113,9 +114,12 @@ def _registry():
 
 def inspect_engagement(db: Session, eng: models.Engagement) -> dict:
     eid = eng.id
+    from . import bundles as bundles_service
+
     personas = {p.id: p.name for p in eng.personas}
     outcomes = {o.id: o.name for o in eng.outcomes}
     products = {t.id: t.name for t in eng.third_party_products}
+    bundle_names = {b.id: b.name for b in bundles_service.list_bundles(db)}
 
     # Cache soft-SKU resolutions against the catalog.
     _sku_cache: dict[str, str | None] = {}
@@ -147,6 +151,8 @@ def inspect_engagement(db: Session, eng: models.Engagement) -> dict:
             return {"label": outcomes.get(value, f"{value} — missing"), "ok": value in outcomes}
         if key == "third_party_product_id":
             return {"label": products.get(value, f"{value} — missing"), "ok": value in products}
+        if key == "bundle_id":
+            return {"label": bundle_names.get(value, f"{value} — missing"), "ok": value in bundle_names}
         if key in ("sku_reference", "target_sku_reference", "microsoft_sku_reference"):
             return resolve_sku(value)
         return None

@@ -65,6 +65,30 @@ def _backfill_license_persona_tags(db) -> None:
         db.commit()
 
 
+def _backfill_coverage_bundle_ids(db) -> None:
+    """One-time migration: resolve existing Microsoft SKU coverage rows onto a
+    Bundle id from their (shortcode) microsoft_sku_reference. Idempotent."""
+    from sqlalchemy import select
+
+    from . import models
+    from .services import bundles as bundles_service
+
+    rows = db.execute(
+        select(models.CoverageMapEntry).where(
+            models.CoverageMapEntry.product_kind == "MicrosoftSku",
+            models.CoverageMapEntry.bundle_id.is_(None),
+        )
+    ).scalars().all()
+    changed = False
+    for r in rows:
+        bid = bundles_service.resolve_bundle(db, r.microsoft_sku_reference or "")
+        if bid:
+            r.bundle_id = bid
+            changed = True
+    if changed:
+        db.commit()
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     import asyncio
@@ -84,6 +108,7 @@ async def lifespan(_app: FastAPI):
         ai_prompts_service.seed_defaults(db)
         bundles_service.seed_bundles(db)
         _backfill_license_persona_tags(db)
+        _backfill_coverage_bundle_ids(db)
     finally:
         db.close()
 

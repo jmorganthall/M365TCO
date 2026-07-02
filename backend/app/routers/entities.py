@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
-from ..services import compute, inspector
+from ..services import bundles, compute, inspector
 
 router = APIRouter(prefix="/api/engagements/{engagement_id}", tags=["entities"])
 
@@ -288,6 +288,10 @@ def list_coverage(engagement_id: str, db: Session = Depends(get_db)):
 def create_coverage(engagement_id: str, payload: schemas.CoverageIn, db: Session = Depends(get_db)):
     _require_engagement(db, engagement_id)
     row = models.CoverageMapEntry(engagement_id=engagement_id, **payload.model_dump())
+    # Resolve Microsoft SKU coverage onto its bundle so it keys the same way the
+    # seeded coverage does (the SKU → Bundle → Outcomes spine).
+    if row.product_kind == "MicrosoftSku" and row.bundle_id is None:
+        row.bundle_id = bundles.resolve_bundle(db, row.microsoft_sku_reference or "")
     db.add(row)
     db.commit()
     db.refresh(row)

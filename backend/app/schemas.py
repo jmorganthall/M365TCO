@@ -166,6 +166,7 @@ class ThirdPartyOut(ORMModel):
 class CoverageIn(BaseModel):
     outcome_id: str
     product_kind: str  # MicrosoftSku | ThirdParty
+    bundle_id: Optional[str] = None
     microsoft_sku_reference: Optional[str] = None
     third_party_product_id: Optional[str] = None
     coverage: str = "Full"
@@ -177,6 +178,7 @@ class CoverageOut(ORMModel):
     id: str
     outcome_id: str
     product_kind: str
+    bundle_id: Optional[str]
     microsoft_sku_reference: Optional[str]
     third_party_product_id: Optional[str]
     coverage: str
