@@ -9,6 +9,7 @@ import ThirdParty from './components/ThirdParty.jsx'
 import CoverageMap from './components/CoverageMap.jsx'
 import Scenarios from './components/Scenarios.jsx'
 import Readout from './components/Readout.jsx'
+import DataInspector from './components/DataInspector.jsx'
 import AdminPanel from './components/AdminPanel.jsx'
 
 const STEPS = [
@@ -18,6 +19,7 @@ const STEPS = [
   ['coverage', '4 · Coverage Map'],
   ['scenarios', '5 · Scenarios'],
   ['readout', '6 · Readout'],
+  ['data', 'Data'],
 ]
 
 export default function App() {
@@ -105,6 +107,7 @@ export default function App() {
             {tab === 'coverage' && <CoverageMap engagement={active} meta={meta} />}
             {tab === 'scenarios' && <Scenarios engagement={active} meta={meta} />}
             {tab === 'readout' && <Readout engagement={active} />}
+            {tab === 'data' && <DataInspector engagement={active} meta={meta} />}
           </div>
         )}
       </main>

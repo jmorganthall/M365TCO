@@ -11,9 +11,18 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
-from ..services import compute
+from ..services import compute, inspector
 
 router = APIRouter(prefix="/api/engagements/{engagement_id}", tags=["entities"])
+
+
+@router.get("/inspect")
+def inspect_data(engagement_id: str, db: Session = Depends(get_db)):
+    """Live, read-only view of the whole engagement data model for the GUI Data
+    inspector: every object, every persisted field (classified), references
+    resolved, plus the input → engine → output flow."""
+    eng = _require_engagement(db, engagement_id)
+    return inspector.inspect_engagement(db, eng)
 
 
 def _require_engagement(db: Session, engagement_id: str) -> models.Engagement:
