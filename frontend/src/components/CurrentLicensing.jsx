@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api, usd } from '../api'
+import { api, usd, pct } from '../api'
 import SkuCombobox from './SkuCombobox.jsx'
 
 // Prices are stored annualized (the engine works in annual USD); the UI edits
@@ -20,13 +20,81 @@ function MonthlyPriceInput({ annual, onCommit, style }) {
   )
 }
 
+// One license line. The row shows the common case (fully assigned); the ▸
+// expander reveals the non-standard modifiers — shelfware (assigned below
+// purchased), discount, price basis, persona — so they don't clutter the row.
+function LicenseRow({ l, meta, personas, update, remove }) {
+  const [open, setOpen] = useState(false)
+  const fullyAssigned = l.quantity_assigned === l.quantity_purchased
+  const personaName = personas.find((p) => p.id === l.persona_id)?.name
+  const chips = []
+  if (!fullyAssigned) chips.push(<span key="a" className="badge warn">{l.quantity_assigned}/{l.quantity_purchased} assigned</span>)
+  if (l.discount_pct) chips.push(<span key="d" className="badge muted">−{pct(l.discount_pct)}</span>)
+  if (l.price_basis && l.price_basis !== 'Unknown') chips.push(<span key="b" className="badge muted">{l.price_basis}</span>)
+  if (personaName) chips.push(<span key="p" className="badge muted">{personaName}</span>)
+
+  // Editing quantity keeps a fully-assigned line fully assigned; once shelfware
+  // is set (assigned ≠ purchased), the two move independently.
+  const setQty = (v) => {
+    const q = Number(v)
+    const patch = { quantity_purchased: q }
+    if (fullyAssigned) patch.quantity_assigned = q
+    update(l.id, patch)
+  }
+
+  return (
+    <>
+      <tr>
+        <td><button className="ghost sm" title="Adjustments" onClick={() => setOpen(!open)}>{open ? '▾' : '▸'}</button></td>
+        <td><SkuCombobox value={l.sku_reference}
+          onChange={(v) => update(l.id, { sku_reference: v })}
+          onSelectSku={(sku) => sku && update(l.id, { unit_price_paid_annual: sku.annual_unit_price, source_tag: 'ListPrice' })} /></td>
+        <td className="num"><input type="number" style={{ width: 80 }} value={l.quantity_purchased}
+          onChange={(e) => setQty(e.target.value)} /></td>
+        <td className="num"><MonthlyPriceInput annual={l.unit_price_paid_annual} style={{ width: 100 }}
+          onCommit={(annual) => update(l.id, { unit_price_paid_annual: annual })} /></td>
+        <td><div className="pill-list">
+          {chips.length ? chips : <span className="muted" style={{ fontSize: '.75rem' }}>fully assigned</span>}
+        </div></td>
+        <td className="num"><button className="danger sm" onClick={() => remove(l.id)}>Remove</button></td>
+      </tr>
+      {open && (
+        <tr>
+          <td></td>
+          <td colSpan={5} style={{ background: 'var(--panel2)' }}>
+            <div className="grid c4" style={{ padding: '.4rem 0' }}>
+              <div><label>Assigned (deployed)</label>
+                <input type="number" value={l.quantity_assigned}
+                  onChange={(e) => update(l.id, { quantity_assigned: Number(e.target.value) })} />
+                <small className="src">Below purchased = shelfware.</small></div>
+              <div><label>Discount</label>
+                <input type="number" step="0.05" value={l.discount_pct ?? ''} placeholder="e.g. 0.15"
+                  onChange={(e) => update(l.id, { discount_pct: e.target.value === '' ? null : Number(e.target.value) })} />
+                <small className="src">Fraction off list (0.15 = 15%). Recorded on the readout.</small></div>
+              <div><label>Price basis</label>
+                <select value={l.price_basis} onChange={(e) => update(l.id, { price_basis: e.target.value })}>
+                  {(meta?.price_basis || []).map((s) => <option key={s}>{s}</option>)}
+                </select></div>
+              <div><label>Persona</label>
+                <select value={l.persona_id || ''} onChange={(e) => update(l.id, { persona_id: e.target.value || null })}>
+                  <option value="">—</option>
+                  {personas.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select></div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
+
 export default function CurrentLicensing({ engagement, meta }) {
   const base = `/api/engagements/${engagement.id}/current-licenses`
   const [items, setItems] = useState([])
   const [personas, setPersonas] = useState([])
   const [err, setErr] = useState('')
   const blank = {
-    sku_reference: '', quantity_purchased: 0, quantity_assigned: 0,
+    sku_reference: '', quantity: 0,
     unit_price_paid_annual: 0, price_basis: 'Unknown', persona_id: '', source_tag: 'CustomerStated',
   }
   const [form, setForm] = useState(blank)
@@ -83,12 +151,14 @@ export default function CurrentLicensing({ engagement, meta }) {
   async function add() {
     if (!form.sku_reference.trim()) return
     try {
+      const qty = Number(form.quantity) || 0
       await api.post(base, {
-        ...form,
-        persona_id: form.persona_id || null,
-        quantity_purchased: Number(form.quantity_purchased),
-        quantity_assigned: Number(form.quantity_assigned),
+        sku_reference: form.sku_reference,
+        // Default fully assigned; expand a line to model shelfware.
+        quantity_purchased: qty, quantity_assigned: qty,
         unit_price_paid_annual: Number(form.unit_price_paid_annual),
+        price_basis: form.price_basis, persona_id: form.persona_id || null,
+        source_tag: form.source_tag,
       })
       setForm(blank); load()
     } catch (e) { setErr(e.message) }
@@ -99,7 +169,6 @@ export default function CurrentLicensing({ engagement, meta }) {
   async function remove(id) {
     try { await api.del(`${base}/${id}`); load() } catch (e) { setErr(e.message) }
   }
-  const personaName = (id) => personas.find((p) => p.id === id)?.name || '—'
 
   return (
     <div className="card">
@@ -175,36 +244,12 @@ export default function CurrentLicensing({ engagement, meta }) {
 
       <table>
         <thead><tr>
-          <th>SKU</th><th className="num">Purchased</th><th className="num">Assigned</th>
-          <th className="num">Monthly $/seat</th><th>Basis</th><th>Persona</th><th></th>
+          <th></th><th>SKU</th><th className="num">Qty</th>
+          <th className="num">Monthly $/seat</th><th>Adjustments</th><th></th>
         </tr></thead>
         <tbody>
           {items.map((l) => (
-            <tr key={l.id}>
-              <td><SkuCombobox value={l.sku_reference}
-                onChange={(v) => update(l.id, { sku_reference: v })}
-                onSelectSku={(sku) => sku && update(l.id, {
-                  unit_price_paid_annual: sku.annual_unit_price, source_tag: 'ListPrice',
-                })} /></td>
-              <td className="num"><input type="number" style={{ width: 80 }} value={l.quantity_purchased}
-                onChange={(e) => update(l.id, { quantity_purchased: Number(e.target.value) })} /></td>
-              <td className="num"><input type="number" style={{ width: 80 }} value={l.quantity_assigned}
-                onChange={(e) => update(l.id, { quantity_assigned: Number(e.target.value) })} /></td>
-              <td className="num"><MonthlyPriceInput annual={l.unit_price_paid_annual} style={{ width: 100 }}
-                onCommit={(annual) => update(l.id, { unit_price_paid_annual: annual })} /></td>
-              <td>
-                <select value={l.price_basis} onChange={(e) => update(l.id, { price_basis: e.target.value })}>
-                  {(meta?.price_basis || []).map((s) => <option key={s}>{s}</option>)}
-                </select>
-              </td>
-              <td>
-                <select value={l.persona_id || ''} onChange={(e) => update(l.id, { persona_id: e.target.value || null })}>
-                  <option value="">—</option>
-                  {personas.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </td>
-              <td className="num"><button className="danger sm" onClick={() => remove(l.id)}>Remove</button></td>
-            </tr>
+            <LicenseRow key={l.id} l={l} meta={meta} personas={personas} update={update} remove={remove} />
           ))}
         </tbody>
       </table>
@@ -216,19 +261,16 @@ export default function CurrentLicensing({ engagement, meta }) {
             onSelectSku={(sku) => sku && setForm((f) => ({
               ...f, unit_price_paid_annual: sku.annual_unit_price, source_tag: 'ListPrice',
             }))} /></div>
-        <div><label>Assigned</label>
-          <input type="number" value={form.quantity_assigned}
-            onChange={(e) => setForm({ ...form, quantity_assigned: e.target.value })} /></div>
+        <div><label>Quantity</label>
+          <input type="number" value={form.quantity}
+            onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+          <small className="src">Assumed fully assigned; expand a line for shelfware.</small></div>
         <div><label>Monthly $/seat paid</label>
           <MonthlyPriceInput annual={form.unit_price_paid_annual}
             onCommit={(annual) => setForm((f) => ({ ...f, unit_price_paid_annual: annual }))} /></div>
-        <div><label>Persona</label>
-          <select value={form.persona_id} onChange={(e) => setForm({ ...form, persona_id: e.target.value })}>
-            <option value="">—</option>
-            {personas.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select></div>
+        <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+          <button onClick={add}>Add license line</button></div>
       </div>
-      <button style={{ marginTop: '.6rem' }} onClick={add}>Add license line</button>
     </div>
   )
 }
