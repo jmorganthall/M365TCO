@@ -322,6 +322,10 @@ class CoverageMapEntry(Base):
     product_kind: Mapped[str] = mapped_column(
         SAEnum(*PRODUCT_KINDS, name="product_kind")
     )
+    # For MicrosoftSku coverage: the canonical Bundle it applies to (the stable
+    # SKU → Bundle → Outcomes key). microsoft_sku_reference is kept for display /
+    # back-compat and holds the bundle name.
+    bundle_id: Mapped[str | None] = mapped_column(ForeignKey("bundles.id"), nullable=True, index=True)
     microsoft_sku_reference: Mapped[str | None] = mapped_column(String, nullable=True)
     third_party_product_id: Mapped[str | None] = mapped_column(
         ForeignKey("third_party_products.id"), nullable=True

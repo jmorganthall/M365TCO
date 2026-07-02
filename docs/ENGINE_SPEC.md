@@ -29,6 +29,12 @@ the data layer on input, never inside the engine.
 > the caller before hydration. They never reach the engine, so they can never
 > affect the math.
 
+> Coverage key (SKU → Bundle → Outcomes): Microsoft SKU coverage is keyed by a
+> **Bundle**, not an ambiguous SKU shortcode. The hydrator resolves a scenario's
+> `target_sku_reference` (and a current license's `sku_reference`) to a bundle and
+> looks up that bundle's covered outcomes, so a target and its coverage always
+> speak the same language (fixes "target names a SKU the coverage map doesn't").
+
 ## Derived per-product cost (6.5 managed split)
 
 ```
