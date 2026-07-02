@@ -121,6 +121,48 @@ def test_scenario_composes_base_plus_addons_with_discount(client):
     assert scen["addons"][0]["bundle_id"] == e5sec["id"]
 
 
+def test_edit_bundle_coverage_resolves_bundle_and_feeds_displacement(client):
+    """The GUI coverage editor: adding an outcome to a bundle's coverage (by bundle
+    name) resolves onto the bundle (bundle_id set, ratified) and immediately feeds
+    the displacement test — a scenario targeting that bundle now displaces a tool
+    delivering the newly-covered outcome."""
+    eng = client.post("/api/engagements", json={"customer_name": "Edit Cov"}).json()
+    eid = eng["id"]
+    kw = client.post(f"/api/engagements/{eid}/personas",
+                     json={"name": "KW", "headcount": 50}).json()
+
+    # A custom outcome no seeded bundle covers, plus a tool delivering it.
+    oc = client.post(f"/api/engagements/{eid}/outcomes",
+                     json={"name": "Bespoke Capability", "is_custom": True}).json()
+    tool = client.post(f"/api/engagements/{eid}/third-party",
+                       json={"name": "NicheTool", "raw_cost": 5000, "covered_count": 50}).json()
+    client.post(f"/api/engagements/{eid}/coverage",
+                json={"outcome_id": oc["id"], "product_kind": "ThirdParty",
+                      "third_party_product_id": tool["id"], "coverage": "Full", "ratified": True})
+
+    # Edit E3's coverage in the GUI: map the custom outcome onto the bundle by name.
+    entry = client.post(f"/api/engagements/{eid}/coverage",
+                        json={"outcome_id": oc["id"], "product_kind": "MicrosoftSku",
+                              "microsoft_sku_reference": "Microsoft 365 E3",
+                              "coverage": "Full", "ratified": True}).json()
+    assert entry["bundle_id"]        # resolved onto the E3 bundle, not left as free text
+    assert entry["ratified"] is True
+
+    # A scenario targeting E3 now displaces the tool (E3 covers the outcome via the edit).
+    client.post(f"/api/engagements/{eid}/scenarios",
+                json={"persona_id": kw["id"], "target_sku_reference": "Microsoft 365 E3",
+                      "target_unit_price_annual": 0, "in_scope": True})
+    result = client.post(f"/api/engagements/{eid}/compute").json()
+    disp = {d["third_party_product_id"]: d["disposition"] for d in result["dispositions"]}
+    assert disp[tool["id"]] == "FullyEliminated"
+
+    # Removing the coverage entry reverses it — the tool is no longer displaced.
+    client.request("DELETE", f"/api/engagements/{eid}/coverage/{entry['id']}")
+    result = client.post(f"/api/engagements/{eid}/compute").json()
+    disp = {d["third_party_product_id"]: d["disposition"] for d in result["dispositions"]}
+    assert disp[tool["id"]] == "Unchanged"
+
+
 def test_recommend_path_composes_base_plus_gap_closing_addon(client):
     """Recommend-a-path (bundle-analysis) composes a base bundle with the cheapest
     add-ons that close the persona's gaps, not just single SKUs. A persona on E5
