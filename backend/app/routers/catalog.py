@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..db import get_db
-from ..services import pricesheet
+from ..services import catalog_provenance, pricesheet
 
 router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 
@@ -64,9 +64,17 @@ async def import_csv(
         text = raw.decode("latin-1")
     version = catalog_version or (file.filename or "manual-import")
     try:
-        return pricesheet.import_price_sheet(db, text, version)
+        result = pricesheet.import_price_sheet(db, text, version)
     except pricesheet.PriceSheetError as exc:
         raise HTTPException(422, str(exc))
+    # Record provenance so freshness (Readout badge / staleness banner) counts
+    # this successful upload — a CSV operator should never read "not set · stale".
+    catalog_provenance.record_import(
+        db, source="CsvUpload",
+        sku_count=result["inserted"] + result["updated"],
+        catalog_version=version,
+    )
+    return result
 
 # Automated price-sheet acquisition now lives in the price-sync module
 # (app/pricesync/, interactive login, no stored token). This router keeps only

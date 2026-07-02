@@ -19,8 +19,8 @@ from sqlalchemy.orm import Session
 
 from .. import schemas
 from ..db import get_db
-from ..pricesync import auth, config, fetch, freshness, notify, storage
-from ..services import pricesheet, secrets
+from ..pricesync import auth, config, fetch, notify, storage
+from ..services import catalog_provenance, pricesheet, secrets
 
 router = APIRouter(tags=["pricesync"])
 
@@ -36,21 +36,12 @@ def _missing_config(cfg: config.PriceSyncConfig) -> list[str]:
     return [name for name, value in required.items() if not value]
 
 
-def _freshness_for(cfg: config.PriceSyncConfig) -> freshness.Freshness:
-    meta = storage.read_latest(cfg)
-    return freshness.classify(
-        meta.get("fetched_at") if meta else None,
-        meta.get("data_month") if meta else None,
-        aging_days=cfg.aging_days, stale_days=cfg.stale_days,
-        use_month_rule=cfg.use_month_rule,
-    )
-
-
 @router.get("/api/pricesync/status")
 def status(db: Session = Depends(get_db)):
-    """Freshness — automatic, local, no auth, no API call."""
+    """Freshness — automatic, local, no auth, no API call. Reflects the newest
+    successful pricing load across the CSV upload and price-sync API paths."""
     cfg = config.load_config(db)
-    fr = _freshness_for(cfg)
+    fr, source_label = catalog_provenance.pricing_freshness(cfg, db)
     return {
         "configured": cfg.auth_configured,
         "missing": _missing_config(cfg),
@@ -60,6 +51,7 @@ def status(db: Session = Depends(get_db)):
         "state": fr.state,
         "age_days": fr.age_days,
         "data_month": fr.data_month,
+        "data_source": source_label,
         "current_month": fr.current_month,
         "reasons": fr.reasons,
         "latest": storage.read_latest(cfg),
@@ -224,14 +216,21 @@ def import_latest(catalog_version: str = "", db: Session = Depends(get_db)):
     meta = storage.read_latest(cfg) or {}
     version = catalog_version or meta.get("data_month", "pricesync")
     try:
-        return pricesheet.import_price_sheet(db, text, version)
+        result = pricesheet.import_price_sheet(db, text, version)
     except pricesheet.PriceSheetError as exc:
         raise HTTPException(422, str(exc))
+    catalog_provenance.record_import(
+        db, source="PriceSyncApi",
+        sku_count=result["inserted"] + result["updated"],
+        catalog_version=version, data_month=meta.get("data_month"),
+        file_name=meta.get("file_name", ""), sha256=meta.get("sha256", ""),
+    )
+    return result
 
 
 @router.post("/api/pricesync/check-notify")
 def check_notify(db: Session = Depends(get_db)):
     cfg = config.load_config(db)
-    fr = _freshness_for(cfg)
+    fr, _source = catalog_provenance.pricing_freshness(cfg, db)
     sent = notify.notify_if_stale(cfg, fr)
     return {"state": fr.state, "notified": sent}

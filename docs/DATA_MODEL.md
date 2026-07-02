@@ -141,6 +141,19 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Why global:** the catalog is large, versioned, and identical across customers;
   duplicating it per engagement would be the opposite of repeatable.
 
+### 4.4a CatalogImport — pricing-load provenance
+- **Identity:** `uuid`. **Scope:** **global** (one row per successful catalog load).
+- **Field ownership:** recorded on success by whichever path loaded pricing —
+  `source` (`CsvUpload` | `PriceSyncApi`), `data_month`, `catalog_version`,
+  `sku_count`, `imported_at`, and (price-sync only) `file_name`/`sha256`.
+- **Write-normalization / CRUD:** `services/catalog_provenance.py` — the single
+  `record_import()` writer, plus `latest()` and `pricing_freshness()`.
+- **Why it exists:** freshness (the Readout pricing badge and the staleness
+  banner) must reflect *whichever source ran most recently and worked*. A row
+  only exists for a load that succeeded, so "newest row across sources" is
+  exactly "newest successful pricing." Without it, a CSV-only operator's upload
+  was invisible to freshness and pricing read `not set · stale`.
+
 ### 4.5 CurrentMicrosoftLicense — the customer's existing licensing
 - **Identity:** `uuid`. **Scope:** engagement-scoped.
 - **Relationships:** **soft ref** to a `MicrosoftSku` via `sku_reference` (free

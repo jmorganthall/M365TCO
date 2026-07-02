@@ -7,7 +7,7 @@ Period normalization to annual happens on input (services), never at read time.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from sqlalchemy import (
     Boolean,
@@ -37,6 +37,8 @@ OVERRIDES = ("None", "ForceFullElimination")
 RESIDUAL_INTENTS = ("None", "IntendedOutOfScope")
 TERM_DURATIONS = ("P1M", "P1Y", "P3Y")
 BILLING_PLANS = ("Monthly", "Annual")
+# How a pricing-catalog load reached us. Both paths write a CatalogImport row.
+CATALOG_IMPORT_SOURCES = ("CsvUpload", "PriceSyncApi")
 
 
 def _uuid() -> str:
@@ -149,6 +151,33 @@ class MicrosoftSku(Base):
     market: Mapped[str] = mapped_column(String, default="US")
     currency: Mapped[str] = mapped_column(String, default="USD")
     catalog_version: Mapped[str] = mapped_column(String, default="")
+
+
+class CatalogImport(Base):
+    """Provenance for each SUCCESSFUL pricing-catalog load — the first-class
+    answer to "when was pricing last refreshed, and from where". Both the manual
+    CSV upload and the Partner Center price-sync API write one row here on
+    success (a failed import raises before recording, so a row always means a
+    load that worked). Freshness — the Readout pricing badge and the staleness
+    banner — reads the NEWEST row across sources, so whichever path ran most
+    recently and succeeded is the one that counts."""
+
+    __tablename__ = "catalog_imports"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    source: Mapped[str] = mapped_column(
+        SAEnum(*CATALOG_IMPORT_SOURCES, name="catalog_import_source")
+    )
+    # YYYY-MM the pricing is dated to (drives the freshness month rule).
+    data_month: Mapped[str] = mapped_column(String, default="")
+    catalog_version: Mapped[str] = mapped_column(String, default="")
+    sku_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Filesystem provenance, populated for the price-sync path (blank for CSV).
+    file_name: Mapped[str] = mapped_column(String, default="")
+    sha256: Mapped[str] = mapped_column(String, default="")
+    imported_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
 
 
 class CurrentMicrosoftLicense(Base):

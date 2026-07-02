@@ -154,3 +154,22 @@ def test_price_sheet_tab_delimited_import(client):
     e5 = next(s for s in skus if s["sku_title"] == "M365 E5 Tab")
     assert e5["annual_unit_price"] == 660.0
     assert e5["annual_erp_price"] == 684.0
+
+
+def test_csv_import_clears_stale_pricing_badge(client):
+    # A manual CSV upload must make pricing read fresh — no price-sync API auth,
+    # no cached sheet on disk. Freshness now counts the CSV import provenance.
+    csv_text = (
+        "ProductTitle,ProductId,SkuId,SkuTitle,TermDuration,BillingPlan,Market,"
+        "Currency,UnitPrice,EffectiveStartDate,EffectiveEndDate,ERP Price,Segment\n"
+        "Microsoft 365 E5,CFQ7TTC0LF8R,0042,M365 E5 Fresh,P1Y,Annual,US,USD,"
+        "660.00,2026-01-01,2026-12-31,684.00,Commercial\n"
+    )
+    files = {"file": ("price.csv", csv_text, "text/csv")}
+    assert client.post("/api/catalog/import-csv", files=files).status_code == 200
+
+    st = client.get("/api/pricesync/status").json()
+    # CSV-only operator: not "configured" for the API pull, but pricing is fresh.
+    assert st["state"] == "fresh"
+    assert st["data_month"]  # a data month is now set (not None/"")
+    assert st["data_source"] == "CSV upload"
