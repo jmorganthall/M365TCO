@@ -7,6 +7,7 @@ export default function CoverageMap({ engagement, meta }) {
   const [products, setProducts] = useState([])
   const [coverage, setCoverage] = useState([])
   const [aiEnabled, setAiEnabled] = useState(false)
+  const [bulkBusy, setBulkBusy] = useState(false)
   const [err, setErr] = useState('')
   const [newOutcome, setNewOutcome] = useState('')
 
@@ -50,6 +51,14 @@ export default function CoverageMap({ engagement, meta }) {
       load()
     } catch (e) { setErr(e.message) }
   }
+  async function aiSuggestAll() {
+    setErr(''); setBulkBusy(true)
+    try {
+      const res = await api.post(`/api/admin/engagements/${eid}/ai/suggest-coverage-all`)
+      load()
+      if (res.errors?.length) setErr(`Some products failed: ${res.errors.join('; ')}`)
+    } catch (e) { setErr(e.message) } finally { setBulkBusy(false) }
+  }
 
   return (
     <>
@@ -71,9 +80,20 @@ export default function CoverageMap({ engagement, meta }) {
       </div>
 
       <div className="card">
-        <h2>Third-party coverage</h2>
+        <div className="flex-between">
+          <h2 style={{ margin: 0 }}>Third-party coverage</h2>
+          {aiEnabled && products.length > 0 && (
+            <button className="ghost sm" onClick={aiSuggestAll}
+              disabled={bulkBusy || products.every((tp) => tpEntries(tp.id).length > 0)}>
+              {bulkBusy
+                ? 'Suggesting…'
+                : `✨ AI suggest all (${products.filter((tp) => tpEntries(tp.id).length === 0).length} unmapped)`}
+            </button>
+          )}
+        </div>
         <p className="hint">Map each product to the outcomes it delivers. A target SKU
-          displaces a product only when it covers every outcome the product delivers.</p>
+          displaces a product only when it covers every outcome the product delivers.
+          <b> "AI suggest all"</b> runs only on products with no coverage yet.</p>
         {products.length === 0 && <p className="muted">Add third-party products first.</p>}
         {products.map((tp) => (
           <div key={tp.id} className="card" style={{ background: 'var(--panel2)' }}>

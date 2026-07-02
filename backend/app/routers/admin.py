@@ -160,38 +160,22 @@ def ai_models():
         raise HTTPException(502, f"Could not list OpenRouter models: {exc}")
 
 
-@router.post("/engagements/{engagement_id}/ai/suggest-coverage")
-def suggest_coverage(
-    engagement_id: str, payload: schemas.CoverageSuggestRequest, db: Session = Depends(get_db)
-):
-    """AI coverage suggestion (PRD Section 9). Writes unratified ai_suggested
-    CoverageMapEntry rows; they do NOT feed the math until a human ratifies."""
-    eng = db.get(models.Engagement, engagement_id)
-    if eng is None:
-        raise HTTPException(404, "Engagement not found")
-    tp = db.get(models.ThirdPartyProduct, payload.third_party_product_id)
-    if tp is None or tp.engagement_id != engagement_id:
-        raise HTTPException(404, "Third-party product not found")
-    if not ai.is_enabled():
-        raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
-
+def _outcome_dicts(db: Session, engagement_id: str) -> list[dict]:
     outcomes = db.execute(
         select(models.Outcome).where(models.Outcome.engagement_id == engagement_id)
     ).scalars().all()
-    outcome_dicts = [{"id": o.id, "name": o.name, "description": o.description} for o in outcomes]
+    return [{"id": o.id, "name": o.name, "description": o.description} for o in outcomes]
 
-    try:
-        suggestions = ai.suggest_coverage(
-            tp.name, outcome_dicts,
-            instructions=ai_prompts.get_instructions(db, "coverage_suggest"),
-            model=_resolved_model(db),
-        )
-    except Exception as exc:  # network/model errors surface cleanly
-        raise HTTPException(502, f"AI suggestion failed: {exc}")
 
+def _suggest_and_persist(db, engagement_id, tp, outcome_dicts, instructions, model) -> list[dict]:
+    """Ask the model for tp's coverage and write unratified rows, skipping any
+    product+outcome that already has an entry. Flushes but does not commit — the
+    caller commits so a bulk run is one transaction. Returns the created rows."""
+    suggestions = ai.suggest_coverage(
+        tp.name, outcome_dicts, instructions=instructions, model=model
+    )
     created = []
     for s in suggestions:
-        # Skip if an entry already exists for this product+outcome.
         existing = db.execute(
             select(models.CoverageMapEntry).where(
                 models.CoverageMapEntry.engagement_id == engagement_id,
@@ -211,8 +195,77 @@ def suggest_coverage(
         db.flush()
         created.append({"id": row.id, "outcome_id": row.outcome_id,
                         "coverage": row.coverage, "rationale": s.get("rationale", "")})
+    return created
+
+
+@router.post("/engagements/{engagement_id}/ai/suggest-coverage")
+def suggest_coverage(
+    engagement_id: str, payload: schemas.CoverageSuggestRequest, db: Session = Depends(get_db)
+):
+    """AI coverage suggestion (PRD Section 9). Writes unratified ai_suggested
+    CoverageMapEntry rows; they do NOT feed the math until a human ratifies."""
+    eng = db.get(models.Engagement, engagement_id)
+    if eng is None:
+        raise HTTPException(404, "Engagement not found")
+    tp = db.get(models.ThirdPartyProduct, payload.third_party_product_id)
+    if tp is None or tp.engagement_id != engagement_id:
+        raise HTTPException(404, "Third-party product not found")
+    if not ai.is_enabled():
+        raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
+    try:
+        created = _suggest_and_persist(
+            db, engagement_id, tp, _outcome_dicts(db, engagement_id),
+            ai_prompts.get_instructions(db, "coverage_suggest"), _resolved_model(db),
+        )
+    except Exception as exc:  # network/model errors surface cleanly
+        raise HTTPException(502, f"AI suggestion failed: {exc}")
     db.commit()
     return {"suggestions": created}
+
+
+@router.post("/engagements/{engagement_id}/ai/suggest-coverage-all")
+def suggest_coverage_all(engagement_id: str, db: Session = Depends(get_db)):
+    """Bulk coverage suggestion: run it for every third-party product that has NO
+    coverage mapped yet. Products that already have any coverage entry are left
+    untouched. All output is unratified, same as the per-product button."""
+    eng = db.get(models.Engagement, engagement_id)
+    if eng is None:
+        raise HTTPException(404, "Engagement not found")
+    if not ai.is_enabled():
+        raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
+
+    products = db.execute(
+        select(models.ThirdPartyProduct).where(
+            models.ThirdPartyProduct.engagement_id == engagement_id
+        )
+    ).scalars().all()
+    mapped_ids = set(db.execute(
+        select(models.CoverageMapEntry.third_party_product_id).where(
+            models.CoverageMapEntry.engagement_id == engagement_id,
+            models.CoverageMapEntry.product_kind == "ThirdParty",
+        )
+    ).scalars().all())
+    unmapped = [tp for tp in products if tp.id not in mapped_ids]
+
+    outcome_dicts = _outcome_dicts(db, engagement_id)
+    instructions = ai_prompts.get_instructions(db, "coverage_suggest")
+    model = _resolved_model(db)
+    created_total, processed, errors = 0, 0, []
+    for tp in unmapped:
+        try:
+            created_total += len(
+                _suggest_and_persist(db, engagement_id, tp, outcome_dicts, instructions, model)
+            )
+            processed += 1
+        except Exception as exc:  # one bad product must not abort the rest
+            errors.append(f"{tp.name}: {exc}")
+    db.commit()
+    return {
+        "products_processed": processed,
+        "suggestions_created": created_total,
+        "skipped_mapped": len(products) - len(unmapped),
+        "errors": errors,
+    }
 
 
 @router.post("/engagements/{engagement_id}/ai/parse-third-party")
