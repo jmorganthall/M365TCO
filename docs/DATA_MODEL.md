@@ -175,6 +175,14 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Shape:** `name`, `kind` (`bundle` = a full base like *Microsoft 365 E3*;
   `addon` = a composable add-on like *E5 Security* whose `base_bundle_id` names the
   base it layers onto), `sort_order`.
+- **CRUD (slice E2-bundles):** `GET/POST/PATCH/DELETE …/catalog/bundles`, edited in
+  Settings → Staple bundles (inline name/kind/base/sort + add-bundle form). Shape
+  rules are enforced (a base has no parent; an add-on must point at an existing base
+  bundle). **Delete is blocked (409) while anything references the bundle** —
+  `MicrosoftSku.bundle_id`/`suggested_bundle_id`, `CoverageMapEntry.bundle_id`,
+  `ScenarioAddon.bundle_id`, or a child add-on — so a delete never orphans the spine.
+  `key` is immutable (the stable id); a deleted *seed* staple is re-created on the
+  next startup by `seed_bundles`, so delete is meaningful for operator-added bundles.
 - **Why it exists:** the stable identity between the many priced catalog SKUs and
   the outcomes. `MicrosoftSku.bundle_id` collapses catalog variants onto one
   bundle (many-to-one, AI-filled on import + editable); coverage/scenarios/licenses
@@ -183,7 +191,8 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Status:** coverage re-keys onto `bundle_id` (slice B); a scenario's future
   state composes a base bundle **+** add-ons (slice C), and recommend-a-path
   composes the cheapest gap-closing add-ons (slice D); the import-time AI mapper
-  proposes `MicrosoftSku.suggested_bundle_id` for operator review (slice E1).
+  proposes `MicrosoftSku.suggested_bundle_id` for operator review (slice E1); the
+  bundle library and per-engagement coverage map are GUI-editable (slice E2).
 
 ### 4.5 CurrentMicrosoftLicense — the customer's existing licensing
 - **Identity:** `uuid`. **Scope:** engagement-scoped.

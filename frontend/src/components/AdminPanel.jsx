@@ -558,6 +558,21 @@ function BundleLibrary({ onMsg, onErr }) {
     try { await api.post(`/api/catalog/skus/${sku.id}/reject-suggestion`); load() }
     catch (e) { onErr?.(e.message) }
   }
+  async function saveBundle(id, patch) {
+    onErr?.('')
+    try { await api.patch(`/api/catalog/bundles/${id}`, patch); load() } catch (e) { onErr?.(e.message) }
+  }
+  async function removeBundle(id) {
+    onErr?.('')
+    try { await api.del(`/api/catalog/bundles/${id}`); onMsg?.('Bundle deleted.'); load() }
+    catch (e) { onErr?.(e.message) }
+  }
+  async function addBundle(payload) {
+    onErr?.('')
+    try { await api.post('/api/catalog/bundles', payload); onMsg?.('Bundle added.'); load() }
+    catch (e) { onErr?.(e.message) }
+  }
+  const baseBundles = bundles.filter((b) => b.kind === 'bundle')
 
   return (
     <div className="card">
@@ -568,16 +583,21 @@ function BundleLibrary({ onMsg, onErr }) {
         </button>
       </div>
       <p className="hint">The canonical bundles that coverage, scenarios, and licenses resolve to.
-        Many priced catalog SKUs map onto one bundle. The AI mapper proposes a bundle for each
-        unmapped SKU — <b>suggestions are unratified</b> until you accept them.</p>
-      <div className="pill-list" style={{ marginBottom: '.6rem' }}>
-        {bundles.map((b) => (
-          <span key={b.id} className={`badge ${b.kind === 'addon' ? 'warn' : 'muted'}`}
-            title={b.kind === 'addon' ? `add-on to ${b.base_name}` : 'base bundle'}>
-            {b.name}{b.kind === 'addon' && b.base_name ? ` + ${b.base_name.replace('Microsoft 365 ', '')}` : ''}
-          </span>
-        ))}
-      </div>
+        Many priced catalog SKUs map onto one bundle. Edit the library below; the AI mapper proposes
+        a bundle for each unmapped SKU (<b>unratified</b> until you accept). Deleting a seeded staple
+        re-creates it on restart — delete is for operator-added bundles.</p>
+      <table style={{ marginBottom: '.5rem' }}>
+        <thead><tr>
+          <th>Name</th><th>Kind</th><th>Base</th><th className="num">Sort</th><th></th>
+        </tr></thead>
+        <tbody>
+          {bundles.map((b) => (
+            <BundleEditRow key={b.id} b={b} baseBundles={baseBundles}
+              onSave={(patch) => saveBundle(b.id, patch)} onDelete={() => removeBundle(b.id)} />
+          ))}
+        </tbody>
+      </table>
+      <NewBundleForm baseBundles={baseBundles} onAdd={addBundle} />
 
       {unmapped.length === 0 ? (
         <div className="muted" style={{ fontSize: '.82rem' }}>Every catalog SKU is mapped to a bundle. 🎉</div>
@@ -624,6 +644,75 @@ function BundleLibrary({ onMsg, onErr }) {
           {rows.length > 60 && <div className="muted" style={{ fontSize: '.78rem' }}>Showing 60 of {rows.length}.</div>}
         </>
       )}
+    </div>
+  )
+}
+
+// One editable bundle row: name/sort commit on blur; kind + base commit on change.
+// An add-on requires a base; switching to base clears it.
+function BundleEditRow({ b, baseBundles, onSave, onDelete }) {
+  const bases = baseBundles.filter((x) => x.id !== b.id)
+  return (
+    <tr>
+      <td>
+        <input defaultValue={b.name} style={{ minWidth: 180 }}
+          onBlur={(e) => e.target.value !== b.name && onSave({ name: e.target.value })} />
+      </td>
+      <td>
+        <select value={b.kind} onChange={(e) => onSave(
+          e.target.value === 'bundle'
+            ? { kind: 'bundle', base_bundle_id: null }
+            : { kind: 'addon', base_bundle_id: b.base_bundle_id || bases[0]?.id })}>
+          <option value="bundle">bundle</option>
+          <option value="addon">add-on</option>
+        </select>
+      </td>
+      <td>
+        {b.kind === 'addon' ? (
+          <select value={b.base_bundle_id || ''} onChange={(e) => onSave({ base_bundle_id: e.target.value })}>
+            {bases.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+          </select>
+        ) : <span className="muted">—</span>}
+      </td>
+      <td className="num">
+        <input type="number" defaultValue={b.sort_order} style={{ width: 60 }}
+          onBlur={(e) => Number(e.target.value) !== b.sort_order && onSave({ sort_order: Number(e.target.value) })} />
+      </td>
+      <td className="num"><button className="danger sm" onClick={onDelete}>Delete</button></td>
+    </tr>
+  )
+}
+
+// Add an operator-defined bundle. Key is the stable id (immutable after create).
+function NewBundleForm({ baseBundles, onAdd }) {
+  const [f, setF] = useState({ key: '', name: '', kind: 'bundle', base_bundle_id: '' })
+  const valid = f.key.trim() && f.name.trim() && (f.kind === 'bundle' || f.base_bundle_id)
+  function submit() {
+    onAdd({
+      key: f.key.trim(), name: f.name.trim(), kind: f.kind,
+      base_bundle_id: f.kind === 'addon' ? f.base_bundle_id : null,
+    })
+    setF({ key: '', name: '', kind: 'bundle', base_bundle_id: '' })
+  }
+  return (
+    <div className="toolbar" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
+      <div><label>Key (stable id)</label>
+        <input value={f.key} placeholder="acme-suite" onChange={(e) => setF({ ...f, key: e.target.value })} /></div>
+      <div style={{ flex: 2 }}><label>Name</label>
+        <input value={f.name} placeholder="Acme Suite" onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
+      <div><label>Kind</label>
+        <select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}>
+          <option value="bundle">bundle</option>
+          <option value="addon">add-on</option>
+        </select></div>
+      {f.kind === 'addon' && (
+        <div><label>Base</label>
+          <select value={f.base_bundle_id} onChange={(e) => setF({ ...f, base_bundle_id: e.target.value })}>
+            <option value="">Pick a base…</option>
+            {baseBundles.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+          </select></div>
+      )}
+      <button className="sm" disabled={!valid} onClick={submit}>+ Add bundle</button>
     </div>
   )
 }
