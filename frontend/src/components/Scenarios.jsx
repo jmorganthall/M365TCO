@@ -148,11 +148,14 @@ export default function Scenarios({ engagement, meta }) {
     try { setResult(await api.post(`/api/engagements/${eid}/compute`)) } catch (e) { setErr(e.message) }
   }
 
-  async function applyBundle(persona, skuRef, price) {
+  async function applyBundle(persona, { sku_reference, price, addons }) {
     setErr('')
     try {
       const existing = scenarioFor(persona.id)
-      const body = { target_sku_reference: skuRef, target_unit_price_annual: price, in_scope: true }
+      const body = {
+        target_sku_reference: sku_reference, target_unit_price_annual: price,
+        in_scope: true, addons: addons || [],
+      }
       if (existing) await api.patch(`/api/engagements/${eid}/scenarios/${existing.id}`, body)
       else await api.post(`/api/engagements/${eid}/scenarios`, { persona_id: persona.id, ...body })
       setAnalyzePersona(null)
@@ -200,7 +203,7 @@ export default function Scenarios({ engagement, meta }) {
 
       {analyzePersona && (
         <BundleAnalysis engagement={engagement} persona={analyzePersona}
-          onApply={(ref, price) => applyBundle(analyzePersona, ref, price)}
+          onApply={(composed) => applyBundle(analyzePersona, composed)}
           onClose={() => setAnalyzePersona(null)} />
       )}
       {result && (

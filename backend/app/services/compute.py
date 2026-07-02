@@ -171,10 +171,37 @@ def _catalog_annual_erp(db: Session, sku_reference: str) -> Decimal:
     return _dec(row.annual_erp_price) if row else Decimal("0")
 
 
+def _min_cost_cover(closeable: frozenset[str], options: list[dict]) -> list[dict]:
+    """Cheapest subset of add-on options whose combined gap-cover ⊇ `closeable`.
+
+    Exhaustive over the (tiny) set of add-ons that each close at least one gap —
+    the "cheapest add-ons that close the outcome gaps" of the recommend-a-path
+    composition. Returns the chosen option dicts (empty when nothing to close)."""
+    if not closeable:
+        return []
+    n = len(options)
+    best: tuple[Decimal, list[dict]] | None = None
+    for mask in range(1 << n):
+        covered: set[str] = set()
+        price = Decimal("0")
+        chosen: list[dict] = []
+        for i in range(n):
+            if mask & (1 << i):
+                covered |= options[i]["cover"]
+                price += options[i]["price"]
+                chosen.append(options[i])
+        if closeable.issubset(covered) and (best is None or price < best[0]):
+            best = (price, chosen)
+    return best[1] if best else []
+
+
 def analyze_persona_bundles(
     db: Session, engagement_id: str, persona_id: str, prices: dict | None = None
 ) -> dict:
-    """Evaluate every candidate bundle as this persona's target and rank by TCO."""
+    """Recommend a path for this persona: compose each staple base bundle with the
+    cheapest add-ons that close its capability gaps, then rank the composed
+    options by TCO. Each candidate is a base + gap-closing add-ons (outcomes
+    unioned, prices summed) — the same composition the scenario editor applies."""
     eng = db.get(models.Engagement, engagement_id)
     if eng is None:
         raise ValueError("Engagement not found")
@@ -186,10 +213,10 @@ def analyze_persona_bundles(
     tp_outcomes = _ratified_thirdparty_outcomes(db, engagement_id)
     outcome_names = {o.id: o.name for o in eng.outcomes}
 
-    # Candidate bundles = full bundles (kind='bundle') that have coverage here.
-    candidate_bundles = [
-        b for b in bundles.list_bundles(db) if b.kind == "bundle" and b.id in sku_outcomes
-    ]
+    # Base bundles = full bundles (kind='bundle') with coverage; add-ons layer on.
+    all_bundles = bundles.list_bundles(db)
+    base_bundles = [b for b in all_bundles if b.kind == "bundle" and b.id in sku_outcomes]
+    addon_bundles = [b for b in all_bundles if b.kind == "addon" and b.id in sku_outcomes]
 
     # Required outcomes = what the persona's current Microsoft licenses deliver
     # (the "don't lose capability" baseline used for gap detection). A line may be
@@ -226,17 +253,56 @@ def analyze_persona_bundles(
     tp_names = {tp.id: tp.name for tp in eng.third_party_products}
 
     prices = prices or {}
+
+    def _price(bundle) -> Decimal:
+        override = prices.get(bundle.name)
+        return Decimal(str(override)) if override is not None else _catalog_annual_erp(db, bundle.name)
+
+    # Compose each base bundle with the cheapest add-ons that close its gaps. An
+    # add-on is applicable to a base when it is à-la-carte (no base link) or its
+    # base link points at this base (e.g. E5 Security → E3). `composition[name]`
+    # carries the chosen add-ons back to the UI (and the "Use" apply).
     candidates = []
-    for b in candidate_bundles:
-        override = prices.get(b.name)
-        price = Decimal(str(override)) if override is not None else _catalog_annual_erp(db, b.name)
+    composition: dict[str, dict] = {}
+    for base in base_bundles:
+        base_cover = set(sku_outcomes.get(base.id, set()))
+        base_price = _price(base)
+        gaps = frozenset(required - base_cover)
+        options = []
+        for a in addon_bundles:
+            if a.base_bundle_id not in (None, base.id):
+                continue
+            cover = frozenset(sku_outcomes.get(a.id, set())) & gaps
+            if cover:  # only add-ons that close a real gap are worth composing
+                options.append({"bundle": a, "cover": cover, "price": _price(a)})
+        closeable = frozenset().union(*[o["cover"] for o in options]) if options else frozenset()
+        chosen = _min_cost_cover(closeable, options)
+
+        composed_cover = set(base_cover)
+        addon_total = Decimal("0")
+        chosen_meta = []
+        for o in chosen:
+            composed_cover |= sku_outcomes.get(o["bundle"].id, set())
+            addon_total += o["price"]
+            chosen_meta.append({
+                "bundle_id": o["bundle"].id,
+                "name": o["bundle"].name,
+                "unit_price_annual": float(o["price"]),
+                "closes": [outcome_names.get(x, x) for x in sorted(o["cover"])],
+            })
         candidates.append(
             CandidateBundle(
-                sku_reference=b.name,  # the bundle name is what a scenario targets
-                covered_outcome_ids=frozenset(sku_outcomes.get(b.id, set())),
-                target_unit_price_annual=price,
+                sku_reference=base.name,  # the bundle name is what a scenario targets
+                covered_outcome_ids=frozenset(composed_cover),
+                target_unit_price_annual=base_price + addon_total,
             )
         )
+        composition[base.name] = {
+            "base_bundle_id": base.id,
+            "base_price_annual": float(base_price),
+            "addons": chosen_meta,
+            "addon_total_annual": float(addon_total),
+        }
 
     analyses = analyze_bundles(
         persona.headcount, current_ms, frozenset(required),
@@ -269,6 +335,9 @@ def analyze_persona_bundles(
         "bundles": [
             {
                 "sku_reference": b.sku_reference,
+                "base_price_annual": composition.get(b.sku_reference, {}).get("base_price_annual", 0.0),
+                "addons": composition.get(b.sku_reference, {}).get("addons", []),
+                "addon_total_annual": composition.get(b.sku_reference, {}).get("addon_total_annual", 0.0),
                 "target_unit_price_annual": float(b.target_unit_price_annual),
                 "target_spend_annual": float(b.target_spend_annual),
                 "current_spend_annual": float(b.current_spend_annual),
