@@ -107,6 +107,8 @@ export default function AdminPanel({ onClose }) {
 
         <PricingSync onMsg={setMsg} onErr={setErr} />
 
+        <BundleLibrary />
+
         <div className="card">
           <h2>Microsoft SKU catalog</h2>
           <p className="hint">Import the new-commerce license-based price list CSV from the
@@ -513,6 +515,30 @@ function AiInstructions({ onMsg, onErr }) {
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// Read-only view of the staple bundle library — the SKU → Bundle → Outcomes
+// spine. Editing + the import-time SKU→bundle AI mapper land in later slices.
+function BundleLibrary() {
+  const [bundles, setBundles] = useState([])
+  useEffect(() => { api.get('/api/catalog/bundles').then(setBundles).catch(() => {}) }, [])
+  if (bundles.length === 0) return null
+  return (
+    <div className="card">
+      <h2>Staple bundles</h2>
+      <p className="hint">The canonical bundles that coverage, scenarios, and licenses resolve to.
+        Many priced catalog SKUs map onto one bundle; each bundle delivers a set of outcomes.
+        Add-ons layer onto a base bundle.</p>
+      <div className="pill-list">
+        {bundles.map((b) => (
+          <span key={b.id} className={`badge ${b.kind === 'addon' ? 'warn' : 'muted'}`}
+            title={b.kind === 'addon' ? `add-on to ${b.base_name}` : 'base bundle'}>
+            {b.name}{b.kind === 'addon' && b.base_name ? ` + ${b.base_name.replace('Microsoft 365 ', '')}` : ''}
+          </span>
+        ))}
+      </div>
     </div>
   )
 }
