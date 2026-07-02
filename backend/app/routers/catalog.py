@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models
 from ..db import get_db
+from ..services import bundles as bundles_service
 from ..services import catalog_provenance, pricesheet
 
 router = APIRouter(prefix="/api/catalog", tags=["catalog"])
@@ -38,9 +39,41 @@ def list_skus(
             "annual_unit_price": float(r.annual_unit_price),
             "annual_erp_price": float(r.annual_erp_price),
             "catalog_version": r.catalog_version,
+            "bundle_id": r.bundle_id,
         }
         for r in rows
     ]
+
+
+@router.get("/bundles")
+def list_bundles(db: Session = Depends(get_db)):
+    """The staple bundle library (the SKU → Bundle → Outcomes spine)."""
+    rows = bundles_service.list_bundles(db)
+    by_id = {b.id: b for b in rows}
+    return [
+        {
+            "id": b.id, "key": b.key, "name": b.name, "kind": b.kind,
+            "base_bundle_id": b.base_bundle_id,
+            "base_name": by_id[b.base_bundle_id].name if b.base_bundle_id in by_id else None,
+            "sort_order": b.sort_order,
+        }
+        for b in rows
+    ]
+
+
+@router.patch("/skus/{sku_id}/bundle")
+def set_sku_bundle(sku_id: str, bundle_id: str | None = Body(None, embed=True),
+                   db: Session = Depends(get_db)):
+    """Map a catalog SKU onto a staple bundle (or clear with null) — the SKU →
+    Bundle link the import-time AI mapper will fill; editable here."""
+    row = db.get(models.MicrosoftSku, sku_id)
+    if row is None:
+        raise HTTPException(404, "SKU not found")
+    if bundle_id is not None and db.get(models.Bundle, bundle_id) is None:
+        raise HTTPException(422, "Unknown bundle.")
+    row.bundle_id = bundle_id
+    db.commit()
+    return {"id": row.id, "bundle_id": row.bundle_id}
 
 
 @router.get("/version")

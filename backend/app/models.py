@@ -151,6 +151,30 @@ class MicrosoftSku(Base):
     market: Mapped[str] = mapped_column(String, default="US")
     currency: Mapped[str] = mapped_column(String, default="USD")
     catalog_version: Mapped[str] = mapped_column(String, default="")
+    # SKU → Bundle (many priced variants collapse to one staple bundle). Filled
+    # by the import-time AI mapper, editable. Null until classified.
+    bundle_id: Mapped[str | None] = mapped_column(
+        ForeignKey("bundles.id"), nullable=True, index=True
+    )
+
+
+class Bundle(Base):
+    """A staple Microsoft bundle — the stable identity the coverage map, scenarios,
+    and licenses all speak in, sitting between the many priced catalog SKUs and the
+    outcomes. `kind` is 'bundle' (a full base like Microsoft 365 E3) or 'addon' (a
+    composable add-on like E5 Security whose `base_bundle_id` names the base it
+    layers onto). Global + editable; seeded from seeds/bundles.json."""
+
+    __tablename__ = "bundles"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    key: Mapped[str] = mapped_column(String, unique=True)
+    name: Mapped[str] = mapped_column(String)
+    kind: Mapped[str] = mapped_column(String, default="bundle")  # bundle | addon
+    base_bundle_id: Mapped[str | None] = mapped_column(
+        ForeignKey("bundles.id"), nullable=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class CatalogImport(Base):

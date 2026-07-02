@@ -76,10 +76,13 @@ async def lifespan(_app: FastAPI):
 
     from .services import ai_prompts as ai_prompts_service
 
+    from .services import bundles as bundles_service
+
     db = SessionLocal()
     try:
         seeds_service.seed_default_outcomes(db)
         ai_prompts_service.seed_defaults(db)
+        bundles_service.seed_bundles(db)
         _backfill_license_persona_tags(db)
     finally:
         db.close()

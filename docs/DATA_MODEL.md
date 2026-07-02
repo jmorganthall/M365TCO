@@ -156,6 +156,21 @@ FK, UUID PK, cascade-deleted with the engagement.
   exactly "newest successful pricing." Without it, a CSV-only operator's upload
   was invisible to freshness and pricing read `not set · stale`.
 
+### 4.4b Bundle — the staple bundle spine (SKU → Bundle → Outcomes)
+- **Identity:** `uuid` plus a unique `key`. **Scope:** **global**, editable,
+  seeded from `seeds/bundles.json` (`services/bundles.py`).
+- **Shape:** `name`, `kind` (`bundle` = a full base like *Microsoft 365 E3*;
+  `addon` = a composable add-on like *E5 Security* whose `base_bundle_id` names the
+  base it layers onto), `sort_order`.
+- **Why it exists:** the stable identity between the many priced catalog SKUs and
+  the outcomes. `MicrosoftSku.bundle_id` collapses catalog variants onto one
+  bundle (many-to-one, AI-filled on import + editable); coverage/scenarios/licenses
+  resolve *through* the bundle rather than an ambiguous SKU shortcode. Kills the
+  "E3 = which E3?" problem and gives the displacement test a stable key.
+- **Roadmap:** coverage re-keys onto `bundle_id`; a scenario's future state becomes
+  a base bundle **+** add-ons the engine composes (union outcomes, sum price); an
+  import-time AI mapper fills `MicrosoftSku.bundle_id`.
+
 ### 4.5 CurrentMicrosoftLicense — the customer's existing licensing
 - **Identity:** `uuid`. **Scope:** engagement-scoped.
 - **Relationships:** **soft ref** to a `MicrosoftSku` via `sku_reference` (free
