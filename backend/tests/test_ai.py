@@ -70,6 +70,17 @@ def test_parse_current_licenses_requires_ai_enabled(client):
     assert r.status_code == 400
 
 
+def test_suggest_coverage_all_requires_ai_enabled(client):
+    eng = client.post("/api/engagements", json={"customer_name": "Bulk Co"}).json()
+    r = client.post(f"/api/admin/engagements/{eng['id']}/ai/suggest-coverage-all")
+    assert r.status_code == 400
+
+
+def test_suggest_coverage_all_unknown_engagement_404(client):
+    r = client.post("/api/admin/engagements/nope/ai/suggest-coverage-all")
+    assert r.status_code == 404
+
+
 def test_ai_prompts_seeded_and_editable(client):
     prompts = client.get("/api/admin/ai/prompts").json()["prompts"]
     keys = {p["key"] for p in prompts}
