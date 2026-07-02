@@ -242,6 +242,20 @@ existing first-class objects** — it stores no new state, which is the correct
 The chosen bundle is applied by writing a normal `PersonaScenario` (§4.8); the
 analysis itself is transient.
 
+### 4.10b AiPrompt — editable AI instructions
+- **Identity:** `uuid` PK plus a unique `key` per AI function
+  (`coverage_suggest`, `third_party_parse`). **Scope:** **global**.
+- **Field ownership:** seeded from `seeds/ai_prompts.json` (`label`,
+  `description`, `instructions`); the operator edits `instructions` at runtime and
+  can reset to the seeded default. `updated_at` stamps edits.
+- **Why first-class:** every AI call's system prompt is a row here, not a string
+  literal in `services/ai.py` — so what is consistently being sent is visible and
+  tunable in one place (Settings) when output isn't great. `services/ai_prompts.py`
+  is the uniform CRUD/seed module; new AI functions add a seed key and are
+  inserted on startup without disturbing operator edits to existing ones.
+- **Advisory only:** editing a prompt never changes stored engagement data; AI
+  output still passes through review (coverage ratification / parse preview).
+
 ### 4.11 Out-of-band data sets
 - **GlobalDefaults / Settings (PRD 5.10):** currently realized as the versioned
   **seed files** (`outcomes.json`, `coverage.json`) plus `config.py` constants and

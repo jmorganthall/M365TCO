@@ -1,8 +1,10 @@
-"""OpenRouter coverage-suggestion client (PRD Section 9).
+"""OpenRouter AI client (PRD Section 9).
 
 AI is advisory and never writes a final number. Coverage suggestions are written
-as CoverageMapEntry rows with ai_suggested=true, ratified=false. They do not
-enter the math until a human ratifies (enforced in compute hydration, not here).
+as CoverageMapEntry rows with ai_suggested=true, ratified=false; the third-party
+parser only returns rows for the operator to review. Nothing here enters the math
+until a human accepts it. Every function's system prompt is an editable AiPrompt
+passed in by the caller, not hard-coded.
 """
 
 from __future__ import annotations
@@ -54,32 +56,15 @@ def list_models() -> list[dict]:
     return out
 
 
-def suggest_coverage(
-    product_name: str, outcomes: list[dict], model: str | None = None
-) -> list[dict]:
-    """Ask the model which outcomes a third-party product delivers.
+def _chat_json(system: str, user: str, model: str | None) -> dict:
+    """POST a system+user turn to OpenRouter and return the parsed JSON object.
 
-    `outcomes` is a list of {id, name, description}. Returns a list of
-    {outcome_id, coverage, rationale}. Caller persists these as unratified
-    ai_suggested CoverageMapEntry rows. `model` overrides the configured model.
+    Shared by every AI function so the auth, JSON-mode, error surfacing, and
+    prose-wrapped-JSON salvage live in one place. `system` is the editable
+    instruction template (an AiPrompt); `user` is the call-specific payload.
     """
     api_key = _api_key()
     model = model or settings.openrouter_model
-
-    outcome_lines = "\n".join(
-        f"- id={o['id']} | {o['name']}: {o.get('description', '')}" for o in outcomes
-    )
-    system = (
-        "You are a Microsoft 365 licensing analyst assisting a TCO workshop. "
-        "Given a third-party security/productivity product and a list of capability "
-        "outcomes, decide which outcomes the product delivers. Respond ONLY with a "
-        "JSON object: {\"suggestions\": [{\"outcome_id\": \"...\", \"coverage\": "
-        "\"Full\"|\"Partial\", \"rationale\": \"short\"}]}. Include only outcomes the "
-        "product genuinely delivers. Coverage is Full if the product fully delivers "
-        "the outcome, Partial if it covers part of it."
-    )
-    user = f"Product: {product_name}\n\nOutcomes:\n{outcome_lines}"
-
     resp = httpx.post(
         f"{settings.openrouter_base_url}/chat/completions",
         headers={
@@ -108,11 +93,28 @@ def suggest_coverage(
         ) from exc
     content = resp.json()["choices"][0]["message"]["content"]
     try:
-        data = json.loads(content)
+        return json.loads(content)
     except json.JSONDecodeError:
         # Some models wrap JSON in prose; salvage the object.
         start, end = content.find("{"), content.rfind("}")
-        data = json.loads(content[start : end + 1]) if start >= 0 else {"suggestions": []}
+        return json.loads(content[start : end + 1]) if start >= 0 else {}
+
+
+def suggest_coverage(
+    product_name: str, outcomes: list[dict], instructions: str, model: str | None = None
+) -> list[dict]:
+    """Ask the model which outcomes a third-party product delivers.
+
+    `outcomes` is a list of {id, name, description}. `instructions` is the
+    editable system prompt (an AiPrompt). Returns a list of
+    {outcome_id, coverage, rationale}. Caller persists these as unratified
+    ai_suggested CoverageMapEntry rows. `model` overrides the configured model.
+    """
+    outcome_lines = "\n".join(
+        f"- id={o['id']} | {o['name']}: {o.get('description', '')}" for o in outcomes
+    )
+    user = f"Product: {product_name}\n\nOutcomes:\n{outcome_lines}"
+    data = _chat_json(instructions, user, model)
 
     valid_ids = {o["id"] for o in outcomes}
     out = []
@@ -126,3 +128,47 @@ def suggest_coverage(
                 }
             )
     return out
+
+
+def _to_number(value) -> float:
+    """Best-effort numeric parse: strips $, commas, spaces; non-numeric -> 0."""
+    if isinstance(value, (int, float)):
+        return float(value)
+    if not value:
+        return 0.0
+    cleaned = "".join(c for c in str(value) if c.isdigit() or c in ".-")
+    try:
+        return float(cleaned) if cleaned not in ("", "-", ".") else 0.0
+    except ValueError:
+        return 0.0
+
+
+def normalize_parsed_products(data: dict) -> list[dict]:
+    """Pure, model-output -> validated third-party rows. Kept separate from the
+    HTTP call so it can be unit-tested without a live model."""
+    out = []
+    for p in data.get("products", []) or []:
+        name = (p.get("name") or "").strip()
+        if not name:
+            continue  # a product must have a name
+        period = p.get("cost_period")
+        period = period if period in ("Monthly", "Annual") else "Annual"
+        out.append({
+            "name": name,
+            "vendor": (p.get("vendor") or "").strip(),
+            "raw_cost": _to_number(p.get("raw_cost")),
+            "cost_period": period,
+            "covered_count": int(_to_number(p.get("covered_count"))),
+        })
+    return out
+
+
+def parse_third_party(raw_text: str, instructions: str, model: str | None = None) -> list[dict]:
+    """Parse a block of customer-provided text into third-party product rows.
+
+    `instructions` is the editable system prompt (an AiPrompt). Returns a list of
+    {name, vendor, raw_cost, cost_period, covered_count} for the caller to show
+    for review — nothing is persisted here.
+    """
+    data = _chat_json(instructions, raw_text, model)
+    return normalize_parsed_products(data)

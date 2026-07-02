@@ -14,7 +14,7 @@ from .. import models, schemas
 from ..db import get_db
 from sqlalchemy import func
 
-from ..services import ai, defaults, secrets, seeds
+from ..services import ai, ai_prompts, defaults, secrets, seeds
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -182,7 +182,9 @@ def suggest_coverage(
 
     try:
         suggestions = ai.suggest_coverage(
-            tp.name, outcome_dicts, model=_resolved_model(db)
+            tp.name, outcome_dicts,
+            instructions=ai_prompts.get_instructions(db, "coverage_suggest"),
+            model=_resolved_model(db),
         )
     except Exception as exc:  # network/model errors surface cleanly
         raise HTTPException(502, f"AI suggestion failed: {exc}")
@@ -211,3 +213,61 @@ def suggest_coverage(
                         "coverage": row.coverage, "rationale": s.get("rationale", "")})
     db.commit()
     return {"suggestions": created}
+
+
+@router.post("/engagements/{engagement_id}/ai/parse-third-party")
+def parse_third_party(
+    engagement_id: str, payload: schemas.ThirdPartyParseRequest, db: Session = Depends(get_db)
+):
+    """Parse a block of customer-provided text into third-party product rows.
+    Advisory only — returns rows for the operator to review and edit; nothing is
+    persisted here (the UI creates products via the normal endpoint)."""
+    if db.get(models.Engagement, engagement_id) is None:
+        raise HTTPException(404, "Engagement not found")
+    if not ai.is_enabled():
+        raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
+    if not payload.raw_text.strip():
+        raise HTTPException(422, "No text to parse.")
+    try:
+        rows = ai.parse_third_party(
+            payload.raw_text,
+            instructions=ai_prompts.get_instructions(db, "third_party_parse"),
+            model=_resolved_model(db),
+        )
+    except Exception as exc:  # network/model errors surface cleanly
+        raise HTTPException(502, f"AI parse failed: {exc}")
+    return {"rows": rows}
+
+
+# ---- Editable AI instruction templates (AiPrompt) ----
+def _prompt_payload(row: models.AiPrompt) -> dict:
+    return {
+        "key": row.key, "label": row.label, "description": row.description,
+        "instructions": row.instructions,
+        "is_default": row.instructions == ai_prompts.default_instructions(row.key),
+    }
+
+
+@router.get("/ai/prompts")
+def list_ai_prompts(db: Session = Depends(get_db)):
+    """Every AI function's editable system instructions, so the operator can see
+    exactly what is consistently being sent and tune it."""
+    return {"prompts": [_prompt_payload(p) for p in ai_prompts.list_prompts(db)]}
+
+
+@router.patch("/ai/prompts/{key}")
+def update_ai_prompt(key: str, payload: schemas.AiPromptUpdate, db: Session = Depends(get_db)):
+    ai_prompts.seed_defaults(db)
+    row = ai_prompts.update_instructions(db, key, payload.instructions)
+    if row is None:
+        raise HTTPException(404, "AI prompt not found")
+    return _prompt_payload(row)
+
+
+@router.post("/ai/prompts/{key}/reset")
+def reset_ai_prompt(key: str, db: Session = Depends(get_db)):
+    ai_prompts.seed_defaults(db)
+    row = ai_prompts.reset_instructions(db, key)
+    if row is None:
+        raise HTTPException(404, "AI prompt not found")
+    return _prompt_payload(row)

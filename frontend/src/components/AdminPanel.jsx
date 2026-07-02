@@ -102,6 +102,7 @@ export default function AdminPanel({ onClose }) {
               </span>
             </div>
           )}
+          <AiInstructions onMsg={setMsg} onErr={setErr} />
         </div>
 
         <PricingSync onMsg={setMsg} onErr={setErr} />
@@ -462,6 +463,56 @@ function ModelCombobox({ models, value, onChange }) {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// Editable system instructions for every AI function — see and tune exactly
+// what is consistently being sent when the output isn't great.
+function AiInstructions({ onMsg, onErr }) {
+  const [prompts, setPrompts] = useState([])
+  const [drafts, setDrafts] = useState({})
+
+  const load = () => api.get('/api/admin/ai/prompts')
+    .then((r) => { setPrompts(r.prompts); setDrafts(Object.fromEntries(r.prompts.map((p) => [p.key, p.instructions]))) })
+    .catch(() => {})
+  useEffect(() => { load() }, [])
+
+  async function save(key) {
+    try {
+      await api.patch(`/api/admin/ai/prompts/${key}`, { instructions: drafts[key] })
+      onMsg('AI instructions saved.'); load()
+    } catch (e) { onErr(e.message) }
+  }
+  async function reset(key) {
+    try { await api.post(`/api/admin/ai/prompts/${key}/reset`); onMsg('Reset to default.'); load() }
+    catch (e) { onErr(e.message) }
+  }
+
+  if (prompts.length === 0) return null
+  return (
+    <div style={{ marginTop: '1rem' }}>
+      <h3 style={{ fontSize: '.9rem', marginBottom: '.3rem' }}>Instructions</h3>
+      <p className="hint">The system prompt sent for each AI function. Edit when the output
+        isn't great; reset restores the shipped default.</p>
+      {prompts.map((p) => {
+        const dirty = drafts[p.key] !== p.instructions
+        return (
+          <div key={p.key} className="card" style={{ background: 'var(--panel2)', marginBottom: '.5rem' }}>
+            <div className="flex-between">
+              <b>{p.label}</b>
+              {p.is_default ? <span className="badge muted">default</span> : <span className="badge warn">edited</span>}
+            </div>
+            <p className="hint" style={{ marginTop: '.2rem' }}>{p.description}</p>
+            <textarea rows={5} value={drafts[p.key] ?? ''} style={{ width: '100%', fontFamily: 'inherit' }}
+              onChange={(e) => setDrafts({ ...drafts, [p.key]: e.target.value })} />
+            <div className="toolbar" style={{ marginTop: '.4rem' }}>
+              <button className="sm" disabled={!dirty} onClick={() => save(p.key)}>Save</button>
+              <button className="ghost sm" disabled={p.is_default} onClick={() => reset(p.key)}>Reset to default</button>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
