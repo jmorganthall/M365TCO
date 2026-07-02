@@ -140,12 +140,35 @@ export default function AdminPanel({ onClose }) {
   )
 }
 
+function refreshTokenScript(cfg) {
+  const appId = cfg?.client_id || '<CLIENT_ID>'
+  const tenant = cfg?.tenant_id || '<TENANT_ID>'
+  return `# One-time: install the module (current user)
+Install-Module PartnerCenter -Scope CurrentUser -Force
+
+$appId    = "${appId}"
+$tenantId = "${tenant}"
+
+# App secret (skip these two lines if you use a certificate — see note below)
+$secret = ConvertTo-SecureString "<APP_SECRET>" -AsPlainText -Force
+$cred   = New-Object System.Management.Automation.PSCredential($appId, $secret)
+
+# Opens a browser for interactive MFA consent with the service account:
+$token = New-PartnerAccessToken -ApplicationId $appId -Credential $cred \`
+  -Scopes "https://api.partner.microsoft.com/user_impersonation" \`
+  -Tenant $tenantId -UseAuthorizationCode
+
+# Copy this value and paste it into "Refresh token" above:
+$token.RefreshToken`
+}
+
 function PricingSync({ onMsg, onErr }) {
   const [s, setS] = useState(null)
   const [cfg, setCfg] = useState(null)
   const [cred, setCred] = useState({ kind: 'certificate', value: '' })
   const [rt, setRt] = useState('')
   const [busy, setBusy] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
   const certFile = useRef()
 
   function load() {
@@ -306,6 +329,28 @@ function PricingSync({ onMsg, onErr }) {
               <button className="sm" disabled={!cfg.secret_store_enabled || !rt} onClick={saveRefreshToken}>Save token</button>
               {cfg.refresh_token_set && <button className="danger sm" onClick={clearRefreshToken}>Clear</button>}
             </div>
+            <button className="ghost sm" style={{ marginTop: '.4rem' }}
+              onClick={() => setShowHelp((v) => !v)}>
+              {showHelp ? 'Hide' : 'How do I get a refresh token?'}
+            </button>
+            {showHelp && (
+              <div style={{ marginTop: '.5rem' }}>
+                <p className="hint" style={{ margin: '.2rem 0' }}>
+                  Run this once in PowerShell on any machine with a browser. Sign in
+                  with the <b>MFA-enabled Admin Agent / Sales Agent service account</b>.
+                  It opens a browser for consent and prints a refresh token — paste that
+                  into the field above. (Uses <code>http://localhost</code> loopback, so
+                  it works from any workstation.)
+                </p>
+                <pre style={{ background: 'var(--bg)', border: '1px solid var(--border)',
+                  borderRadius: 6, padding: '.6rem', fontSize: '.72rem', overflowX: 'auto',
+                  whiteSpace: 'pre' }}>{refreshTokenScript(cfg)}</pre>
+                <small className="src">Using a certificate instead of a secret? Replace the
+                  credential lines with <code>-CertificateThumbprint &lt;thumbprint&gt;</code>
+                  on <code>New-PartnerAccessToken</code>. Ensure the app registration has the
+                  Partner Center API permission and the consent covered it.</small>
+              </div>
+            )}
           </div>
         </>
       )}
