@@ -343,8 +343,12 @@ class PersonaScenario(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     engagement_id: Mapped[str] = mapped_column(ForeignKey("engagements.id"))
     persona_id: Mapped[str] = mapped_column(ForeignKey("personas.id"))
+    # The BASE bundle of the future state. Add-on bundles layer on via scenario_addons.
     target_sku_reference: Mapped[str] = mapped_column(String, default="")
     target_unit_price_annual: Mapped[float] = mapped_column(Numeric(14, 4), default=0)
+    # Discount off the composed list price (fraction; 0.15 = 15%). Applies to
+    # base + add-ons to yield the net target price.
+    target_discount_pct: Mapped[float | None] = mapped_column(Numeric(6, 4), nullable=True)
     in_scope: Mapped[bool] = mapped_column(Boolean, default=True)
     # Derived fields cached for snapshotting; recomputed by the engine on demand.
     current_spend_annual: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
@@ -352,6 +356,24 @@ class PersonaScenario(Base):
     delta_annual: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
 
     engagement: Mapped[Engagement] = relationship(back_populates="scenarios")
+    addons: Mapped[list["ScenarioAddon"]] = relationship(
+        cascade="all, delete-orphan", back_populates="scenario"
+    )
+
+
+class ScenarioAddon(Base):
+    """An add-on bundle layered onto a scenario's base target. The engine composes
+    the future state = base + add-ons (union outcomes, sum prices). Each carries its
+    own list price; the scenario's discount applies to the composed total."""
+
+    __tablename__ = "scenario_addons"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    scenario_id: Mapped[str] = mapped_column(ForeignKey("persona_scenarios.id"), index=True)
+    bundle_id: Mapped[str] = mapped_column(ForeignKey("bundles.id"))
+    unit_price_annual: Mapped[float] = mapped_column(Numeric(14, 4), default=0)
+
+    scenario: Mapped[PersonaScenario] = relationship(back_populates="addons")
 
 
 class ProductDisposition(Base):

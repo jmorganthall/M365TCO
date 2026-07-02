@@ -151,11 +151,17 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
         ))
 
     for s in src.scenarios:
-        db.add(models.PersonaScenario(
+        ns = models.PersonaScenario(
             engagement_id=dst.id, persona_id=persona_map.get(s.persona_id, s.persona_id),
             target_sku_reference=s.target_sku_reference,
-            target_unit_price_annual=s.target_unit_price_annual, in_scope=s.in_scope,
-        ))
+            target_unit_price_annual=s.target_unit_price_annual,
+            target_discount_pct=s.target_discount_pct, in_scope=s.in_scope,
+        )
+        # Bundle ids are global, so add-ons carry across unchanged.
+        for ad in s.addons:
+            ns.addons.append(models.ScenarioAddon(
+                bundle_id=ad.bundle_id, unit_price_annual=ad.unit_price_annual))
+        db.add(ns)
 
     for d in src.dispositions:
         db.add(models.ProductDisposition(

@@ -45,9 +45,24 @@ def list_skus(
     ]
 
 
+def _bundle_list_price(db: Session, name: str) -> float:
+    """Best-effort catalog list price for a bundle name (annual, prefer P1Y)."""
+    like = f"%{name}%"
+    row = db.execute(
+        select(models.MicrosoftSku)
+        .where(
+            (models.MicrosoftSku.sku_title.ilike(like))
+            | (models.MicrosoftSku.product_title.ilike(like))
+        )
+        .order_by(models.MicrosoftSku.term_duration.desc())
+    ).scalars().first()
+    return float(row.annual_unit_price) if row else 0.0
+
+
 @router.get("/bundles")
 def list_bundles(db: Session = Depends(get_db)):
-    """The staple bundle library (the SKU → Bundle → Outcomes spine)."""
+    """The staple bundle library (the SKU → Bundle → Outcomes spine), with a
+    best-effort catalog list price so the UI can auto-fill target/add-on prices."""
     rows = bundles_service.list_bundles(db)
     by_id = {b.id: b for b in rows}
     return [
@@ -55,6 +70,7 @@ def list_bundles(db: Session = Depends(get_db)):
             "id": b.id, "key": b.key, "name": b.name, "kind": b.kind,
             "base_bundle_id": b.base_bundle_id,
             "base_name": by_id[b.base_bundle_id].name if b.base_bundle_id in by_id else None,
+            "list_price_annual": _bundle_list_price(db, b.name),
             "sort_order": b.sort_order,
         }
         for b in rows

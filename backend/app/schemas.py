@@ -187,17 +187,32 @@ class CoverageOut(ORMModel):
 
 
 # ---- Persona scenario ----
+class ScenarioAddonIn(BaseModel):
+    bundle_id: str
+    unit_price_annual: Decimal = Decimal("0")
+
+
+class ScenarioAddonOut(ORMModel):
+    id: str
+    bundle_id: str
+    unit_price_annual: Decimal
+
+
 class ScenarioIn(BaseModel):
     persona_id: str
     target_sku_reference: str = ""
     target_unit_price_annual: Decimal = Decimal("0")
+    target_discount_pct: Optional[Decimal] = None
     in_scope: bool = True
+    addons: list[ScenarioAddonIn] = []
 
 
 class ScenarioUpdate(BaseModel):
     target_sku_reference: Optional[str] = None
     target_unit_price_annual: Optional[Decimal] = None
+    target_discount_pct: Optional[Decimal] = None
     in_scope: Optional[bool] = None
+    addons: Optional[list[ScenarioAddonIn]] = None
 
 
 class ScenarioOut(ORMModel):
@@ -205,7 +220,9 @@ class ScenarioOut(ORMModel):
     persona_id: str
     target_sku_reference: str
     target_unit_price_annual: Decimal
+    target_discount_pct: Optional[Decimal]
     in_scope: bool
+    addons: list[ScenarioAddonOut]
     current_spend_annual: Decimal
     target_spend_annual: Decimal
     delta_annual: Decimal
