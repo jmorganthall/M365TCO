@@ -9,6 +9,7 @@ export default function CoverageMap({ engagement, meta }) {
   const [aiEnabled, setAiEnabled] = useState(false)
   const [bulkBusy, setBulkBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [msg, setMsg] = useState('')
   const [newOutcome, setNewOutcome] = useState('')
 
   function load() {
@@ -45,17 +46,27 @@ export default function CoverageMap({ engagement, meta }) {
     try { await api.del(`/api/engagements/${eid}/coverage/${id}`); load() } catch (e) { setErr(e.message) }
   }
   async function aiSuggest(tpId) {
-    setErr('')
+    setErr(''); setMsg('')
     try {
-      await api.post(`/api/admin/engagements/${eid}/ai/suggest-coverage`, { third_party_product_id: tpId })
+      const res = await api.post(`/api/admin/engagements/${eid}/ai/suggest-coverage`, { third_party_product_id: tpId })
       load()
+      if (!res.suggestions?.length) {
+        const name = products.find((p) => p.id === tpId)?.name || 'Product'
+        setMsg(`${name}: no correlation — the AI matched it to no outcomes.`)
+      }
     } catch (e) { setErr(e.message) }
   }
   async function aiSuggestAll() {
-    setErr(''); setBulkBusy(true)
+    setErr(''); setMsg(''); setBulkBusy(true)
     try {
       const res = await api.post(`/api/admin/engagements/${eid}/ai/suggest-coverage-all`)
       load()
+      const none = (res.results || []).filter((r) => r.created === 0).map((r) => r.name)
+      const mapped = (res.results || []).filter((r) => r.created > 0).length
+      let m = `Mapped ${mapped} product(s) · ${res.suggestions_created} suggestion(s).`
+      if (none.length) m += ` No correlation for: ${none.join(', ')}.`
+      if (res.skipped_mapped) m += ` ${res.skipped_mapped} already mapped, skipped.`
+      setMsg(m)
       if (res.errors?.length) setErr(`Some products failed: ${res.errors.join('; ')}`)
     } catch (e) { setErr(e.message) } finally { setBulkBusy(false) }
   }
@@ -94,6 +105,7 @@ export default function CoverageMap({ engagement, meta }) {
         <p className="hint">Map each product to the outcomes it delivers. A target SKU
           displaces a product only when it covers every outcome the product delivers.
           <b> "AI suggest all"</b> runs only on products with no coverage yet.</p>
+        {msg && <div className="popcheck" style={{ margin: '.4rem 0' }}>{msg}</div>}
         {products.length === 0 && <p className="muted">Add third-party products first.</p>}
         {products.map((tp) => (
           <div key={tp.id} className="card" style={{ background: 'var(--panel2)' }}>
