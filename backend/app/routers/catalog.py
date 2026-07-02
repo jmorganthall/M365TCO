@@ -7,9 +7,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models
+from ..config import settings
 from ..db import get_db
+from ..services import ai, ai_prompts, catalog_provenance, defaults, pricesheet
 from ..services import bundles as bundles_service
-from ..services import catalog_provenance, pricesheet
+
+
+def _resolved_model(db: Session) -> str:
+    """Operator's chosen model (defaults table) or the configured fallback."""
+    return defaults.get_defaults(db).openrouter_model or settings.openrouter_model
 
 router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 
@@ -18,12 +24,15 @@ router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 def list_skus(
     q: str | None = None,
     term: str | None = None,
+    unmapped: bool = False,
     limit: int = 200,
     db: Session = Depends(get_db),
 ):
     stmt = select(models.MicrosoftSku)
     if term:
         stmt = stmt.where(models.MicrosoftSku.term_duration == term)
+    if unmapped:  # not yet accepted onto a staple bundle (the mapper's work-list)
+        stmt = stmt.where(models.MicrosoftSku.bundle_id.is_(None))
     rows = db.execute(stmt.limit(limit)).scalars().all()
     if q:
         ql = q.lower()
@@ -40,6 +49,8 @@ def list_skus(
             "annual_erp_price": float(r.annual_erp_price),
             "catalog_version": r.catalog_version,
             "bundle_id": r.bundle_id,
+            "suggested_bundle_id": r.suggested_bundle_id,
+            "bundle_suggestion_reason": r.bundle_suggestion_reason,
         }
         for r in rows
     ]
@@ -80,16 +91,83 @@ def list_bundles(db: Session = Depends(get_db)):
 @router.patch("/skus/{sku_id}/bundle")
 def set_sku_bundle(sku_id: str, bundle_id: str | None = Body(None, embed=True),
                    db: Session = Depends(get_db)):
-    """Map a catalog SKU onto a staple bundle (or clear with null) — the SKU →
-    Bundle link the import-time AI mapper will fill; editable here."""
+    """Accept/set a SKU's staple bundle (or clear with null). This is the ratified
+    mapping; accepting resolves and clears any pending AI suggestion."""
     row = db.get(models.MicrosoftSku, sku_id)
     if row is None:
         raise HTTPException(404, "SKU not found")
     if bundle_id is not None and db.get(models.Bundle, bundle_id) is None:
         raise HTTPException(422, "Unknown bundle.")
     row.bundle_id = bundle_id
+    row.suggested_bundle_id = None  # a decision was made; suggestion is consumed
+    row.bundle_suggestion_reason = ""
     db.commit()
     return {"id": row.id, "bundle_id": row.bundle_id}
+
+
+@router.post("/skus/{sku_id}/reject-suggestion")
+def reject_sku_bundle_suggestion(sku_id: str, db: Session = Depends(get_db)):
+    """Dismiss the AI's bundle suggestion for a SKU without mapping it — leaves the
+    SKU unmapped so it resurfaces for manual mapping or a later AI pass."""
+    row = db.get(models.MicrosoftSku, sku_id)
+    if row is None:
+        raise HTTPException(404, "SKU not found")
+    row.suggested_bundle_id = None
+    row.bundle_suggestion_reason = ""
+    db.commit()
+    return {"id": row.id, "bundle_id": row.bundle_id}
+
+
+@router.post("/skus/suggest-bundles")
+def suggest_sku_bundles(limit: int = 150, db: Session = Depends(get_db)):
+    """Import-time AI mapper: classify catalog SKUs that aren't mapped to a staple
+    bundle yet onto one. Writes an UNRATIFIED suggested_bundle_id + reason; the
+    operator accepts (into bundle_id) or rejects in Settings → Staple bundles.
+    Nothing here enters the SKU → Bundle → Outcomes spine until accepted."""
+    if not ai.is_enabled():
+        raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
+    unmapped = db.execute(
+        select(models.MicrosoftSku).where(models.MicrosoftSku.bundle_id.is_(None))
+    ).scalars().all()
+    total_unmapped = len(unmapped)
+    batch = unmapped[:limit]  # cap the prompt size; report the remainder
+    if not batch:
+        return {"classified": 0, "suggested": 0, "unmapped_remaining": 0, "capped": False}
+
+    bundle_rows = bundles_service.list_bundles(db)
+    key_to_id = {b.key: b.id for b in bundle_rows}
+    sku_dicts = [
+        {"id": s.id, "product_title": s.product_title, "sku_title": s.sku_title}
+        for s in batch
+    ]
+    bundle_dicts = [{"key": b.key, "name": b.name, "kind": b.kind} for b in bundle_rows]
+    try:
+        mappings = ai.suggest_bundle_mappings(
+            sku_dicts, bundle_dicts,
+            instructions=ai_prompts.get_instructions(db, "sku_bundle_map"),
+            model=_resolved_model(db),
+        )
+    except Exception as exc:  # network/model errors surface cleanly
+        raise HTTPException(502, f"AI bundle mapping failed: {exc}")
+
+    by_id = {s.id: s for s in batch}
+    suggested = 0
+    for m in mappings:
+        row = by_id.get(m["sku_id"])
+        if row is None:
+            continue
+        bid = key_to_id.get(m["bundle_key"]) if m["bundle_key"] else None
+        row.suggested_bundle_id = bid
+        row.bundle_suggestion_reason = m["reason"]
+        if bid:
+            suggested += 1
+    db.commit()
+    return {
+        "classified": len(batch),
+        "suggested": suggested,
+        "unmapped_remaining": max(total_unmapped - len(batch), 0),
+        "capped": total_unmapped > len(batch),
+    }
 
 
 @router.get("/version")

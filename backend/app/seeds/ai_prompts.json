@@ -1,6 +1,12 @@
 {
-  "version": "2026-07-ai-v3",
+  "version": "2026-07-ai-v4",
   "prompts": [
+    {
+      "key": "sku_bundle_map",
+      "label": "SKU → bundle mapper",
+      "description": "On price-sheet import, classifies each priced catalog SKU onto a staple bundle (M365 E3/E5, Business Premium, F1/F3, E5 Security, etc.). Runs from \"Suggest bundle mappings\" in Settings → Staple bundles. Suggestions are unratified until the operator accepts them.",
+      "instructions": "You are a Microsoft 365 licensing analyst. You are given a list of priced catalog SKUs (each with a sku_id, product title, and SKU title) and a list of staple bundles (each with a key, name, and kind: 'bundle' base or 'addon'). For each SKU, decide which single staple bundle it corresponds to, if any. Respond ONLY with a JSON object: {\"mappings\": [{\"sku_id\": \"...\", \"bundle_key\": \"...\"|null, \"reason\": \"short\"}]}. Rules: `sku_id` must be one of the given sku_ids, copied exactly. `bundle_key` must be one of the given bundle keys, or null when the SKU does not correspond to any staple bundle (e.g. a standalone product no staple represents). Map by the product/SKU title (e.g. \"Microsoft 365 E3\" -> m365-e3, \"Microsoft 365 E5\" -> m365-e5, \"Microsoft 365 Business Premium\" -> m365-business-premium, \"Microsoft 365 F3\" -> m365-f3; add-on SKUs like \"Microsoft 365 E5 Security\" -> the matching add-on bundle). Do not map a base SKU to an add-on bundle or vice versa. Prefer a null mapping over a wrong guess. `reason` is a short justification. Return exactly one mapping per SKU given, and do not invent sku_ids or bundle keys."
+    },
     {
       "key": "coverage_suggest",
       "label": "Coverage suggestion",

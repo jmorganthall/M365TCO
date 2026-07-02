@@ -130,6 +130,51 @@ def suggest_coverage(
     return out
 
 
+def normalize_bundle_suggestions(
+    data: dict, valid_sku_ids: set[str], valid_bundle_keys: set[str]
+) -> list[dict]:
+    """Pure: model output -> validated [{sku_id, bundle_key, reason}]. Kept separate
+    from the HTTP call for unit testing. Drops rows whose sku_id isn't a real
+    catalog row (or is repeated), and clamps bundle_key to a known bundle — an
+    explicit non-match is kept as bundle_key=None so the caller records "no match"
+    rather than silently mapping."""
+    out, seen = [], set()
+    for m in data.get("mappings", []) or []:
+        sku_id = (m.get("sku_id") or "").strip()
+        if sku_id not in valid_sku_ids or sku_id in seen:
+            continue
+        seen.add(sku_id)
+        key = (m.get("bundle_key") or "").strip()
+        out.append({
+            "sku_id": sku_id,
+            "bundle_key": key if key in valid_bundle_keys else None,
+            "reason": (m.get("reason") or "").strip(),
+        })
+    return out
+
+
+def suggest_bundle_mappings(
+    skus: list[dict], bundles: list[dict], instructions: str, model: str | None = None
+) -> list[dict]:
+    """Classify priced catalog SKUs onto staple bundles. `skus` is a list of
+    {id, product_title, sku_title}; `bundles` is a list of {key, name, kind}.
+    `instructions` is the editable system prompt (an AiPrompt). Returns a list of
+    {sku_id, bundle_key|None, reason} for the caller to persist as UNRATIFIED
+    suggested_bundle_id — nothing is decided here."""
+    sku_lines = "\n".join(
+        f"- sku_id={s['id']} | {s.get('product_title', '')} | {s.get('sku_title', '')}"
+        for s in skus
+    )
+    bundle_lines = "\n".join(
+        f"- key={b['key']} | {b['name']} ({b['kind']})" for b in bundles
+    )
+    user = f"SKUs to classify:\n{sku_lines}\n\nBundles:\n{bundle_lines}"
+    data = _chat_json(instructions, user, model)
+    return normalize_bundle_suggestions(
+        data, {s["id"] for s in skus}, {b["key"] for b in bundles}
+    )
+
+
 def _to_number(value) -> float:
     """Best-effort numeric parse: strips $, commas, spaces; non-numeric -> 0."""
     if isinstance(value, (int, float)):

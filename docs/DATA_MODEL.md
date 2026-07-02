@@ -133,11 +133,24 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Field ownership:** ingested (`product_title`, `unit_price_monthly`,
   `erp_price_monthly`, …); derived-on-import (`annual_unit_price`,
   `annual_erp_price`, normalized per §8.3 of the PRD).
+- **Bundle mapping (SKU → Bundle spine):** `bundle_id` is the **ratified/accepted**
+  staple bundle a priced variant collapses onto (many-to-one, null until mapped).
+  `suggested_bundle_id` + `bundle_suggestion_reason` hold the import-time AI
+  mapper's **unratified** proposal — mirroring `CoverageMapEntry`'s
+  suggested/ratified split so a mapping never silently enters the spine. Accepting
+  moves the suggestion into `bundle_id` and clears it; rejecting clears it and
+  leaves the SKU unmapped. All three are surfaced/editable in Settings → Staple
+  bundles (`GET /api/catalog/skus`, `?unmapped=true` for the work-list).
 - **Write-normalization:** `services/pricesheet.py` — header-mapped parse,
   Commercial filter, annualization, upsert by natural key keeping the latest
-  active row by `effective_end_date`.
-- **CRUD:** read-only over the API (`GET /api/catalog/skus`); written only by the
-  CSV import and the price-sheet sync module.
+  active row by `effective_end_date`. The AI mapper lives in `services/ai.py`
+  (`suggest_bundle_mappings` + pure `normalize_bundle_suggestions`) with its
+  editable instructions in the `sku_bundle_map` AiPrompt.
+- **CRUD:** read-only pricing over the API (`GET /api/catalog/skus`); prices written
+  only by the CSV import and the price-sheet sync module. The bundle mapping is
+  written by `POST /api/catalog/skus/suggest-bundles` (AI, unratified),
+  `PATCH /api/catalog/skus/{id}/bundle` (accept/set), and
+  `POST /api/catalog/skus/{id}/reject-suggestion` (dismiss).
 - **Why global:** the catalog is large, versioned, and identical across customers;
   duplicating it per engagement would be the opposite of repeatable.
 
@@ -167,9 +180,10 @@ FK, UUID PK, cascade-deleted with the engagement.
   bundle (many-to-one, AI-filled on import + editable); coverage/scenarios/licenses
   resolve *through* the bundle rather than an ambiguous SKU shortcode. Kills the
   "E3 = which E3?" problem and gives the displacement test a stable key.
-- **Roadmap:** coverage re-keys onto `bundle_id`; a scenario's future state becomes
-  a base bundle **+** add-ons the engine composes (union outcomes, sum price); an
-  import-time AI mapper fills `MicrosoftSku.bundle_id`.
+- **Status:** coverage re-keys onto `bundle_id` (slice B); a scenario's future
+  state composes a base bundle **+** add-ons (slice C), and recommend-a-path
+  composes the cheapest gap-closing add-ons (slice D); the import-time AI mapper
+  proposes `MicrosoftSku.suggested_bundle_id` for operator review (slice E1).
 
 ### 4.5 CurrentMicrosoftLicense — the customer's existing licensing
 - **Identity:** `uuid`. **Scope:** engagement-scoped.

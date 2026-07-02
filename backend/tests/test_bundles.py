@@ -28,11 +28,22 @@ def test_map_catalog_sku_to_bundle(client):
     sku = next(s for s in skus if s["sku_id"] == "0001")
     assert sku["bundle_id"] is None  # unmapped until classified
 
+    # The SKU carries the suggested-mapping fields (unset until the AI mapper runs).
+    assert sku["suggested_bundle_id"] is None
+    assert sku["bundle_suggestion_reason"] == ""
+    # It shows up on the unmapped work-list the mapper UI drives.
+    assert any(s["id"] == sku["id"] for s in client.get("/api/catalog/skus?unmapped=true").json())
+
     e3 = next(b for b in client.get("/api/catalog/bundles").json() if b["key"] == "m365-e3")
     r = client.patch(f"/api/catalog/skus/{sku['id']}/bundle", json={"bundle_id": e3["id"]})
     assert r.status_code == 200 and r.json()["bundle_id"] == e3["id"]
-    skus = client.get("/api/catalog/skus").json()
-    assert next(s for s in skus if s["sku_id"] == "0001")["bundle_id"] == e3["id"]
+    assert next(s for s in client.get("/api/catalog/skus").json()
+                if s["id"] == sku["id"])["bundle_id"] == e3["id"]
+    # Now mapped, that row drops off the unmapped work-list.
+    assert not any(s["id"] == sku["id"] for s in client.get("/api/catalog/skus?unmapped=true").json())
+
+    # Rejecting a suggestion is a no-op when there is none, and returns cleanly.
+    assert client.post(f"/api/catalog/skus/{sku['id']}/reject-suggestion").status_code == 200
 
     # Unknown bundle rejected.
     assert client.patch(f"/api/catalog/skus/{sku['id']}/bundle", json={"bundle_id": "nope"}).status_code == 422
