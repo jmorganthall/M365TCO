@@ -257,6 +257,33 @@ class ThirdPartyProduct(Base):
     source_tag: Mapped[str] = _source_tag_col()
 
     engagement: Mapped[Engagement] = relationship(back_populates="third_party_products")
+    persona_links: Mapped[list["ThirdPartyPersona"]] = relationship(
+        cascade="all, delete-orphan", back_populates="product"
+    )
+
+    @property
+    def persona_ids(self) -> list[str]:
+        """The personas this product applies to (many-to-many tags)."""
+        return [pl.persona_id for pl in self.persona_links]
+
+
+class ThirdPartyPersona(Base):
+    """Association: a third-party product applies to a persona (a 'tag'), mirroring
+    CurrentLicensePersona. Many-to-many so one product can serve several
+    personas. A future `applies_pct` would live here for partial application."""
+
+    __tablename__ = "third_party_personas"
+    __table_args__ = (
+        UniqueConstraint("third_party_product_id", "persona_id", name="uq_tp_persona"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    third_party_product_id: Mapped[str] = mapped_column(
+        ForeignKey("third_party_products.id"), index=True
+    )
+    persona_id: Mapped[str] = mapped_column(ForeignKey("personas.id"), index=True)
+
+    product: Mapped[ThirdPartyProduct] = relationship(back_populates="persona_links")
 
 
 class CoverageMapEntry(Base):

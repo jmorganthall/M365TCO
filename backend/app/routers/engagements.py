@@ -119,6 +119,10 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
             is_managed=tp.is_managed, tooling_pct=tp.tooling_pct,
             effective_annual_cost=tp.effective_annual_cost, source_tag=tp.source_tag,
         )
+        for pid in tp.persona_ids:
+            mapped = persona_map.get(pid)
+            if mapped:
+                ntp.persona_links.append(models.ThirdPartyPersona(persona_id=mapped))
         db.add(ntp)
         db.flush()
         tp_map[tp.id] = ntp.id

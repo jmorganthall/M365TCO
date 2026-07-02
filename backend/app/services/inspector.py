@@ -96,7 +96,7 @@ def _registry():
         {"cls": models.ThirdPartyProduct, "type": "ThirdPartyProduct",
          "label": "Third-party products",
          "desc": "Non-Microsoft spend. Effective cost (managed split) feeds displacement.",
-         "primary": ["name", "annual_cost", "covered_count"], "extra": []},
+         "primary": ["name", "annual_cost", "covered_count"], "extra": ["persona_ids"]},
         {"cls": models.CoverageMapEntry, "type": "CoverageMapEntry", "label": "Coverage map",
          "desc": "Product ↔ outcome matrix. Only ratified entries reach the engine.",
          "primary": ["outcome_id", "coverage", "ratified"], "extra": []},

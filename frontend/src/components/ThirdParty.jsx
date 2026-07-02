@@ -1,6 +1,91 @@
 import React, { useEffect, useState } from 'react'
 import { api, usd, pct } from '../api'
 
+// One third-party product as an expandable line item (same form as Current
+// Licensing): core fields up top, an expander for the details — vendor, managed
+// split, renewal/commitment, provenance, and the persona tags it applies to.
+function ProductRow({ t, meta, personas, update, remove }) {
+  const [open, setOpen] = useState(false)
+  const tagIds = t.persona_ids || []
+  const tagNames = tagIds.map((id) => personas.find((p) => p.id === id)?.name).filter(Boolean)
+  const chips = []
+  if (t.is_managed) chips.push(<span key="m" className="badge muted">managed {pct(t.tooling_pct)}</span>)
+  tagNames.forEach((n, i) => chips.push(<span key={`p${i}`} className="badge muted">{n}</span>))
+  if (t.source_tag && t.source_tag !== 'CustomerStated') chips.push(<span key="s" className="badge muted">{t.source_tag}</span>)
+
+  const togglePersona = (pid) => {
+    const next = tagIds.includes(pid) ? tagIds.filter((x) => x !== pid) : [...tagIds, pid]
+    update(t.id, { persona_ids: next })
+  }
+
+  return (
+    <>
+      <tr>
+        <td><button className="ghost sm" title="Details" onClick={() => setOpen(!open)}>{open ? '▾' : '▸'}</button></td>
+        <td><input value={t.name} style={{ minWidth: 120 }} onChange={(e) => update(t.id, { name: e.target.value })} /></td>
+        <td className="num"><input type="number" style={{ width: 90 }} value={t.raw_cost}
+          onChange={(e) => update(t.id, { raw_cost: Number(e.target.value) })} /></td>
+        <td>
+          <select value={t.cost_period} onChange={(e) => update(t.id, { cost_period: e.target.value })}>
+            {(meta?.cost_periods || []).map((s) => <option key={s}>{s}</option>)}
+          </select>
+        </td>
+        <td className="num"><input type="number" style={{ width: 70 }} value={t.covered_count}
+          onChange={(e) => update(t.id, { covered_count: Number(e.target.value) })} /></td>
+        <td className="num">{usd(t.effective_annual_cost)}</td>
+        <td><div className="pill-list">
+          {chips.length ? chips : <span className="muted" style={{ fontSize: '.75rem' }}>unmanaged</span>}
+        </div></td>
+        <td className="num"><button className="danger sm" onClick={() => remove(t.id)}>Remove</button></td>
+      </tr>
+      {open && (
+        <tr>
+          <td></td>
+          <td colSpan={7} style={{ background: 'var(--panel2)' }}>
+            <div className="grid c4" style={{ padding: '.4rem 0' }}>
+              <div><label>Vendor</label>
+                <input value={t.vendor || ''} onChange={(e) => update(t.id, { vendor: e.target.value })} /></div>
+              <div><label>Managed</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input type="checkbox" style={{ width: 'auto' }} checked={t.is_managed}
+                    onChange={(e) => update(t.id, { is_managed: e.target.checked })} />
+                  <span className="muted" style={{ fontSize: '.78rem' }}>tool + management</span>
+                </label></div>
+              <div><label>Tooling %</label>
+                <input type="number" step="0.05" value={t.tooling_pct} disabled={!t.is_managed}
+                  onChange={(e) => update(t.id, { tooling_pct: Number(e.target.value) })} />
+                <small className="src">Applies only when managed.</small></div>
+              <div><label>Unit basis</label>
+                <select value={t.unit_basis} onChange={(e) => update(t.id, { unit_basis: e.target.value })}>
+                  {(meta?.unit_basis || ['Users', 'Devices', 'Units']).map((s) => <option key={s}>{s}</option>)}
+                </select></div>
+              <div><label>Renewal date</label>
+                <input type="date" value={t.renewal_date || ''}
+                  onChange={(e) => update(t.id, { renewal_date: e.target.value || null })} /></div>
+              <div><label>Commitment (months)</label>
+                <input type="number" value={t.commitment_term_months ?? ''} placeholder="—"
+                  onChange={(e) => update(t.id, { commitment_term_months: e.target.value === '' ? null : Number(e.target.value) })} /></div>
+              <div><label>Effective $/yr · $/unit/yr</label>
+                <div className="muted" style={{ paddingTop: '.35rem' }}>{usd(t.effective_annual_cost)} · {usd(t.per_unit_annual_cost)}</div>
+                <small className="src">Derived from cost, managed split, and covers.</small></div>
+              <div><label>Applies to (personas)</label>
+                <div className="pill-list">
+                  {personas.map((p) => (
+                    <button key={p.id} type="button"
+                      className={`badge ${tagIds.includes(p.id) ? 'pos' : 'muted'}`}
+                      style={{ cursor: 'pointer', border: 'none' }}
+                      onClick={() => togglePersona(p.id)}>{p.name}</button>
+                  ))}
+                  {personas.length === 0 && <span className="muted">No personas yet.</span>}
+                </div></div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
+
 export default function ThirdParty({ engagement, meta }) {
   const base = `/api/engagements/${engagement.id}/third-party`
   const [items, setItems] = useState([])
@@ -10,6 +95,7 @@ export default function ThirdParty({ engagement, meta }) {
     covered_count: 0, renewal_date: '', is_managed: false, tooling_pct: '', source_tag: 'CustomerStated',
   }
   const [form, setForm] = useState(blank)
+  const [personas, setPersonas] = useState([])
   // AI paste-to-parse state.
   const [aiEnabled, setAiEnabled] = useState(false)
   const [rawText, setRawText] = useState('')
@@ -20,6 +106,7 @@ export default function ThirdParty({ engagement, meta }) {
   useEffect(() => {
     load()
     api.get('/api/admin/ai/status').then((s) => setAiEnabled(s.enabled)).catch(() => {})
+    api.get(`/api/engagements/${engagement.id}/personas`).then(setPersonas).catch(() => {})
   }, [engagement.id])
 
   async function parseText() {
@@ -138,37 +225,12 @@ export default function ThirdParty({ engagement, meta }) {
 
       <table>
         <thead><tr>
-          <th>Product</th><th className="num">Cost</th><th>Period</th><th className="num">Covers</th>
-          <th>Managed</th><th className="num">Tooling%</th><th className="num">Effective $/yr</th>
-          <th className="num">$/unit/yr</th><th>Renewal</th><th></th>
+          <th></th><th>Product</th><th className="num">Cost</th><th>Period</th>
+          <th className="num">Covers</th><th className="num">Effective $/yr</th><th>Details</th><th></th>
         </tr></thead>
         <tbody>
           {items.map((t) => (
-            <tr key={t.id}>
-              <td><input value={t.name} onChange={(e) => update(t.id, { name: e.target.value })} style={{ minWidth: 110 }} /></td>
-              <td className="num"><input type="number" style={{ width: 90 }} value={t.raw_cost}
-                onChange={(e) => update(t.id, { raw_cost: Number(e.target.value) })} /></td>
-              <td>
-                <select value={t.cost_period} onChange={(e) => update(t.id, { cost_period: e.target.value })}>
-                  {(meta?.cost_periods || []).map((s) => <option key={s}>{s}</option>)}
-                </select>
-              </td>
-              <td className="num"><input type="number" style={{ width: 70 }} value={t.covered_count}
-                onChange={(e) => update(t.id, { covered_count: Number(e.target.value) })} /></td>
-              <td><input type="checkbox" style={{ width: 'auto' }} checked={t.is_managed}
-                onChange={(e) => update(t.id, { is_managed: e.target.checked })} /></td>
-              <td className="num">
-                {t.is_managed
-                  ? <input type="number" step="0.05" style={{ width: 70 }} value={t.tooling_pct}
-                      onChange={(e) => update(t.id, { tooling_pct: Number(e.target.value) })} />
-                  : <span className="muted">—</span>}
-              </td>
-              <td className="num">{usd(t.effective_annual_cost)}</td>
-              <td className="num">{usd(t.per_unit_annual_cost)}</td>
-              <td><input type="date" value={t.renewal_date || ''} style={{ width: 130 }}
-                onChange={(e) => update(t.id, { renewal_date: e.target.value || null })} /></td>
-              <td className="num"><button className="danger sm" onClick={() => remove(t.id)}>Remove</button></td>
-            </tr>
+            <ProductRow key={t.id} t={t} meta={meta} personas={personas} update={update} remove={remove} />
           ))}
         </tbody>
       </table>

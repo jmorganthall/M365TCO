@@ -189,9 +189,19 @@ FK, UUID PK, cascade-deleted with the engagement.
   (`effective = annual × tooling_pct` when managed, else `annual`), and computes
   `per_unit = effective / covered_count`. Every create/update calls it; nothing
   else computes these.
-- **CRUD:** `GET/POST/PATCH/DELETE …/third-party`.
+- **CRUD:** `GET/POST/PATCH/DELETE …/third-party`; `persona_ids` on the body
+  reconciles the tag set.
 - **Relationships:** target of `CoverageMapEntry` (third-party) and of exactly one
-  `ProductDisposition`.
+  `ProductDisposition`; **many-to-many** to `Persona` via `ThirdPartyPersona`
+  (§4.6a), mirroring current licensing.
+
+### 4.6a ThirdPartyPersona — product↔persona tags
+- **Identity:** `uuid` plus a unique `(third_party_product_id, persona_id)`.
+  **Scope:** engagement-scoped (via the product). **Association object** — the
+  many-to-many mirror of `CurrentLicensePersona`, so one product can serve several
+  personas and is the future home of partial application (`applies_pct`). Today the
+  tags are attribution/presentation; how they feed the engine (offset scoping vs
+  covered-population) is a deliberate open decision, so the math is unchanged.
 
 ### 4.7 CoverageMapEntry — the product↔outcome matrix
 - **Identity:** `uuid`. **Scope:** engagement-scoped.
