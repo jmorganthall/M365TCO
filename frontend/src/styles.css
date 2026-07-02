@@ -117,7 +117,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .pill-list { display: flex; flex-wrap: wrap; gap: .3rem; }
 small.src { color: var(--muted); font-size: .72rem; }
 
-/* ---- Searchable combobox (AI model picker) ---- */
+/* ---- Searchable combobox (AI model + SKU pickers) ---- */
 .combo { position: relative; }
 .combo-list {
   position: absolute; z-index: 60; top: 100%; left: 0; right: 0; margin-top: 2px;

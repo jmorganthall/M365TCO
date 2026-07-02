@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { api, usd } from '../api'
 import BundleAnalysis from './BundleAnalysis.jsx'
+import SkuCombobox from './SkuCombobox.jsx'
 
 export default function Scenarios({ engagement, meta }) {
   const eid = engagement.id
   const [personas, setPersonas] = useState([])
   const [scenarios, setScenarios] = useState([])
-  const [skus, setSkus] = useState([])
   const [result, setResult] = useState(null)
   const [err, setErr] = useState('')
   const [analyzePersona, setAnalyzePersona] = useState(null)
@@ -14,7 +14,6 @@ export default function Scenarios({ engagement, meta }) {
   function load() {
     api.get(`/api/engagements/${eid}/personas`).then(setPersonas)
     api.get(`/api/engagements/${eid}/scenarios`).then(setScenarios)
-    api.get('/api/catalog/skus?limit=500').then(setSkus).catch(() => {})
   }
   useEffect(() => { load() }, [eid])
 
@@ -48,9 +47,6 @@ export default function Scenarios({ engagement, meta }) {
       compute()
     } catch (e) { setErr(e.message) }
   }
-
-  // SKU references known to the seeded coverage library + catalog titles.
-  const skuOptions = [...new Set(['F1', 'F3', 'E3', 'E5', ...skus.map((s) => s.sku_title)])]
 
   return (
     <div className="card">
@@ -86,8 +82,8 @@ export default function Scenarios({ engagement, meta }) {
                 <td>{p.name}</td>
                 <td className="num">{p.headcount}</td>
                 <td>
-                  <input list="sku-list" value={s.target_sku_reference} style={{ minWidth: 130 }}
-                    onChange={(e) => update(s.id, { target_sku_reference: e.target.value })} />
+                  <SkuCombobox value={s.target_sku_reference} style={{ minWidth: 130 }}
+                    onChange={(v) => update(s.id, { target_sku_reference: v })} />
                 </td>
                 <td className="num"><input type="number" style={{ width: 110 }} value={s.target_unit_price_annual}
                   onChange={(e) => update(s.id, { target_unit_price_annual: Number(e.target.value) })} /></td>
@@ -111,10 +107,6 @@ export default function Scenarios({ engagement, meta }) {
           onApply={(ref, price) => applyBundle(analyzePersona, ref, price)}
           onClose={() => setAnalyzePersona(null)} />
       )}
-      <datalist id="sku-list">
-        {skuOptions.map((o) => <option key={o} value={o} />)}
-      </datalist>
-
       {result && (
         <div className="popcheck" style={{ marginTop: '1rem' }}>
           <b>Net TCO delta (in-scope):</b>{' '}
