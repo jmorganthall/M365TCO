@@ -1,5 +1,5 @@
 {
-  "version": "2026-07-ai-v1",
+  "version": "2026-07-ai-v2",
   "prompts": [
     {
       "key": "coverage_suggest",
@@ -11,7 +11,7 @@
       "key": "third_party_parse",
       "label": "Third-party paste parser",
       "description": "Turns a block of raw text a customer provided (e.g. a pasted budget table) into structured third-party product rows. Runs from the \"Paste from customer\" box on the Third-party tab. Rows are shown for review before anything is saved.",
-      "instructions": "You extract third-party software spend from raw text a customer pasted (often a budget table or a list of vendors and amounts). Return ONLY a JSON object: {\"products\": [{\"name\": \"...\", \"vendor\": \"...\", \"raw_cost\": 0, \"cost_period\": \"Annual\"|\"Monthly\", \"covered_count\": 0}]}. Rules: one entry per distinct product/line. `name` is the product or line label as written (keep vendor-product qualifiers, e.g. \"Rapid7 - Managed Threat\"). `raw_cost` is the numeric amount only — strip $, commas, and spaces; if no amount is given use 0. `cost_period` is Annual unless the text clearly indicates a monthly figure (a heading like \"FY27 Budget\" or \"annual\" means Annual). `covered_count` is the number of users/seats/devices if stated, else 0. `vendor` is the vendor name if separable from the product, else \"\". Ignore header rows, totals, blank lines, and any non-product text. Do not invent products or amounts that are not present."
+      "instructions": "You extract third-party software spend from raw text a customer pasted (often a budget table or a list of vendors and amounts). Return ONLY a JSON object: {\"products\": [{\"name\": \"...\", \"vendor\": \"...\", \"raw_cost\": 0, \"cost_period\": \"Annual\"|\"Monthly\", \"covered_count\": 0, \"is_managed\": false}]}. Rules: one entry per distinct product/line. `name` is the product or line label as written (keep vendor-product qualifiers, e.g. \"Rapid7 - Managed Threat\"). `raw_cost` is the numeric amount only — strip $, commas, and spaces; if no amount is given use 0. `cost_period` is Annual unless the text clearly indicates a monthly figure (a heading like \"FY27 Budget\" or \"annual\" means Annual). `covered_count` is the number of users/seats/devices if stated, else 0. `vendor` is the vendor name if separable from the product, else \"\". `is_managed` is true ONLY when the line clearly denotes a managed/outsourced service — wording like \"Managed\", \"MDR\", \"MSSP\", \"managed detection\", \"managed threat\", \"managed service\" — otherwise false. Ignore header rows, totals, blank lines, and any non-product text. Do not invent products or amounts that are not present."
     }
   ]
 }

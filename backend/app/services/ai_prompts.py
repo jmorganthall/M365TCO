@@ -27,20 +27,32 @@ def _seed() -> dict:
 
 
 def seed_defaults(db: Session) -> None:
-    """Insert any seed prompt whose key isn't in the table yet. Never overwrites
-    an existing row, so operator edits survive upgrades."""
-    existing = {
-        k for (k,) in db.execute(select(models.AiPrompt.key)).all()
+    """Reconcile the table with the seed file: insert missing prompts, and
+    refresh label/description/instructions for rows the operator hasn't edited so
+    an improved default reaches existing installs. Operator-edited rows (edited=
+    True) are never touched — their edits survive upgrades."""
+    by_key = {
+        r.key: r for r in db.execute(select(models.AiPrompt)).scalars().all()
     }
     changed = False
     for p in _seed()["prompts"]:
-        if p["key"] in existing:
-            continue
-        db.add(models.AiPrompt(
-            key=p["key"], label=p.get("label", p["key"]),
-            description=p.get("description", ""), instructions=p["instructions"],
-        ))
-        changed = True
+        row = by_key.get(p["key"])
+        if row is None:
+            db.add(models.AiPrompt(
+                key=p["key"], label=p.get("label", p["key"]),
+                description=p.get("description", ""), instructions=p["instructions"],
+                edited=False,
+            ))
+            changed = True
+        elif not row.edited and (
+            row.instructions != p["instructions"]
+            or row.label != p.get("label", p["key"])
+            or row.description != p.get("description", "")
+        ):
+            row.label = p.get("label", p["key"])
+            row.description = p.get("description", "")
+            row.instructions = p["instructions"]
+            changed = True
     if changed:
         db.commit()
 
@@ -70,17 +82,21 @@ def list_prompts(db: Session) -> list[models.AiPrompt]:
     ).scalars().all()
 
 
-def update_instructions(db: Session, key: str, instructions: str) -> models.AiPrompt | None:
+def update_instructions(
+    db: Session, key: str, instructions: str, *, edited: bool = True
+) -> models.AiPrompt | None:
     row = db.execute(
         select(models.AiPrompt).where(models.AiPrompt.key == key)
     ).scalar_one_or_none()
     if row is None:
         return None
     row.instructions = instructions
+    row.edited = edited
     db.commit()
     db.refresh(row)
     return row
 
 
 def reset_instructions(db: Session, key: str) -> models.AiPrompt | None:
-    return update_instructions(db, key, default_instructions(key))
+    # Clear the edited flag so a future improved default can flow in again.
+    return update_instructions(db, key, default_instructions(key), edited=False)
