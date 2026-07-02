@@ -8,7 +8,7 @@ import { api } from '../api'
 
 // Module-level cache so many rows share a single catalog fetch.
 let _skusPromise = null
-function loadSkus() {
+export function loadSkus() {
   if (!_skusPromise) {
     _skusPromise = api.get('/api/catalog/skus?limit=1000').catch(() => [])
   }
@@ -21,6 +21,25 @@ const SEED_REFS = ['F1', 'F3', 'E3', 'E5']
 // When several priced variants share a SKU title, keep the annual-term one —
 // its price is what auto-fill pulls, and annual commitment is the common baseline.
 const TERM_RANK = { P1Y: 0, P1M: 1, P3Y: 2 }
+
+const _norm = (s) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim()
+
+// Resolve a free-text product string to a catalog SKU row, or null. Tiered:
+// exact title/product match, then a substring match either direction. Annual-term
+// variants win. Callers use it to validate/canonicalize a pasted description.
+export function matchSku(skus, text) {
+  const q = _norm(text)
+  if (!q || !skus?.length) return null
+  const ranked = [...skus].sort(
+    (a, b) => (TERM_RANK[a.term_duration] ?? 9) - (TERM_RANK[b.term_duration] ?? 9)
+  )
+  const exact = ranked.find((s) => _norm(s.sku_title) === q || _norm(s.product_title) === q)
+  if (exact) return exact
+  return ranked.find((s) => {
+    const t = _norm(s.sku_title), p = _norm(s.product_title)
+    return (t && (t.includes(q) || q.includes(t))) || (p && (p.includes(q) || q.includes(p)))
+  }) || null
+}
 
 // onSelectSku(sku|null) fires when an option is picked: the catalog row for a
 // catalog title, or null for a free-typed / seeded-shortcode choice. Callers use
