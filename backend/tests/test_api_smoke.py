@@ -132,3 +132,25 @@ def test_price_sheet_csv_import(client):
     e5 = next(s for s in skus if "E5" in s["sku_title"])
     # P1Y 660.00 -> annual 660.00
     assert e5["annual_unit_price"] == 660.0
+
+
+def test_price_sheet_tab_delimited_import(client):
+    # Same data, tab-delimited (e.g. exported/round-tripped through Excel).
+    header = "\t".join([
+        "ChangeIndicator", "ProductTitle", "ProductId", "SkuId", "SkuTitle",
+        "TermDuration", "BillingPlan", "Market", "Currency", "UnitPrice",
+        "EffectiveStartDate", "EffectiveEndDate", "ERP Price", "Segment",
+    ])
+    row = "\t".join([
+        "New", "Microsoft 365 E5", "CFQ7TTC0LF8R", "0009", "M365 E5 Tab",
+        "P1Y", "Annual", "US", "USD", "660.00",
+        "2026-07-01", "2026-12-31", "684.00", "Commercial",
+    ])
+    files = {"file": ("price.csv", header + "\n" + row + "\n", "text/csv")}
+    resp = client.post("/api/catalog/import-csv", files=files, data={"catalog_version": "2026-07"})
+    assert resp.status_code == 200
+    assert resp.json()["inserted"] == 1
+    skus = client.get("/api/catalog/skus").json()
+    e5 = next(s for s in skus if s["sku_title"] == "M365 E5 Tab")
+    assert e5["annual_unit_price"] == 660.0
+    assert e5["annual_erp_price"] == 684.0

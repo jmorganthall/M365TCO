@@ -115,9 +115,26 @@ def _annualize(monthly: Decimal, term: str) -> tuple[Decimal, Decimal]:
     return per_month, per_year
 
 
+def _detect_delimiter(header_line: str) -> str:
+    """Pick the delimiter that splits the header into the most fields. Handles
+    comma, tab, and semicolon exports (Partner Center / Excel round-trips)."""
+    best, best_count = ",", 0
+    for candidate in (",", "\t", ";", "|"):
+        count = len(header_line.split(candidate))
+        if count > best_count:
+            best, best_count = candidate, count
+    return best
+
+
 def parse_rows(text: str) -> Iterable[dict]:
-    """Yield normalized SKU dicts from price-sheet CSV text (Commercial only)."""
-    reader = csv.reader(io.StringIO(text))
+    """Yield normalized SKU dicts from price-sheet text (Commercial only).
+
+    Delimiter is auto-detected from the header line so comma-, tab-, or
+    semicolon-delimited exports all work.
+    """
+    first_line = text.split("\n", 1)[0]
+    delimiter = _detect_delimiter(first_line)
+    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
     try:
         header = next(reader)
     except StopIteration:
