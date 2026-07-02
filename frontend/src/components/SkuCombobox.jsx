@@ -18,17 +18,28 @@ function loadSkus() {
 // Seeded coverage-library shortcodes that may not appear as catalog titles.
 const SEED_REFS = ['F1', 'F3', 'E3', 'E5']
 
-export default function SkuCombobox({ value, onChange, placeholder = 'type to filter SKUs…', style }) {
+// When several priced variants share a SKU title, keep the annual-term one —
+// its price is what auto-fill pulls, and annual commitment is the common baseline.
+const TERM_RANK = { P1Y: 0, P1M: 1, P3Y: 2 }
+
+// onSelectSku(sku|null) fires when an option is picked: the catalog row for a
+// catalog title, or null for a free-typed / seeded-shortcode choice. Callers use
+// it to pull pricing from the selected SKU; omit it if you only need the string.
+export default function SkuCombobox({ value, onChange, onSelectSku, placeholder = 'type to filter SKUs…', style }) {
   const [skus, setSkus] = useState([])
   const [open, setOpen] = useState(false)
   useEffect(() => { loadSkus().then(setSkus) }, [])
 
-  // Build deduped option list: seed shortcodes first, then catalog titles.
+  // Build deduped option list: seed shortcodes first, then catalog titles
+  // (annual-term variant winning each title so the pulled price is stable).
+  const ranked = [...skus].sort(
+    (a, b) => (TERM_RANK[a.term_duration] ?? 9) - (TERM_RANK[b.term_duration] ?? 9)
+  )
   const seen = new Set()
   const options = []
   for (const o of [
-    ...SEED_REFS.map((r) => ({ title: r, sub: 'seeded coverage' })),
-    ...skus.map((s) => ({ title: s.sku_title, sub: s.product_title })),
+    ...SEED_REFS.map((r) => ({ title: r, sub: 'seeded coverage', sku: null })),
+    ...ranked.map((s) => ({ title: s.sku_title, sub: s.product_title, sku: s })),
   ]) {
     if (!o.title || seen.has(o.title)) continue
     seen.add(o.title)
@@ -57,7 +68,7 @@ export default function SkuCombobox({ value, onChange, placeholder = 'type to fi
             <div
               key={o.title}
               className={`combo-item ${o.title === value ? 'sel' : ''}`}
-              onMouseDown={() => { onChange(o.title); setOpen(false) }}
+              onMouseDown={() => { onChange(o.title); onSelectSku && onSelectSku(o.sku); setOpen(false) }}
             >
               <span className="combo-id">{o.title}</span>
               {o.sub && o.sub !== o.title && <span className="combo-name">{o.sub}</span>}
