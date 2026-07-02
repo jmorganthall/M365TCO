@@ -2,6 +2,24 @@ import React, { useEffect, useState } from 'react'
 import { api, usd } from '../api'
 import SkuCombobox from './SkuCombobox.jsx'
 
+// Prices are stored annualized (the engine works in annual USD); the UI edits
+// per-seat MONTHLY. Convert at the boundary only.
+const annualToMonthly = (a) => (a ? Math.round((Number(a) / 12) * 100) / 100 : 0)
+const monthlyToAnnual = (m) => Math.round(Number(m || 0) * 12 * 100) / 100
+
+// Monthly $/seat cell: holds local text so decimals type cleanly, commits the
+// annualized value on blur. Resyncs when the stored value changes (e.g. a SKU
+// pick auto-fills the price).
+function MonthlyPriceInput({ annual, onCommit, style }) {
+  const [val, setVal] = useState(annualToMonthly(annual))
+  useEffect(() => { setVal(annualToMonthly(annual)) }, [annual])
+  return (
+    <input type="number" style={style} value={val}
+      onChange={(e) => setVal(e.target.value)}
+      onBlur={() => onCommit(monthlyToAnnual(val))} />
+  )
+}
+
 export default function CurrentLicensing({ engagement, meta }) {
   const base = `/api/engagements/${engagement.id}/current-licenses`
   const [items, setItems] = useState([])
@@ -51,18 +69,22 @@ export default function CurrentLicensing({ engagement, meta }) {
       <table>
         <thead><tr>
           <th>SKU</th><th className="num">Purchased</th><th className="num">Assigned</th>
-          <th className="num">Annual $/seat</th><th>Basis</th><th>Persona</th><th></th>
+          <th className="num">Monthly $/seat</th><th>Basis</th><th>Persona</th><th></th>
         </tr></thead>
         <tbody>
           {items.map((l) => (
             <tr key={l.id}>
-              <td><SkuCombobox value={l.sku_reference} onChange={(v) => update(l.id, { sku_reference: v })} /></td>
+              <td><SkuCombobox value={l.sku_reference}
+                onChange={(v) => update(l.id, { sku_reference: v })}
+                onSelectSku={(sku) => sku && update(l.id, {
+                  unit_price_paid_annual: sku.annual_unit_price, source_tag: 'ListPrice',
+                })} /></td>
               <td className="num"><input type="number" style={{ width: 80 }} value={l.quantity_purchased}
                 onChange={(e) => update(l.id, { quantity_purchased: Number(e.target.value) })} /></td>
               <td className="num"><input type="number" style={{ width: 80 }} value={l.quantity_assigned}
                 onChange={(e) => update(l.id, { quantity_assigned: Number(e.target.value) })} /></td>
-              <td className="num"><input type="number" style={{ width: 100 }} value={l.unit_price_paid_annual}
-                onChange={(e) => update(l.id, { unit_price_paid_annual: Number(e.target.value) })} /></td>
+              <td className="num"><MonthlyPriceInput annual={l.unit_price_paid_annual} style={{ width: 100 }}
+                onCommit={(annual) => update(l.id, { unit_price_paid_annual: annual })} /></td>
               <td>
                 <select value={l.price_basis} onChange={(e) => update(l.id, { price_basis: e.target.value })}>
                   {(meta?.price_basis || []).map((s) => <option key={s}>{s}</option>)}
@@ -83,13 +105,16 @@ export default function CurrentLicensing({ engagement, meta }) {
       <div className="grid c4" style={{ marginTop: '.8rem' }}>
         <div><label>SKU reference</label>
           <SkuCombobox value={form.sku_reference} placeholder="Microsoft 365 E3"
-            onChange={(v) => setForm({ ...form, sku_reference: v })} /></div>
+            onChange={(v) => setForm((f) => ({ ...f, sku_reference: v }))}
+            onSelectSku={(sku) => sku && setForm((f) => ({
+              ...f, unit_price_paid_annual: sku.annual_unit_price, source_tag: 'ListPrice',
+            }))} /></div>
         <div><label>Assigned</label>
           <input type="number" value={form.quantity_assigned}
             onChange={(e) => setForm({ ...form, quantity_assigned: e.target.value })} /></div>
-        <div><label>Annual $/seat paid</label>
-          <input type="number" value={form.unit_price_paid_annual}
-            onChange={(e) => setForm({ ...form, unit_price_paid_annual: e.target.value })} /></div>
+        <div><label>Monthly $/seat paid</label>
+          <MonthlyPriceInput annual={form.unit_price_paid_annual}
+            onCommit={(annual) => setForm((f) => ({ ...f, unit_price_paid_annual: annual }))} /></div>
         <div><label>Persona</label>
           <select value={form.persona_id} onChange={(e) => setForm({ ...form, persona_id: e.target.value })}>
             <option value="">—</option>
