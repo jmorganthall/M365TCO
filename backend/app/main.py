@@ -27,20 +27,15 @@ async def _daily_freshness_timer():
     import asyncio
 
     from .db import SessionLocal
-    from .pricesync import config as ps_config, freshness as ps_fresh, notify as ps_notify, storage as ps_storage
+    from .pricesync import config as ps_config, notify as ps_notify
+    from .services import catalog_provenance
 
     while True:
         db = SessionLocal()
         try:
             cfg = ps_config.load_config(db)
             if cfg.notify_webhook_url:
-                meta = ps_storage.read_latest(cfg)
-                fr = ps_fresh.classify(
-                    meta.get("fetched_at") if meta else None,
-                    meta.get("data_month") if meta else None,
-                    aging_days=cfg.aging_days, stale_days=cfg.stale_days,
-                    use_month_rule=cfg.use_month_rule,
-                )
+                fr, _source = catalog_provenance.pricing_freshness(cfg, db)
                 ps_notify.notify_if_stale(cfg, fr)
         except Exception:
             pass  # a monitoring loop must never crash the app

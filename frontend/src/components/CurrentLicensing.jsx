@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { api, usd } from '../api'
+import SkuCombobox from './SkuCombobox.jsx'
 
 export default function CurrentLicensing({ engagement, meta }) {
   const base = `/api/engagements/${engagement.id}/current-licenses`
@@ -55,7 +56,7 @@ export default function CurrentLicensing({ engagement, meta }) {
         <tbody>
           {items.map((l) => (
             <tr key={l.id}>
-              <td><input value={l.sku_reference} onChange={(e) => update(l.id, { sku_reference: e.target.value })} /></td>
+              <td><SkuCombobox value={l.sku_reference} onChange={(v) => update(l.id, { sku_reference: v })} /></td>
               <td className="num"><input type="number" style={{ width: 80 }} value={l.quantity_purchased}
                 onChange={(e) => update(l.id, { quantity_purchased: Number(e.target.value) })} /></td>
               <td className="num"><input type="number" style={{ width: 80 }} value={l.quantity_assigned}
@@ -81,8 +82,8 @@ export default function CurrentLicensing({ engagement, meta }) {
 
       <div className="grid c4" style={{ marginTop: '.8rem' }}>
         <div><label>SKU reference</label>
-          <input value={form.sku_reference} placeholder="Microsoft 365 E3"
-            onChange={(e) => setForm({ ...form, sku_reference: e.target.value })} /></div>
+          <SkuCombobox value={form.sku_reference} placeholder="Microsoft 365 E3"
+            onChange={(v) => setForm({ ...form, sku_reference: v })} /></div>
         <div><label>Assigned</label>
           <input type="number" value={form.quantity_assigned}
             onChange={(e) => setForm({ ...form, quantity_assigned: e.target.value })} /></div>

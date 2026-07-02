@@ -54,6 +54,12 @@ def _parse_dt(value) -> Optional[datetime]:
     return dt.astimezone(timezone.utc)
 
 
+def to_utc(value) -> Optional[datetime]:
+    """Public wrapper: parse an ISO string or datetime to an aware-UTC datetime
+    (or None). Used to compare timestamps across pricing sources."""
+    return _parse_dt(value)
+
+
 def classify(
     fetched_at,
     data_month: Optional[str],
