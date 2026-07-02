@@ -8,7 +8,7 @@ import { api } from '../api'
 
 // Module-level cache so many rows share a single catalog fetch.
 let _skusPromise = null
-function loadSkus() {
+export function loadSkus() {
   if (!_skusPromise) {
     _skusPromise = api.get('/api/catalog/skus?limit=1000').catch(() => [])
   }
@@ -21,6 +21,49 @@ const SEED_REFS = ['F1', 'F3', 'E3', 'E5']
 // When several priced variants share a SKU title, keep the annual-term one —
 // its price is what auto-fill pulls, and annual commitment is the common baseline.
 const TERM_RANK = { P1Y: 0, P1M: 1, P3Y: 2 }
+
+const _norm = (s) => (s || '').toLowerCase().replace(/\s+/g, ' ').trim()
+// Expand common license shorthand so "M365 E3" matches "Microsoft 365 E3".
+const _expand = (s) => _norm(s)
+  .replace(/\bm365\b/g, 'microsoft 365')
+  .replace(/\bo365\b/g, 'office 365')
+  .replace(/\bems\b/g, 'enterprise mobility security')
+const _tokens = (s) => _expand(s).replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(Boolean)
+const _subset = (a, b) => a.every((t) => b.includes(t))  // a ⊆ b
+
+// Resolve a free-text product string to a catalog SKU row, or null. Tiered so
+// stronger evidence wins and E3/E5-style codes never cross-match: (1) exact
+// title, (2) substring either direction, (3) token-subset either direction with
+// acronyms expanded. Annual-term variants win; closest token count breaks ties.
+export function matchSku(skus, text) {
+  const q = _norm(text)
+  if (!q || !skus?.length) return null
+  const ranked = [...skus].sort(
+    (a, b) => (TERM_RANK[a.term_duration] ?? 9) - (TERM_RANK[b.term_duration] ?? 9)
+  )
+  const exact = ranked.find((s) => _norm(s.sku_title) === q || _norm(s.product_title) === q)
+  if (exact) return exact
+
+  const sub = ranked.find((s) => {
+    const t = _norm(s.sku_title), p = _norm(s.product_title)
+    return (t && (t.includes(q) || q.includes(t))) || (p && (p.includes(q) || q.includes(p)))
+  })
+  if (sub) return sub
+
+  const qt = _tokens(text)
+  if (!qt.length) return null
+  let best = null, bestExtra = Infinity
+  for (const s of ranked) {
+    for (const cand of [s.sku_title, s.product_title]) {
+      const ct = _tokens(cand)
+      if (ct.length && (_subset(qt, ct) || _subset(ct, qt))) {
+        const extra = Math.abs(ct.length - qt.length)
+        if (extra < bestExtra) { best = s; bestExtra = extra }
+      }
+    }
+  }
+  return best
+}
 
 // onSelectSku(sku|null) fires when an option is picked: the catalog row for a
 // catalog title, or null for a free-typed / seeded-shortcode choice. Callers use

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { api, usd, pct } from '../api'
-import SkuCombobox from './SkuCombobox.jsx'
+import SkuCombobox, { loadSkus, matchSku } from './SkuCombobox.jsx'
 
 // Prices are stored annualized (the engine works in annual USD); the UI edits
 // per-seat MONTHLY. Convert at the boundary only.
@@ -23,11 +23,15 @@ function MonthlyPriceInput({ annual, onCommit, style }) {
 // One license line. The row shows the common case (fully assigned); the ▸
 // expander reveals the non-standard modifiers — shelfware (assigned below
 // purchased), discount, price basis, persona — so they don't clutter the row.
-function LicenseRow({ l, meta, personas, update, remove }) {
+function LicenseRow({ l, meta, personas, catalog, update, remove }) {
   const [open, setOpen] = useState(false)
   const fullyAssigned = l.quantity_assigned === l.quantity_purchased
   const personaName = personas.find((p) => p.id === l.persona_id)?.name
+  // Flag a SKU that doesn't correspond to any official catalog SKU (only when a
+  // price list is loaded to validate against).
+  const notInCatalog = catalog.length && (l.sku_reference || '').trim() && !matchSku(catalog, l.sku_reference)
   const chips = []
+  if (notInCatalog) chips.push(<span key="c" className="badge warn" title="No matching SKU in the imported price list">⚠ not in catalog</span>)
   if (!fullyAssigned) chips.push(<span key="a" className="badge warn">{l.quantity_assigned}/{l.quantity_purchased} assigned</span>)
   if (l.discount_pct) chips.push(<span key="d" className="badge muted">−{pct(l.discount_pct)}</span>)
   if (l.price_basis && l.price_basis !== 'Unknown') chips.push(<span key="b" className="badge muted">{l.price_basis}</span>)
@@ -48,7 +52,13 @@ function LicenseRow({ l, meta, personas, update, remove }) {
         <td><button className="ghost sm" title="Adjustments" onClick={() => setOpen(!open)}>{open ? '▾' : '▸'}</button></td>
         <td><SkuCombobox value={l.sku_reference}
           onChange={(v) => update(l.id, { sku_reference: v })}
-          onSelectSku={(sku) => sku && update(l.id, { unit_price_paid_annual: sku.annual_unit_price, source_tag: 'ListPrice' })} /></td>
+          onSelectSku={(sku) => {
+            // Only seed list price when the line has NO price yet — never clobber
+            // a captured customer/discounted rate when re-pointing the SKU.
+            if (sku && !Number(l.unit_price_paid_annual)) {
+              update(l.id, { unit_price_paid_annual: sku.annual_unit_price, source_tag: 'ListPrice' })
+            }
+          }} /></td>
         <td className="num"><input type="number" style={{ width: 80 }} value={l.quantity_purchased}
           onChange={(e) => setQty(e.target.value)} /></td>
         <td className="num"><MonthlyPriceInput annual={l.unit_price_paid_annual} style={{ width: 100 }}
@@ -103,6 +113,7 @@ export default function CurrentLicensing({ engagement, meta }) {
   const [rawText, setRawText] = useState('')
   const [parsing, setParsing] = useState(false)
   const [parsed, setParsed] = useState(null)
+  const [catalog, setCatalog] = useState([])  // price-list SKUs, for validation
 
   const load = () => {
     api.get(base).then(setItems).catch((e) => setErr(e.message))
@@ -111,6 +122,7 @@ export default function CurrentLicensing({ engagement, meta }) {
   useEffect(() => {
     load()
     api.get('/api/admin/ai/status').then((s) => setAiEnabled(s.enabled)).catch(() => {})
+    loadSkus().then(setCatalog)
   }, [engagement.id])
 
   // Normalize a parsed row's stated price/period/scope to annual per-seat.
@@ -126,8 +138,16 @@ export default function CurrentLicensing({ engagement, meta }) {
     if (!rawText.trim()) return
     setParsing(true); setErr('')
     try {
-      const res = await api.post(`/api/admin/engagements/${engagement.id}/ai/parse-current-licenses`, { raw_text: rawText })
-      setParsed((res.rows || []).map((r) => ({ ...r, _include: true })))
+      const [res, skus] = await Promise.all([
+        api.post(`/api/admin/engagements/${engagement.id}/ai/parse-current-licenses`, { raw_text: rawText }),
+        loadSkus(),
+      ])
+      // Canonicalize each description to the matching official SKU title where we
+      // find one; leave unmatched descriptions as-is (flagged in the preview).
+      setParsed((res.rows || []).map((r) => {
+        const m = matchSku(skus, r.product_description)
+        return { ...r, _include: true, product_description: m ? m.sku_title : r.product_description }
+      }))
     } catch (e) { setErr(e.message) } finally { setParsing(false) }
   }
   const setParsedField = (i, patch) =>
@@ -199,36 +219,55 @@ export default function CurrentLicensing({ engagement, meta }) {
                 <>
                   <table>
                     <thead><tr>
-                      <th>Add</th><th>Product</th><th className="num">Qty</th><th className="num">Price</th>
+                      <th>Add</th><th>Product</th><th>Catalog</th><th className="num">Qty</th><th className="num">Price</th>
                       <th>Period</th><th>Scope</th><th className="num">→ $/seat/mo</th>
                     </tr></thead>
                     <tbody>
-                      {parsed.map((r, i) => (
-                        <tr key={i} style={r._include ? {} : { opacity: 0.45 }}>
-                          <td><input type="checkbox" style={{ width: 'auto' }} checked={r._include}
-                            onChange={(e) => setParsedField(i, { _include: e.target.checked })} /></td>
-                          <td><input value={r.product_description} style={{ minWidth: 150 }}
-                            onChange={(e) => setParsedField(i, { product_description: e.target.value })} /></td>
-                          <td className="num"><input type="number" style={{ width: 70 }} value={r.license_quantity}
-                            onChange={(e) => setParsedField(i, { license_quantity: e.target.value })} /></td>
-                          <td className="num"><input type="number" style={{ width: 90 }} value={r.price}
-                            onChange={(e) => setParsedField(i, { price: e.target.value })} /></td>
-                          <td>
-                            <select value={r.price_period} onChange={(e) => setParsedField(i, { price_period: e.target.value })}>
-                              {['Monthly', 'Quarterly', 'Annual'].map((s) => <option key={s}>{s}</option>)}
-                            </select>
-                          </td>
-                          <td>
-                            <select value={r.price_scope} onChange={(e) => setParsedField(i, { price_scope: e.target.value })}>
-                              <option value="PerSeat">Per seat</option>
-                              <option value="Total">Total</option>
-                            </select>
-                          </td>
-                          <td className="num">{usd(annualPerSeat(r) / 12)}</td>
-                        </tr>
-                      ))}
+                      {parsed.map((r, i) => {
+                        const m = catalog.length ? matchSku(catalog, r.product_description) : null
+                        const unmatched = catalog.length && (r.product_description || '').trim() && !m
+                        return (
+                          <tr key={i} style={{
+                            ...(r._include ? {} : { opacity: 0.45 }),
+                            ...(unmatched ? { background: 'rgba(251,191,36,.10)' } : {}),
+                          }}>
+                            <td><input type="checkbox" style={{ width: 'auto' }} checked={r._include}
+                              onChange={(e) => setParsedField(i, { _include: e.target.checked })} /></td>
+                            <td><SkuCombobox value={r.product_description} style={{ minWidth: 160 }}
+                              onChange={(v) => setParsedField(i, { product_description: v })} /></td>
+                            <td>
+                              {!catalog.length
+                                ? <span className="muted" style={{ fontSize: '.72rem' }}>—</span>
+                                : m
+                                  ? <span className="badge pos" title={`Matches ${m.sku_title}`}>✓</span>
+                                  : <span className="badge warn" title="No matching official SKU — pick one or import a price sheet">⚠</span>}
+                            </td>
+                            <td className="num"><input type="number" style={{ width: 70 }} value={r.license_quantity}
+                              onChange={(e) => setParsedField(i, { license_quantity: e.target.value })} /></td>
+                            <td className="num"><input type="number" style={{ width: 90 }} value={r.price}
+                              onChange={(e) => setParsedField(i, { price: e.target.value })} /></td>
+                            <td>
+                              <select value={r.price_period} onChange={(e) => setParsedField(i, { price_period: e.target.value })}>
+                                {['Monthly', 'Quarterly', 'Annual'].map((s) => <option key={s}>{s}</option>)}
+                              </select>
+                            </td>
+                            <td>
+                              <select value={r.price_scope} onChange={(e) => setParsedField(i, { price_scope: e.target.value })}>
+                                <option value="PerSeat">Per seat</option>
+                                <option value="Total">Total</option>
+                              </select>
+                            </td>
+                            <td className="num">{usd(annualPerSeat(r) / 12)}</td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
+                  {catalog.length > 0 && parsed.some((r) => (r.product_description || '').trim() && !matchSku(catalog, r.product_description)) && (
+                    <p className="hint" style={{ marginTop: '.3rem' }}>
+                      ⚠ Highlighted lines don't match an official SKU in the price list — pick the right SKU or leave as a free-text reference.
+                    </p>
+                  )}
                   <div className="toolbar" style={{ marginTop: '.5rem' }}>
                     <button className="sm" onClick={addParsed}>
                       Add {parsed.filter((r) => r._include && (r.product_description || '').trim()).length} selected
@@ -249,7 +288,7 @@ export default function CurrentLicensing({ engagement, meta }) {
         </tr></thead>
         <tbody>
           {items.map((l) => (
-            <LicenseRow key={l.id} l={l} meta={meta} personas={personas} update={update} remove={remove} />
+            <LicenseRow key={l.id} l={l} meta={meta} personas={personas} catalog={catalog} update={update} remove={remove} />
           ))}
         </tbody>
       </table>
@@ -258,9 +297,12 @@ export default function CurrentLicensing({ engagement, meta }) {
         <div><label>SKU reference</label>
           <SkuCombobox value={form.sku_reference} placeholder="Microsoft 365 E3"
             onChange={(v) => setForm((f) => ({ ...f, sku_reference: v }))}
-            onSelectSku={(sku) => sku && setForm((f) => ({
-              ...f, unit_price_paid_annual: sku.annual_unit_price, source_tag: 'ListPrice',
-            }))} /></div>
+            onSelectSku={(sku) => sku && setForm((f) => (
+              // Keep a price the user already entered; only seed list when empty.
+              Number(f.unit_price_paid_annual)
+                ? f
+                : { ...f, unit_price_paid_annual: sku.annual_unit_price, source_tag: 'ListPrice' }
+            ))} /></div>
         <div><label>Quantity</label>
           <input type="number" value={form.quantity}
             onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
