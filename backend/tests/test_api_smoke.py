@@ -214,3 +214,27 @@ def test_current_license_persona_tags_roundtrip(client):
                         json={"quantity_assigned": 650}).json()
     assert upd2["persona_ids"] == [kw["id"]]
     assert upd2["quantity_assigned"] == 650
+
+
+def test_data_inspector_surfaces_objects_and_refs(client):
+    eng = client.post("/api/engagements", json={"customer_name": "Inspect Co"}).json()
+    eid = eng["id"]
+    kw = client.post(f"/api/engagements/{eid}/personas", json={"name": "KW", "headcount": 500}).json()
+    client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "Microsoft 365 E3", "quantity_assigned": 500, "quantity_purchased": 500,
+        "unit_price_paid_annual": 384, "persona_ids": [kw["id"]],
+    })
+    data = client.get(f"/api/engagements/{eid}/inspect").json()
+    assert data["engagement"]["customer_name"] == "Inspect Co"
+    types = {o["type"]: o for o in data["objects"]}
+    assert {"Persona", "CurrentMicrosoftLicense", "ThirdPartyProduct"} <= set(types)
+    # Every persisted field is surfaced, including the ones with no edit UI.
+    lic = types["CurrentMicrosoftLicense"]
+    keys = {f["key"] for f in lic["fields"]}
+    assert {"source_tag", "persona_ids", "discount_pct"} <= keys
+    # The persona tag reference resolves to the persona name.
+    rec = lic["records"][0]
+    assert rec["cells"]["persona_ids"]["ref"]["label"] == "KW"
+    assert rec["cells"]["persona_ids"]["ref"]["ok"] is True
+    # Flow section present.
+    assert [s["stage"] for s in data["flow"]] == ["Inputs", "Engine", "Outputs"]

@@ -131,3 +131,24 @@ small.src { color: var(--muted); font-size: .72rem; }
 .combo-id { font-size: .84rem; font-variant-numeric: tabular-nums; }
 .combo-name { font-size: .72rem; color: var(--muted); }
 .combo-item:hover .combo-name, .combo-item.sel .combo-name { color: #e8ebff; }
+
+/* ---- Data inspector ---- */
+.flow-strip { display: flex; align-items: stretch; gap: .5rem; flex-wrap: wrap; margin-top: .6rem; }
+.flow-stage { flex: 1; min-width: 180px; background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 8px; padding: .5rem .6rem; }
+.flow-stage-name { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--muted); margin-bottom: .3rem; }
+.flow-item { font-size: .8rem; padding: .12rem 0; }
+.flow-arrow { align-self: center; color: var(--muted); font-size: 1.1rem; }
+.inspect-row { border-top: 1px solid var(--border); }
+.inspect-row-head { display: flex; align-items: center; gap: .8rem; padding: .35rem 0; cursor: pointer; flex-wrap: wrap; }
+.inspect-primary { display: flex; flex-direction: column; gap: 1px; }
+.inspect-plabel { font-size: .66rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.inspect-detail { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: .5rem .9rem; padding: .5rem .2rem .7rem 2rem; background: var(--panel2); border-radius: 8px; margin-bottom: .3rem; }
+.inspect-field { display: flex; flex-direction: column; gap: 2px; }
+.inspect-flabel { font-size: .7rem; color: var(--muted); display: flex; align-items: center; gap: .3rem; }
+.kind-tag { font-size: .58rem; text-transform: uppercase; letter-spacing: .04em; padding: 0 .25rem;
+  border: 1px solid var(--border); border-radius: 4px; color: var(--muted); }
+.kind-derived { color: var(--warn); border-color: var(--warn); }
+.kind-provenance { color: var(--accent); border-color: var(--accent); }
