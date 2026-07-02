@@ -52,7 +52,13 @@ function LicenseRow({ l, meta, personas, catalog, update, remove }) {
         <td><button className="ghost sm" title="Adjustments" onClick={() => setOpen(!open)}>{open ? '▾' : '▸'}</button></td>
         <td><SkuCombobox value={l.sku_reference}
           onChange={(v) => update(l.id, { sku_reference: v })}
-          onSelectSku={(sku) => sku && update(l.id, { unit_price_paid_annual: sku.annual_unit_price, source_tag: 'ListPrice' })} /></td>
+          onSelectSku={(sku) => {
+            // Only seed list price when the line has NO price yet — never clobber
+            // a captured customer/discounted rate when re-pointing the SKU.
+            if (sku && !Number(l.unit_price_paid_annual)) {
+              update(l.id, { unit_price_paid_annual: sku.annual_unit_price, source_tag: 'ListPrice' })
+            }
+          }} /></td>
         <td className="num"><input type="number" style={{ width: 80 }} value={l.quantity_purchased}
           onChange={(e) => setQty(e.target.value)} /></td>
         <td className="num"><MonthlyPriceInput annual={l.unit_price_paid_annual} style={{ width: 100 }}
@@ -291,9 +297,12 @@ export default function CurrentLicensing({ engagement, meta }) {
         <div><label>SKU reference</label>
           <SkuCombobox value={form.sku_reference} placeholder="Microsoft 365 E3"
             onChange={(v) => setForm((f) => ({ ...f, sku_reference: v }))}
-            onSelectSku={(sku) => sku && setForm((f) => ({
-              ...f, unit_price_paid_annual: sku.annual_unit_price, source_tag: 'ListPrice',
-            }))} /></div>
+            onSelectSku={(sku) => sku && setForm((f) => (
+              // Keep a price the user already entered; only seed list when empty.
+              Number(f.unit_price_paid_annual)
+                ? f
+                : { ...f, unit_price_paid_annual: sku.annual_unit_price, source_tag: 'ListPrice' }
+            ))} /></div>
         <div><label>Quantity</label>
           <input type="number" value={form.quantity}
             onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
