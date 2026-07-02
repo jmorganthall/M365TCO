@@ -249,6 +249,11 @@ FK, UUID PK, cascade-deleted with the engagement.
   rows hydrate into the engine.** This is the single ratify gate.
 - **CRUD:** `GET/POST/PATCH/DELETE …/coverage`, plus the domain action
   `POST …/coverage/{id}/ratify`.
+- **GUI surface (slice E2):** the Coverage map now edits **Microsoft bundle
+  coverage** too, not just third-party — a per-bundle editor (add/remove an outcome,
+  ratify) mirroring the third-party section. Adding by bundle name resolves onto the
+  bundle (`bundle_id` set) via `resolve_bundle`; entries that resolve to no staple
+  are surfaced under "Unmapped Microsoft references" so nothing is hidden.
 
 ### 4.8 PersonaScenario — the target-state plan
 - **Identity:** `uuid`. **Scope:** engagement-scoped. One per persona in practice.

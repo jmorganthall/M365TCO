@@ -6,6 +6,7 @@ export default function CoverageMap({ engagement, meta }) {
   const [outcomes, setOutcomes] = useState([])
   const [products, setProducts] = useState([])
   const [coverage, setCoverage] = useState([])
+  const [bundles, setBundles] = useState([])
   const [aiEnabled, setAiEnabled] = useState(false)
   const [bulkBusy, setBulkBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -16,14 +17,25 @@ export default function CoverageMap({ engagement, meta }) {
     api.get(`/api/engagements/${eid}/outcomes`).then(setOutcomes)
     api.get(`/api/engagements/${eid}/third-party`).then(setProducts)
     api.get(`/api/engagements/${eid}/coverage`).then(setCoverage)
+    api.get('/api/catalog/bundles').then(setBundles).catch(() => {})
     api.get('/api/admin/ai/status').then((s) => setAiEnabled(s.enabled)).catch(() => {})
   }
   useEffect(() => { load() }, [eid])
 
   const outcomeName = (id) => outcomes.find((o) => o.id === id)?.name || id
   const tpEntries = (tpId) => coverage.filter((c) => c.product_kind === 'ThirdParty' && c.third_party_product_id === tpId)
-  const skuRefs = [...new Set(coverage.filter((c) => c.product_kind === 'MicrosoftSku').map((c) => c.microsoft_sku_reference))]
-  const skuEntries = (ref) => coverage.filter((c) => c.product_kind === 'MicrosoftSku' && c.microsoft_sku_reference === ref)
+  // Microsoft coverage keys onto a bundle: match by bundle_id when set, else by
+  // the bundle name (the reference the seed writes). Entries that resolve to no
+  // known bundle are surfaced separately so nothing is hidden.
+  const bundleEntries = (b) => coverage.filter((c) => c.product_kind === 'MicrosoftSku'
+    && (c.bundle_id ? c.bundle_id === b.id : c.microsoft_sku_reference === b.name))
+  const bundleIds = new Set(bundles.map((b) => b.id))
+  const bundleNames = new Set(bundles.map((b) => b.name))
+  const customRefs = [...new Set(coverage
+    .filter((c) => c.product_kind === 'MicrosoftSku'
+      && !(c.bundle_id && bundleIds.has(c.bundle_id)) && !bundleNames.has(c.microsoft_sku_reference))
+    .map((c) => c.microsoft_sku_reference))]
+  const refEntries = (ref) => coverage.filter((c) => c.product_kind === 'MicrosoftSku' && c.microsoft_sku_reference === ref)
 
   async function addCustomOutcome() {
     if (!newOutcome.trim()) return
@@ -35,6 +47,15 @@ export default function CoverageMap({ engagement, meta }) {
       await api.post(`/api/engagements/${eid}/coverage`, {
         outcome_id: outcomeId, product_kind: 'ThirdParty', third_party_product_id: tpId,
         coverage: cov, ai_suggested: false, ratified: true,
+      })
+      load()
+    } catch (e) { setErr(e.message) }
+  }
+  async function addBundleCoverage(bundleName, outcomeId, cov) {
+    try {
+      await api.post(`/api/engagements/${eid}/coverage`, {
+        outcome_id: outcomeId, product_kind: 'MicrosoftSku',
+        microsoft_sku_reference: bundleName, coverage: cov, ai_suggested: false, ratified: true,
       })
       load()
     } catch (e) { setErr(e.message) }
@@ -132,19 +153,52 @@ export default function CoverageMap({ engagement, meta }) {
       </div>
 
       <div className="card">
-        <h2>Microsoft SKU coverage (seeded library)</h2>
-        <p className="hint">Reference map used for the displacement test. Editable via the
-          coverage API if the default library does not cover a SKU.</p>
-        {skuRefs.map((ref) => (
-          <div key={ref} style={{ marginBottom: '.5rem' }}>
-            <b>{ref}</b>{' '}
-            <span className="pill-list" style={{ display: 'inline-flex' }}>
-              {skuEntries(ref).map((c) => (
-                <span key={c.id} className="badge muted">{outcomeName(c.outcome_id)} · {c.coverage}</span>
+        <h2>Microsoft bundle coverage</h2>
+        <p className="hint">What each staple bundle delivers — the reference map the displacement
+          test reads (via the SKU → Bundle → Outcomes spine). Seeded per engagement and fully
+          editable: add or remove an outcome to tune coverage for this customer.</p>
+        {bundles.length === 0 && <p className="muted">Bundle library not loaded.</p>}
+        {bundles.map((b) => (
+          <div key={b.id} className="card" style={{ background: 'var(--panel2)' }}>
+            <div className="flex-between">
+              <b>{b.name}{b.kind === 'addon' && b.base_name ? <span className="muted"> · add-on to {b.base_name}</span> : ''}</b>
+            </div>
+            <div className="pill-list" style={{ margin: '.5rem 0' }}>
+              {bundleEntries(b).map((c) => (
+                <span key={c.id} className={`badge ${c.ratified ? 'pos' : 'warn'}`}>
+                  {outcomeName(c.outcome_id)} · {c.coverage}
+                  {c.ai_suggested && !c.ratified && ' · AI'}
+                  {!c.ratified && <button className="sm ghost" style={{ marginLeft: 6 }} onClick={() => ratify(c.id)}>ratify</button>}
+                  <button className="sm danger" style={{ marginLeft: 4 }} onClick={() => removeCoverage(c.id)}>×</button>
+                </span>
               ))}
-            </span>
+              {bundleEntries(b).length === 0 && <span className="muted">No coverage — this bundle displaces nothing.</span>}
+            </div>
+            <AddCoverageRow outcomes={outcomes} meta={meta}
+              existing={bundleEntries(b).map((c) => c.outcome_id)}
+              onAdd={(oid, cov) => addBundleCoverage(b.name, oid, cov)} />
           </div>
         ))}
+
+        {customRefs.length > 0 && (
+          <>
+            <h3 style={{ fontSize: '.85rem', marginTop: '.8rem' }}>Unmapped Microsoft references</h3>
+            <p className="hint">Coverage that resolves to no staple bundle. Map the SKU to a bundle in
+              Settings → Staple bundles, or remove these entries.</p>
+            {customRefs.map((ref) => (
+              <div key={ref} style={{ marginBottom: '.4rem' }}>
+                <b>{ref}</b>{' '}
+                <span className="pill-list" style={{ display: 'inline-flex' }}>
+                  {refEntries(ref).map((c) => (
+                    <span key={c.id} className="badge muted">{outcomeName(c.outcome_id)} · {c.coverage}
+                      <button className="sm danger" style={{ marginLeft: 4 }} onClick={() => removeCoverage(c.id)}>×</button>
+                    </span>
+                  ))}
+                </span>
+              </div>
+            ))}
+          </>
+        )}
       </div>
     </>
   )
