@@ -108,7 +108,8 @@ class CurrentLicenseIn(BaseModel):
     unit_price_paid_annual: Decimal = Decimal("0")
     price_basis: str = "Unknown"
     discount_pct: Optional[Decimal] = None
-    persona_id: Optional[str] = None
+    # Personas this line applies to (many-to-many tags).
+    persona_ids: list[str] = []
     source_tag: str = "CustomerStated"
 
 
@@ -120,7 +121,7 @@ class CurrentLicenseOut(ORMModel):
     unit_price_paid_annual: Decimal
     price_basis: str
     discount_pct: Optional[Decimal]
-    persona_id: Optional[str]
+    persona_ids: list[str]
     source_tag: str
 
 

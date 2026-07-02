@@ -146,10 +146,27 @@ def list_licenses(engagement_id: str, db: Session = Depends(get_db)):
     ).scalars().all()
 
 
+def _set_persona_tags(row: models.CurrentMicrosoftLicense, persona_ids: list[str]):
+    """Reconcile a license's persona tags to the given set. Diffs (rather than
+    clear-and-re-add) so an unchanged tag isn't re-inserted — which would trip the
+    unique constraint before the delete of the old row flushes."""
+    want = list(dict.fromkeys(persona_ids))
+    have = {pl.persona_id: pl for pl in row.persona_links}
+    for pid, pl in list(have.items()):
+        if pid not in want:
+            row.persona_links.remove(pl)
+    for pid in want:
+        if pid not in have:
+            row.persona_links.append(models.CurrentLicensePersona(persona_id=pid))
+
+
 @router.post("/current-licenses", response_model=schemas.CurrentLicenseOut, status_code=201)
 def create_license(engagement_id: str, payload: schemas.CurrentLicenseIn, db: Session = Depends(get_db)):
     _require_engagement(db, engagement_id)
-    row = models.CurrentMicrosoftLicense(engagement_id=engagement_id, **payload.model_dump())
+    data = payload.model_dump()
+    persona_ids = data.pop("persona_ids", [])
+    row = models.CurrentMicrosoftLicense(engagement_id=engagement_id, **data)
+    _set_persona_tags(row, persona_ids)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -161,7 +178,10 @@ def update_license(engagement_id: str, license_id: str, payload: schemas.Current
     row = db.get(models.CurrentMicrosoftLicense, license_id)
     if row is None or row.engagement_id != engagement_id:
         raise HTTPException(404, "License not found")
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    if "persona_ids" in data:
+        _set_persona_tags(row, data.pop("persona_ids"))
+    for k, v in data.items():
         setattr(row, k, v)
     db.commit()
     db.refresh(row)

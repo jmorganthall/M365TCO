@@ -32,6 +32,17 @@ and obey `docs/DATA_ARCHITECTURE.md` and `docs/DATA_MODEL.md`:
   blob, delimited string, magic literal, or shadow representation.
 - Domain data never lives in env vars or config files; those are for operational
   settings only. Secrets live in the encrypted secret store.
+- **No hidden data — everything is visible in the GUI.** Every persisted domain
+  field must have a GUI surface: user-owned fields are viewable **and** editable;
+  system-derived fields are shown read-only and labelled as derived. A change that
+  adds or alters a field must add or update its GUI surface in the same change —
+  a field must never live only in code/DB, inaccessible to the user. Keep the data
+  model inspectable and its movement (input → engine → readout) traceable in the
+  app, not just in the code. Prefer the line-item form: core fields shown up top,
+  an expander for the non-standard/detail fields.
+- Relationships are explicit and referential: model many-to-many as a first-class
+  association object (not a delimited string or a duplicated row), and validate
+  soft references (e.g. a SKU string) against their source in the UI.
 
 ## Engine
 

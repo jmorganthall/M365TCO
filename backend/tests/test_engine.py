@@ -7,6 +7,7 @@ Covers the mandated cases:
 plus the managed split, in-scope toggle recompute, and negative-delta honesty.
 """
 
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -35,12 +36,18 @@ ENDPOINT = "endpoint-mgmt"
 
 
 def _engagement(personas, products, scenarios, current=None):
+    # `current` stays a {persona_id: [lines]} map for test convenience; flatten it
+    # into the engine's tagged-line list, tagging each line with its persona.
+    lines = []
+    for pid, pls in (current or {}).items():
+        for pl in pls:
+            lines.append(replace(pl, persona_ids=(pid,)))
     return Engagement(
         id="eng-1",
         personas=personas,
         third_party_products=products,
         scenarios=scenarios,
-        current_licenses_by_persona=current or {},
+        current_licenses=lines,
     )
 
 
@@ -326,6 +333,28 @@ def test_negative_delta_shown_honestly():
     assert sc.target_spend_annual == D("60000.00")
     assert sc.delta_annual == D("-50000.00")
     assert res.rollup.net_tco_delta_annual == D("-50000.00")
+
+
+def test_line_shared_by_personas_splits_cost_by_headcount():
+    """A license tagged to two personas distributes its total cost across their
+    combined headcount — no double counting (Section 6.2)."""
+    kw = Persona(id="kw", name="KW", headcount=500)
+    fl = Persona(id="fl", name="FL", headcount=200)
+    # One line of 700 seats @ 100 = 70000 total, applied to both personas.
+    line = CurrentLicenseLine(quantity_assigned=700, unit_price_paid_annual=D("100"),
+                              persona_ids=("kw", "fl"))
+    s_kw = PersonaScenario(id="skw", persona_id="kw", target_sku_reference="E3",
+                           target_unit_price_annual=D("0"))
+    s_fl = PersonaScenario(id="sfl", persona_id="fl", target_sku_reference="F3",
+                           target_unit_price_annual=D("0"))
+    eng = Engagement(id="e", personas=[kw, fl], scenarios=[s_kw, s_fl],
+                     current_licenses=[line])
+    res = compute(eng)
+    by = {r.persona_id: r for r in res.scenarios}
+    # 70000 split 500:200 -> 50000 / 20000; the two sum back to the line total.
+    assert by["kw"].current_microsoft_annual == D("50000.00")
+    assert by["fl"].current_microsoft_annual == D("20000.00")
+    assert res.rollup.net_tco_delta_annual == D("70000.00")
 
 
 def test_rollup_excludes_out_of_scope_scenarios():

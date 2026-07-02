@@ -193,12 +193,43 @@ class CurrentMicrosoftLicense(Base):
         SAEnum(*PRICE_BASIS, name="price_basis"), default="Unknown"
     )
     discount_pct: Mapped[float | None] = mapped_column(Numeric(6, 4), nullable=True)
+    # DEPRECATED single-persona link. Superseded by the many-to-many persona tags
+    # (CurrentLicensePersona). Kept for the one-time backfill; not read by the
+    # engine or API anymore.
     persona_id: Mapped[str | None] = mapped_column(
         ForeignKey("personas.id"), nullable=True
     )
     source_tag: Mapped[str] = _source_tag_col()
 
     engagement: Mapped[Engagement] = relationship(back_populates="current_licenses")
+    persona_links: Mapped[list["CurrentLicensePersona"]] = relationship(
+        cascade="all, delete-orphan", back_populates="license"
+    )
+
+    @property
+    def persona_ids(self) -> list[str]:
+        """The personas this license applies to (many-to-many tags)."""
+        return [pl.persona_id for pl in self.persona_links]
+
+
+class CurrentLicensePersona(Base):
+    """Association: a current license applies to a persona (a 'tag'). Many-to-many
+    so one line can cover several personas; the engine distributes the line's cost
+    across their combined headcount. A future `applies_pct` would live here to
+    model partial application (e.g. 5% of a persona)."""
+
+    __tablename__ = "current_license_personas"
+    __table_args__ = (
+        UniqueConstraint("current_license_id", "persona_id", name="uq_license_persona"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    current_license_id: Mapped[str] = mapped_column(
+        ForeignKey("current_microsoft_licenses.id"), index=True
+    )
+    persona_id: Mapped[str] = mapped_column(ForeignKey("personas.id"), index=True)
+
+    license: Mapped[CurrentMicrosoftLicense] = relationship(back_populates="persona_links")
 
 
 class ThirdPartyProduct(Base):

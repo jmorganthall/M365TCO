@@ -26,7 +26,8 @@ function MonthlyPriceInput({ annual, onCommit, style }) {
 function LicenseRow({ l, meta, personas, catalog, update, remove }) {
   const [open, setOpen] = useState(false)
   const fullyAssigned = l.quantity_assigned === l.quantity_purchased
-  const personaName = personas.find((p) => p.id === l.persona_id)?.name
+  const tagIds = l.persona_ids || []
+  const tagNames = tagIds.map((id) => personas.find((p) => p.id === id)?.name).filter(Boolean)
   // Flag a SKU that doesn't correspond to any official catalog SKU (only when a
   // price list is loaded to validate against).
   const notInCatalog = catalog.length && (l.sku_reference || '').trim() && !matchSku(catalog, l.sku_reference)
@@ -35,7 +36,12 @@ function LicenseRow({ l, meta, personas, catalog, update, remove }) {
   if (!fullyAssigned) chips.push(<span key="a" className="badge warn">{l.quantity_assigned}/{l.quantity_purchased} assigned</span>)
   if (l.discount_pct) chips.push(<span key="d" className="badge muted">−{pct(l.discount_pct)}</span>)
   if (l.price_basis && l.price_basis !== 'Unknown') chips.push(<span key="b" className="badge muted">{l.price_basis}</span>)
-  if (personaName) chips.push(<span key="p" className="badge muted">{personaName}</span>)
+  tagNames.forEach((n, i) => chips.push(<span key={`p${i}`} className="badge muted">{n}</span>))
+
+  const togglePersona = (pid) => {
+    const next = tagIds.includes(pid) ? tagIds.filter((x) => x !== pid) : [...tagIds, pid]
+    update(l.id, { persona_ids: next })
+  }
 
   // Editing quantity keeps a fully-assigned line fully assigned; once shelfware
   // is set (assigned ≠ purchased), the two move independently.
@@ -85,11 +91,17 @@ function LicenseRow({ l, meta, personas, catalog, update, remove }) {
                 <select value={l.price_basis} onChange={(e) => update(l.id, { price_basis: e.target.value })}>
                   {(meta?.price_basis || []).map((s) => <option key={s}>{s}</option>)}
                 </select></div>
-              <div><label>Persona</label>
-                <select value={l.persona_id || ''} onChange={(e) => update(l.id, { persona_id: e.target.value || null })}>
-                  <option value="">—</option>
-                  {personas.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select></div>
+              <div><label>Applies to (personas)</label>
+                <div className="pill-list">
+                  {personas.map((p) => (
+                    <button key={p.id} type="button"
+                      className={`badge ${tagIds.includes(p.id) ? 'pos' : 'muted'}`}
+                      style={{ cursor: 'pointer', border: 'none' }}
+                      onClick={() => togglePersona(p.id)}>{p.name}</button>
+                  ))}
+                  {personas.length === 0 && <span className="muted">No personas yet.</span>}
+                </div>
+                <small className="src">Tag one or more. Cost splits across the tagged personas by headcount.</small></div>
             </div>
           </td>
         </tr>
@@ -105,7 +117,7 @@ export default function CurrentLicensing({ engagement, meta }) {
   const [err, setErr] = useState('')
   const blank = {
     sku_reference: '', quantity: 0,
-    unit_price_paid_annual: 0, price_basis: 'Unknown', persona_id: '', source_tag: 'CustomerStated',
+    unit_price_paid_annual: 0, price_basis: 'Unknown', source_tag: 'CustomerStated',
   }
   const [form, setForm] = useState(blank)
   // AI paste-to-parse state.
@@ -161,7 +173,7 @@ export default function CurrentLicensing({ engagement, meta }) {
         await api.post(base, {
           sku_reference: r.product_description, quantity_purchased: qty, quantity_assigned: qty,
           unit_price_paid_annual: annualPerSeat(r), price_basis: 'Unknown',
-          persona_id: null, source_tag: 'CustomerStated',
+          source_tag: 'CustomerStated',
         })
       }
       setParsed(null); setRawText(''); load()
@@ -177,8 +189,7 @@ export default function CurrentLicensing({ engagement, meta }) {
         // Default fully assigned; expand a line to model shelfware.
         quantity_purchased: qty, quantity_assigned: qty,
         unit_price_paid_annual: Number(form.unit_price_paid_annual),
-        price_basis: form.price_basis, persona_id: form.persona_id || null,
-        source_tag: form.source_tag,
+        price_basis: form.price_basis, source_tag: form.source_tag,
       })
       setForm(blank); load()
     } catch (e) { setErr(e.message) }

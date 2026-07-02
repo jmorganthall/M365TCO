@@ -192,15 +192,23 @@ def compute(engagement: Engagement) -> EngineResult:
         if persona is None:
             continue
 
-        current_ms = sum(
-            (
-                Decimal(line.quantity_assigned) * line.unit_price_paid_annual
-                for line in engagement.current_licenses_by_persona.get(
-                    scenario.persona_id, []
-                )
-            ),
-            Decimal("0"),
-        )
+        # Each current license applies to one or more personas; its total cost is
+        # distributed across their combined headcount, so this persona's share is
+        # (its headcount / the tagged personas' total headcount). A single-persona
+        # line therefore counts in full, and a shared line is never double-counted
+        # across personas (Section 6.2).
+        current_ms = Decimal("0")
+        for line in engagement.current_licenses:
+            if persona.id not in line.persona_ids:
+                continue
+            line_total = Decimal(line.quantity_assigned) * line.unit_price_paid_annual
+            tagged = [pid for pid in line.persona_ids if pid in personas]
+            tagged_hc = sum(personas[pid].headcount for pid in tagged)
+            if tagged_hc > 0:
+                share = Decimal(persona.headcount) / Decimal(tagged_hc)
+            else:  # personas with no headcount → even split so cost isn't lost
+                share = Decimal(1) / Decimal(len(tagged) or 1)
+            current_ms += line_total * share
 
         # Linear-by-user offset: each product this scenario displaces credits
         # headcount * per_unit_annual_cost (Section 6.3). This is the persona's
