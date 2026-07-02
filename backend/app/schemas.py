@@ -127,7 +127,8 @@ class CurrentLicenseOut(ORMModel):
 
 # ---- Third-party product ----
 class ThirdPartyIn(BaseModel):
-    name: str
+    # Default "" so partial PATCH bodies validate (create guards non-empty).
+    name: str = ""
     vendor: str = ""
     raw_cost: Decimal = Decimal("0")
     cost_period: str = "Annual"
@@ -138,6 +139,8 @@ class ThirdPartyIn(BaseModel):
     is_managed: bool = False
     tooling_pct: Optional[Decimal] = None
     source_tag: str = "CustomerStated"
+    # Personas this product applies to (many-to-many tags).
+    persona_ids: list[str] = []
 
 
 class ThirdPartyOut(ORMModel):
@@ -156,6 +159,7 @@ class ThirdPartyOut(ORMModel):
     tooling_pct: Decimal
     effective_annual_cost: Decimal
     source_tag: str
+    persona_ids: list[str]
 
 
 # ---- Coverage map entry ----

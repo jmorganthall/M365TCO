@@ -238,3 +238,29 @@ def test_data_inspector_surfaces_objects_and_refs(client):
     assert rec["cells"]["persona_ids"]["ref"]["ok"] is True
     # Flow section present.
     assert [s["stage"] for s in data["flow"]] == ["Inputs", "Engine", "Outputs"]
+
+
+def test_third_party_persona_tags_roundtrip(client):
+    eng = client.post("/api/engagements", json={"customer_name": "TP Tags Co"}).json()
+    eid = eng["id"]
+    kw = client.post(f"/api/engagements/{eid}/personas", json={"name": "KW", "headcount": 500}).json()
+    fl = client.post(f"/api/engagements/{eid}/personas", json={"name": "FL", "headcount": 200}).json()
+    tp = client.post(f"/api/engagements/{eid}/third-party", json={
+        "name": "Okta", "raw_cost": 50000, "covered_count": 700,
+        "persona_ids": [kw["id"], fl["id"]],
+    }).json()
+    assert set(tp["persona_ids"]) == {kw["id"], fl["id"]}
+    # Patch that omits persona_ids leaves tags intact but recomputes derived cost.
+    upd = client.patch(f"/api/engagements/{eid}/third-party/{tp['id']}",
+                       json={"is_managed": True, "tooling_pct": 0.3}).json()
+    assert set(upd["persona_ids"]) == {kw["id"], fl["id"]}
+    assert float(upd["effective_annual_cost"]) == 15000.0  # 50000 * 0.3
+    # Replace the tag set.
+    upd2 = client.patch(f"/api/engagements/{eid}/third-party/{tp['id']}",
+                        json={"persona_ids": [kw["id"]]}).json()
+    assert upd2["persona_ids"] == [kw["id"]]
+    # Inspector surfaces the tags on the product, resolved to names.
+    data = client.get(f"/api/engagements/{eid}/inspect").json()
+    tpo = [o for o in data["objects"] if o["type"] == "ThirdPartyProduct"][0]
+    assert "persona_ids" in {f["key"] for f in tpo["fields"]}
+    assert tpo["records"][0]["cells"]["persona_ids"]["ref"]["label"] == "KW"
