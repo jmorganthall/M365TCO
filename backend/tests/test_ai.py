@@ -63,6 +63,31 @@ def test_normalize_parsed_licenses_periods_and_scope():
     assert by["Visio"]["price_period"] == "Annual"         # bad period clamped
 
 
+def test_normalize_bundle_suggestions_validates_ids_and_keys():
+    valid_skus = {"sku-1", "sku-2", "sku-3"}
+    valid_bundles = {"m365-e3", "m365-e5"}
+    data = {"mappings": [
+        {"sku_id": "sku-1", "bundle_key": "m365-e3", "reason": "E3 title"},
+        {"sku_id": "sku-2", "bundle_key": "made-up", "reason": "unknown -> null"},
+        {"sku_id": "sku-3", "bundle_key": None, "reason": "no staple"},
+        {"sku_id": "sku-1", "bundle_key": "m365-e5", "reason": "dup dropped"},
+        {"sku_id": "ghost", "bundle_key": "m365-e3", "reason": "unknown sku dropped"},
+    ]}
+    rows = ai.normalize_bundle_suggestions(data, valid_skus, valid_bundles)
+    by = {r["sku_id"]: r for r in rows}
+    assert set(by) == {"sku-1", "sku-2", "sku-3"}      # dup + ghost dropped
+    assert by["sku-1"]["bundle_key"] == "m365-e3"
+    assert by["sku-2"]["bundle_key"] is None            # unknown key -> null (no match)
+    assert by["sku-3"]["bundle_key"] is None            # explicit null preserved
+    assert ai.normalize_bundle_suggestions({}, valid_skus, valid_bundles) == []
+
+
+def test_suggest_bundles_requires_ai_enabled(client):
+    # No OpenRouter key in the test env, so AI assist is disabled.
+    r = client.post("/api/catalog/skus/suggest-bundles")
+    assert r.status_code == 400
+
+
 def test_parse_current_licenses_requires_ai_enabled(client):
     eng = client.post("/api/engagements", json={"customer_name": "License Co"}).json()
     r = client.post(f"/api/admin/engagements/{eng['id']}/ai/parse-current-licenses",

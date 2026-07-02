@@ -151,11 +151,18 @@ class MicrosoftSku(Base):
     market: Mapped[str] = mapped_column(String, default="US")
     currency: Mapped[str] = mapped_column(String, default="USD")
     catalog_version: Mapped[str] = mapped_column(String, default="")
-    # SKU → Bundle (many priced variants collapse to one staple bundle). Filled
-    # by the import-time AI mapper, editable. Null until classified.
+    # SKU → Bundle (many priced variants collapse to one staple bundle). The
+    # accepted/ratified mapping, editable. Null until classified.
     bundle_id: Mapped[str | None] = mapped_column(
         ForeignKey("bundles.id"), nullable=True, index=True
     )
+    # The import-time AI mapper's proposal, UNRATIFIED until the operator accepts
+    # it into bundle_id (mirrors CoverageMapEntry's suggested/ratified split so a
+    # mapping never silently enters the spine). Cleared on accept or reject.
+    suggested_bundle_id: Mapped[str | None] = mapped_column(
+        ForeignKey("bundles.id"), nullable=True
+    )
+    bundle_suggestion_reason: Mapped[str] = mapped_column(String, default="")
 
 
 class Bundle(Base):

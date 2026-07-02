@@ -107,7 +107,7 @@ export default function AdminPanel({ onClose }) {
 
         <PricingSync onMsg={setMsg} onErr={setErr} />
 
-        <BundleLibrary />
+        <BundleLibrary onMsg={setMsg} onErr={setErr} />
 
         <div className="card">
           <h2>Microsoft SKU catalog</h2>
@@ -519,19 +519,58 @@ function AiInstructions({ onMsg, onErr }) {
   )
 }
 
-// Read-only view of the staple bundle library — the SKU → Bundle → Outcomes
-// spine. Editing + the import-time SKU→bundle AI mapper land in later slices.
-function BundleLibrary() {
+// The staple bundle library (the SKU → Bundle → Outcomes spine) plus the
+// import-time AI mapper: classify unmapped catalog SKUs onto bundles, then
+// accept/reject each unratified suggestion.
+function BundleLibrary({ onMsg, onErr }) {
   const [bundles, setBundles] = useState([])
-  useEffect(() => { api.get('/api/catalog/bundles').then(setBundles).catch(() => {}) }, [])
+  const [unmapped, setUnmapped] = useState([])
+  const [busy, setBusy] = useState(false)
+  const byId = (id) => bundles.find((b) => b.id === id)?.name || id
+
+  function load() {
+    api.get('/api/catalog/bundles').then(setBundles).catch(() => {})
+    api.get('/api/catalog/skus?unmapped=true&limit=500').then(setUnmapped).catch(() => {})
+  }
+  useEffect(load, [])
   if (bundles.length === 0) return null
+
+  // Suggestions first, then the rest of the unmapped work-list.
+  const rows = [...unmapped].sort((a, b) => (b.suggested_bundle_id ? 1 : 0) - (a.suggested_bundle_id ? 1 : 0))
+  const pending = unmapped.filter((s) => s.suggested_bundle_id).length
+
+  async function suggest() {
+    setBusy(true); onErr?.(''); onMsg?.('Classifying SKUs with AI…')
+    try {
+      const res = await api.post('/api/catalog/skus/suggest-bundles')
+      onMsg?.(`AI classified ${res.classified} SKU(s): ${res.suggested} suggestion(s).` +
+        (res.capped ? ` ${res.unmapped_remaining} remaining — run again.` : ''))
+      load()
+    } catch (e) { onErr?.(e.message); onMsg?.('') } finally { setBusy(false) }
+  }
+  async function accept(sku, bundleId) {
+    onErr?.('')
+    try { await api.patch(`/api/catalog/skus/${sku.id}/bundle`, { bundle_id: bundleId }); load() }
+    catch (e) { onErr?.(e.message) }
+  }
+  async function reject(sku) {
+    onErr?.('')
+    try { await api.post(`/api/catalog/skus/${sku.id}/reject-suggestion`); load() }
+    catch (e) { onErr?.(e.message) }
+  }
+
   return (
     <div className="card">
-      <h2>Staple bundles</h2>
+      <div className="flex-between">
+        <h2>Staple bundles</h2>
+        <button className="sm" onClick={suggest} disabled={busy || unmapped.length === 0}>
+          {busy ? 'Classifying…' : '✨ Suggest bundle mappings'}
+        </button>
+      </div>
       <p className="hint">The canonical bundles that coverage, scenarios, and licenses resolve to.
-        Many priced catalog SKUs map onto one bundle; each bundle delivers a set of outcomes.
-        Add-ons layer onto a base bundle.</p>
-      <div className="pill-list">
+        Many priced catalog SKUs map onto one bundle. The AI mapper proposes a bundle for each
+        unmapped SKU — <b>suggestions are unratified</b> until you accept them.</p>
+      <div className="pill-list" style={{ marginBottom: '.6rem' }}>
         {bundles.map((b) => (
           <span key={b.id} className={`badge ${b.kind === 'addon' ? 'warn' : 'muted'}`}
             title={b.kind === 'addon' ? `add-on to ${b.base_name}` : 'base bundle'}>
@@ -539,6 +578,52 @@ function BundleLibrary() {
           </span>
         ))}
       </div>
+
+      {unmapped.length === 0 ? (
+        <div className="muted" style={{ fontSize: '.82rem' }}>Every catalog SKU is mapped to a bundle. 🎉</div>
+      ) : (
+        <>
+          <div className="muted" style={{ fontSize: '.82rem', marginBottom: '.3rem' }}>
+            {unmapped.length} unmapped SKU(s){pending ? ` · ${pending} with an AI suggestion` : ''}. Accept to ratify the SKU → bundle link.
+          </div>
+          <table>
+            <thead><tr>
+              <th>SKU</th><th>AI suggests</th><th>Map to</th><th></th>
+            </tr></thead>
+            <tbody>
+              {rows.slice(0, 60).map((s) => (
+                <tr key={s.id}>
+                  <td>
+                    <div>{s.product_title || s.sku_title}</div>
+                    <small className="muted">{s.sku_title} · {s.term_duration}</small>
+                  </td>
+                  <td style={{ fontSize: '.8rem' }}>
+                    {s.suggested_bundle_id
+                      ? <><span className="badge pos">{byId(s.suggested_bundle_id)}</span>
+                          {s.bundle_suggestion_reason && <div className="src">{s.bundle_suggestion_reason}</div>}</>
+                      : <span className="muted">—</span>}
+                  </td>
+                  <td>
+                    <select value="" onChange={(e) => e.target.value && accept(s, e.target.value)} style={{ maxWidth: 200 }}>
+                      <option value="">Pick a bundle…</option>
+                      {bundles.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                  </td>
+                  <td className="num" style={{ whiteSpace: 'nowrap' }}>
+                    {s.suggested_bundle_id && (
+                      <button className="sm" onClick={() => accept(s, s.suggested_bundle_id)}>Accept</button>
+                    )}{' '}
+                    {s.suggested_bundle_id && (
+                      <button className="ghost sm" onClick={() => reject(s)}>Reject</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {rows.length > 60 && <div className="muted" style={{ fontSize: '.78rem' }}>Showing 60 of {rows.length}.</div>}
+        </>
+      )}
     </div>
   )
 }
