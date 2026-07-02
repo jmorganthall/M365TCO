@@ -183,3 +183,50 @@ def parse_third_party(raw_text: str, instructions: str, model: str | None = None
     """
     data = _chat_json(instructions, raw_text, model)
     return normalize_parsed_products(data)
+
+
+# Price cadence -> annual multiplier for existing-license import.
+_PRICE_PERIOD_FACTOR = {"Monthly": 12, "Quarterly": 4, "Annual": 1}
+
+
+def normalize_parsed_licenses(data: dict) -> list[dict]:
+    """Pure, model-output -> validated existing-license rows. Normalizes the
+    stated price to an annual PER-SEAT figure so it can be stored directly:
+    annualize by cadence (monthly x12, quarterly x4), and divide a line Total by
+    the quantity. Kept separate from the HTTP call for unit testing."""
+    out = []
+    for l in data.get("licenses", []) or []:
+        desc = (l.get("product_description") or "").strip()
+        if not desc:
+            continue  # a line must name a product
+        qty = int(_to_number(l.get("license_quantity")))
+        price = _to_number(l.get("price"))
+        period = l.get("price_period")
+        period = period if period in _PRICE_PERIOD_FACTOR else "Annual"
+        scope = l.get("price_scope")
+        scope = scope if scope in ("PerSeat", "Total") else "PerSeat"
+
+        annual = price * _PRICE_PERIOD_FACTOR[period]
+        if scope == "Total" and qty > 0:
+            annual = annual / qty
+        out.append({
+            "product_description": desc,
+            "license_quantity": qty,
+            "price": price,
+            "price_period": period,
+            "price_scope": scope,
+            # Convenience for the caller: the annual per-seat we'd store.
+            "unit_price_paid_annual": round(annual, 4),
+        })
+    return out
+
+
+def parse_current_licenses(raw_text: str, instructions: str, model: str | None = None) -> list[dict]:
+    """Parse a block of customer-provided text into existing-license rows.
+
+    `instructions` is the editable system prompt (an AiPrompt). Returns rows with
+    the stated price/period/scope plus a normalized annual per-seat price, for the
+    caller to review — nothing is persisted here.
+    """
+    data = _chat_json(instructions, raw_text, model)
+    return normalize_parsed_licenses(data)
