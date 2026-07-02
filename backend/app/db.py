@@ -40,8 +40,50 @@ def get_db():
         db.close()
 
 
+def _default_sql(column) -> str | None:
+    """SQL literal for a column's scalar Python default, or None (callable /
+    no default -> add a nullable column)."""
+    default = column.default
+    if default is None or not getattr(default, "is_scalar", False):
+        return None
+    arg = default.arg
+    if isinstance(arg, bool):
+        return "1" if arg else "0"
+    if isinstance(arg, (int, float)):
+        return str(arg)
+    if isinstance(arg, str):
+        return "'" + arg.replace("'", "''") + "'"
+    return None
+
+
+def _auto_add_missing_columns(target_engine=None) -> None:
+    """Additive schema reconciliation: ALTER TABLE ADD COLUMN for any model
+    column missing from an existing table. create_all() never alters existing
+    tables, so a persisted DB from an earlier version would otherwise be missing
+    newer columns and every query against that table would fail."""
+    from sqlalchemy import inspect, text
+
+    eng = target_engine or engine
+    inspector = inspect(eng)
+    with eng.begin() as conn:
+        for table_name, table in Base.metadata.tables.items():
+            if not inspector.has_table(table_name):
+                continue
+            existing = {c["name"] for c in inspector.get_columns(table_name)}
+            for column in table.columns:
+                if column.name in existing:
+                    continue
+                col_type = column.type.compile(dialect=engine.dialect)
+                ddl = f'ALTER TABLE "{table_name}" ADD COLUMN "{column.name}" {col_type}'
+                default_sql = _default_sql(column)
+                if default_sql is not None:
+                    ddl += f" DEFAULT {default_sql}"
+                conn.execute(text(ddl))
+
+
 def init_db() -> None:
     # Import models so they register on Base.metadata, then create tables.
     from . import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _auto_add_missing_columns()
