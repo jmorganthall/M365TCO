@@ -217,7 +217,7 @@ def suggest_coverage(
 
 @router.post("/engagements/{engagement_id}/ai/parse-third-party")
 def parse_third_party(
-    engagement_id: str, payload: schemas.ThirdPartyParseRequest, db: Session = Depends(get_db)
+    engagement_id: str, payload: schemas.TextParseRequest, db: Session = Depends(get_db)
 ):
     """Parse a block of customer-provided text into third-party product rows.
     Advisory only — returns rows for the operator to review and edit; nothing is
@@ -232,6 +232,30 @@ def parse_third_party(
         rows = ai.parse_third_party(
             payload.raw_text,
             instructions=ai_prompts.get_instructions(db, "third_party_parse"),
+            model=_resolved_model(db),
+        )
+    except Exception as exc:  # network/model errors surface cleanly
+        raise HTTPException(502, f"AI parse failed: {exc}")
+    return {"rows": rows}
+
+
+@router.post("/engagements/{engagement_id}/ai/parse-current-licenses")
+def parse_current_licenses(
+    engagement_id: str, payload: schemas.TextParseRequest, db: Session = Depends(get_db)
+):
+    """Parse a block of customer-provided text into existing-license rows.
+    Advisory only — returns rows (with a normalized annual per-seat price) for the
+    operator to review and edit; nothing is persisted here."""
+    if db.get(models.Engagement, engagement_id) is None:
+        raise HTTPException(404, "Engagement not found")
+    if not ai.is_enabled():
+        raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
+    if not payload.raw_text.strip():
+        raise HTTPException(422, "No text to parse.")
+    try:
+        rows = ai.parse_current_licenses(
+            payload.raw_text,
+            instructions=ai_prompts.get_instructions(db, "current_license_parse"),
             model=_resolved_model(db),
         )
     except Exception as exc:  # network/model errors surface cleanly

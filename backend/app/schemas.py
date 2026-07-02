@@ -222,7 +222,8 @@ class CoverageSuggestRequest(BaseModel):
     third_party_product_id: str
 
 
-class ThirdPartyParseRequest(BaseModel):
+class TextParseRequest(BaseModel):
+    """Raw pasted text for any AI paste-to-parse function (third-party, licenses)."""
     raw_text: str
 
 

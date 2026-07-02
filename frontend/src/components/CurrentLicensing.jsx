@@ -30,12 +30,55 @@ export default function CurrentLicensing({ engagement, meta }) {
     unit_price_paid_annual: 0, price_basis: 'Unknown', persona_id: '', source_tag: 'CustomerStated',
   }
   const [form, setForm] = useState(blank)
+  // AI paste-to-parse state.
+  const [aiEnabled, setAiEnabled] = useState(false)
+  const [rawText, setRawText] = useState('')
+  const [parsing, setParsing] = useState(false)
+  const [parsed, setParsed] = useState(null)
 
   const load = () => {
     api.get(base).then(setItems).catch((e) => setErr(e.message))
     api.get(`/api/engagements/${engagement.id}/personas`).then(setPersonas)
   }
-  useEffect(() => { load() }, [engagement.id])
+  useEffect(() => {
+    load()
+    api.get('/api/admin/ai/status').then((s) => setAiEnabled(s.enabled)).catch(() => {})
+  }, [engagement.id])
+
+  // Normalize a parsed row's stated price/period/scope to annual per-seat.
+  const annualPerSeat = (r) => {
+    const factor = r.price_period === 'Monthly' ? 12 : r.price_period === 'Quarterly' ? 4 : 1
+    let annual = (Number(r.price) || 0) * factor
+    const qty = Number(r.license_quantity) || 0
+    if (r.price_scope === 'Total' && qty > 0) annual = annual / qty
+    return Math.round(annual * 10000) / 10000
+  }
+
+  async function parseText() {
+    if (!rawText.trim()) return
+    setParsing(true); setErr('')
+    try {
+      const res = await api.post(`/api/admin/engagements/${engagement.id}/ai/parse-current-licenses`, { raw_text: rawText })
+      setParsed((res.rows || []).map((r) => ({ ...r, _include: true })))
+    } catch (e) { setErr(e.message) } finally { setParsing(false) }
+  }
+  const setParsedField = (i, patch) =>
+    setParsed((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
+  async function addParsed() {
+    const rows = (parsed || []).filter((r) => r._include && (r.product_description || '').trim())
+    setErr('')
+    try {
+      for (const r of rows) {
+        const qty = Number(r.license_quantity) || 0
+        await api.post(base, {
+          sku_reference: r.product_description, quantity_purchased: qty, quantity_assigned: qty,
+          unit_price_paid_annual: annualPerSeat(r), price_basis: 'Unknown',
+          persona_id: null, source_tag: 'CustomerStated',
+        })
+      }
+      setParsed(null); setRawText(''); load()
+    } catch (e) { setErr(e.message) }
+  }
 
   async function add() {
     if (!form.sku_reference.trim()) return
@@ -65,6 +108,70 @@ export default function CurrentLicensing({ engagement, meta }) {
         source. Enter the actual price paid per seat (absolute, EA, CSP, or negotiated);
         don't assume ERP.</p>
       {err && <div className="err">{err}</div>}
+
+      {aiEnabled && (
+        <div className="card" style={{ background: 'var(--panel2)', marginBottom: '.8rem' }}>
+          <div className="flex-between">
+            <b>Paste from customer (AI)</b>
+            <small className="src">Prices normalize to monthly $/seat; review before adding.</small>
+          </div>
+          <textarea rows={4} value={rawText}
+            placeholder={'Paste a license statement or renewal quote, e.g.\nMicrosoft 365 E3\t250\t$32.00 / user / mo\nMicrosoft 365 E5\t60\t$57.00 / user / mo'}
+            style={{ width: '100%', marginTop: '.4rem', fontFamily: 'inherit' }}
+            onChange={(e) => setRawText(e.target.value)} />
+          <button className="sm" disabled={parsing || !rawText.trim()} onClick={parseText}>
+            {parsing ? 'Formatting…' : '✨ Format with AI'}
+          </button>
+
+          {parsed && (
+            <div style={{ marginTop: '.6rem' }}>
+              {parsed.length === 0 && <p className="muted">No license lines found in that text.</p>}
+              {parsed.length > 0 && (
+                <>
+                  <table>
+                    <thead><tr>
+                      <th>Add</th><th>Product</th><th className="num">Qty</th><th className="num">Price</th>
+                      <th>Period</th><th>Scope</th><th className="num">→ $/seat/mo</th>
+                    </tr></thead>
+                    <tbody>
+                      {parsed.map((r, i) => (
+                        <tr key={i} style={r._include ? {} : { opacity: 0.45 }}>
+                          <td><input type="checkbox" style={{ width: 'auto' }} checked={r._include}
+                            onChange={(e) => setParsedField(i, { _include: e.target.checked })} /></td>
+                          <td><input value={r.product_description} style={{ minWidth: 150 }}
+                            onChange={(e) => setParsedField(i, { product_description: e.target.value })} /></td>
+                          <td className="num"><input type="number" style={{ width: 70 }} value={r.license_quantity}
+                            onChange={(e) => setParsedField(i, { license_quantity: e.target.value })} /></td>
+                          <td className="num"><input type="number" style={{ width: 90 }} value={r.price}
+                            onChange={(e) => setParsedField(i, { price: e.target.value })} /></td>
+                          <td>
+                            <select value={r.price_period} onChange={(e) => setParsedField(i, { price_period: e.target.value })}>
+                              {['Monthly', 'Quarterly', 'Annual'].map((s) => <option key={s}>{s}</option>)}
+                            </select>
+                          </td>
+                          <td>
+                            <select value={r.price_scope} onChange={(e) => setParsedField(i, { price_scope: e.target.value })}>
+                              <option value="PerSeat">Per seat</option>
+                              <option value="Total">Total</option>
+                            </select>
+                          </td>
+                          <td className="num">{usd(annualPerSeat(r) / 12)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="toolbar" style={{ marginTop: '.5rem' }}>
+                    <button className="sm" onClick={addParsed}>
+                      Add {parsed.filter((r) => r._include && (r.product_description || '').trim()).length} selected
+                    </button>
+                    <button className="ghost sm" onClick={() => setParsed(null)}>Discard</button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <table>
         <thead><tr>

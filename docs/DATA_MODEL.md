@@ -244,7 +244,8 @@ analysis itself is transient.
 
 ### 4.10b AiPrompt — editable AI instructions
 - **Identity:** `uuid` PK plus a unique `key` per AI function
-  (`coverage_suggest`, `third_party_parse`). **Scope:** **global**.
+  (`coverage_suggest`, `third_party_parse`, `current_license_parse`).
+  **Scope:** **global**.
 - **Field ownership:** seeded from `seeds/ai_prompts.json` (`label`,
   `description`, `instructions`); the operator edits `instructions` at runtime and
   can reset to the seeded default. `updated_at` stamps edits.

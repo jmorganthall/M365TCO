@@ -37,10 +37,43 @@ def test_normalize_clamps_bad_period_and_missing_products():
     assert rows[0]["cost_period"] == "Annual"
 
 
+def test_normalize_parsed_licenses_periods_and_scope():
+    data = {"licenses": [
+        # Per-seat monthly: 32 * 12 = 384 annual per seat.
+        {"product_description": "Microsoft 365 E3", "license_quantity": "250",
+         "price": "$32.00", "price_period": "Monthly", "price_scope": "PerSeat"},
+        # Per-seat quarterly: 30 * 4 = 120 annual per seat.
+        {"product_description": "Defender P2", "license_quantity": 100,
+         "price": 30, "price_period": "Quarterly"},
+        # Line total annual: 120000 / 200 = 600 annual per seat.
+        {"product_description": "Microsoft 365 E5", "license_quantity": 200,
+         "price": "120,000", "price_period": "Annual", "price_scope": "Total"},
+        # Unknown period -> Annual; no name -> dropped.
+        {"product_description": "Visio", "price": 60, "price_period": "weekly"},
+        {"product_description": "", "price": 5},
+    ]}
+    rows = ai.normalize_parsed_licenses(data)
+    assert len(rows) == 4
+    by = {r["product_description"]: r for r in rows}
+    assert by["Microsoft 365 E3"]["unit_price_paid_annual"] == 384.0
+    assert by["Microsoft 365 E3"]["license_quantity"] == 250
+    assert by["Defender P2"]["price_scope"] == "PerSeat"   # default
+    assert by["Defender P2"]["unit_price_paid_annual"] == 120.0
+    assert by["Microsoft 365 E5"]["unit_price_paid_annual"] == 600.0
+    assert by["Visio"]["price_period"] == "Annual"         # bad period clamped
+
+
+def test_parse_current_licenses_requires_ai_enabled(client):
+    eng = client.post("/api/engagements", json={"customer_name": "License Co"}).json()
+    r = client.post(f"/api/admin/engagements/{eng['id']}/ai/parse-current-licenses",
+                    json={"raw_text": "Microsoft 365 E3  250  $32/mo"})
+    assert r.status_code == 400
+
+
 def test_ai_prompts_seeded_and_editable(client):
     prompts = client.get("/api/admin/ai/prompts").json()["prompts"]
     keys = {p["key"] for p in prompts}
-    assert {"coverage_suggest", "third_party_parse"} <= keys
+    assert {"coverage_suggest", "third_party_parse", "current_license_parse"} <= keys
     assert all(p["is_default"] for p in prompts)  # freshly seeded
 
     # Edit one, then it is no longer flagged default.
