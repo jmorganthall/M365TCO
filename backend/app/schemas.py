@@ -222,6 +222,22 @@ class CoverageSuggestRequest(BaseModel):
     third_party_product_id: str
 
 
+class ThirdPartyParseRequest(BaseModel):
+    raw_text: str
+
+
+class AiPromptOut(ORMModel):
+    key: str
+    label: str
+    description: str
+    instructions: str
+    is_default: bool = False
+
+
+class AiPromptUpdate(BaseModel):
+    instructions: str
+
+
 class BundleAnalysisRequest(BaseModel):
     # Optional per-bundle price override map: {sku_reference: annual_per_seat}.
     prices: Optional[dict[str, float]] = None

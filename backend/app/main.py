@@ -53,9 +53,12 @@ async def lifespan(_app: FastAPI):
     from .db import SessionLocal
     from .services import seeds as seeds_service
 
+    from .services import ai_prompts as ai_prompts_service
+
     db = SessionLocal()
     try:
         seeds_service.seed_default_outcomes(db)
+        ai_prompts_service.seed_defaults(db)
     finally:
         db.close()
 

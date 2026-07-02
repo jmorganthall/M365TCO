@@ -10,9 +10,43 @@ export default function ThirdParty({ engagement, meta }) {
     covered_count: 0, renewal_date: '', is_managed: false, tooling_pct: '', source_tag: 'CustomerStated',
   }
   const [form, setForm] = useState(blank)
+  // AI paste-to-parse state.
+  const [aiEnabled, setAiEnabled] = useState(false)
+  const [rawText, setRawText] = useState('')
+  const [parsing, setParsing] = useState(false)
+  const [parsed, setParsed] = useState(null)
 
   const load = () => api.get(base).then(setItems).catch((e) => setErr(e.message))
-  useEffect(() => { load() }, [engagement.id])
+  useEffect(() => {
+    load()
+    api.get('/api/admin/ai/status').then((s) => setAiEnabled(s.enabled)).catch(() => {})
+  }, [engagement.id])
+
+  async function parseText() {
+    if (!rawText.trim()) return
+    setParsing(true); setErr('')
+    try {
+      const res = await api.post(`/api/admin/engagements/${engagement.id}/ai/parse-third-party`, { raw_text: rawText })
+      setParsed((res.rows || []).map((r) => ({ ...r, _include: true })))
+    } catch (e) { setErr(e.message) } finally { setParsing(false) }
+  }
+  const setParsedField = (i, patch) =>
+    setParsed((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
+  async function addParsed() {
+    const rows = (parsed || []).filter((r) => r._include && r.name.trim())
+    setErr('')
+    try {
+      for (const r of rows) {
+        await api.post(base, {
+          name: r.name, vendor: r.vendor || '', raw_cost: Number(r.raw_cost) || 0,
+          cost_period: r.cost_period, unit_basis: 'Users',
+          covered_count: Number(r.covered_count) || 0, renewal_date: null,
+          is_managed: false, tooling_pct: null, source_tag: 'CustomerStated',
+        })
+      }
+      setParsed(null); setRawText(''); load()
+    } catch (e) { setErr(e.message) }
+  }
 
   async function add() {
     if (!form.name.trim()) return
@@ -41,6 +75,64 @@ export default function ThirdParty({ engagement, meta }) {
         An unmanaged product counts at 100%; a managed product counts at its tooling
         percentage (default {pct(meta?.default_tooling_pct)}). Effective cost is what feeds displacement math.</p>
       {err && <div className="err">{err}</div>}
+
+      {aiEnabled && (
+        <div className="card" style={{ background: 'var(--panel2)', marginBottom: '.8rem' }}>
+          <div className="flex-between">
+            <b>Paste from customer (AI)</b>
+            <small className="src">Parsed into rows you review before anything is added.</small>
+          </div>
+          <textarea rows={4} value={rawText} placeholder={'Paste a budget table or vendor list, e.g.\nSentinelONE\t$102,000\nOkta\t$215,000'}
+            style={{ width: '100%', marginTop: '.4rem', fontFamily: 'inherit' }}
+            onChange={(e) => setRawText(e.target.value)} />
+          <button className="sm" disabled={parsing || !rawText.trim()} onClick={parseText}>
+            {parsing ? 'Formatting…' : '✨ Format with AI'}
+          </button>
+
+          {parsed && (
+            <div style={{ marginTop: '.6rem' }}>
+              {parsed.length === 0 && <p className="muted">No products found in that text.</p>}
+              {parsed.length > 0 && (
+                <>
+                  <table>
+                    <thead><tr>
+                      <th>Add</th><th>Product</th><th>Vendor</th><th className="num">Cost</th>
+                      <th>Period</th><th className="num">Covers</th>
+                    </tr></thead>
+                    <tbody>
+                      {parsed.map((r, i) => (
+                        <tr key={i} style={r._include ? {} : { opacity: 0.45 }}>
+                          <td><input type="checkbox" style={{ width: 'auto' }} checked={r._include}
+                            onChange={(e) => setParsedField(i, { _include: e.target.checked })} /></td>
+                          <td><input value={r.name} style={{ minWidth: 140 }}
+                            onChange={(e) => setParsedField(i, { name: e.target.value })} /></td>
+                          <td><input value={r.vendor} style={{ width: 90 }}
+                            onChange={(e) => setParsedField(i, { vendor: e.target.value })} /></td>
+                          <td className="num"><input type="number" style={{ width: 90 }} value={r.raw_cost}
+                            onChange={(e) => setParsedField(i, { raw_cost: e.target.value })} /></td>
+                          <td>
+                            <select value={r.cost_period} onChange={(e) => setParsedField(i, { cost_period: e.target.value })}>
+                              {(meta?.cost_periods || ['Annual', 'Monthly']).map((s) => <option key={s}>{s}</option>)}
+                            </select>
+                          </td>
+                          <td className="num"><input type="number" style={{ width: 70 }} value={r.covered_count}
+                            onChange={(e) => setParsedField(i, { covered_count: e.target.value })} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="toolbar" style={{ marginTop: '.5rem' }}>
+                    <button className="sm" onClick={addParsed}>
+                      Add {parsed.filter((r) => r._include && r.name.trim()).length} selected
+                    </button>
+                    <button className="ghost sm" onClick={() => setParsed(null)}>Discard</button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <table>
         <thead><tr>

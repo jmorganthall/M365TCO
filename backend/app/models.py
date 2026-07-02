@@ -367,3 +367,24 @@ class DefaultOutcome(Base):
     name: Mapped[str] = mapped_column(String)
     description: Mapped[str] = mapped_column(Text, default="")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class AiPrompt(Base):
+    """Editable system instructions for one AI function — a first-class, global
+    template so every AI call's prompt is visible and tunable in one place rather
+    than hard-coded. One row per function key (e.g. "coverage_suggest",
+    "third_party_parse"). Seeded from seeds/ai_prompts.json; the operator can edit
+    the instructions when output isn't great and reset to the seeded default."""
+
+    __tablename__ = "ai_prompts"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    key: Mapped[str] = mapped_column(String, unique=True)
+    label: Mapped[str] = mapped_column(String, default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    instructions: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
