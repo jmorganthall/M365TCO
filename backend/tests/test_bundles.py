@@ -108,3 +108,51 @@ def test_scenario_composes_base_plus_addons_with_discount(client):
     scen = client.get(f"/api/engagements/{eid}/scenarios").json()[0]
     assert float(scen["target_discount_pct"]) == 0.10
     assert scen["addons"][0]["bundle_id"] == e5sec["id"]
+
+
+def test_recommend_path_composes_base_plus_gap_closing_addon(client):
+    """Recommend-a-path (bundle-analysis) composes a base bundle with the cheapest
+    add-ons that close the persona's gaps, not just single SKUs. A persona on E5
+    today (which covers Endpoint Security) evaluated against an E3 base leaves an
+    Endpoint-Security gap — the composition must surface the E5 Security add-on."""
+    eng = client.post("/api/engagements", json={"customer_name": "Path Co"}).json()
+    eid = eng["id"]
+    kw = client.post(f"/api/engagements/{eid}/personas",
+                     json={"name": "KW", "headcount": 100}).json()
+
+    # Third-party EDR delivers Endpoint Security — only a path that covers that
+    # outcome displaces it.
+    endpoint = next(o for o in client.get(f"/api/engagements/{eid}/outcomes").json()
+                    if "Endpoint Security" in o["name"])
+    edr = client.post(f"/api/engagements/{eid}/third-party",
+                      json={"name": "CrowdStrike", "raw_cost": 20000, "covered_count": 100}).json()
+    client.post(f"/api/engagements/{eid}/coverage",
+                json={"outcome_id": endpoint["id"], "product_kind": "ThirdParty",
+                      "third_party_product_id": edr["id"], "coverage": "Full", "ratified": True})
+
+    # Persona is on Microsoft 365 E5 today → its seeded coverage (incl. Endpoint
+    # Security) is the "required" baseline the recommendation must not drop.
+    client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "Microsoft 365 E5", "quantity_assigned": 100,
+        "unit_price_paid_annual": 0, "persona_ids": [kw["id"]]})
+
+    # Price E3 at 400 and the E5 Security add-on at 100; other add-ons have no
+    # catalog price (0). The composition should pick the cheapest set that closes
+    # the gaps — here Defender for Endpoint P2 (free, covers Endpoint Security) is
+    # cheaper than the E5 Security bundle, so it is chosen.
+    res = client.post(f"/api/engagements/{eid}/personas/{kw['id']}/bundle-analysis",
+                      json={"prices": {"Microsoft 365 E3": 400, "Microsoft 365 E5 Security": 100}}).json()
+    by_ref = {b["sku_reference"]: b for b in res["bundles"]}
+    e3 = by_ref["Microsoft 365 E3"]
+
+    # E3 alone leaves an Endpoint-Security gap; the composition adds the cheapest
+    # add-on(s) to close it, so the composed E3 path covers Endpoint Security.
+    assert e3["addons"], "E3 should compose add-ons to close its gaps"
+    assert "Endpoint Security" not in e3["gap_outcomes"]         # gap closed by an add-on
+    assert any("Endpoint Security" in a["closes"] for a in e3["addons"])
+    assert e3["target_unit_price_annual"] == 400.0 + e3["addon_total_annual"]  # base + add-ons
+    assert "CrowdStrike" in e3["displaced_products"]             # composed path displaces the EDR
+
+    # Cheapest cover: a free add-on that covers Endpoint Security beats the priced
+    # E5 Security bundle, so no add-on cost is incurred to close that gap.
+    assert e3["addon_total_annual"] == 0.0

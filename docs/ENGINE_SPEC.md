@@ -111,6 +111,16 @@ delta_annual         = current_spend_annual - target_spend_annual   # +saving / 
 A negative delta is shown honestly as a cost; the M365 uplift can exceed the
 third-party cost it offsets.
 
+> Recommend-a-path (best-bundle optimizer): the optimizer (`tco_engine/optimizer.py`)
+> evaluates *composed* candidates, not raw SKUs. The hydrator builds one candidate
+> per staple base bundle by adding the **cheapest add-ons that close that base's
+> capability gaps** (required outcomes the base does not cover), where an add-on is
+> applicable when it is à-la-carte or its base link matches the base. The candidate's
+> covered set is the union (base ∪ chosen add-ons) and its price is the sum, so a
+> recommendation reads as "E3 + E5 Security" rather than a single line. The
+> displacement test and linear-by-user offset are unchanged and applied to the
+> composed covered set.
+
 ## Rollup (6.8) with integrity rules (6.9)
 
 ```
