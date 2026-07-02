@@ -43,4 +43,5 @@ in `backend/tests/test_engine.py`.
 ## Container image
 
 Published to `ghcr.io/jmorganthall/m365tco` by `.github/workflows/docker-publish.yml`
-on pushes to `main` and `v*` tags. `:latest` tracks `main`.
+on pushes to the default branch and `v*` tags. `:latest` tracks the repository's
+default branch.

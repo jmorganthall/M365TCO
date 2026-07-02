@@ -2,9 +2,14 @@ name: Publish container image
 
 # Builds the multi-stage image (React UI + FastAPI) and publishes it to GitHub
 # Container Registry so docker-compose.yml can pull ghcr.io/<owner>/m365tco:latest.
+#
+# `:latest` tracks the repository's DEFAULT branch (see the metadata step). List
+# both `main` and the current default branch here because a push trigger's
+# branch filter can't be an expression — the default-branch check that gates the
+# `latest` tag is what actually keeps `:latest` correct if the default changes.
 on:
   push:
-    branches: [main]
+    branches: [main, claude/m365-tco-tool-j39gf2]
     tags: ['v*.*.*']
   workflow_dispatch:
 
@@ -36,7 +41,7 @@ jobs:
           # metadata-action lowercases the image name, so M365TCO -> m365tco.
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.ref_name == github.event.repository.default_branch }}
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=sha,format=short
