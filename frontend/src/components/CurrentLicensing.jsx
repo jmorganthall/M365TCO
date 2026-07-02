@@ -95,8 +95,7 @@ function LicenseRow({ l, meta, personas, catalog, update, remove }) {
                 <div className="pill-list">
                   {personas.map((p) => (
                     <button key={p.id} type="button"
-                      className={`badge ${tagIds.includes(p.id) ? 'pos' : 'muted'}`}
-                      style={{ cursor: 'pointer', border: 'none' }}
+                      className={`tag-toggle ${tagIds.includes(p.id) ? 'on' : ''}`}
                       onClick={() => togglePersona(p.id)}>{p.name}</button>
                   ))}
                   {personas.length === 0 && <span className="muted">No personas yet.</span>}
