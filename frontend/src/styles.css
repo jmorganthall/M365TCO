@@ -152,3 +152,11 @@ small.src { color: var(--muted); font-size: .72rem; }
   border: 1px solid var(--border); border-radius: 4px; color: var(--muted); }
 .kind-derived { color: var(--warn); border-color: var(--warn); }
 .kind-provenance { color: var(--accent); border-color: var(--accent); }
+
+/* ---- Selectable tag toggle (persona tags): whole chip fills when on ---- */
+.tag-toggle {
+  cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--muted);
+  border-radius: 999px; padding: .16rem .6rem; font-size: .74rem; line-height: 1.25;
+}
+.tag-toggle:hover { border-color: var(--accent); color: var(--ink); }
+.tag-toggle.on { background: var(--accent); border-color: var(--accent); color: #fff; }
