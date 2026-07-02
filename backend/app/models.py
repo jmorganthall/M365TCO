@@ -383,6 +383,9 @@ class AiPrompt(Base):
     label: Mapped[str] = mapped_column(String, default="")
     description: Mapped[str] = mapped_column(Text, default="")
     instructions: Mapped[str] = mapped_column(Text, default="")
+    # False while the row still matches the shipped default, so startup seeding
+    # can refresh unedited rows to an improved default without clobbering edits.
+    edited: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

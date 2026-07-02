@@ -143,6 +143,16 @@ def _to_number(value) -> float:
         return 0.0
 
 
+def _to_bool(value) -> bool:
+    """Coerce a model-returned managed flag. Note bool('false') is True, so
+    strings must be compared explicitly rather than via bool()."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return str(value).strip().lower() in ("true", "yes", "1", "managed")
+
+
 def normalize_parsed_products(data: dict) -> list[dict]:
     """Pure, model-output -> validated third-party rows. Kept separate from the
     HTTP call so it can be unit-tested without a live model."""
@@ -159,6 +169,7 @@ def normalize_parsed_products(data: dict) -> list[dict]:
             "raw_cost": _to_number(p.get("raw_cost")),
             "cost_period": period,
             "covered_count": int(_to_number(p.get("covered_count"))),
+            "is_managed": _to_bool(p.get("is_managed")),
         })
     return out
 

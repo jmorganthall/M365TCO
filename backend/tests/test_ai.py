@@ -11,7 +11,7 @@ def test_normalize_parsed_products_from_customer_table():
     # Shape a model would return for a pasted budget table.
     data = {"products": [
         {"name": "SentinelONE", "raw_cost": " $102,000 ", "cost_period": "Annual"},
-        {"name": "Rapid7 - Managed Threat", "vendor": "Rapid7", "raw_cost": "$175,000"},
+        {"name": "Rapid7 - Managed Threat", "vendor": "Rapid7", "raw_cost": "$175,000", "is_managed": "true"},
         {"name": "Okta", "raw_cost": 215000, "cost_period": "Monthly", "covered_count": "500"},
         {"name": "FileVault (MAC)", "raw_cost": ""},   # no amount -> 0
         {"name": "", "raw_cost": "999"},               # no name -> dropped
@@ -24,8 +24,10 @@ def test_normalize_parsed_products_from_customer_table():
     assert by_name["SentinelONE"]["cost_period"] == "Annual"
     assert by_name["Rapid7 - Managed Threat"]["vendor"] == "Rapid7"
     assert by_name["Rapid7 - Managed Threat"]["cost_period"] == "Annual"  # default
+    assert by_name["Rapid7 - Managed Threat"]["is_managed"] is True
     assert by_name["Okta"]["cost_period"] == "Monthly"
     assert by_name["Okta"]["covered_count"] == 500
+    assert by_name["Okta"]["is_managed"] is False   # "false" string / absent -> False
     assert by_name["FileVault (MAC)"]["raw_cost"] == 0.0
 
 
@@ -58,6 +60,35 @@ def test_ai_prompts_seeded_and_editable(client):
 def test_update_unknown_prompt_404(client):
     r = client.patch("/api/admin/ai/prompts/nope", json={"instructions": "x"})
     assert r.status_code == 404
+
+
+def test_seed_refreshes_unedited_but_protects_edits(monkeypatch):
+    from app.services import ai_prompts
+    from app.db import SessionLocal
+
+    def seed(version, text):
+        return {"version": version, "prompts": [
+            {"key": "__test__", "label": "T", "description": "d", "instructions": text}
+        ]}
+
+    db = SessionLocal()
+    try:
+        monkeypatch.setattr(ai_prompts, "_seed", lambda: seed("t1", "v1 text"))
+        ai_prompts.seed_defaults(db)
+        assert ai_prompts.get_instructions(db, "__test__") == "v1 text"
+
+        # Unedited row picks up an improved default.
+        monkeypatch.setattr(ai_prompts, "_seed", lambda: seed("t2", "v2 text"))
+        ai_prompts.seed_defaults(db)
+        assert ai_prompts.get_instructions(db, "__test__") == "v2 text"
+
+        # After an operator edit, a newer default no longer overwrites it.
+        ai_prompts.update_instructions(db, "__test__", "operator wording")
+        monkeypatch.setattr(ai_prompts, "_seed", lambda: seed("t3", "v3 text"))
+        ai_prompts.seed_defaults(db)
+        assert ai_prompts.get_instructions(db, "__test__") == "operator wording"
+    finally:
+        db.close()
 
 
 def test_parse_third_party_requires_ai_enabled(client):

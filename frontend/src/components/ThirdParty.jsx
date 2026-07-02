@@ -41,7 +41,7 @@ export default function ThirdParty({ engagement, meta }) {
           name: r.name, vendor: r.vendor || '', raw_cost: Number(r.raw_cost) || 0,
           cost_period: r.cost_period, unit_basis: 'Users',
           covered_count: Number(r.covered_count) || 0, renewal_date: null,
-          is_managed: false, tooling_pct: null, source_tag: 'CustomerStated',
+          is_managed: !!r.is_managed, tooling_pct: null, source_tag: 'CustomerStated',
         })
       }
       setParsed(null); setRawText(''); load()
@@ -97,7 +97,7 @@ export default function ThirdParty({ engagement, meta }) {
                   <table>
                     <thead><tr>
                       <th>Add</th><th>Product</th><th>Vendor</th><th className="num">Cost</th>
-                      <th>Period</th><th className="num">Covers</th>
+                      <th>Period</th><th className="num">Covers</th><th>Managed</th>
                     </tr></thead>
                     <tbody>
                       {parsed.map((r, i) => (
@@ -117,6 +117,8 @@ export default function ThirdParty({ engagement, meta }) {
                           </td>
                           <td className="num"><input type="number" style={{ width: 70 }} value={r.covered_count}
                             onChange={(e) => setParsedField(i, { covered_count: e.target.value })} /></td>
+                          <td><input type="checkbox" style={{ width: 'auto' }} checked={!!r.is_managed}
+                            onChange={(e) => setParsedField(i, { is_managed: e.target.checked })} /></td>
                         </tr>
                       ))}
                     </tbody>
