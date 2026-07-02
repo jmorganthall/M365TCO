@@ -83,7 +83,8 @@ export default function Scenarios({ engagement, meta }) {
                 <td className="num">{p.headcount}</td>
                 <td>
                   <SkuCombobox value={s.target_sku_reference} style={{ minWidth: 130 }}
-                    onChange={(v) => update(s.id, { target_sku_reference: v })} />
+                    onChange={(v) => update(s.id, { target_sku_reference: v })}
+                    onSelectSku={(sku) => sku && update(s.id, { target_unit_price_annual: sku.annual_unit_price })} />
                 </td>
                 <td className="num"><input type="number" style={{ width: 110 }} value={s.target_unit_price_annual}
                   onChange={(e) => update(s.id, { target_unit_price_annual: Number(e.target.value) })} /></td>
