@@ -222,7 +222,8 @@ def import_latest(catalog_version: str = "", db: Session = Depends(get_db)):
     catalog_provenance.record_import(
         db, source="PriceSyncApi",
         sku_count=result["inserted"] + result["updated"],
-        catalog_version=version, data_month=meta.get("data_month"),
+        catalog_version=version,
+        data_month=meta.get("data_month") or result.get("data_month"),
         file_name=meta.get("file_name", ""), sha256=meta.get("sha256", ""),
     )
     return result

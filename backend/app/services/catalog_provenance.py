@@ -40,8 +40,10 @@ def record_import(
     file_name: str = "",
     sha256: str = "",
 ) -> models.CatalogImport:
-    """Record one successful catalog load. `data_month` defaults to the current
-    calendar month (a hand-uploaded sheet is treated as priced as-of now)."""
+    """Record one successful catalog load. `data_month` should be the sheet's
+    own reported month (from LastUpdatedDate for CSV, or the API metadata for
+    price-sync); it falls back to the current calendar month only when the sheet
+    reports no date at all."""
     row = models.CatalogImport(
         source=source,
         sku_count=sku_count,

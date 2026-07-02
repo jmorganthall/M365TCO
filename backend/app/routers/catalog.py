@@ -72,7 +72,7 @@ async def import_csv(
     catalog_provenance.record_import(
         db, source="CsvUpload",
         sku_count=result["inserted"] + result["updated"],
-        catalog_version=version,
+        catalog_version=version, data_month=result.get("data_month"),
     )
     return result
 

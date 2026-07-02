@@ -144,8 +144,10 @@ FK, UUID PK, cascade-deleted with the engagement.
 ### 4.4a CatalogImport — pricing-load provenance
 - **Identity:** `uuid`. **Scope:** **global** (one row per successful catalog load).
 - **Field ownership:** recorded on success by whichever path loaded pricing —
-  `source` (`CsvUpload` | `PriceSyncApi`), `data_month`, `catalog_version`,
-  `sku_count`, `imported_at`, and (price-sync only) `file_name`/`sha256`.
+  `source` (`CsvUpload` | `PriceSyncApi`), `data_month` (from the sheet's own
+  `LastUpdatedDate` for CSV, or the API metadata for price-sync; current month
+  only if the sheet reports no date), `catalog_version`, `sku_count`,
+  `imported_at`, and (price-sync only) `file_name`/`sha256`.
 - **Write-normalization / CRUD:** `services/catalog_provenance.py` — the single
   `record_import()` writer, plus `latest()` and `pricing_freshness()`.
 - **Why it exists:** freshness (the Readout pricing badge and the staleness
