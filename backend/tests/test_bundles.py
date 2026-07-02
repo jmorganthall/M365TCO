@@ -64,3 +64,47 @@ def test_scenario_targeting_bundle_name_resolves_and_displaces(client):
     ms = [c for c in cov if c["product_kind"] == "MicrosoftSku"]
     assert any(c["microsoft_sku_reference"] == "Microsoft 365 E3" for c in ms)
     assert all(c.get("bundle_id") for c in ms)  # every seeded MS entry maps to a bundle
+
+
+def test_scenario_composes_base_plus_addons_with_discount(client):
+    """Future state = base bundle + add-on bundles: union outcomes, sum list
+    prices, apply the discount to the net the engine uses."""
+    eng = client.post("/api/engagements", json={"customer_name": "Compose Co"}).json()
+    eid = eng["id"]
+    outcomes = client.get(f"/api/engagements/{eid}/outcomes").json()
+    ident = next(o for o in outcomes if "Identity" in o["name"])
+    endpoint = next(o for o in outcomes if "Endpoint Security" in o["name"])
+    kw = client.post(f"/api/engagements/{eid}/personas", json={"name": "KW", "headcount": 100}).json()
+
+    # Two third-party tools: one Identity (covered by E3 base), one Endpoint
+    # Security (covered only by the E5 Security add-on).
+    idp = client.post(f"/api/engagements/{eid}/third-party",
+                      json={"name": "Okta", "raw_cost": 10000, "covered_count": 100}).json()
+    edr = client.post(f"/api/engagements/{eid}/third-party",
+                      json={"name": "CrowdStrike", "raw_cost": 20000, "covered_count": 100}).json()
+    for tp, oc in [(idp, ident), (edr, endpoint)]:
+        client.post(f"/api/engagements/{eid}/coverage",
+                    json={"outcome_id": oc["id"], "product_kind": "ThirdParty",
+                          "third_party_product_id": tp["id"], "coverage": "Full", "ratified": True})
+
+    e5sec = next(b for b in client.get("/api/catalog/bundles").json() if b["key"] == "e5-security")
+
+    # Base E3 @ 400 list + E5 Security add-on @ 100 list, 10% discount → net 450/seat.
+    client.post(f"/api/engagements/{eid}/scenarios", json={
+        "persona_id": kw["id"], "target_sku_reference": "Microsoft 365 E3",
+        "target_unit_price_annual": 400, "target_discount_pct": 0.10, "in_scope": True,
+        "addons": [{"bundle_id": e5sec["id"], "unit_price_annual": 100}],
+    })
+    result = client.post(f"/api/engagements/{eid}/compute").json()
+    sc = result["scenarios"][0]
+    # net = (400 + 100) * 0.9 = 450; target spend = 100 * 450 = 45000.
+    assert sc["target_spend_annual"] == 45000.0
+    # Both tools displaced: E3 covers Identity, the E5 Security add-on covers Endpoint.
+    disps = {d["third_party_product_id"]: d["disposition"] for d in result["dispositions"]}
+    assert disps[idp["id"]] == "FullyEliminated"
+    assert disps[edr["id"]] == "FullyEliminated"
+
+    # Round-trip: the scenario exposes its add-ons and discount.
+    scen = client.get(f"/api/engagements/{eid}/scenarios").json()[0]
+    assert float(scen["target_discount_pct"]) == 0.10
+    assert scen["addons"][0]["bundle_id"] == e5sec["id"]

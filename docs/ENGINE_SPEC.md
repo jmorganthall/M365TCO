@@ -99,6 +99,11 @@ offset = Σ (persona.headcount * product.per_unit_annual_cost)
            over products where displaces(scenario, product)
 
 current_spend_annual = current_microsoft + offset
+# Composed target (base bundle + add-ons): the hydrator unions the covered
+# outcomes across the base + add-on bundles, sums their list prices, and applies
+# the scenario discount to yield the net target_unit_price_annual the engine uses:
+#   net = (base_list + Σ addon_list) * (1 - target_discount_pct)
+# target_covered_outcome_ids is the union across base + add-ons.
 target_spend_annual  = persona.headcount * scenario.target_unit_price_annual
 delta_annual         = current_spend_annual - target_spend_annual   # +saving / -cost
 ```

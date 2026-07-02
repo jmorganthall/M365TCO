@@ -238,13 +238,21 @@ FK, UUID PK, cascade-deleted with the engagement.
 
 ### 4.8 PersonaScenario — the target-state plan
 - **Identity:** `uuid`. **Scope:** engagement-scoped. One per persona in practice.
-- **Relationships:** hard FK `persona_id`; **soft ref** to the target SKU via
-  `target_sku_reference`.
-- **Field ownership:** user-entered (`target_sku_reference`,
-  `target_unit_price_annual`, `in_scope`); **engine-output cache**
-  (`current_spend_annual`, `target_spend_annual`, `delta_annual`).
-- **CRUD:** `GET/POST/PATCH/DELETE …/scenarios`. Toggling `in_scope` and calling
-  `compute` triggers a **total** recompute (engine §6.7).
+- **Relationships:** hard FK `persona_id`; **soft ref** to the base target bundle
+  via `target_sku_reference`; **add-on bundles** via `ScenarioAddon` (§4.8a).
+- **Field ownership:** user-entered (`target_sku_reference` + `target_unit_price_annual`
+  = the base bundle & its list price, `target_discount_pct`, `in_scope`);
+  **engine-output cache** (`current_spend_annual`, `target_spend_annual`, `delta_annual`).
+- **Composition:** future state = base bundle **+** add-ons. The hydrator unions the
+  covered outcomes and sums the list prices, then applies the discount → the net
+  `target_unit_price_annual` the engine consumes (ENGINE_SPEC 6.2/6.3).
+- **CRUD:** `GET/POST/PATCH/DELETE …/scenarios` (`addons` on the body reconciles the
+  set). Toggling `in_scope` and calling `compute` triggers a **total** recompute.
+
+### 4.8a ScenarioAddon — an add-on bundle on a scenario
+- **Identity:** `uuid`. **Scope:** engagement-scoped (via the scenario).
+  **Association object** linking a scenario to an add-on `Bundle` with its own
+  `unit_price_annual`. Composing base + add-ons is how "E3 + E5 Security" is modeled.
 
 ### 4.9 ProductDisposition — split ownership, by design
 This is the canonical example of the field-ownership rule, because one row mixes

@@ -127,19 +127,25 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
             )
         )
 
-    scenarios = [
-        EngScenario(
+    # Compose each scenario's future state = base bundle + add-on bundles: union
+    # the covered outcomes, sum the list prices, then apply the discount to yield
+    # the net per-seat price the engine consumes.
+    scenarios = []
+    for s in eng.scenarios:
+        covered = set(sku_outcomes.get(_cover_key(db, s.target_sku_reference), set()))
+        list_price = _dec(s.target_unit_price_annual)
+        for addon in s.addons:
+            covered |= sku_outcomes.get(addon.bundle_id, set())
+            list_price += _dec(addon.unit_price_annual)
+        net_price = list_price * (Decimal("1") - _dec(s.target_discount_pct))
+        scenarios.append(EngScenario(
             id=s.id,
             persona_id=s.persona_id,
             target_sku_reference=s.target_sku_reference,
-            target_unit_price_annual=_dec(s.target_unit_price_annual),
+            target_unit_price_annual=net_price,
             in_scope=s.in_scope,
-            target_covered_outcome_ids=frozenset(
-                sku_outcomes.get(_cover_key(db, s.target_sku_reference), set())
-            ),
-        )
-        for s in eng.scenarios
-    ]
+            target_covered_outcome_ids=frozenset(covered),
+        ))
 
     return EngEngagement(
         id=eng.id,

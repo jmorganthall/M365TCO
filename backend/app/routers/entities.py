@@ -342,10 +342,28 @@ def list_scenarios(engagement_id: str, db: Session = Depends(get_db)):
     ).scalars().all()
 
 
+def _set_scenario_addons(row: models.PersonaScenario, addons: list):
+    """Reconcile a scenario's add-on bundles to the given set (by bundle_id)."""
+    want = {a["bundle_id"]: a for a in addons}
+    have = {ad.bundle_id: ad for ad in row.addons}
+    for bid, ad in list(have.items()):
+        if bid not in want:
+            row.addons.remove(ad)
+    for bid, a in want.items():
+        if bid in have:
+            have[bid].unit_price_annual = a["unit_price_annual"]
+        else:
+            row.addons.append(models.ScenarioAddon(
+                bundle_id=bid, unit_price_annual=a["unit_price_annual"]))
+
+
 @router.post("/scenarios", response_model=schemas.ScenarioOut, status_code=201)
 def create_scenario(engagement_id: str, payload: schemas.ScenarioIn, db: Session = Depends(get_db)):
     _require_engagement(db, engagement_id)
-    row = models.PersonaScenario(engagement_id=engagement_id, **payload.model_dump())
+    data = payload.model_dump()
+    addons = data.pop("addons", [])
+    row = models.PersonaScenario(engagement_id=engagement_id, **data)
+    _set_scenario_addons(row, addons)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -357,7 +375,10 @@ def update_scenario(engagement_id: str, scenario_id: str, payload: schemas.Scena
     row = db.get(models.PersonaScenario, scenario_id)
     if row is None or row.engagement_id != engagement_id:
         raise HTTPException(404, "Scenario not found")
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    if "addons" in data:
+        _set_scenario_addons(row, data.pop("addons") or [])
+    for k, v in data.items():
         setattr(row, k, v)
     db.commit()
     db.refresh(row)
