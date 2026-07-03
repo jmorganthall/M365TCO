@@ -121,6 +121,68 @@ def test_scenario_composes_base_plus_addons_with_discount(client):
     assert scen["addons"][0]["bundle_id"] == e5sec["id"]
 
 
+def test_default_coverage_seeds_and_editing_affects_new_engagements_only(client):
+    """The global default coverage library (E3): seeded from the file, editable, and
+    the template new engagements inherit — edits never touch existing engagements."""
+    lib = client.get("/api/admin/default-coverage").json()
+    assert lib, "default coverage library should seed from coverage.json"
+    # E3 covers identity-access by default; it does NOT cover endpoint-security.
+    e3 = [r for r in lib if r["bundle_key"] == "m365-e3"]
+    assert any(r["outcome_key"] == "identity-access" for r in e3)
+    assert not any(r["outcome_key"] == "endpoint-security" for r in e3)
+
+    # Engagement A, created BEFORE the edit.
+    a = client.post("/api/engagements", json={"customer_name": "Before"}).json()
+
+    # Add identity-access to E7 (seeded with EMPTY coverage) in the default library
+    # — a throwaway pairing so the shared default library isn't left mutated.
+    r = client.post("/api/admin/default-coverage",
+                    json={"bundle_key": "m365-e7", "outcome_key": "identity-access", "coverage": "Full"})
+    assert r.status_code == 201
+    added_id = r.json()["id"]
+
+    # Engagement B, created AFTER the edit.
+    b = client.post("/api/engagements", json={"customer_name": "After"}).json()
+
+    def e7_covers_identity(eid):
+        cov = client.get(f"/api/engagements/{eid}/coverage").json()
+        outs = client.get(f"/api/engagements/{eid}/outcomes").json()
+        ident = next(o for o in outs if "Identity" in o["name"])
+        return any(c["product_kind"] == "MicrosoftSku"
+                   and c["microsoft_sku_reference"] == "Microsoft 365 E7"
+                   and c["outcome_id"] == ident["id"] for c in cov)
+
+    assert e7_covers_identity(b["id"]) is True    # inherited the edit
+    assert e7_covers_identity(a["id"]) is False   # existing engagement untouched
+
+    # Restore the shared default library (don't leak state into other tests).
+    assert client.delete(f"/api/admin/default-coverage/{added_id}").status_code == 204
+
+
+def test_default_coverage_validation_and_crud(client):
+    # Operate on a throwaway entry (E7 has empty seed coverage) so no seed row is
+    # mutated for other tests.
+    created = client.post("/api/admin/default-coverage",
+                          json={"bundle_key": "m365-e7", "outcome_key": "collaboration-productivity",
+                                "coverage": "Full"})
+    assert created.status_code == 201
+    entry = created.json()
+    # Edit coverage level.
+    r = client.patch(f"/api/admin/default-coverage/{entry['id']}", json={"coverage": "Partial"})
+    assert r.status_code == 200 and r.json()["coverage"] == "Partial"
+    # Unknown keys rejected.
+    assert client.post("/api/admin/default-coverage",
+                       json={"bundle_key": "nope", "outcome_key": "identity-access"}).status_code == 422
+    assert client.post("/api/admin/default-coverage",
+                       json={"bundle_key": "m365-e7", "outcome_key": "nope"}).status_code == 422
+    # Duplicate pair rejected.
+    dup = client.post("/api/admin/default-coverage",
+                      json={"bundle_key": entry["bundle_key"], "outcome_key": entry["outcome_key"]})
+    assert dup.status_code == 409
+    # Delete (restores state).
+    assert client.delete(f"/api/admin/default-coverage/{entry['id']}").status_code == 204
+
+
 def test_bundle_library_crud_and_shape_validation(client):
     """Operator-editable bundle library: create/edit, with base/add-on shape rules."""
     # Create a base bundle.

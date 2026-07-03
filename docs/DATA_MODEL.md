@@ -192,7 +192,25 @@ FK, UUID PK, cascade-deleted with the engagement.
   state composes a base bundle **+** add-ons (slice C), and recommend-a-path
   composes the cheapest gap-closing add-ons (slice D); the import-time AI mapper
   proposes `MicrosoftSku.suggested_bundle_id` for operator review (slice E1); the
-  bundle library and per-engagement coverage map are GUI-editable (slice E2).
+  bundle library and per-engagement coverage map are GUI-editable (slice E2); the
+  default coverage library (§4.4c) is a first-class editable table (slice E3).
+
+### 4.4c DefaultBundleCoverage — the global default coverage library
+- **Identity:** `uuid` plus a unique `(bundle_key, outcome_key)`. **Scope:** **global**,
+  editable, seeded from `seeds/coverage.json` on first run (`services/seeds.py`,
+  populate-if-empty — the same pattern as `DefaultOutcome`).
+- **Shape:** `bundle_key` (a `Bundle.key`), `outcome_key` (a `DefaultOutcome.key`),
+  `coverage` (`Full` | `Partial`). Stable keys, not ids, so it survives reseeding and
+  reads like the seed file.
+- **Why it exists:** the Microsoft bundle → outcome coverage new engagements inherit
+  was a static file, invisible/uneditable in the GUI. It's now a first-class table:
+  `seed_engagement` copies **from it** (resolving `bundle_key`→Bundle, `outcome_key`→the
+  engagement's seeded Outcome) into engagement-scoped `CoverageMapEntry` rows
+  (`ratified = true`). Editing the default (Settings → Bundle coverage) changes the
+  template for **new** engagements only; existing engagements keep their own copy.
+- **CRUD:** `GET/POST/PATCH/DELETE …/admin/default-coverage` (keys validated against the
+  bundle library + `DefaultOutcome`; the pair is unique; PATCH edits coverage only).
+  `seeds/coverage.json` remains the version-controlled seed source.
 
 ### 4.5 CurrentMicrosoftLicense — the customer's existing licensing
 - **Identity:** `uuid`. **Scope:** engagement-scoped.

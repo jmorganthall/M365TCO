@@ -51,6 +51,23 @@ class DefaultOutcomeOut(ORMModel):
     sort_order: int
 
 
+class DefaultCoverageIn(BaseModel):
+    bundle_key: str
+    outcome_key: str
+    coverage: str = "Full"
+
+
+class DefaultCoverageUpdate(BaseModel):
+    coverage: str
+
+
+class DefaultCoverageOut(ORMModel):
+    id: str
+    bundle_key: str
+    outcome_key: str
+    coverage: str
+
+
 class BundleIn(BaseModel):
     key: str
     name: str

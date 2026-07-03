@@ -484,6 +484,24 @@ class DefaultOutcome(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class DefaultBundleCoverage(Base):
+    """Global default Microsoft bundle → outcome coverage library (PRD 5.3.1) as a
+    first-class, editable table rather than a static file. It is the TEMPLATE copied
+    into engagement-scoped CoverageMapEntry rows on engagement creation. Editing it
+    never touches existing engagements. Seeded from seeds/coverage.json on first run.
+    Keyed by stable `bundle_key` (a Bundle.key) + `outcome_key` (a DefaultOutcome.key)."""
+
+    __tablename__ = "default_bundle_coverage"
+    __table_args__ = (
+        UniqueConstraint("bundle_key", "outcome_key", name="uq_default_coverage"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    bundle_key: Mapped[str] = mapped_column(String, index=True)
+    outcome_key: Mapped[str] = mapped_column(String)
+    coverage: Mapped[str] = mapped_column(SAEnum(*COVERAGE, name="default_coverage_cov"), default="Full")
+
+
 class AiPrompt(Base):
     """Editable system instructions for one AI function — a first-class, global
     template so every AI call's prompt is visible and tunable in one place rather

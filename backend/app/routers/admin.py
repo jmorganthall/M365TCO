@@ -14,7 +14,7 @@ from .. import models, schemas
 from ..db import get_db
 from sqlalchemy import func
 
-from ..services import ai, ai_prompts, defaults, secrets, seeds
+from ..services import ai, ai_prompts, bundles as bundles_service, defaults, secrets, seeds
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -140,6 +140,67 @@ def delete_default_outcome(outcome_id: str, db: Session = Depends(get_db)):
     row = db.get(models.DefaultOutcome, outcome_id)
     if row is None:
         raise HTTPException(404, "Default outcome not found")
+    db.delete(row)
+    db.commit()
+
+
+# ---- Global default Microsoft bundle coverage library (seeds new engagements) ----
+@router.get("/default-coverage", response_model=list[schemas.DefaultCoverageOut])
+def list_default_coverage(db: Session = Depends(get_db)):
+    seeds.seed_default_coverage(db)
+    return db.execute(
+        select(models.DefaultBundleCoverage).order_by(
+            models.DefaultBundleCoverage.bundle_key, models.DefaultBundleCoverage.outcome_key
+        )
+    ).scalars().all()
+
+
+def _validate_default_coverage_keys(db: Session, bundle_key: str, outcome_key: str, coverage: str):
+    if coverage not in models.COVERAGE:
+        raise HTTPException(422, "coverage must be 'Full' or 'Partial'.")
+    if not any(b.key == bundle_key for b in bundles_service.list_bundles(db)):
+        raise HTTPException(422, f"Unknown bundle key '{bundle_key}'.")
+    if db.execute(select(models.DefaultOutcome.id).where(
+            models.DefaultOutcome.key == outcome_key)).first() is None:
+        raise HTTPException(422, f"Unknown outcome key '{outcome_key}'.")
+
+
+@router.post("/default-coverage", response_model=schemas.DefaultCoverageOut, status_code=201)
+def create_default_coverage(payload: schemas.DefaultCoverageIn, db: Session = Depends(get_db)):
+    """Add a bundle → outcome entry to the global default coverage library. Affects
+    NEW engagements only; existing engagements keep their own copy."""
+    seeds.seed_default_coverage(db)
+    _validate_default_coverage_keys(db, payload.bundle_key, payload.outcome_key, payload.coverage)
+    if db.execute(select(models.DefaultBundleCoverage.id).where(
+            models.DefaultBundleCoverage.bundle_key == payload.bundle_key,
+            models.DefaultBundleCoverage.outcome_key == payload.outcome_key)).first():
+        raise HTTPException(409, "That bundle already covers that outcome in the default library.")
+    row = models.DefaultBundleCoverage(**payload.model_dump())
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.patch("/default-coverage/{entry_id}", response_model=schemas.DefaultCoverageOut)
+def update_default_coverage(entry_id: str, payload: schemas.DefaultCoverageUpdate,
+                            db: Session = Depends(get_db)):
+    row = db.get(models.DefaultBundleCoverage, entry_id)
+    if row is None:
+        raise HTTPException(404, "Default coverage entry not found")
+    if payload.coverage not in models.COVERAGE:
+        raise HTTPException(422, "coverage must be 'Full' or 'Partial'.")
+    row.coverage = payload.coverage
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.delete("/default-coverage/{entry_id}", status_code=204)
+def delete_default_coverage(entry_id: str, db: Session = Depends(get_db)):
+    row = db.get(models.DefaultBundleCoverage, entry_id)
+    if row is None:
+        raise HTTPException(404, "Default coverage entry not found")
     db.delete(row)
     db.commit()
 
