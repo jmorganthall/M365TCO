@@ -121,6 +121,68 @@ def test_scenario_composes_base_plus_addons_with_discount(client):
     assert scen["addons"][0]["bundle_id"] == e5sec["id"]
 
 
+def test_bundle_library_crud_and_shape_validation(client):
+    """Operator-editable bundle library: create/edit, with base/add-on shape rules."""
+    # Create a base bundle.
+    base = client.post("/api/catalog/bundles",
+                       json={"key": "acme-suite", "name": "Acme Suite", "kind": "bundle",
+                             "sort_order": 90}).json()
+    assert base["kind"] == "bundle" and base["base_bundle_id"] is None
+
+    # Duplicate key rejected.
+    assert client.post("/api/catalog/bundles",
+                       json={"key": "acme-suite", "name": "Dup"}).status_code == 409
+    # An add-on must name a base; a base cannot have a base.
+    assert client.post("/api/catalog/bundles",
+                       json={"key": "x", "name": "X", "kind": "addon"}).status_code == 422
+    assert client.post("/api/catalog/bundles",
+                       json={"key": "y", "name": "Y", "kind": "bundle",
+                             "base_bundle_id": base["id"]}).status_code == 422
+
+    # Valid add-on onto the base.
+    addon = client.post("/api/catalog/bundles",
+                        json={"key": "acme-secplus", "name": "Acme Security Plus",
+                              "kind": "addon", "base_bundle_id": base["id"]}).json()
+    assert addon["base_bundle_id"] == base["id"]
+
+    # Edit: rename + re-sort.
+    r = client.patch(f"/api/catalog/bundles/{base['id']}",
+                     json={"name": "Acme Suite (2026)", "sort_order": 95})
+    assert r.status_code == 200 and r.json()["name"] == "Acme Suite (2026)"
+
+    # Delete is blocked while the add-on still bases on it.
+    r = client.delete(f"/api/catalog/bundles/{base['id']}")
+    assert r.status_code == 409 and "add-on" in r.json()["detail"]
+
+    # Remove the add-on, then the base deletes cleanly.
+    assert client.delete(f"/api/catalog/bundles/{addon['id']}").status_code == 200
+    assert client.delete(f"/api/catalog/bundles/{base['id']}").status_code == 200
+    keys = {b["key"] for b in client.get("/api/catalog/bundles").json()}
+    assert "acme-suite" not in keys and "acme-secplus" not in keys
+
+
+def test_delete_bundle_blocked_by_sku_mapping(client):
+    """A bundle mapped from a catalog SKU can't be deleted until the SKU is unmapped."""
+    b = client.post("/api/catalog/bundles",
+                    json={"key": "mapped-bundle", "name": "Mapped Bundle"}).json()
+    csv_text = (
+        "ProductTitle,ProductId,SkuId,SkuTitle,TermDuration,BillingPlan,Market,"
+        "Currency,UnitPrice,EffectiveStartDate,EffectiveEndDate,ERP Price,Segment\n"
+        "Mapped Bundle,CFQ7MAP,0009,Mapped Bundle,P1Y,Annual,US,USD,"
+        "100.00,2026-01-01,2026-12-31,120.00,Commercial\n"
+    )
+    client.post("/api/catalog/import-csv", files={"file": ("p.csv", csv_text, "text/csv")})
+    sku = next(s for s in client.get("/api/catalog/skus").json() if s["sku_id"] == "0009")
+    client.patch(f"/api/catalog/skus/{sku['id']}/bundle", json={"bundle_id": b["id"]})
+
+    r = client.delete(f"/api/catalog/bundles/{b['id']}")
+    assert r.status_code == 409 and "SKU" in r.json()["detail"]
+
+    # Unmap, then it deletes.
+    client.patch(f"/api/catalog/skus/{sku['id']}/bundle", json={"bundle_id": None})
+    assert client.delete(f"/api/catalog/bundles/{b['id']}").status_code == 200
+
+
 def test_edit_bundle_coverage_resolves_bundle_and_feeds_displacement(client):
     """The GUI coverage editor: adding an outcome to a bundle's coverage (by bundle
     name) resolves onto the bundle (bundle_id set, ratified) and immediately feeds

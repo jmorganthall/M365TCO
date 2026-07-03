@@ -51,6 +51,21 @@ class DefaultOutcomeOut(ORMModel):
     sort_order: int
 
 
+class BundleIn(BaseModel):
+    key: str
+    name: str
+    kind: str = "bundle"  # bundle | addon
+    base_bundle_id: Optional[str] = None
+    sort_order: int = 0
+
+
+class BundleUpdate(BaseModel):
+    name: Optional[str] = None
+    kind: Optional[str] = None
+    base_bundle_id: Optional[str] = None
+    sort_order: Optional[int] = None
+
+
 class EngagementUpdate(BaseModel):
     customer_name: Optional[str] = None
     market: Optional[str] = None

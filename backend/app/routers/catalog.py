@@ -6,7 +6,7 @@ from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadF
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import models
+from .. import models, schemas
 from ..config import settings
 from ..db import get_db
 from ..services import ai, ai_prompts, catalog_provenance, defaults, pricesheet
@@ -86,6 +86,94 @@ def list_bundles(db: Session = Depends(get_db)):
         }
         for b in rows
     ]
+
+
+def _validate_bundle_shape(db: Session, kind: str, base_bundle_id: str | None, self_id: str | None = None):
+    """A base bundle has no parent; an add-on must name an existing base bundle
+    (not itself, not another add-on)."""
+    if kind not in ("bundle", "addon"):
+        raise HTTPException(422, "kind must be 'bundle' or 'addon'.")
+    if kind == "bundle":
+        if base_bundle_id is not None:
+            raise HTTPException(422, "A base bundle cannot have a base_bundle_id.")
+        return
+    # add-on
+    if not base_bundle_id:
+        raise HTTPException(422, "An add-on must have a base_bundle_id.")
+    if base_bundle_id == self_id:
+        raise HTTPException(422, "An add-on cannot base onto itself.")
+    base = db.get(models.Bundle, base_bundle_id)
+    if base is None:
+        raise HTTPException(422, "Unknown base bundle.")
+    if base.kind != "bundle":
+        raise HTTPException(422, "base_bundle_id must point at a base bundle, not an add-on.")
+
+
+@router.post("/bundles", status_code=201)
+def create_bundle(payload: schemas.BundleIn, db: Session = Depends(get_db)):
+    """Add an operator-defined staple/add-on to the bundle library."""
+    if not payload.key.strip() or not payload.name.strip():
+        raise HTTPException(422, "key and name are required.")
+    if db.execute(select(models.Bundle).where(models.Bundle.key == payload.key)).scalar():
+        raise HTTPException(409, f"A bundle with key '{payload.key}' already exists.")
+    _validate_bundle_shape(db, payload.kind, payload.base_bundle_id)
+    row = models.Bundle(**payload.model_dump())
+    db.add(row)
+    db.commit()
+    return {"id": row.id, "key": row.key, "name": row.name, "kind": row.kind,
+            "base_bundle_id": row.base_bundle_id, "sort_order": row.sort_order}
+
+
+@router.patch("/bundles/{bundle_id}")
+def update_bundle(bundle_id: str, payload: schemas.BundleUpdate, db: Session = Depends(get_db)):
+    """Edit a bundle's name/kind/base/sort (the immutable `key` is the stable id)."""
+    row = db.get(models.Bundle, bundle_id)
+    if row is None:
+        raise HTTPException(404, "Bundle not found")
+    data = payload.model_dump(exclude_unset=True)
+    kind = data.get("kind", row.kind)
+    base = data.get("base_bundle_id", row.base_bundle_id)
+    _validate_bundle_shape(db, kind, base, self_id=row.id)
+    for k, v in data.items():
+        setattr(row, k, v)
+    db.commit()
+    return {"id": row.id, "key": row.key, "name": row.name, "kind": row.kind,
+            "base_bundle_id": row.base_bundle_id, "sort_order": row.sort_order}
+
+
+@router.delete("/bundles/{bundle_id}")
+def delete_bundle(bundle_id: str, db: Session = Depends(get_db)):
+    """Delete a bundle — blocked (409) while anything still references it, so a
+    delete can never orphan the SKU → Bundle → Outcomes spine. Note: a deleted
+    *seed* staple is re-created on next startup; delete is for operator-added ones."""
+    row = db.get(models.Bundle, bundle_id)
+    if row is None:
+        raise HTTPException(404, "Bundle not found")
+
+    def _count(model, *conds):
+        return len(db.execute(select(model.id).where(*conds)).scalars().all())
+
+    refs = []
+    skus = _count(models.MicrosoftSku,
+                  (models.MicrosoftSku.bundle_id == bundle_id)
+                  | (models.MicrosoftSku.suggested_bundle_id == bundle_id))
+    if skus:
+        refs.append(f"{skus} catalog SKU mapping(s)")
+    cov = _count(models.CoverageMapEntry, models.CoverageMapEntry.bundle_id == bundle_id)
+    if cov:
+        refs.append(f"{cov} coverage entr(y/ies)")
+    addons = _count(models.ScenarioAddon, models.ScenarioAddon.bundle_id == bundle_id)
+    if addons:
+        refs.append(f"{addons} scenario add-on(s)")
+    children = _count(models.Bundle, models.Bundle.base_bundle_id == bundle_id)
+    if children:
+        refs.append(f"{children} add-on(s) based on it")
+    if refs:
+        raise HTTPException(409, "Cannot delete: still referenced by " + ", ".join(refs)
+                            + ". Clear those references first.")
+    db.delete(row)
+    db.commit()
+    return {"deleted": bundle_id}
 
 
 @router.patch("/skus/{sku_id}/bundle")
