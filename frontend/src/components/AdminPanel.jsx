@@ -84,6 +84,8 @@ export default function AdminPanel({ onClose }) {
 
         <DefaultOutcomes onMsg={setMsg} onErr={setErr} />
 
+        <DefaultCoverage onMsg={setMsg} onErr={setErr} />
+
         <div className="card">
           <h2>AI assist (OpenRouter)</h2>
           <p className="hint">Coverage suggestions are advisory and written as unratified
@@ -429,6 +431,74 @@ function DefaultOutcomes({ onMsg, onErr }) {
             onChange={(e) => setDesc(e.target.value)} /></div>
       </div>
       <button style={{ marginTop: '.6rem' }} onClick={add}>Add outcome</button>
+    </div>
+  )
+}
+
+// Global default Microsoft bundle → outcome coverage library (seeds new
+// engagements). Grouped by bundle; add/remove an outcome, toggle Full/Partial.
+function DefaultCoverage({ onMsg, onErr }) {
+  const base = '/api/admin/default-coverage'
+  const [cov, setCov] = useState([])
+  const [bundles, setBundles] = useState([])
+  const [outcomes, setOutcomes] = useState([])
+
+  function load() {
+    api.get(base).then(setCov).catch((e) => onErr(e.message))
+    api.get('/api/catalog/bundles').then(setBundles).catch(() => {})
+    api.get('/api/admin/default-outcomes').then(setOutcomes).catch(() => {})
+  }
+  useEffect(() => { load() }, [])
+
+  const outcomeName = (key) => outcomes.find((o) => o.key === key)?.name || key
+  const entriesFor = (bkey) => cov.filter((c) => c.bundle_key === bkey)
+
+  async function add(bundleKey, outcomeKey, coverage) {
+    try { await api.post(base, { bundle_key: bundleKey, outcome_key: outcomeKey, coverage }); load() }
+    catch (e) { onErr(e.message) }
+  }
+  async function setCoverage(id, coverage) {
+    try { await api.patch(`${base}/${id}`, { coverage }); load() } catch (e) { onErr(e.message) }
+  }
+  async function remove(id) {
+    try { await api.del(`${base}/${id}`); load() } catch (e) { onErr(e.message) }
+  }
+
+  if (bundles.length === 0) return null
+  return (
+    <div className="card">
+      <h2>Bundle coverage (default library)</h2>
+      <p className="hint">What each staple bundle delivers, seeded into every <b>new</b> engagement
+        (the displacement test reads this via the SKU → Bundle → Outcomes spine). Editing here is the
+        template only — existing engagements keep their own copy and are never changed.</p>
+      {bundles.map((b) => {
+        const covered = entriesFor(b.key)
+        const available = outcomes.filter((o) => !covered.some((c) => c.outcome_key === o.key))
+        return (
+          <div key={b.id} className="card" style={{ background: 'var(--panel2)' }}>
+            <b>{b.name}{b.kind === 'addon' && b.base_name ? <span className="muted"> · add-on to {b.base_name}</span> : ''}</b>
+            <div className="pill-list" style={{ margin: '.5rem 0' }}>
+              {covered.map((c) => (
+                <span key={c.id} className="badge muted">
+                  {outcomeName(c.outcome_key)}{' · '}
+                  <select value={c.coverage} onChange={(e) => setCoverage(c.id, e.target.value)}
+                    style={{ width: 'auto', display: 'inline-block', padding: '0 .2rem', height: 'auto' }}>
+                    <option>Full</option><option>Partial</option>
+                  </select>
+                  <button className="sm danger" style={{ marginLeft: 4 }} onClick={() => remove(c.id)}>×</button>
+                </span>
+              ))}
+              {covered.length === 0 && <span className="muted">No default coverage.</span>}
+            </div>
+            {available.length > 0 && (
+              <select value="" onChange={(e) => e.target.value && add(b.key, e.target.value, 'Full')} style={{ maxWidth: 280 }}>
+                <option value="">+ add an outcome…</option>
+                {available.map((o) => <option key={o.key} value={o.key}>{o.name}</option>)}
+              </select>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

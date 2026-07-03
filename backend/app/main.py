@@ -105,6 +105,7 @@ async def lifespan(_app: FastAPI):
     db = SessionLocal()
     try:
         seeds_service.seed_default_outcomes(db)
+        seeds_service.seed_default_coverage(db)
         ai_prompts_service.seed_defaults(db)
         bundles_service.seed_bundles(db)
         _backfill_license_persona_tags(db)
