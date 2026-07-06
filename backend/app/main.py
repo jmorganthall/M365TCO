@@ -205,6 +205,15 @@ def health() -> dict:
     }
 
 
+@app.get("/api/version")
+def version(force: bool = False) -> dict:
+    """Running build provenance + whether a newer image is published (best-effort,
+    cached, fail-silent). `force=true` bypasses the cache."""
+    from .services import updatecheck
+
+    return updatecheck.check(force=force)
+
+
 @app.get("/api/meta")
 def meta(db=Depends(get_db)) -> dict:
     """Metadata the UI needs: enum values, defaults, seed versions."""
