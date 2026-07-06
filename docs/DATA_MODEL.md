@@ -200,7 +200,8 @@ FK, UUID PK, cascade-deleted with the engagement.
   editable, seeded from `seeds/coverage.json` on first run (`services/seeds.py`,
   populate-if-empty — the same pattern as `DefaultOutcome`).
 - **Shape:** `bundle_key` (a `Bundle.key`), `outcome_key` (a `DefaultOutcome.key`),
-  `coverage` (`Full` | `Partial`). Stable keys, not ids, so it survives reseeding and
+  `coverage` (always `Full` — coverage is binary, the row's existence is the signal).
+  Stable keys, not ids, so it survives reseeding and
   reads like the seed file.
 - **Why it exists:** the Microsoft bundle → outcome coverage new engagements inherit
   was a static file, invisible/uneditable in the GUI. It's now a first-class table:

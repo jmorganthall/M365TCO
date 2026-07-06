@@ -22,8 +22,9 @@ the data layer on input, never inside the engine.
   only.
 - **PersonaScenarios**: `{id, persona_id, target_sku_reference,
   target_unit_price_annual, in_scope, target_covered_outcome_ids}`.
-  `target_covered_outcome_ids` are the **ratified** Full|Partial outcomes the
-  target SKU covers.
+  `target_covered_outcome_ids` are the **ratified** outcomes the target SKU covers.
+  Coverage is **binary** — an outcome is covered or it is not (there is no partial
+  coverage); membership in this set is the whole signal.
 
 > Ratified-only rule (6.6 / 5.7): unratified AI suggestions must be excluded by
 > the caller before hydration. They never reach the engine, so they can never

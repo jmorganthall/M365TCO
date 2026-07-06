@@ -1,38 +1,42 @@
 {
-  "version": "2026-07-seed-v3-bundles",
+  "version": "2026-07-seed-v4-bundles",
   "note": "Default Bundle -> outcome coverage library, keyed by Bundle key (see seeds/bundles.json) and outcomes.json keys. Seeded (ratified) into engagement-scoped CoverageMapEntry rows (bundle_id set) on engagement creation. A first-pass authored default — the SA refines per engagement (and, later, the global library) in the GUI.",
   "bundles": [
     {"bundle": "m365-f1", "coverage": [
       {"outcome": "identity-access", "coverage": "Full"},
-      {"outcome": "collaboration-productivity", "coverage": "Partial"},
-      {"outcome": "information-governance", "coverage": "Partial"}
+      {"outcome": "collaboration-productivity", "coverage": "Full"},
+      {"outcome": "information-governance", "coverage": "Full"}
     ]},
     {"bundle": "m365-f3", "coverage": [
       {"outcome": "identity-access", "coverage": "Full"},
-      {"outcome": "email-security", "coverage": "Partial"},
+      {"outcome": "email-security", "coverage": "Full"},
       {"outcome": "device-management", "coverage": "Full"},
-      {"outcome": "information-protection", "coverage": "Partial"},
+      {"outcome": "information-protection", "coverage": "Full"},
       {"outcome": "collaboration-productivity", "coverage": "Full"},
-      {"outcome": "information-governance", "coverage": "Partial"}
+      {"outcome": "information-governance", "coverage": "Full"}
     ]},
     {"bundle": "m365-business-premium", "coverage": [
+      {"outcome": "desktop-software", "coverage": "Full"},
+      {"outcome": "cloud-storage-full", "coverage": "Full"},
       {"outcome": "endpoint-security", "coverage": "Full"},
       {"outcome": "email-security", "coverage": "Full"},
       {"outcome": "device-management", "coverage": "Full"},
       {"outcome": "identity-access", "coverage": "Full"},
-      {"outcome": "information-protection", "coverage": "Partial"},
+      {"outcome": "information-protection", "coverage": "Full"},
       {"outcome": "drive-encryption", "coverage": "Full"},
       {"outcome": "collaboration-productivity", "coverage": "Full"},
-      {"outcome": "information-governance", "coverage": "Partial"}
+      {"outcome": "information-governance", "coverage": "Full"}
     ]},
     {"bundle": "m365-e3", "coverage": [
+      {"outcome": "desktop-software", "coverage": "Full"},
+      {"outcome": "cloud-storage-full", "coverage": "Full"},
       {"outcome": "device-management", "coverage": "Full"},
       {"outcome": "identity-access", "coverage": "Full"},
-      {"outcome": "information-protection", "coverage": "Partial"},
+      {"outcome": "information-protection", "coverage": "Full"},
       {"outcome": "drive-encryption", "coverage": "Full"},
-      {"outcome": "email-security", "coverage": "Partial"},
+      {"outcome": "email-security", "coverage": "Full"},
       {"outcome": "collaboration-productivity", "coverage": "Full"},
-      {"outcome": "information-governance", "coverage": "Partial"}
+      {"outcome": "information-governance", "coverage": "Full"}
     ]},
     {"bundle": "e5-security", "coverage": [
       {"outcome": "endpoint-security", "coverage": "Full"},
@@ -45,6 +49,8 @@
       {"outcome": "information-governance", "coverage": "Full"}
     ]},
     {"bundle": "m365-e5", "coverage": [
+      {"outcome": "desktop-software", "coverage": "Full"},
+      {"outcome": "cloud-storage-full", "coverage": "Full"},
       {"outcome": "endpoint-security", "coverage": "Full"},
       {"outcome": "email-security", "coverage": "Full"},
       {"outcome": "device-management", "coverage": "Full"},
@@ -53,13 +59,16 @@
       {"outcome": "drive-encryption", "coverage": "Full"},
       {"outcome": "security-awareness", "coverage": "Full"},
       {"outcome": "collaboration-productivity", "coverage": "Full"},
-      {"outcome": "telephony", "coverage": "Partial"},
+      {"outcome": "telephony", "coverage": "Full"},
       {"outcome": "analytics-bi", "coverage": "Full"},
-      {"outcome": "process-automation", "coverage": "Partial"},
+      {"outcome": "process-automation", "coverage": "Full"},
       {"outcome": "threat-vuln-management", "coverage": "Full"},
       {"outcome": "information-governance", "coverage": "Full"}
     ]},
-    {"bundle": "m365-e7", "coverage": []},
+    {"bundle": "m365-e7", "coverage": [
+      {"outcome": "desktop-software", "coverage": "Full"},
+      {"outcome": "cloud-storage-full", "coverage": "Full"}
+    ]},
     {"bundle": "f5-security", "coverage": [
       {"outcome": "endpoint-security", "coverage": "Full"},
       {"outcome": "email-security", "coverage": "Full"},
@@ -74,7 +83,7 @@
     ]},
     {"bundle": "defender-endpoint-p2", "coverage": [
       {"outcome": "endpoint-security", "coverage": "Full"},
-      {"outcome": "threat-vuln-management", "coverage": "Partial"}
+      {"outcome": "threat-vuln-management", "coverage": "Full"}
     ]},
     {"bundle": "defender-office-p2", "coverage": [
       {"outcome": "email-security", "coverage": "Full"},

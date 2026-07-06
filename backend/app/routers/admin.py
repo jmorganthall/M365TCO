@@ -156,8 +156,6 @@ def list_default_coverage(db: Session = Depends(get_db)):
 
 
 def _validate_default_coverage_keys(db: Session, bundle_key: str, outcome_key: str, coverage: str):
-    if coverage not in models.COVERAGE:
-        raise HTTPException(422, "coverage must be 'Full' or 'Partial'.")
     if not any(b.key == bundle_key for b in bundles_service.list_bundles(db)):
         raise HTTPException(422, f"Unknown bundle key '{bundle_key}'.")
     if db.execute(select(models.DefaultOutcome.id).where(
@@ -177,20 +175,6 @@ def create_default_coverage(payload: schemas.DefaultCoverageIn, db: Session = De
         raise HTTPException(409, "That bundle already covers that outcome in the default library.")
     row = models.DefaultBundleCoverage(**payload.model_dump())
     db.add(row)
-    db.commit()
-    db.refresh(row)
-    return row
-
-
-@router.patch("/default-coverage/{entry_id}", response_model=schemas.DefaultCoverageOut)
-def update_default_coverage(entry_id: str, payload: schemas.DefaultCoverageUpdate,
-                            db: Session = Depends(get_db)):
-    row = db.get(models.DefaultBundleCoverage, entry_id)
-    if row is None:
-        raise HTTPException(404, "Default coverage entry not found")
-    if payload.coverage not in models.COVERAGE:
-        raise HTTPException(422, "coverage must be 'Full' or 'Partial'.")
-    row.coverage = payload.coverage
     db.commit()
     db.refresh(row)
     return row

@@ -42,20 +42,20 @@ export default function CoverageMap({ engagement, meta }) {
     try { await api.post(`/api/engagements/${eid}/outcomes`, { name: newOutcome, is_custom: true }); setNewOutcome(''); load() }
     catch (e) { setErr(e.message) }
   }
-  async function addCoverage(tpId, outcomeId, cov) {
+  async function addCoverage(tpId, outcomeId) {
     try {
       await api.post(`/api/engagements/${eid}/coverage`, {
         outcome_id: outcomeId, product_kind: 'ThirdParty', third_party_product_id: tpId,
-        coverage: cov, ai_suggested: false, ratified: true,
+        ai_suggested: false, ratified: true,  // coverage is binary (defaults to covered)
       })
       load()
     } catch (e) { setErr(e.message) }
   }
-  async function addBundleCoverage(bundleName, outcomeId, cov) {
+  async function addBundleCoverage(bundleName, outcomeId) {
     try {
       await api.post(`/api/engagements/${eid}/coverage`, {
         outcome_id: outcomeId, product_kind: 'MicrosoftSku',
-        microsoft_sku_reference: bundleName, coverage: cov, ai_suggested: false, ratified: true,
+        microsoft_sku_reference: bundleName, ai_suggested: false, ratified: true,
       })
       load()
     } catch (e) { setErr(e.message) }
@@ -137,7 +137,7 @@ export default function CoverageMap({ engagement, meta }) {
             <div className="pill-list" style={{ margin: '.5rem 0' }}>
               {tpEntries(tp.id).map((c) => (
                 <span key={c.id} className={`badge ${c.ratified ? 'pos' : 'warn'}`}>
-                  {outcomeName(c.outcome_id)} · {c.coverage}
+                  {outcomeName(c.outcome_id)}
                   {c.ai_suggested && !c.ratified && ' · AI'}
                   {!c.ratified && <button className="sm ghost" style={{ marginLeft: 6 }} onClick={() => ratify(c.id)}>ratify</button>}
                   <button className="sm danger" style={{ marginLeft: 4 }} onClick={() => removeCoverage(c.id)}>×</button>
@@ -145,9 +145,9 @@ export default function CoverageMap({ engagement, meta }) {
               ))}
               {tpEntries(tp.id).length === 0 && <span className="muted">No coverage captured.</span>}
             </div>
-            <AddCoverageRow outcomes={outcomes} meta={meta}
+            <AddCoverageRow outcomes={outcomes}
               existing={tpEntries(tp.id).map((c) => c.outcome_id)}
-              onAdd={(oid, cov) => addCoverage(tp.id, oid, cov)} />
+              onAdd={(oid) => addCoverage(tp.id, oid)} />
           </div>
         ))}
       </div>
@@ -166,7 +166,7 @@ export default function CoverageMap({ engagement, meta }) {
             <div className="pill-list" style={{ margin: '.5rem 0' }}>
               {bundleEntries(b).map((c) => (
                 <span key={c.id} className={`badge ${c.ratified ? 'pos' : 'warn'}`}>
-                  {outcomeName(c.outcome_id)} · {c.coverage}
+                  {outcomeName(c.outcome_id)}
                   {c.ai_suggested && !c.ratified && ' · AI'}
                   {!c.ratified && <button className="sm ghost" style={{ marginLeft: 6 }} onClick={() => ratify(c.id)}>ratify</button>}
                   <button className="sm danger" style={{ marginLeft: 4 }} onClick={() => removeCoverage(c.id)}>×</button>
@@ -174,9 +174,9 @@ export default function CoverageMap({ engagement, meta }) {
               ))}
               {bundleEntries(b).length === 0 && <span className="muted">No coverage — this bundle displaces nothing.</span>}
             </div>
-            <AddCoverageRow outcomes={outcomes} meta={meta}
+            <AddCoverageRow outcomes={outcomes}
               existing={bundleEntries(b).map((c) => c.outcome_id)}
-              onAdd={(oid, cov) => addBundleCoverage(b.name, oid, cov)} />
+              onAdd={(oid) => addBundleCoverage(b.name, oid)} />
           </div>
         ))}
 
@@ -190,7 +190,7 @@ export default function CoverageMap({ engagement, meta }) {
                 <b>{ref}</b>{' '}
                 <span className="pill-list" style={{ display: 'inline-flex' }}>
                   {refEntries(ref).map((c) => (
-                    <span key={c.id} className="badge muted">{outcomeName(c.outcome_id)} · {c.coverage}
+                    <span key={c.id} className="badge muted">{outcomeName(c.outcome_id)}
                       <button className="sm danger" style={{ marginLeft: 4 }} onClick={() => removeCoverage(c.id)}>×</button>
                     </span>
                   ))}
@@ -204,10 +204,9 @@ export default function CoverageMap({ engagement, meta }) {
   )
 }
 
-function AddCoverageRow({ outcomes, existing, onAdd, meta }) {
+function AddCoverageRow({ outcomes, existing, onAdd }) {
   const available = outcomes.filter((o) => !existing.includes(o.id))
   const [oid, setOid] = useState('')
-  const [cov, setCov] = useState('Full')
   return (
     <div className="toolbar">
       <div style={{ flex: 2 }}>
@@ -216,12 +215,7 @@ function AddCoverageRow({ outcomes, existing, onAdd, meta }) {
           {available.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
         </select>
       </div>
-      <div>
-        <select value={cov} onChange={(e) => setCov(e.target.value)}>
-          {(meta?.coverage || ['Full', 'Partial']).map((c) => <option key={c}>{c}</option>)}
-        </select>
-      </div>
-      <button className="sm" disabled={!oid} onClick={() => { onAdd(oid, cov); setOid('') }}>Add</button>
+      <button className="sm" disabled={!oid} onClick={() => { onAdd(oid); setOid('') }}>Add</button>
     </div>
   )
 }
