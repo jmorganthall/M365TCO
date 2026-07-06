@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { api } from './api'
 import Sidebar from './components/Sidebar.jsx'
 import PricingBanner from './components/PricingBanner.jsx'
+import UpdateBanner from './components/UpdateBanner.jsx'
 import NewEngagement from './components/NewEngagement.jsx'
 import Personas from './components/Personas.jsx'
 import CurrentLicensing from './components/CurrentLicensing.jsx'
@@ -69,6 +70,7 @@ export default function App() {
       <main className="main">
         {!active && (
           <div className="container">
+            <UpdateBanner />
             <PricingBanner onOpenSettings={() => setShowAdmin(true)} />
             <div className="welcome">
               <h1>Model a Microsoft 365 total cost of ownership.</h1>
@@ -82,6 +84,7 @@ export default function App() {
 
         {active && (
           <div className="container">
+            <UpdateBanner />
             <PricingBanner onOpenSettings={() => setShowAdmin(true)} />
             <div className="work-header">
               <div>

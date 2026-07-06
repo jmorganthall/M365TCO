@@ -27,6 +27,15 @@ COPY backend/ ./
 # Built SPA served by FastAPI from /app/static (see app/main.py).
 COPY --from=frontend /fe/dist ./static
 
+# Build provenance so the running container knows its own version and can offer
+# an "update available" notice. Supplied by the publish workflow; empty locally.
+ARG TCO_BUILD_SHA=""
+ARG TCO_BUILD_VERSION=""
+ARG TCO_BUILD_REF=""
+ENV TCO_BUILD_SHA=$TCO_BUILD_SHA \
+    TCO_BUILD_VERSION=$TCO_BUILD_VERSION \
+    TCO_BUILD_REF=$TCO_BUILD_REF
+
 # Persistent data (SQLite DB + encrypted secret store) lives on a volume.
 RUN mkdir -p /data
 VOLUME ["/data"]

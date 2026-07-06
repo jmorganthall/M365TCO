@@ -38,5 +38,17 @@ class Settings(BaseSettings):
     default_market: str = "US"
     default_currency: str = "USD"
 
+    # Build provenance, baked into the image at publish time (Dockerfile ARG ->
+    # ENV). Empty on local/dev builds, which suppresses the update check.
+    build_sha: str = ""       # full git sha of the running image
+    build_version: str = ""   # semver like "1.2.3" when built from a v* tag, else ""
+    build_ref: str = ""       # the git ref built (e.g. "refs/tags/v1.2.3" or a branch)
+
+    # Repo the update check queries (owner/name). Matches the ghcr image slug the
+    # publish workflow uses. Overridable so a fork points at its own repo.
+    update_repo: str = "jmorganthall/m365tco"
+    # How long to cache the "latest" lookup, in seconds (default 6h).
+    update_check_ttl_seconds: int = 21600
+
 
 settings = Settings()

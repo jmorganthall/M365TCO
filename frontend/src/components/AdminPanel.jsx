@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { api, pct } from '../api'
+import { VersionInfo } from './UpdateBanner.jsx'
 
 export default function AdminPanel({ onClose }) {
   const [secrets, setSecrets] = useState(null)
@@ -56,6 +57,8 @@ export default function AdminPanel({ onClose }) {
         </div>
         {msg && <div className="muted" style={{ margin: '.4rem 0' }}>{msg}</div>}
         {err && <div className="err">{err}</div>}
+
+        <VersionInfo />
 
         <div className="card">
           <h2>Defaults</h2>
