@@ -109,6 +109,14 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
         db.flush()
         outcome_map[o.id] = no.id
 
+    # Carry each persona's required-outcome links across (needs both maps).
+    for p in src.personas:
+        np_id = persona_map.get(p.id)
+        for link in p.requirement_links:
+            mapped = outcome_map.get(link.outcome_id)
+            if np_id and mapped:
+                db.add(models.PersonaRequirement(persona_id=np_id, outcome_id=mapped))
+
     tp_map: dict[str, str] = {}
     for tp in src.third_party_products:
         ntp = models.ThirdPartyProduct(

@@ -241,6 +241,13 @@ def analyze_persona_bundles(
     for tp_id, outs in tp_outcomes.items():
         current_capability |= outs
 
+    # Persona-declared required capabilities (Personas tab) are ALSO required for
+    # gap detection, even when no current license delivers them — this is what
+    # keeps a persona that needs Desktop Software off a Frontline bundle. Added to
+    # `required` only (not `current_capability`), so such a bundle still surfaces
+    # it as a newly-added capability.
+    required |= {oid for oid in persona.required_outcome_ids if oid in outcome_names}
+
     third_party = [
         EngThirdParty(
             id=tp.id, name=tp.name, annual_cost=_dec(tp.annual_cost),

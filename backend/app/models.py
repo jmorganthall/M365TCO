@@ -103,6 +103,33 @@ class Persona(Base):
     source_tag: Mapped[str] = _source_tag_col()
 
     engagement: Mapped[Engagement] = relationship(back_populates="personas")
+    requirement_links: Mapped[list["PersonaRequirement"]] = relationship(
+        back_populates="persona", cascade="all, delete-orphan"
+    )
+
+    @property
+    def required_outcome_ids(self) -> list[str]:
+        """Outcomes this persona is declared to REQUIRE (Personas tab). Feeds
+        recommend-a-path gap detection: a target bundle that misses one is a gap."""
+        return [link.outcome_id for link in self.requirement_links]
+
+
+class PersonaRequirement(Base):
+    """Persona ↔ Outcome requirement (association object): a capability the persona
+    needs, independent of what its current licenses happen to deliver. Used to tell
+    Frontline from mainline personas (e.g. requires Desktop Software / Full-Size
+    Cloud Storage) so recommend-a-path won't drop a needed capability."""
+
+    __tablename__ = "persona_requirements"
+    __table_args__ = (
+        UniqueConstraint("persona_id", "outcome_id", name="uq_persona_requirement"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    persona_id: Mapped[str] = mapped_column(ForeignKey("personas.id"), index=True)
+    outcome_id: Mapped[str] = mapped_column(ForeignKey("outcomes.id"))
+
+    persona: Mapped[Persona] = relationship(back_populates="requirement_links")
 
 
 class Outcome(Base):
