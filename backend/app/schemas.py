@@ -57,10 +57,6 @@ class DefaultCoverageIn(BaseModel):
     coverage: str = "Full"
 
 
-class DefaultCoverageUpdate(BaseModel):
-    coverage: str
-
-
 class DefaultCoverageOut(ORMModel):
     id: str
     bundle_key: str

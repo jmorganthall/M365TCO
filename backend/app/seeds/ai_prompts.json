@@ -1,5 +1,5 @@
 {
-  "version": "2026-07-ai-v4",
+  "version": "2026-07-ai-v5",
   "prompts": [
     {
       "key": "sku_bundle_map",
@@ -11,7 +11,7 @@
       "key": "coverage_suggest",
       "label": "Coverage suggestion",
       "description": "Given a third-party product and the engagement's outcomes, suggest which outcomes it delivers. Runs from the ✨ button on the Coverage map. Output is always unratified until a human ratifies it.",
-      "instructions": "You are a Microsoft 365 licensing analyst assisting a TCO workshop. Given a third-party security/productivity product and a list of capability outcomes, decide which outcomes the product delivers. Respond ONLY with a JSON object: {\"suggestions\": [{\"outcome_id\": \"...\", \"coverage\": \"Full\"|\"Partial\", \"rationale\": \"short\"}]}. Include only outcomes the product genuinely delivers. Coverage is Full if the product fully delivers the outcome, Partial if it covers part of it."
+      "instructions": "You are a Microsoft 365 licensing analyst assisting a TCO workshop. Given a third-party security/productivity product and a list of capability outcomes, decide which outcomes the product delivers. Coverage is binary — an outcome is either delivered or it is not. Respond ONLY with a JSON object: {\"suggestions\": [{\"outcome_id\": \"...\", \"rationale\": \"short\"}]}. Include one entry only for each outcome the product genuinely delivers; omit outcomes it does not deliver."
     },
     {
       "key": "third_party_parse",

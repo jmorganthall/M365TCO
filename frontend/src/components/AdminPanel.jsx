@@ -453,12 +453,9 @@ function DefaultCoverage({ onMsg, onErr }) {
   const outcomeName = (key) => outcomes.find((o) => o.key === key)?.name || key
   const entriesFor = (bkey) => cov.filter((c) => c.bundle_key === bkey)
 
-  async function add(bundleKey, outcomeKey, coverage) {
-    try { await api.post(base, { bundle_key: bundleKey, outcome_key: outcomeKey, coverage }); load() }
+  async function add(bundleKey, outcomeKey) {
+    try { await api.post(base, { bundle_key: bundleKey, outcome_key: outcomeKey }); load() }
     catch (e) { onErr(e.message) }
-  }
-  async function setCoverage(id, coverage) {
-    try { await api.patch(`${base}/${id}`, { coverage }); load() } catch (e) { onErr(e.message) }
   }
   async function remove(id) {
     try { await api.del(`${base}/${id}`); load() } catch (e) { onErr(e.message) }
@@ -480,18 +477,14 @@ function DefaultCoverage({ onMsg, onErr }) {
             <div className="pill-list" style={{ margin: '.5rem 0' }}>
               {covered.map((c) => (
                 <span key={c.id} className="badge muted">
-                  {outcomeName(c.outcome_key)}{' · '}
-                  <select value={c.coverage} onChange={(e) => setCoverage(c.id, e.target.value)}
-                    style={{ width: 'auto', display: 'inline-block', padding: '0 .2rem', height: 'auto' }}>
-                    <option>Full</option><option>Partial</option>
-                  </select>
+                  {outcomeName(c.outcome_key)}
                   <button className="sm danger" style={{ marginLeft: 4 }} onClick={() => remove(c.id)}>×</button>
                 </span>
               ))}
               {covered.length === 0 && <span className="muted">No default coverage.</span>}
             </div>
             {available.length > 0 && (
-              <select value="" onChange={(e) => e.target.value && add(b.key, e.target.value, 'Full')} style={{ maxWidth: 280 }}>
+              <select value="" onChange={(e) => e.target.value && add(b.key, e.target.value)} style={{ maxWidth: 280 }}>
                 <option value="">+ add an outcome…</option>
                 {available.map((o) => <option key={o.key} value={o.key}>{o.name}</option>)}
               </select>

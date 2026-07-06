@@ -110,6 +110,8 @@ async def lifespan(_app: FastAPI):
         bundles_service.seed_bundles(db)
         _backfill_license_persona_tags(db)
         _backfill_coverage_bundle_ids(db)
+        _backfill_binary_coverage(db)
+        _backfill_new_default_outcomes(db)
     finally:
         db.close()
 
@@ -135,6 +137,61 @@ app.include_router(entities.router)
 app.include_router(catalog.router)
 app.include_router(admin.router)
 app.include_router(pricesync.router)
+
+
+def _backfill_binary_coverage(db) -> None:
+    """One-time migration: coverage is now binary, so collapse any legacy 'Partial'
+    coverage rows to the single 'Full' marker. Raw SQL so it tolerates the old enum
+    values without the ORM validating them. Idempotent."""
+    from sqlalchemy import text
+
+    for table in ("coverage_map_entries", "default_bundle_coverage"):
+        db.execute(text(f"UPDATE {table} SET coverage='Full' WHERE coverage<>'Full'"))
+    db.commit()
+
+
+def _backfill_new_default_outcomes(db) -> None:
+    """Additive migration: insert any default outcome from the seed file whose key
+    is missing (so existing deployments pick up newly-added outcomes like Desktop
+    Software / Full-Size Cloud Storage), plus the default bundle coverage for those
+    NEW outcomes only. Never touches existing rows, so operator edits/deletes to
+    other outcomes and coverage are preserved. Idempotent."""
+    from sqlalchemy import select
+
+    from . import models
+    from .services import seeds as seeds_service
+
+    existing = {o.key for o in db.execute(select(models.DefaultOutcome)).scalars()}
+    if not existing:
+        return  # fresh DB — normal seeding handles it
+
+    max_sort = max(
+        (o.sort_order for o in db.execute(select(models.DefaultOutcome)).scalars()),
+        default=0,
+    )
+    added: set[str] = set()
+    for o in seeds_service.load_outcomes()["outcomes"]:
+        if o["key"] not in existing:
+            max_sort += 1
+            db.add(models.DefaultOutcome(
+                key=o["key"], name=o["name"],
+                description=o.get("description", ""), sort_order=max_sort))
+            added.add(o["key"])
+    if not added:
+        return
+    db.flush()
+
+    pairs = {
+        (c.bundle_key, c.outcome_key)
+        for c in db.execute(select(models.DefaultBundleCoverage)).scalars()
+    }
+    for item in seeds_service.load_coverage()["bundles"]:
+        for entry in item["coverage"]:
+            key = (item["bundle"], entry["outcome"])
+            if entry["outcome"] in added and key not in pairs:
+                db.add(models.DefaultBundleCoverage(
+                    bundle_key=item["bundle"], outcome_key=entry["outcome"], coverage="Full"))
+    db.commit()
 
 
 @app.get("/api/health")

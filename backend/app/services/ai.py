@@ -117,16 +117,14 @@ def suggest_coverage(
     data = _chat_json(instructions, user, model)
 
     valid_ids = {o["id"] for o in outcomes}
-    out = []
+    out, seen = [], set()
+    # Coverage is binary: any outcome the model returns is "covered" (stored as
+    # the single "Full" marker). We only validate the id and de-dupe.
     for s in data.get("suggestions", []):
-        if s.get("outcome_id") in valid_ids and s.get("coverage") in ("Full", "Partial"):
-            out.append(
-                {
-                    "outcome_id": s["outcome_id"],
-                    "coverage": s["coverage"],
-                    "rationale": s.get("rationale", ""),
-                }
-            )
+        oid = s.get("outcome_id")
+        if oid in valid_ids and oid not in seen:
+            seen.add(oid)
+            out.append({"outcome_id": oid, "coverage": "Full", "rationale": s.get("rationale", "")})
     return out
 
 

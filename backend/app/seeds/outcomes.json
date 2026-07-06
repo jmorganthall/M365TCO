@@ -1,5 +1,5 @@
 {
-  "version": "2026-07-seed-v2",
+  "version": "2026-07-seed-v3",
   "note": "Default outcome library — the initial seed for the globally-editable DefaultOutcome table. Editing the global library (Settings > Outcomes) changes the template for NEW engagements only; existing engagements keep their own copy. outcome keys are stable identifiers referenced by coverage.json.",
   "outcomes": [
     { "key": "endpoint-security", "name": "Endpoint Security", "description": "Endpoint detection and response (EDR), next-gen antivirus, device threat protection." },
@@ -15,6 +15,8 @@
     { "key": "analytics-bi", "name": "Analytics & Business Intelligence", "description": "Self-service BI, dashboards, and enterprise reporting." },
     { "key": "process-automation", "name": "Process Automation / Workflow Automation", "description": "Low-code workflow automation, approvals, and robotic process automation." },
     { "key": "threat-vuln-management", "name": "Threat Exposure & Vulnerability Management", "description": "Continuous vulnerability assessment, exposure scoring, and remediation guidance." },
-    { "key": "information-governance", "name": "Information Governance / eDiscovery / Records Management", "description": "Retention, legal hold, content search, eDiscovery, and records management." }
+    { "key": "information-governance", "name": "Information Governance / eDiscovery / Records Management", "description": "Retention, legal hold, content search, eDiscovery, and records management." },
+    { "key": "desktop-software", "name": "Desktop Software", "description": "The installed desktop Office apps (Word, Excel, PowerPoint, Outlook, etc.) — distinguishes mainline bundles from web/mobile-only Frontline bundles." },
+    { "key": "cloud-storage-full", "name": "Full-Size Cloud Storage", "description": "Full per-user cloud storage / large mailbox (e.g. 1TB+ OneDrive, 50GB+ mailbox) — distinguishes mainline bundles from the limited storage in Frontline bundles." }
   ]
 }

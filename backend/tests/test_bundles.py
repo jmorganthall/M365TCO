@@ -159,17 +159,95 @@ def test_default_coverage_seeds_and_editing_affects_new_engagements_only(client)
     assert client.delete(f"/api/admin/default-coverage/{added_id}").status_code == 204
 
 
+def test_new_differentiator_outcomes_split_frontline_from_mainline(client):
+    """Desktop Software + Full-Size Cloud Storage are seeded outcomes that mainline
+    bundles (E3/E5/BP/E7) cover and Frontline bundles (F1/F3) do not — the
+    differentiator the persona requirements will key on."""
+    eng = client.post("/api/engagements", json={"customer_name": "Split Co"}).json()
+    eid = eng["id"]
+    outs = client.get(f"/api/engagements/{eid}/outcomes").json()
+    by_name = {o["name"]: o["id"] for o in outs}
+    assert "Desktop Software" in by_name and "Full-Size Cloud Storage" in by_name
+
+    cov = client.get(f"/api/engagements/{eid}/coverage").json()
+
+    def covers(bundle_name, outcome_id):
+        return any(c["product_kind"] == "MicrosoftSku"
+                   and c["microsoft_sku_reference"] == bundle_name
+                   and c["outcome_id"] == outcome_id for c in cov)
+
+    desk = by_name["Desktop Software"]
+    store = by_name["Full-Size Cloud Storage"]
+    # Mainline covers both.
+    for b in ("Microsoft 365 E3", "Microsoft 365 E5", "Microsoft 365 Business Premium"):
+        assert covers(b, desk) and covers(b, store), b
+    # Frontline covers neither.
+    for b in ("Microsoft 365 F1", "Microsoft 365 F3"):
+        assert not covers(b, desk) and not covers(b, store), b
+
+
+def test_binary_coverage_backfill_collapses_partial(client):
+    """The one-time migration flips any legacy 'Partial' coverage to the single
+    'Full' marker (coverage is now binary)."""
+    from sqlalchemy import text
+    from app.db import SessionLocal
+    from app.main import _backfill_binary_coverage
+
+    eng = client.post("/api/engagements", json={"customer_name": "Binary Co"}).json()
+    db = SessionLocal()
+    try:
+        # Force a legacy value in via raw SQL (the ORM enum no longer permits it).
+        db.execute(text("UPDATE coverage_map_entries SET coverage='Partial' "
+                        "WHERE engagement_id=:e"), {"e": eng["id"]})
+        db.commit()
+        assert db.execute(text("SELECT COUNT(*) FROM coverage_map_entries "
+                               "WHERE coverage='Partial'")).scalar() > 0
+        _backfill_binary_coverage(db)
+        assert db.execute(text("SELECT COUNT(*) FROM coverage_map_entries "
+                               "WHERE coverage='Partial'")).scalar() == 0
+    finally:
+        db.close()
+
+
+def test_new_outcome_backfill_is_additive_for_existing_dbs(client):
+    """On an ALREADY-seeded DB, the startup backfill inserts a missing default
+    outcome (by key) and its default bundle coverage — without disturbing others."""
+    from sqlalchemy import delete, select
+    from app.db import SessionLocal
+    from app.main import _backfill_new_default_outcomes
+    from app import models
+
+    client.get("/api/admin/default-coverage")  # ensure seeded
+    db = SessionLocal()
+    try:
+        # Simulate a pre-existing DB that predates the new outcome.
+        db.execute(delete(models.DefaultBundleCoverage).where(
+            models.DefaultBundleCoverage.outcome_key == "desktop-software"))
+        row = db.execute(select(models.DefaultOutcome).where(
+            models.DefaultOutcome.key == "desktop-software")).scalar_one()
+        db.delete(row)
+        db.commit()
+
+        _backfill_new_default_outcomes(db)
+
+        assert db.execute(select(models.DefaultOutcome).where(
+            models.DefaultOutcome.key == "desktop-software")).first() is not None
+        pairs = {(c.bundle_key, c.outcome_key)
+                 for c in db.execute(select(models.DefaultBundleCoverage)).scalars()}
+        assert ("m365-e3", "desktop-software") in pairs      # mainline coverage restored
+        assert ("m365-f3", "desktop-software") not in pairs  # Frontline still excluded
+    finally:
+        db.close()
+
+
 def test_default_coverage_validation_and_crud(client):
     # Operate on a throwaway entry (E7 has empty seed coverage) so no seed row is
     # mutated for other tests.
     created = client.post("/api/admin/default-coverage",
-                          json={"bundle_key": "m365-e7", "outcome_key": "collaboration-productivity",
-                                "coverage": "Full"})
+                          json={"bundle_key": "m365-e7", "outcome_key": "collaboration-productivity"})
     assert created.status_code == 201
     entry = created.json()
-    # Edit coverage level.
-    r = client.patch(f"/api/admin/default-coverage/{entry['id']}", json={"coverage": "Partial"})
-    assert r.status_code == 200 and r.json()["coverage"] == "Partial"
+    assert entry["coverage"] == "Full"  # coverage is binary — stored as the single marker
     # Unknown keys rejected.
     assert client.post("/api/admin/default-coverage",
                        json={"bundle_key": "nope", "outcome_key": "identity-access"}).status_code == 422
