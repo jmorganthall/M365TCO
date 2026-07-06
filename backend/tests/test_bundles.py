@@ -159,6 +159,48 @@ def test_default_coverage_seeds_and_editing_affects_new_engagements_only(client)
     assert client.delete(f"/api/admin/default-coverage/{added_id}").status_code == 204
 
 
+def test_persona_requirements_crud_and_validation(client):
+    """Per-persona required capabilities (Personas tab) round-trip and reconcile."""
+    eng = client.post("/api/engagements", json={"customer_name": "Reqs Co"}).json()
+    eid = eng["id"]
+    outs = {o["name"]: o["id"] for o in client.get(f"/api/engagements/{eid}/outcomes").json()}
+    p = client.post(f"/api/engagements/{eid}/personas", json={"name": "KW", "headcount": 100}).json()
+    assert p["required_outcome_ids"] == []
+
+    desk, store = outs["Desktop Software"], outs["Full-Size Cloud Storage"]
+    r = client.patch(f"/api/engagements/{eid}/personas/{p['id']}",
+                     json={"required_outcome_ids": [desk, store, "bogus"]})
+    assert r.status_code == 200
+    assert set(r.json()["required_outcome_ids"]) == {desk, store}  # invalid id dropped
+
+    # Reconcile down to one (no UNIQUE re-insert error).
+    r = client.patch(f"/api/engagements/{eid}/personas/{p['id']}",
+                     json={"required_outcome_ids": [desk]})
+    assert r.json()["required_outcome_ids"] == [desk]
+    # Editing another field leaves requirements untouched (None = unchanged).
+    r = client.patch(f"/api/engagements/{eid}/personas/{p['id']}", json={"headcount": 120})
+    assert r.json()["required_outcome_ids"] == [desk] and r.json()["headcount"] == 120
+
+
+def test_persona_requirement_feeds_recommend_path_gap(client):
+    """A persona that REQUIRES Desktop Software shows a gap on a Frontline bundle
+    (F3) that lacks it, but not on E3 which covers it — even with no current
+    license delivering the capability."""
+    eng = client.post("/api/engagements", json={"customer_name": "Gap Co"}).json()
+    eid = eng["id"]
+    outs = {o["name"]: o["id"] for o in client.get(f"/api/engagements/{eid}/outcomes").json()}
+    p = client.post(f"/api/engagements/{eid}/personas", json={"name": "KW", "headcount": 100}).json()
+    client.patch(f"/api/engagements/{eid}/personas/{p['id']}",
+                 json={"required_outcome_ids": [outs["Desktop Software"]]})
+
+    res = client.post(f"/api/engagements/{eid}/personas/{p['id']}/bundle-analysis",
+                      json={"prices": {}}).json()
+    assert "Desktop Software" in [o["name"] for o in res["required_outcomes"]]
+    by_ref = {b["sku_reference"]: b for b in res["bundles"]}
+    assert "Desktop Software" in by_ref["Microsoft 365 F3"]["gap_outcomes"]      # Frontline gap
+    assert "Desktop Software" not in by_ref["Microsoft 365 E3"]["gap_outcomes"]  # mainline covers it
+
+
 def test_new_differentiator_outcomes_split_frontline_from_mainline(client):
     """Desktop Software + Full-Size Cloud Storage are seeded outcomes that mainline
     bundles (E3/E5/BP/E7) cover and Frontline bundles (F1/F3) do not — the

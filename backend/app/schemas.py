@@ -100,10 +100,12 @@ class EngagementOut(ORMModel):
 
 # ---- Persona ----
 class PersonaIn(BaseModel):
-    name: str
+    name: str = ""  # optional so a partial PATCH (e.g. just requirements) validates
     headcount: int = 0
     description: str = ""
     source_tag: str = "CustomerStated"
+    # Outcomes this persona requires (Personas tab). None = leave unchanged on PATCH.
+    required_outcome_ids: Optional[list[str]] = None
 
 
 class PersonaOut(ORMModel):
@@ -112,6 +114,7 @@ class PersonaOut(ORMModel):
     headcount: int
     description: str
     source_tag: str
+    required_outcome_ids: list[str] = []
 
 
 # ---- Outcome ----

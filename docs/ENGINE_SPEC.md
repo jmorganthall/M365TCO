@@ -120,7 +120,10 @@ third-party cost it offsets.
 > covered set is the union (base ∪ chosen add-ons) and its price is the sum, so a
 > recommendation reads as "E3 + E5 Security" rather than a single line. The
 > displacement test and linear-by-user offset are unchanged and applied to the
-> composed covered set.
+> composed covered set. The **required** set (what a candidate must cover or show a
+> gap) is the union of the outcomes the persona's current Microsoft licenses deliver
+> **and** the persona's declared required capabilities (`PersonaRequirement`, the
+> Personas tab) — so a needed capability with no current license still forces a gap.
 
 ## Rollup (6.8) with integrity rules (6.9)
 

@@ -56,11 +56,37 @@ def list_personas(engagement_id: str, db: Session = Depends(get_db)):
     ).scalars().all()
 
 
+def _set_persona_requirements(db: Session, row: models.Persona, outcome_ids: list[str]):
+    """Diff-reconcile a persona's required-outcome links (add/remove only the
+    deltas, so a UNIQUE re-insert never fires). Ignores outcome ids not in this
+    engagement."""
+    valid = {
+        o.id for o in db.execute(
+            select(models.Outcome).where(models.Outcome.engagement_id == row.engagement_id)
+        ).scalars()
+    }
+    want = [oid for oid in dict.fromkeys(outcome_ids) if oid in valid]
+    have = {link.outcome_id: link for link in row.requirement_links}
+    for oid, link in list(have.items()):
+        if oid not in want:
+            row.requirement_links.remove(link)
+    for oid in want:
+        if oid not in have:
+            row.requirement_links.append(models.PersonaRequirement(outcome_id=oid))
+
+
 @router.post("/personas", response_model=schemas.PersonaOut, status_code=201)
 def create_persona(engagement_id: str, payload: schemas.PersonaIn, db: Session = Depends(get_db)):
     _require_engagement(db, engagement_id)
-    row = models.Persona(engagement_id=engagement_id, **payload.model_dump())
+    if not payload.name.strip():
+        raise HTTPException(422, "Persona name is required.")
+    data = payload.model_dump()
+    requirements = data.pop("required_outcome_ids", None)
+    row = models.Persona(engagement_id=engagement_id, **data)
     db.add(row)
+    db.flush()
+    if requirements is not None:
+        _set_persona_requirements(db, row, requirements)
     db.commit()
     db.refresh(row)
     return row
@@ -71,7 +97,10 @@ def update_persona(engagement_id: str, persona_id: str, payload: schemas.Persona
     row = db.get(models.Persona, persona_id)
     if row is None or row.engagement_id != engagement_id:
         raise HTTPException(404, "Persona not found")
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    if "required_outcome_ids" in data:
+        _set_persona_requirements(db, row, data.pop("required_outcome_ids") or [])
+    for k, v in data.items():
         setattr(row, k, v)
     db.commit()
     db.refresh(row)

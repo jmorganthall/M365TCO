@@ -115,7 +115,24 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Field ownership:** user-entered (`name`, `headcount`, `description`); provenance (`source_tag`).
 - **CRUD:** `GET/POST/PATCH/DELETE /api/engagements/{eid}/personas`.
 - **Relationships:** referenced by `PersonaScenario.persona_id` and optionally
-  `CurrentMicrosoftLicense.persona_id`.
+  `CurrentMicrosoftLicense.persona_id`. **Required capabilities** via
+  `PersonaRequirement` (§4.2a).
+- **GUI surface:** the Personas tab is an expandable line-item — core fields up top,
+  an expander of required-capability toggles.
+
+### 4.2a PersonaRequirement — a persona's required capabilities
+- **Identity:** `uuid` plus a unique `(persona_id, outcome_id)`. **Scope:**
+  engagement-scoped (via the persona). **Association object** — the many-to-many
+  Persona ↔ Outcome "this persona requires this capability."
+- **Field ownership:** user-entered (toggled on the Personas tab). Reconciled diff-wise
+  on persona create/PATCH (`required_outcome_ids` on `PersonaIn`/`PersonaOut`); soft
+  refs to engagement outcomes are validated (unknown ids dropped).
+- **Why it exists:** a persona's *needs* are independent of what its current licenses
+  happen to deliver. These outcomes are added to the **required** set in
+  recommend-a-path (`analyze_persona_bundles`), so a bundle that misses one shows a
+  **gap** — e.g. a persona requiring *Desktop Software* / *Full-Size Cloud Storage*
+  won't be recommended a Frontline (F1/F3) bundle without flagging the shortfall. It
+  feeds recommend-a-path only; the core reconciliation engine is unchanged.
 
 ### 4.3 Outcome — capability buckets
 - **Identity:** `uuid`. **Scope:** engagement-scoped (5.3.1 — scoped copies so
