@@ -1,0 +1,23 @@
+{
+  "version": "2026-07-bundles-v1",
+  "bundles": [
+    {"key": "m365-business-premium", "name": "Microsoft 365 Business Premium", "kind": "bundle", "base": null, "sort_order": 10},
+    {"key": "m365-f1", "name": "Microsoft 365 F1", "kind": "bundle", "base": null, "sort_order": 20},
+    {"key": "m365-f3", "name": "Microsoft 365 F3", "kind": "bundle", "base": null, "sort_order": 21},
+    {"key": "f5-security", "name": "Microsoft 365 F5 Security", "kind": "addon", "base": "m365-f3", "sort_order": 22},
+    {"key": "f5-compliance", "name": "Microsoft 365 F5 Compliance", "kind": "addon", "base": "m365-f3", "sort_order": 23},
+    {"key": "m365-e3", "name": "Microsoft 365 E3", "kind": "bundle", "base": null, "sort_order": 30},
+    {"key": "e5-security", "name": "Microsoft 365 E5 Security", "kind": "addon", "base": "m365-e3", "sort_order": 31},
+    {"key": "e5-compliance", "name": "Microsoft 365 E5 Compliance", "kind": "addon", "base": "m365-e3", "sort_order": 32},
+    {"key": "m365-e5", "name": "Microsoft 365 E5", "kind": "bundle", "base": null, "sort_order": 40},
+    {"key": "m365-e7", "name": "Microsoft 365 E7", "kind": "bundle", "base": null, "sort_order": 50},
+
+    {"key": "entra-id-p2", "name": "Microsoft Entra ID P2", "kind": "addon", "base": null, "sort_order": 60},
+    {"key": "defender-endpoint-p2", "name": "Microsoft Defender for Endpoint P2", "kind": "addon", "base": null, "sort_order": 61},
+    {"key": "defender-office-p2", "name": "Microsoft Defender for Office 365 P2", "kind": "addon", "base": null, "sort_order": 62},
+    {"key": "sentinel", "name": "Microsoft Sentinel", "kind": "addon", "base": null, "sort_order": 63},
+    {"key": "teams-phone", "name": "Microsoft Teams Phone", "kind": "addon", "base": null, "sort_order": 64},
+    {"key": "power-bi-pro", "name": "Microsoft Power BI Pro", "kind": "addon", "base": null, "sort_order": 65},
+    {"key": "power-automate-premium", "name": "Microsoft Power Automate Premium", "kind": "addon", "base": null, "sort_order": 66}
+  ]
+}

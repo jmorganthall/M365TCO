@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { api, pct } from '../api'
+import { VersionInfo } from './UpdateBanner.jsx'
 
 export default function AdminPanel({ onClose }) {
   const [secrets, setSecrets] = useState(null)
@@ -57,6 +58,8 @@ export default function AdminPanel({ onClose }) {
         {msg && <div className="muted" style={{ margin: '.4rem 0' }}>{msg}</div>}
         {err && <div className="err">{err}</div>}
 
+        <VersionInfo />
+
         <div className="card">
           <h2>Defaults</h2>
           <p className="hint">System-wide defaults new engagements inherit. Changing these
@@ -84,6 +87,8 @@ export default function AdminPanel({ onClose }) {
 
         <DefaultOutcomes onMsg={setMsg} onErr={setErr} />
 
+        <DefaultCoverage onMsg={setMsg} onErr={setErr} />
+
         <div className="card">
           <h2>AI assist (OpenRouter)</h2>
           <p className="hint">Coverage suggestions are advisory and written as unratified
@@ -102,9 +107,12 @@ export default function AdminPanel({ onClose }) {
               </span>
             </div>
           )}
+          <AiInstructions onMsg={setMsg} onErr={setErr} />
         </div>
 
         <PricingSync onMsg={setMsg} onErr={setErr} />
+
+        <BundleLibrary onMsg={setMsg} onErr={setErr} />
 
         <div className="card">
           <h2>Microsoft SKU catalog</h2>
@@ -430,6 +438,67 @@ function DefaultOutcomes({ onMsg, onErr }) {
   )
 }
 
+// Global default Microsoft bundle → outcome coverage library (seeds new
+// engagements). Grouped by bundle; add/remove an outcome, toggle Full/Partial.
+function DefaultCoverage({ onMsg, onErr }) {
+  const base = '/api/admin/default-coverage'
+  const [cov, setCov] = useState([])
+  const [bundles, setBundles] = useState([])
+  const [outcomes, setOutcomes] = useState([])
+
+  function load() {
+    api.get(base).then(setCov).catch((e) => onErr(e.message))
+    api.get('/api/catalog/bundles').then(setBundles).catch(() => {})
+    api.get('/api/admin/default-outcomes').then(setOutcomes).catch(() => {})
+  }
+  useEffect(() => { load() }, [])
+
+  const outcomeName = (key) => outcomes.find((o) => o.key === key)?.name || key
+  const entriesFor = (bkey) => cov.filter((c) => c.bundle_key === bkey)
+
+  async function add(bundleKey, outcomeKey) {
+    try { await api.post(base, { bundle_key: bundleKey, outcome_key: outcomeKey }); load() }
+    catch (e) { onErr(e.message) }
+  }
+  async function remove(id) {
+    try { await api.del(`${base}/${id}`); load() } catch (e) { onErr(e.message) }
+  }
+
+  if (bundles.length === 0) return null
+  return (
+    <div className="card">
+      <h2>Bundle coverage (default library)</h2>
+      <p className="hint">What each staple bundle delivers, seeded into every <b>new</b> engagement
+        (the displacement test reads this via the SKU → Bundle → Outcomes spine). Editing here is the
+        template only — existing engagements keep their own copy and are never changed.</p>
+      {bundles.map((b) => {
+        const covered = entriesFor(b.key)
+        const available = outcomes.filter((o) => !covered.some((c) => c.outcome_key === o.key))
+        return (
+          <div key={b.id} className="card" style={{ background: 'var(--panel2)' }}>
+            <b>{b.name}{b.kind === 'addon' && b.base_name ? <span className="muted"> · add-on to {b.base_name}</span> : ''}</b>
+            <div className="pill-list" style={{ margin: '.5rem 0' }}>
+              {covered.map((c) => (
+                <span key={c.id} className="badge muted">
+                  {outcomeName(c.outcome_key)}
+                  <button className="sm danger" style={{ marginLeft: 4 }} onClick={() => remove(c.id)}>×</button>
+                </span>
+              ))}
+              {covered.length === 0 && <span className="muted">No default coverage.</span>}
+            </div>
+            {available.length > 0 && (
+              <select value="" onChange={(e) => e.target.value && add(b.key, e.target.value)} style={{ maxWidth: 280 }}>
+                <option value="">+ add an outcome…</option>
+                {available.map((o) => <option key={o.key} value={o.key}>{o.name}</option>)}
+              </select>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function ModelCombobox({ models, value, onChange }) {
   const [query, setQuery] = useState(value || '')
   const [open, setOpen] = useState(false)
@@ -462,6 +531,254 @@ function ModelCombobox({ models, value, onChange }) {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// Editable system instructions for every AI function — see and tune exactly
+// what is consistently being sent when the output isn't great.
+function AiInstructions({ onMsg, onErr }) {
+  const [prompts, setPrompts] = useState([])
+  const [drafts, setDrafts] = useState({})
+
+  const load = () => api.get('/api/admin/ai/prompts')
+    .then((r) => { setPrompts(r.prompts); setDrafts(Object.fromEntries(r.prompts.map((p) => [p.key, p.instructions]))) })
+    .catch(() => {})
+  useEffect(() => { load() }, [])
+
+  async function save(key) {
+    try {
+      await api.patch(`/api/admin/ai/prompts/${key}`, { instructions: drafts[key] })
+      onMsg('AI instructions saved.'); load()
+    } catch (e) { onErr(e.message) }
+  }
+  async function reset(key) {
+    try { await api.post(`/api/admin/ai/prompts/${key}/reset`); onMsg('Reset to default.'); load() }
+    catch (e) { onErr(e.message) }
+  }
+
+  if (prompts.length === 0) return null
+  return (
+    <div style={{ marginTop: '1rem' }}>
+      <h3 style={{ fontSize: '.9rem', marginBottom: '.3rem' }}>Instructions</h3>
+      <p className="hint">The system prompt sent for each AI function. Edit when the output
+        isn't great; reset restores the shipped default.</p>
+      {prompts.map((p) => {
+        const dirty = drafts[p.key] !== p.instructions
+        return (
+          <div key={p.key} className="card" style={{ background: 'var(--panel2)', marginBottom: '.5rem' }}>
+            <div className="flex-between">
+              <b>{p.label}</b>
+              {p.is_default ? <span className="badge muted">default</span> : <span className="badge warn">edited</span>}
+            </div>
+            <p className="hint" style={{ marginTop: '.2rem' }}>{p.description}</p>
+            <textarea rows={5} value={drafts[p.key] ?? ''} style={{ width: '100%', fontFamily: 'inherit' }}
+              onChange={(e) => setDrafts({ ...drafts, [p.key]: e.target.value })} />
+            <div className="toolbar" style={{ marginTop: '.4rem' }}>
+              <button className="sm" disabled={!dirty} onClick={() => save(p.key)}>Save</button>
+              <button className="ghost sm" disabled={p.is_default} onClick={() => reset(p.key)}>Reset to default</button>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// The staple bundle library (the SKU → Bundle → Outcomes spine) plus the
+// import-time AI mapper: classify unmapped catalog SKUs onto bundles, then
+// accept/reject each unratified suggestion.
+function BundleLibrary({ onMsg, onErr }) {
+  const [bundles, setBundles] = useState([])
+  const [unmapped, setUnmapped] = useState([])
+  const [busy, setBusy] = useState(false)
+  const byId = (id) => bundles.find((b) => b.id === id)?.name || id
+
+  function load() {
+    api.get('/api/catalog/bundles').then(setBundles).catch(() => {})
+    api.get('/api/catalog/skus?unmapped=true&limit=500').then(setUnmapped).catch(() => {})
+  }
+  useEffect(load, [])
+  if (bundles.length === 0) return null
+
+  // Suggestions first, then the rest of the unmapped work-list.
+  const rows = [...unmapped].sort((a, b) => (b.suggested_bundle_id ? 1 : 0) - (a.suggested_bundle_id ? 1 : 0))
+  const pending = unmapped.filter((s) => s.suggested_bundle_id).length
+
+  async function suggest() {
+    setBusy(true); onErr?.(''); onMsg?.('Classifying SKUs with AI…')
+    try {
+      const res = await api.post('/api/catalog/skus/suggest-bundles')
+      onMsg?.(`AI classified ${res.classified} SKU(s): ${res.suggested} suggestion(s).` +
+        (res.capped ? ` ${res.unmapped_remaining} remaining — run again.` : ''))
+      load()
+    } catch (e) { onErr?.(e.message); onMsg?.('') } finally { setBusy(false) }
+  }
+  async function accept(sku, bundleId) {
+    onErr?.('')
+    try { await api.patch(`/api/catalog/skus/${sku.id}/bundle`, { bundle_id: bundleId }); load() }
+    catch (e) { onErr?.(e.message) }
+  }
+  async function reject(sku) {
+    onErr?.('')
+    try { await api.post(`/api/catalog/skus/${sku.id}/reject-suggestion`); load() }
+    catch (e) { onErr?.(e.message) }
+  }
+  async function saveBundle(id, patch) {
+    onErr?.('')
+    try { await api.patch(`/api/catalog/bundles/${id}`, patch); load() } catch (e) { onErr?.(e.message) }
+  }
+  async function removeBundle(id) {
+    onErr?.('')
+    try { await api.del(`/api/catalog/bundles/${id}`); onMsg?.('Bundle deleted.'); load() }
+    catch (e) { onErr?.(e.message) }
+  }
+  async function addBundle(payload) {
+    onErr?.('')
+    try { await api.post('/api/catalog/bundles', payload); onMsg?.('Bundle added.'); load() }
+    catch (e) { onErr?.(e.message) }
+  }
+  const baseBundles = bundles.filter((b) => b.kind === 'bundle')
+
+  return (
+    <div className="card">
+      <div className="flex-between">
+        <h2>Staple bundles</h2>
+        <button className="sm" onClick={suggest} disabled={busy || unmapped.length === 0}>
+          {busy ? 'Classifying…' : '✨ Suggest bundle mappings'}
+        </button>
+      </div>
+      <p className="hint">The canonical bundles that coverage, scenarios, and licenses resolve to.
+        Many priced catalog SKUs map onto one bundle. Edit the library below; the AI mapper proposes
+        a bundle for each unmapped SKU (<b>unratified</b> until you accept). Deleting a seeded staple
+        re-creates it on restart — delete is for operator-added bundles.</p>
+      <table style={{ marginBottom: '.5rem' }}>
+        <thead><tr>
+          <th>Name</th><th>Kind</th><th>Base</th><th className="num">Sort</th><th></th>
+        </tr></thead>
+        <tbody>
+          {bundles.map((b) => (
+            <BundleEditRow key={b.id} b={b} baseBundles={baseBundles}
+              onSave={(patch) => saveBundle(b.id, patch)} onDelete={() => removeBundle(b.id)} />
+          ))}
+        </tbody>
+      </table>
+      <NewBundleForm baseBundles={baseBundles} onAdd={addBundle} />
+
+      {unmapped.length === 0 ? (
+        <div className="muted" style={{ fontSize: '.82rem' }}>Every catalog SKU is mapped to a bundle. 🎉</div>
+      ) : (
+        <>
+          <div className="muted" style={{ fontSize: '.82rem', marginBottom: '.3rem' }}>
+            {unmapped.length} unmapped SKU(s){pending ? ` · ${pending} with an AI suggestion` : ''}. Accept to ratify the SKU → bundle link.
+          </div>
+          <table>
+            <thead><tr>
+              <th>SKU</th><th>AI suggests</th><th>Map to</th><th></th>
+            </tr></thead>
+            <tbody>
+              {rows.slice(0, 60).map((s) => (
+                <tr key={s.id}>
+                  <td>
+                    <div>{s.product_title || s.sku_title}</div>
+                    <small className="muted">{s.sku_title} · {s.term_duration}</small>
+                  </td>
+                  <td style={{ fontSize: '.8rem' }}>
+                    {s.suggested_bundle_id
+                      ? <><span className="badge pos">{byId(s.suggested_bundle_id)}</span>
+                          {s.bundle_suggestion_reason && <div className="src">{s.bundle_suggestion_reason}</div>}</>
+                      : <span className="muted">—</span>}
+                  </td>
+                  <td>
+                    <select value="" onChange={(e) => e.target.value && accept(s, e.target.value)} style={{ maxWidth: 200 }}>
+                      <option value="">Pick a bundle…</option>
+                      {bundles.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                  </td>
+                  <td className="num" style={{ whiteSpace: 'nowrap' }}>
+                    {s.suggested_bundle_id && (
+                      <button className="sm" onClick={() => accept(s, s.suggested_bundle_id)}>Accept</button>
+                    )}{' '}
+                    {s.suggested_bundle_id && (
+                      <button className="ghost sm" onClick={() => reject(s)}>Reject</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {rows.length > 60 && <div className="muted" style={{ fontSize: '.78rem' }}>Showing 60 of {rows.length}.</div>}
+        </>
+      )}
+    </div>
+  )
+}
+
+// One editable bundle row: name/sort commit on blur; kind + base commit on change.
+// An add-on requires a base; switching to base clears it.
+function BundleEditRow({ b, baseBundles, onSave, onDelete }) {
+  const bases = baseBundles.filter((x) => x.id !== b.id)
+  return (
+    <tr>
+      <td>
+        <input defaultValue={b.name} style={{ minWidth: 180 }}
+          onBlur={(e) => e.target.value !== b.name && onSave({ name: e.target.value })} />
+      </td>
+      <td>
+        <select value={b.kind} onChange={(e) => onSave(
+          e.target.value === 'bundle'
+            ? { kind: 'bundle', base_bundle_id: null }
+            : { kind: 'addon', base_bundle_id: b.base_bundle_id || bases[0]?.id })}>
+          <option value="bundle">bundle</option>
+          <option value="addon">add-on</option>
+        </select>
+      </td>
+      <td>
+        {b.kind === 'addon' ? (
+          <select value={b.base_bundle_id || ''} onChange={(e) => onSave({ base_bundle_id: e.target.value })}>
+            {bases.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+          </select>
+        ) : <span className="muted">—</span>}
+      </td>
+      <td className="num">
+        <input type="number" defaultValue={b.sort_order} style={{ width: 60 }}
+          onBlur={(e) => Number(e.target.value) !== b.sort_order && onSave({ sort_order: Number(e.target.value) })} />
+      </td>
+      <td className="num"><button className="danger sm" onClick={onDelete}>Delete</button></td>
+    </tr>
+  )
+}
+
+// Add an operator-defined bundle. Key is the stable id (immutable after create).
+function NewBundleForm({ baseBundles, onAdd }) {
+  const [f, setF] = useState({ key: '', name: '', kind: 'bundle', base_bundle_id: '' })
+  const valid = f.key.trim() && f.name.trim() && (f.kind === 'bundle' || f.base_bundle_id)
+  function submit() {
+    onAdd({
+      key: f.key.trim(), name: f.name.trim(), kind: f.kind,
+      base_bundle_id: f.kind === 'addon' ? f.base_bundle_id : null,
+    })
+    setF({ key: '', name: '', kind: 'bundle', base_bundle_id: '' })
+  }
+  return (
+    <div className="toolbar" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
+      <div><label>Key (stable id)</label>
+        <input value={f.key} placeholder="acme-suite" onChange={(e) => setF({ ...f, key: e.target.value })} /></div>
+      <div style={{ flex: 2 }}><label>Name</label>
+        <input value={f.name} placeholder="Acme Suite" onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
+      <div><label>Kind</label>
+        <select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}>
+          <option value="bundle">bundle</option>
+          <option value="addon">add-on</option>
+        </select></div>
+      {f.kind === 'addon' && (
+        <div><label>Base</label>
+          <select value={f.base_bundle_id} onChange={(e) => setF({ ...f, base_bundle_id: e.target.value })}>
+            <option value="">Pick a base…</option>
+            {baseBundles.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+          </select></div>
+      )}
+      <button className="sm" disabled={!valid} onClick={submit}>+ Add bundle</button>
     </div>
   )
 }

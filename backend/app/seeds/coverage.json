@@ -1,136 +1,105 @@
 {
-  "version": "2026-07-seed-v2",
-  "note": "Default Microsoft SKU -> outcome coverage library, keyed to outcomes.json keys. Seeded (ratified) into engagement-scoped CoverageMapEntry rows on engagement creation. `is_bundle` marks a full user-licensing bundle (a candidate target for the best-bundle optimizer) versus a standalone add-on. Coverage is a defensible default; the SA refines per engagement.",
-  "skus": [
-    {
-      "sku_reference": "F1",
-      "title": "Microsoft 365 F1",
-      "is_bundle": true,
-      "coverage": [
-        { "outcome": "identity-access", "coverage": "Full" },
-        { "outcome": "collaboration-productivity", "coverage": "Partial" },
-        { "outcome": "information-governance", "coverage": "Partial" }
-      ]
-    },
-    {
-      "sku_reference": "F3",
-      "title": "Microsoft 365 F3",
-      "is_bundle": true,
-      "coverage": [
-        { "outcome": "identity-access", "coverage": "Full" },
-        { "outcome": "email-security", "coverage": "Partial" },
-        { "outcome": "device-management", "coverage": "Full" },
-        { "outcome": "information-protection", "coverage": "Partial" },
-        { "outcome": "collaboration-productivity", "coverage": "Full" },
-        { "outcome": "information-governance", "coverage": "Partial" }
-      ]
-    },
-    {
-      "sku_reference": "Business Premium",
-      "title": "Microsoft 365 Business Premium",
-      "is_bundle": true,
-      "coverage": [
-        { "outcome": "endpoint-security", "coverage": "Full" },
-        { "outcome": "email-security", "coverage": "Full" },
-        { "outcome": "device-management", "coverage": "Full" },
-        { "outcome": "identity-access", "coverage": "Full" },
-        { "outcome": "information-protection", "coverage": "Partial" },
-        { "outcome": "drive-encryption", "coverage": "Full" },
-        { "outcome": "collaboration-productivity", "coverage": "Full" },
-        { "outcome": "information-governance", "coverage": "Partial" }
-      ]
-    },
-    {
-      "sku_reference": "E3",
-      "title": "Microsoft 365 E3",
-      "is_bundle": true,
-      "coverage": [
-        { "outcome": "device-management", "coverage": "Full" },
-        { "outcome": "identity-access", "coverage": "Full" },
-        { "outcome": "information-protection", "coverage": "Partial" },
-        { "outcome": "drive-encryption", "coverage": "Full" },
-        { "outcome": "email-security", "coverage": "Partial" },
-        { "outcome": "collaboration-productivity", "coverage": "Full" },
-        { "outcome": "information-governance", "coverage": "Partial" }
-      ]
-    },
-    {
-      "sku_reference": "E5",
-      "title": "Microsoft 365 E5",
-      "is_bundle": true,
-      "coverage": [
-        { "outcome": "endpoint-security", "coverage": "Full" },
-        { "outcome": "email-security", "coverage": "Full" },
-        { "outcome": "device-management", "coverage": "Full" },
-        { "outcome": "identity-access", "coverage": "Full" },
-        { "outcome": "information-protection", "coverage": "Full" },
-        { "outcome": "drive-encryption", "coverage": "Full" },
-        { "outcome": "security-awareness", "coverage": "Full" },
-        { "outcome": "collaboration-productivity", "coverage": "Full" },
-        { "outcome": "telephony", "coverage": "Partial" },
-        { "outcome": "analytics-bi", "coverage": "Full" },
-        { "outcome": "process-automation", "coverage": "Partial" },
-        { "outcome": "threat-vuln-management", "coverage": "Full" },
-        { "outcome": "information-governance", "coverage": "Full" }
-      ]
-    },
-    {
-      "sku_reference": "Entra ID P2",
-      "title": "Microsoft Entra ID P2 (add-on)",
-      "is_bundle": false,
-      "coverage": [
-        { "outcome": "identity-access", "coverage": "Full" }
-      ]
-    },
-    {
-      "sku_reference": "Defender for Endpoint P2",
-      "title": "Microsoft Defender for Endpoint P2 (add-on)",
-      "is_bundle": false,
-      "coverage": [
-        { "outcome": "endpoint-security", "coverage": "Full" },
-        { "outcome": "threat-vuln-management", "coverage": "Partial" }
-      ]
-    },
-    {
-      "sku_reference": "Defender for Office 365 P2",
-      "title": "Microsoft Defender for Office 365 P2 (add-on)",
-      "is_bundle": false,
-      "coverage": [
-        { "outcome": "email-security", "coverage": "Full" },
-        { "outcome": "security-awareness", "coverage": "Full" }
-      ]
-    },
-    {
-      "sku_reference": "Sentinel",
-      "title": "Microsoft Sentinel (add-on)",
-      "is_bundle": false,
-      "coverage": [
-        { "outcome": "siem", "coverage": "Full" }
-      ]
-    },
-    {
-      "sku_reference": "Teams Phone",
-      "title": "Microsoft Teams Phone (add-on)",
-      "is_bundle": false,
-      "coverage": [
-        { "outcome": "telephony", "coverage": "Full" }
-      ]
-    },
-    {
-      "sku_reference": "Power BI Pro",
-      "title": "Microsoft Power BI Pro (add-on)",
-      "is_bundle": false,
-      "coverage": [
-        { "outcome": "analytics-bi", "coverage": "Full" }
-      ]
-    },
-    {
-      "sku_reference": "Power Automate Premium",
-      "title": "Microsoft Power Automate Premium (add-on)",
-      "is_bundle": false,
-      "coverage": [
-        { "outcome": "process-automation", "coverage": "Full" }
-      ]
-    }
+  "version": "2026-07-seed-v4-bundles",
+  "note": "Default Bundle -> outcome coverage library, keyed by Bundle key (see seeds/bundles.json) and outcomes.json keys. Seeded (ratified) into engagement-scoped CoverageMapEntry rows (bundle_id set) on engagement creation. A first-pass authored default — the SA refines per engagement (and, later, the global library) in the GUI.",
+  "bundles": [
+    {"bundle": "m365-f1", "coverage": [
+      {"outcome": "identity-access", "coverage": "Full"},
+      {"outcome": "collaboration-productivity", "coverage": "Full"},
+      {"outcome": "information-governance", "coverage": "Full"}
+    ]},
+    {"bundle": "m365-f3", "coverage": [
+      {"outcome": "identity-access", "coverage": "Full"},
+      {"outcome": "email-security", "coverage": "Full"},
+      {"outcome": "device-management", "coverage": "Full"},
+      {"outcome": "information-protection", "coverage": "Full"},
+      {"outcome": "collaboration-productivity", "coverage": "Full"},
+      {"outcome": "information-governance", "coverage": "Full"}
+    ]},
+    {"bundle": "m365-business-premium", "coverage": [
+      {"outcome": "desktop-software", "coverage": "Full"},
+      {"outcome": "cloud-storage-full", "coverage": "Full"},
+      {"outcome": "endpoint-security", "coverage": "Full"},
+      {"outcome": "email-security", "coverage": "Full"},
+      {"outcome": "device-management", "coverage": "Full"},
+      {"outcome": "identity-access", "coverage": "Full"},
+      {"outcome": "information-protection", "coverage": "Full"},
+      {"outcome": "drive-encryption", "coverage": "Full"},
+      {"outcome": "collaboration-productivity", "coverage": "Full"},
+      {"outcome": "information-governance", "coverage": "Full"}
+    ]},
+    {"bundle": "m365-e3", "coverage": [
+      {"outcome": "desktop-software", "coverage": "Full"},
+      {"outcome": "cloud-storage-full", "coverage": "Full"},
+      {"outcome": "device-management", "coverage": "Full"},
+      {"outcome": "identity-access", "coverage": "Full"},
+      {"outcome": "information-protection", "coverage": "Full"},
+      {"outcome": "drive-encryption", "coverage": "Full"},
+      {"outcome": "email-security", "coverage": "Full"},
+      {"outcome": "collaboration-productivity", "coverage": "Full"},
+      {"outcome": "information-governance", "coverage": "Full"}
+    ]},
+    {"bundle": "e5-security", "coverage": [
+      {"outcome": "endpoint-security", "coverage": "Full"},
+      {"outcome": "email-security", "coverage": "Full"},
+      {"outcome": "security-awareness", "coverage": "Full"},
+      {"outcome": "threat-vuln-management", "coverage": "Full"}
+    ]},
+    {"bundle": "e5-compliance", "coverage": [
+      {"outcome": "information-protection", "coverage": "Full"},
+      {"outcome": "information-governance", "coverage": "Full"}
+    ]},
+    {"bundle": "m365-e5", "coverage": [
+      {"outcome": "desktop-software", "coverage": "Full"},
+      {"outcome": "cloud-storage-full", "coverage": "Full"},
+      {"outcome": "endpoint-security", "coverage": "Full"},
+      {"outcome": "email-security", "coverage": "Full"},
+      {"outcome": "device-management", "coverage": "Full"},
+      {"outcome": "identity-access", "coverage": "Full"},
+      {"outcome": "information-protection", "coverage": "Full"},
+      {"outcome": "drive-encryption", "coverage": "Full"},
+      {"outcome": "security-awareness", "coverage": "Full"},
+      {"outcome": "collaboration-productivity", "coverage": "Full"},
+      {"outcome": "telephony", "coverage": "Full"},
+      {"outcome": "analytics-bi", "coverage": "Full"},
+      {"outcome": "process-automation", "coverage": "Full"},
+      {"outcome": "threat-vuln-management", "coverage": "Full"},
+      {"outcome": "information-governance", "coverage": "Full"}
+    ]},
+    {"bundle": "m365-e7", "coverage": [
+      {"outcome": "desktop-software", "coverage": "Full"},
+      {"outcome": "cloud-storage-full", "coverage": "Full"}
+    ]},
+    {"bundle": "f5-security", "coverage": [
+      {"outcome": "endpoint-security", "coverage": "Full"},
+      {"outcome": "email-security", "coverage": "Full"},
+      {"outcome": "security-awareness", "coverage": "Full"}
+    ]},
+    {"bundle": "f5-compliance", "coverage": [
+      {"outcome": "information-protection", "coverage": "Full"},
+      {"outcome": "information-governance", "coverage": "Full"}
+    ]},
+    {"bundle": "entra-id-p2", "coverage": [
+      {"outcome": "identity-access", "coverage": "Full"}
+    ]},
+    {"bundle": "defender-endpoint-p2", "coverage": [
+      {"outcome": "endpoint-security", "coverage": "Full"},
+      {"outcome": "threat-vuln-management", "coverage": "Full"}
+    ]},
+    {"bundle": "defender-office-p2", "coverage": [
+      {"outcome": "email-security", "coverage": "Full"},
+      {"outcome": "security-awareness", "coverage": "Full"}
+    ]},
+    {"bundle": "sentinel", "coverage": [
+      {"outcome": "siem", "coverage": "Full"}
+    ]},
+    {"bundle": "teams-phone", "coverage": [
+      {"outcome": "telephony", "coverage": "Full"}
+    ]},
+    {"bundle": "power-bi-pro", "coverage": [
+      {"outcome": "analytics-bi", "coverage": "Full"}
+    ]},
+    {"bundle": "power-automate-premium", "coverage": [
+      {"outcome": "process-automation", "coverage": "Full"}
+    ]}
   ]
 }

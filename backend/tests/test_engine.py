@@ -7,6 +7,7 @@ Covers the mandated cases:
 plus the managed split, in-scope toggle recompute, and negative-delta honesty.
 """
 
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -35,12 +36,18 @@ ENDPOINT = "endpoint-mgmt"
 
 
 def _engagement(personas, products, scenarios, current=None):
+    # `current` stays a {persona_id: [lines]} map for test convenience; flatten it
+    # into the engine's tagged-line list, tagging each line with its persona.
+    lines = []
+    for pid, pls in (current or {}).items():
+        for pl in pls:
+            lines.append(replace(pl, persona_ids=(pid,)))
     return Engagement(
         id="eng-1",
         personas=personas,
         third_party_products=products,
         scenarios=scenarios,
-        current_licenses_by_persona=current or {},
+        current_licenses=lines,
     )
 
 
@@ -328,6 +335,28 @@ def test_negative_delta_shown_honestly():
     assert res.rollup.net_tco_delta_annual == D("-50000.00")
 
 
+def test_line_shared_by_personas_splits_cost_by_headcount():
+    """A license tagged to two personas distributes its total cost across their
+    combined headcount — no double counting (Section 6.2)."""
+    kw = Persona(id="kw", name="KW", headcount=500)
+    fl = Persona(id="fl", name="FL", headcount=200)
+    # One line of 700 seats @ 100 = 70000 total, applied to both personas.
+    line = CurrentLicenseLine(quantity_assigned=700, unit_price_paid_annual=D("100"),
+                              persona_ids=("kw", "fl"))
+    s_kw = PersonaScenario(id="skw", persona_id="kw", target_sku_reference="E3",
+                           target_unit_price_annual=D("0"))
+    s_fl = PersonaScenario(id="sfl", persona_id="fl", target_sku_reference="F3",
+                           target_unit_price_annual=D("0"))
+    eng = Engagement(id="e", personas=[kw, fl], scenarios=[s_kw, s_fl],
+                     current_licenses=[line])
+    res = compute(eng)
+    by = {r.persona_id: r for r in res.scenarios}
+    # 70000 split 500:200 -> 50000 / 20000; the two sum back to the line total.
+    assert by["kw"].current_microsoft_annual == D("50000.00")
+    assert by["fl"].current_microsoft_annual == D("20000.00")
+    assert res.rollup.net_tco_delta_annual == D("70000.00")
+
+
 def test_rollup_excludes_out_of_scope_scenarios():
     kw = Persona(id="kw", name="KW", headcount=100)
     fl = Persona(id="fl", name="FL", headcount=50)
@@ -347,6 +376,77 @@ def test_rollup_excludes_out_of_scope_scenarios():
     # only kw counted in rollup and headcount
     assert res.rollup.net_tco_delta_annual == D("10000.00")
     assert res.rollup.in_scope_persona_headcount == 100
+
+
+def test_spend_bridge_components_build_to_net_delta():
+    """Section 6.8 spend bridge: existing Microsoft + freed-up third-party −
+    target Microsoft == net delta, over the in-scope set only."""
+    kw = Persona(id="kw", name="KW", headcount=100)
+    okta = ThirdPartyProduct(
+        id="okta", name="Okta", annual_cost=D("50000"), covered_count=100,
+        delivered_outcome_ids=frozenset({IDENTITY}),
+    )
+    current = {"kw": [CurrentLicenseLine(quantity_assigned=100, unit_price_paid_annual=D("300"))]}
+    scenario = PersonaScenario(
+        id="s", persona_id="kw", target_sku_reference="E5",
+        target_unit_price_annual=D("500"),
+        target_covered_outcome_ids=frozenset({IDENTITY}),
+    )
+    res = compute(_engagement([kw], [okta], [scenario], current))
+    r = res.rollup
+    # existing MS = 100*300 = 30000; freed-up third-party (offset) = full 50000;
+    # target = 100*500 = 50000; net = 30000 + 50000 - 50000 = 30000.
+    assert r.existing_microsoft_annual == D("30000.00")
+    assert r.existing_third_party_annual == D("50000.00")
+    assert r.target_microsoft_annual == D("50000.00")
+    assert (
+        r.existing_microsoft_annual
+        + r.existing_third_party_annual
+        - r.target_microsoft_annual
+        == r.net_tco_delta_annual
+    )
+    # one freed-up product, crediting the full offset
+    assert len(r.freed_third_party) == 1
+    assert r.freed_third_party[0].third_party_product_name == "Okta"
+    assert r.freed_third_party[0].credited_annual == D("50000.00")
+
+
+def test_freed_third_party_zero_credit_when_covered_count_zero():
+    """A displaced/eliminated product with covered_count 0 has per-unit cost 0,
+    so it frees $0 — surfaced honestly rather than as silent savings."""
+    kw = Persona(id="kw", name="KW", headcount=200)
+    edr = ThirdPartyProduct(
+        id="edr", name="EDR Tool", annual_cost=D("102000"), covered_count=0,
+        delivered_outcome_ids=frozenset({ENDPOINT}),
+    )
+    scenario = PersonaScenario(
+        id="s", persona_id="kw", target_sku_reference="E5",
+        target_unit_price_annual=D("0"),
+        target_covered_outcome_ids=frozenset({ENDPOINT}),
+    )
+    res = compute(_engagement([kw], [edr], [scenario]))
+    # displaced (covers ENDPOINT) and fully eliminated, but $0 freed
+    assert res.dispositions[0].disposition == Disposition.FULLY_ELIMINATED
+    assert res.rollup.existing_third_party_annual == D("0.00")
+    assert len(res.rollup.freed_third_party) == 1
+    assert res.rollup.freed_third_party[0].credited_annual == D("0.00")
+
+
+def test_freed_third_party_excludes_out_of_scope_scenarios():
+    """The bridge and freed-up list count in-scope scenarios only."""
+    kw = Persona(id="kw", name="KW", headcount=100)
+    okta = ThirdPartyProduct(
+        id="okta", name="Okta", annual_cost=D("50000"), covered_count=100,
+        delivered_outcome_ids=frozenset({IDENTITY}),
+    )
+    scenario = PersonaScenario(
+        id="s", persona_id="kw", target_sku_reference="E3",
+        target_unit_price_annual=D("0"),
+        target_covered_outcome_ids=frozenset({IDENTITY}), in_scope=False,
+    )
+    res = compute(_engagement([kw], [okta], [scenario]))
+    assert res.rollup.existing_third_party_annual == D("0.00")
+    assert res.rollup.freed_third_party == []
 
 
 def test_product_with_no_outcomes_is_never_displaced():

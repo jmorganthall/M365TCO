@@ -115,7 +115,24 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Field ownership:** user-entered (`name`, `headcount`, `description`); provenance (`source_tag`).
 - **CRUD:** `GET/POST/PATCH/DELETE /api/engagements/{eid}/personas`.
 - **Relationships:** referenced by `PersonaScenario.persona_id` and optionally
-  `CurrentMicrosoftLicense.persona_id`.
+  `CurrentMicrosoftLicense.persona_id`. **Required capabilities** via
+  `PersonaRequirement` (§4.2a).
+- **GUI surface:** the Personas tab is an expandable line-item — core fields up top,
+  an expander of required-capability toggles.
+
+### 4.2a PersonaRequirement — a persona's required capabilities
+- **Identity:** `uuid` plus a unique `(persona_id, outcome_id)`. **Scope:**
+  engagement-scoped (via the persona). **Association object** — the many-to-many
+  Persona ↔ Outcome "this persona requires this capability."
+- **Field ownership:** user-entered (toggled on the Personas tab). Reconciled diff-wise
+  on persona create/PATCH (`required_outcome_ids` on `PersonaIn`/`PersonaOut`); soft
+  refs to engagement outcomes are validated (unknown ids dropped).
+- **Why it exists:** a persona's *needs* are independent of what its current licenses
+  happen to deliver. These outcomes are added to the **required** set in
+  recommend-a-path (`analyze_persona_bundles`), so a bundle that misses one shows a
+  **gap** — e.g. a persona requiring *Desktop Software* / *Full-Size Cloud Storage*
+  won't be recommended a Frontline (F1/F3) bundle without flagging the shortfall. It
+  feeds recommend-a-path only; the core reconciliation engine is unchanged.
 
 ### 4.3 Outcome — capability buckets
 - **Identity:** `uuid`. **Scope:** engagement-scoped (5.3.1 — scoped copies so
@@ -133,23 +150,108 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Field ownership:** ingested (`product_title`, `unit_price_monthly`,
   `erp_price_monthly`, …); derived-on-import (`annual_unit_price`,
   `annual_erp_price`, normalized per §8.3 of the PRD).
+- **Bundle mapping (SKU → Bundle spine):** `bundle_id` is the **ratified/accepted**
+  staple bundle a priced variant collapses onto (many-to-one, null until mapped).
+  `suggested_bundle_id` + `bundle_suggestion_reason` hold the import-time AI
+  mapper's **unratified** proposal — mirroring `CoverageMapEntry`'s
+  suggested/ratified split so a mapping never silently enters the spine. Accepting
+  moves the suggestion into `bundle_id` and clears it; rejecting clears it and
+  leaves the SKU unmapped. All three are surfaced/editable in Settings → Staple
+  bundles (`GET /api/catalog/skus`, `?unmapped=true` for the work-list).
 - **Write-normalization:** `services/pricesheet.py` — header-mapped parse,
   Commercial filter, annualization, upsert by natural key keeping the latest
-  active row by `effective_end_date`.
-- **CRUD:** read-only over the API (`GET /api/catalog/skus`); written only by the
-  CSV import and the price-sheet sync module.
+  active row by `effective_end_date`. The AI mapper lives in `services/ai.py`
+  (`suggest_bundle_mappings` + pure `normalize_bundle_suggestions`) with its
+  editable instructions in the `sku_bundle_map` AiPrompt.
+- **CRUD:** read-only pricing over the API (`GET /api/catalog/skus`); prices written
+  only by the CSV import and the price-sheet sync module. The bundle mapping is
+  written by `POST /api/catalog/skus/suggest-bundles` (AI, unratified),
+  `PATCH /api/catalog/skus/{id}/bundle` (accept/set), and
+  `POST /api/catalog/skus/{id}/reject-suggestion` (dismiss).
 - **Why global:** the catalog is large, versioned, and identical across customers;
   duplicating it per engagement would be the opposite of repeatable.
+
+### 4.4a CatalogImport — pricing-load provenance
+- **Identity:** `uuid`. **Scope:** **global** (one row per successful catalog load).
+- **Field ownership:** recorded on success by whichever path loaded pricing —
+  `source` (`CsvUpload` | `PriceSyncApi`), `data_month` (from the sheet's own
+  `LastUpdatedDate` for CSV, or the API metadata for price-sync; current month
+  only if the sheet reports no date), `catalog_version`, `sku_count`,
+  `imported_at`, and (price-sync only) `file_name`/`sha256`.
+- **Write-normalization / CRUD:** `services/catalog_provenance.py` — the single
+  `record_import()` writer, plus `latest()` and `pricing_freshness()`.
+- **Why it exists:** freshness (the Readout pricing badge and the staleness
+  banner) must reflect *whichever source ran most recently and worked*. A row
+  only exists for a load that succeeded, so "newest row across sources" is
+  exactly "newest successful pricing." Without it, a CSV-only operator's upload
+  was invisible to freshness and pricing read `not set · stale`.
+
+### 4.4b Bundle — the staple bundle spine (SKU → Bundle → Outcomes)
+- **Identity:** `uuid` plus a unique `key`. **Scope:** **global**, editable,
+  seeded from `seeds/bundles.json` (`services/bundles.py`).
+- **Shape:** `name`, `kind` (`bundle` = a full base like *Microsoft 365 E3*;
+  `addon` = a composable add-on like *E5 Security* whose `base_bundle_id` names the
+  base it layers onto), `sort_order`.
+- **CRUD (slice E2-bundles):** `GET/POST/PATCH/DELETE …/catalog/bundles`, edited in
+  Settings → Staple bundles (inline name/kind/base/sort + add-bundle form). Shape
+  rules are enforced (a base has no parent; an add-on must point at an existing base
+  bundle). **Delete is blocked (409) while anything references the bundle** —
+  `MicrosoftSku.bundle_id`/`suggested_bundle_id`, `CoverageMapEntry.bundle_id`,
+  `ScenarioAddon.bundle_id`, or a child add-on — so a delete never orphans the spine.
+  `key` is immutable (the stable id); a deleted *seed* staple is re-created on the
+  next startup by `seed_bundles`, so delete is meaningful for operator-added bundles.
+- **Why it exists:** the stable identity between the many priced catalog SKUs and
+  the outcomes. `MicrosoftSku.bundle_id` collapses catalog variants onto one
+  bundle (many-to-one, AI-filled on import + editable); coverage/scenarios/licenses
+  resolve *through* the bundle rather than an ambiguous SKU shortcode. Kills the
+  "E3 = which E3?" problem and gives the displacement test a stable key.
+- **Status:** coverage re-keys onto `bundle_id` (slice B); a scenario's future
+  state composes a base bundle **+** add-ons (slice C), and recommend-a-path
+  composes the cheapest gap-closing add-ons (slice D); the import-time AI mapper
+  proposes `MicrosoftSku.suggested_bundle_id` for operator review (slice E1); the
+  bundle library and per-engagement coverage map are GUI-editable (slice E2); the
+  default coverage library (§4.4c) is a first-class editable table (slice E3).
+
+### 4.4c DefaultBundleCoverage — the global default coverage library
+- **Identity:** `uuid` plus a unique `(bundle_key, outcome_key)`. **Scope:** **global**,
+  editable, seeded from `seeds/coverage.json` on first run (`services/seeds.py`,
+  populate-if-empty — the same pattern as `DefaultOutcome`).
+- **Shape:** `bundle_key` (a `Bundle.key`), `outcome_key` (a `DefaultOutcome.key`),
+  `coverage` (always `Full` — coverage is binary, the row's existence is the signal).
+  Stable keys, not ids, so it survives reseeding and
+  reads like the seed file.
+- **Why it exists:** the Microsoft bundle → outcome coverage new engagements inherit
+  was a static file, invisible/uneditable in the GUI. It's now a first-class table:
+  `seed_engagement` copies **from it** (resolving `bundle_key`→Bundle, `outcome_key`→the
+  engagement's seeded Outcome) into engagement-scoped `CoverageMapEntry` rows
+  (`ratified = true`). Editing the default (Settings → Bundle coverage) changes the
+  template for **new** engagements only; existing engagements keep their own copy.
+- **CRUD:** `GET/POST/PATCH/DELETE …/admin/default-coverage` (keys validated against the
+  bundle library + `DefaultOutcome`; the pair is unique; PATCH edits coverage only).
+  `seeds/coverage.json` remains the version-controlled seed source.
 
 ### 4.5 CurrentMicrosoftLicense — the customer's existing licensing
 - **Identity:** `uuid`. **Scope:** engagement-scoped.
 - **Relationships:** **soft ref** to a `MicrosoftSku` via `sku_reference` (free
-  text); optional **hard FK** to a `Persona`.
+  text, validated against the catalog in the UI); **many-to-many** to `Persona`
+  via `CurrentLicensePersona` (§4.5a). The legacy single `persona_id` column is
+  deprecated (kept only for the one-time backfill).
 - **Field ownership:** user-entered (`quantity_assigned` ← model on this not
   purchased, `unit_price_paid_annual`, `price_basis`, `discount_pct`); provenance.
-- **CRUD:** `GET/POST/PATCH/DELETE …/current-licenses`.
-- **Engine role:** the persona's `Σ(quantity_assigned × unit_price_paid_annual)`
-  is the Microsoft side of current spend.
+  API exposes `persona_ids` (the tags), not `persona_id`.
+- **CRUD:** `GET/POST/PATCH/DELETE …/current-licenses`; `persona_ids` on the body
+  replaces the tag set.
+- **Engine role:** the Microsoft side of a persona's current spend. A line's
+  total cost is distributed across its tagged personas by headcount (ENGINE_SPEC
+  6.2), so a shared line is never double-counted.
+
+### 4.5a CurrentLicensePersona — license↔persona tags
+- **Identity:** `uuid` plus a unique `(current_license_id, persona_id)`.
+  **Scope:** engagement-scoped (via the license). **Association object** — the
+  first-class many-to-many so one line can apply to several personas.
+- **Why first-class:** it's the seam where the future **partial application**
+  (e.g. "5% of Knowledge Workers") will live as an `applies_pct` field on the
+  tag, without reshaping the license or the engine contract.
 
 ### 4.6 ThirdPartyProduct — non-Microsoft spend
 - **Identity:** `uuid`. **Scope:** engagement-scoped.
@@ -161,11 +263,27 @@ FK, UUID PK, cascade-deleted with the engagement.
   (`effective = annual × tooling_pct` when managed, else `annual`), and computes
   `per_unit = effective / covered_count`. Every create/update calls it; nothing
   else computes these.
-- **CRUD:** `GET/POST/PATCH/DELETE …/third-party`.
+- **CRUD:** `GET/POST/PATCH/DELETE …/third-party`; `persona_ids` on the body
+  reconciles the tag set.
 - **Relationships:** target of `CoverageMapEntry` (third-party) and of exactly one
-  `ProductDisposition`.
+  `ProductDisposition`; **many-to-many** to `Persona` via `ThirdPartyPersona`
+  (§4.6a), mirroring current licensing.
+
+### 4.6a ThirdPartyPersona — product↔persona tags
+- **Identity:** `uuid` plus a unique `(third_party_product_id, persona_id)`.
+  **Scope:** engagement-scoped (via the product). **Association object** — the
+  many-to-many mirror of `CurrentLicensePersona`, so one product can serve several
+  personas and is the future home of partial application (`applies_pct`). Today the
+  tags are attribution/presentation; how they feed the engine (offset scoping vs
+  covered-population) is a deliberate open decision, so the math is unchanged.
 
 ### 4.7 CoverageMapEntry — the product↔outcome matrix
+> **Bundle-keyed (slice B):** Microsoft SKU coverage now carries `bundle_id` (the
+> canonical §4.4b Bundle it applies to); `microsoft_sku_reference` holds the bundle
+> name for display. The engine keys coverage by `bundle_id or microsoft_sku_reference`
+> and resolves scenario/license references through `services/bundles.resolve_bundle`
+> — so `Microsoft 365 E3`, `E3`, or a mapped catalog title all land on the same
+> coverage. Existing rows are backfilled onto bundles on startup.
 - **Identity:** `uuid`. **Scope:** engagement-scoped.
 - **Relationships:** hard FK `outcome_id`; **polymorphic product link** keyed by
   `product_kind`: `MicrosoftSku` → soft ref `microsoft_sku_reference` (string);
@@ -176,16 +294,29 @@ FK, UUID PK, cascade-deleted with the engagement.
   rows hydrate into the engine.** This is the single ratify gate.
 - **CRUD:** `GET/POST/PATCH/DELETE …/coverage`, plus the domain action
   `POST …/coverage/{id}/ratify`.
+- **GUI surface (slice E2):** the Coverage map now edits **Microsoft bundle
+  coverage** too, not just third-party — a per-bundle editor (add/remove an outcome,
+  ratify) mirroring the third-party section. Adding by bundle name resolves onto the
+  bundle (`bundle_id` set) via `resolve_bundle`; entries that resolve to no staple
+  are surfaced under "Unmapped Microsoft references" so nothing is hidden.
 
 ### 4.8 PersonaScenario — the target-state plan
 - **Identity:** `uuid`. **Scope:** engagement-scoped. One per persona in practice.
-- **Relationships:** hard FK `persona_id`; **soft ref** to the target SKU via
-  `target_sku_reference`.
-- **Field ownership:** user-entered (`target_sku_reference`,
-  `target_unit_price_annual`, `in_scope`); **engine-output cache**
-  (`current_spend_annual`, `target_spend_annual`, `delta_annual`).
-- **CRUD:** `GET/POST/PATCH/DELETE …/scenarios`. Toggling `in_scope` and calling
-  `compute` triggers a **total** recompute (engine §6.7).
+- **Relationships:** hard FK `persona_id`; **soft ref** to the base target bundle
+  via `target_sku_reference`; **add-on bundles** via `ScenarioAddon` (§4.8a).
+- **Field ownership:** user-entered (`target_sku_reference` + `target_unit_price_annual`
+  = the base bundle & its list price, `target_discount_pct`, `in_scope`);
+  **engine-output cache** (`current_spend_annual`, `target_spend_annual`, `delta_annual`).
+- **Composition:** future state = base bundle **+** add-ons. The hydrator unions the
+  covered outcomes and sums the list prices, then applies the discount → the net
+  `target_unit_price_annual` the engine consumes (ENGINE_SPEC 6.2/6.3).
+- **CRUD:** `GET/POST/PATCH/DELETE …/scenarios` (`addons` on the body reconciles the
+  set). Toggling `in_scope` and calling `compute` triggers a **total** recompute.
+
+### 4.8a ScenarioAddon — an add-on bundle on a scenario
+- **Identity:** `uuid`. **Scope:** engagement-scoped (via the scenario).
+  **Association object** linking a scenario to an add-on `Bundle` with its own
+  `unit_price_annual`. Composing base + add-ons is how "E3 + E5 Security" is modeled.
 
 ### 4.9 ProductDisposition — split ownership, by design
 This is the canonical example of the field-ownership rule, because one row mixes
@@ -226,6 +357,21 @@ existing first-class objects** — it stores no new state, which is the correct
 - **Prices**: catalog annual ERP by best-effort match, overridable per request.
 The chosen bundle is applied by writing a normal `PersonaScenario` (§4.8); the
 analysis itself is transient.
+
+### 4.10b AiPrompt — editable AI instructions
+- **Identity:** `uuid` PK plus a unique `key` per AI function
+  (`coverage_suggest`, `third_party_parse`, `current_license_parse`).
+  **Scope:** **global**.
+- **Field ownership:** seeded from `seeds/ai_prompts.json` (`label`,
+  `description`, `instructions`); the operator edits `instructions` at runtime and
+  can reset to the seeded default. `updated_at` stamps edits.
+- **Why first-class:** every AI call's system prompt is a row here, not a string
+  literal in `services/ai.py` — so what is consistently being sent is visible and
+  tunable in one place (Settings) when output isn't great. `services/ai_prompts.py`
+  is the uniform CRUD/seed module; new AI functions add a seed key and are
+  inserted on startup without disturbing operator edits to existing ones.
+- **Advisory only:** editing a prompt never changes stored engagement data; AI
+  output still passes through review (coverage ratification / parse preview).
 
 ### 4.11 Out-of-band data sets
 - **GlobalDefaults / Settings (PRD 5.10):** currently realized as the versioned

@@ -87,6 +87,19 @@ class EliminatedRenewal:
 
 
 @dataclass
+class FreedThirdParty:
+    """A third-party product's credited savings, aggregated across the in-scope
+    scenarios that displace it. This is the persona-allocated offset the engine
+    credits today — the "we freed up SentinelOne, saving $X" line. When
+    `credited_annual` is 0 the product delivers a covered outcome but its
+    `covered_count` (and thus per-unit cost) is 0, so no dollars are freed."""
+
+    third_party_product_id: str
+    third_party_product_name: str
+    credited_annual: Decimal
+
+
+@dataclass
 class RollupResult:
     net_tco_delta_annual: Decimal
     fully_eliminated_tools: list[str]
@@ -94,6 +107,16 @@ class RollupResult:
     residual_third_party_cost_annual: Decimal
     in_scope_persona_headcount: int
     third_party_covered_population: int
+    # Spend bridge (Section 6.8): the components that build to net_tco_delta_annual
+    # over the IN-SCOPE set, so the readout can show existing spend (Microsoft +
+    # third-party) → target Microsoft → net delta. By construction
+    #   net_tco_delta_annual = existing_microsoft_annual
+    #                        + existing_third_party_annual
+    #                        - target_microsoft_annual
+    existing_microsoft_annual: Decimal
+    existing_third_party_annual: Decimal
+    target_microsoft_annual: Decimal
+    freed_third_party: list[FreedThirdParty]
 
 
 @dataclass
@@ -192,15 +215,23 @@ def compute(engagement: Engagement) -> EngineResult:
         if persona is None:
             continue
 
-        current_ms = sum(
-            (
-                Decimal(line.quantity_assigned) * line.unit_price_paid_annual
-                for line in engagement.current_licenses_by_persona.get(
-                    scenario.persona_id, []
-                )
-            ),
-            Decimal("0"),
-        )
+        # Each current license applies to one or more personas; its total cost is
+        # distributed across their combined headcount, so this persona's share is
+        # (its headcount / the tagged personas' total headcount). A single-persona
+        # line therefore counts in full, and a shared line is never double-counted
+        # across personas (Section 6.2).
+        current_ms = Decimal("0")
+        for line in engagement.current_licenses:
+            if persona.id not in line.persona_ids:
+                continue
+            line_total = Decimal(line.quantity_assigned) * line.unit_price_paid_annual
+            tagged = [pid for pid in line.persona_ids if pid in personas]
+            tagged_hc = sum(personas[pid].headcount for pid in tagged)
+            if tagged_hc > 0:
+                share = Decimal(persona.headcount) / Decimal(tagged_hc)
+            else:  # personas with no headcount → even split so cost isn't lost
+                share = Decimal(1) / Decimal(len(tagged) or 1)
+            current_ms += line_total * share
 
         # Linear-by-user offset: each product this scenario displaces credits
         # headcount * per_unit_annual_cost (Section 6.3). This is the persona's
@@ -290,6 +321,42 @@ def compute(engagement: Engagement) -> EngineResult:
         p.covered_count for p in engagement.third_party_products
     )
 
+    # Spend bridge over the in-scope set. The three totals build to net_delta:
+    # existing Microsoft + existing third-party (the credited offset) − target
+    # Microsoft. Summing the same per-scenario numbers the rollup already sums
+    # keeps the bridge exactly consistent with net_tco_delta_annual.
+    in_scope_results = [r for r in scenario_results if r.in_scope]
+    existing_microsoft = _money(
+        sum((r.current_microsoft_annual for r in in_scope_results), Decimal("0"))
+    )
+    existing_third_party = _money(
+        sum((r.current_third_party_offset_annual for r in in_scope_results), Decimal("0"))
+    )
+    target_microsoft = _money(
+        sum((r.target_spend_annual for r in in_scope_results), Decimal("0"))
+    )
+
+    # Aggregate the per-scenario offsets by product so the readout can name each
+    # freed-up tool and its credited savings (summing to existing_third_party).
+    freed_by_product: dict[str, FreedThirdParty] = {}
+    for r in in_scope_results:
+        for o in r.offsets:
+            entry = freed_by_product.get(o.third_party_product_id)
+            if entry is None:
+                freed_by_product[o.third_party_product_id] = FreedThirdParty(
+                    third_party_product_id=o.third_party_product_id,
+                    third_party_product_name=o.third_party_product_name,
+                    credited_annual=o.credited_offset_annual,
+                )
+            else:
+                entry.credited_annual = _money(
+                    entry.credited_annual + o.credited_offset_annual
+                )
+    freed_third_party = sorted(
+        freed_by_product.values(),
+        key=lambda f: (-f.credited_annual, f.third_party_product_name),
+    )
+
     rollup = RollupResult(
         net_tco_delta_annual=net_delta,
         fully_eliminated_tools=fully_eliminated_names,
@@ -297,6 +364,10 @@ def compute(engagement: Engagement) -> EngineResult:
         residual_third_party_cost_annual=residual_cost,
         in_scope_persona_headcount=in_scope_headcount,
         third_party_covered_population=covered_population,
+        existing_microsoft_annual=existing_microsoft,
+        existing_third_party_annual=existing_third_party,
+        target_microsoft_annual=target_microsoft,
+        freed_third_party=freed_third_party,
     )
 
     return EngineResult(

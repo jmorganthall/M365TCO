@@ -11,9 +11,18 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
-from ..services import compute
+from ..services import bundles, compute, inspector
 
 router = APIRouter(prefix="/api/engagements/{engagement_id}", tags=["entities"])
+
+
+@router.get("/inspect")
+def inspect_data(engagement_id: str, db: Session = Depends(get_db)):
+    """Live, read-only view of the whole engagement data model for the GUI Data
+    inspector: every object, every persisted field (classified), references
+    resolved, plus the input → engine → output flow."""
+    eng = _require_engagement(db, engagement_id)
+    return inspector.inspect_engagement(db, eng)
 
 
 def _require_engagement(db: Session, engagement_id: str) -> models.Engagement:
@@ -47,11 +56,37 @@ def list_personas(engagement_id: str, db: Session = Depends(get_db)):
     ).scalars().all()
 
 
+def _set_persona_requirements(db: Session, row: models.Persona, outcome_ids: list[str]):
+    """Diff-reconcile a persona's required-outcome links (add/remove only the
+    deltas, so a UNIQUE re-insert never fires). Ignores outcome ids not in this
+    engagement."""
+    valid = {
+        o.id for o in db.execute(
+            select(models.Outcome).where(models.Outcome.engagement_id == row.engagement_id)
+        ).scalars()
+    }
+    want = [oid for oid in dict.fromkeys(outcome_ids) if oid in valid]
+    have = {link.outcome_id: link for link in row.requirement_links}
+    for oid, link in list(have.items()):
+        if oid not in want:
+            row.requirement_links.remove(link)
+    for oid in want:
+        if oid not in have:
+            row.requirement_links.append(models.PersonaRequirement(outcome_id=oid))
+
+
 @router.post("/personas", response_model=schemas.PersonaOut, status_code=201)
 def create_persona(engagement_id: str, payload: schemas.PersonaIn, db: Session = Depends(get_db)):
     _require_engagement(db, engagement_id)
-    row = models.Persona(engagement_id=engagement_id, **payload.model_dump())
+    if not payload.name.strip():
+        raise HTTPException(422, "Persona name is required.")
+    data = payload.model_dump()
+    requirements = data.pop("required_outcome_ids", None)
+    row = models.Persona(engagement_id=engagement_id, **data)
     db.add(row)
+    db.flush()
+    if requirements is not None:
+        _set_persona_requirements(db, row, requirements)
     db.commit()
     db.refresh(row)
     return row
@@ -62,7 +97,10 @@ def update_persona(engagement_id: str, persona_id: str, payload: schemas.Persona
     row = db.get(models.Persona, persona_id)
     if row is None or row.engagement_id != engagement_id:
         raise HTTPException(404, "Persona not found")
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    if "required_outcome_ids" in data:
+        _set_persona_requirements(db, row, data.pop("required_outcome_ids") or [])
+    for k, v in data.items():
         setattr(row, k, v)
     db.commit()
     db.refresh(row)
@@ -146,10 +184,34 @@ def list_licenses(engagement_id: str, db: Session = Depends(get_db)):
     ).scalars().all()
 
 
+def _reconcile_persona_tags(links, persona_ids: list[str], make_link):
+    """Reconcile a row's persona-tag links to the given set. Diffs (rather than
+    clear-and-re-add) so an unchanged tag isn't re-inserted — which would trip the
+    unique constraint before the delete of the old row flushes."""
+    want = list(dict.fromkeys(persona_ids))
+    have = {pl.persona_id: pl for pl in links}
+    for pid, pl in list(have.items()):
+        if pid not in want:
+            links.remove(pl)
+    for pid in want:
+        if pid not in have:
+            links.append(make_link(pid))
+
+
+def _set_persona_tags(row: models.CurrentMicrosoftLicense, persona_ids: list[str]):
+    _reconcile_persona_tags(
+        row.persona_links, persona_ids,
+        lambda pid: models.CurrentLicensePersona(persona_id=pid),
+    )
+
+
 @router.post("/current-licenses", response_model=schemas.CurrentLicenseOut, status_code=201)
 def create_license(engagement_id: str, payload: schemas.CurrentLicenseIn, db: Session = Depends(get_db)):
     _require_engagement(db, engagement_id)
-    row = models.CurrentMicrosoftLicense(engagement_id=engagement_id, **payload.model_dump())
+    data = payload.model_dump()
+    persona_ids = data.pop("persona_ids", [])
+    row = models.CurrentMicrosoftLicense(engagement_id=engagement_id, **data)
+    _set_persona_tags(row, persona_ids)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -161,7 +223,10 @@ def update_license(engagement_id: str, license_id: str, payload: schemas.Current
     row = db.get(models.CurrentMicrosoftLicense, license_id)
     if row is None or row.engagement_id != engagement_id:
         raise HTTPException(404, "License not found")
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    if "persona_ids" in data:
+        _set_persona_tags(row, data.pop("persona_ids"))
+    for k, v in data.items():
         setattr(row, k, v)
     db.commit()
     db.refresh(row)
@@ -188,10 +253,22 @@ def list_third_party(engagement_id: str, db: Session = Depends(get_db)):
     ).scalars().all()
 
 
+def _set_tp_persona_tags(row: models.ThirdPartyProduct, persona_ids: list[str]):
+    _reconcile_persona_tags(
+        row.persona_links, persona_ids,
+        lambda pid: models.ThirdPartyPersona(persona_id=pid),
+    )
+
+
 @router.post("/third-party", response_model=schemas.ThirdPartyOut, status_code=201)
 def create_third_party(engagement_id: str, payload: schemas.ThirdPartyIn, db: Session = Depends(get_db)):
     eng = _require_engagement(db, engagement_id)
-    row = models.ThirdPartyProduct(engagement_id=engagement_id, **payload.model_dump())
+    if not payload.name.strip():
+        raise HTTPException(422, "Product name is required.")
+    data = payload.model_dump()
+    persona_ids = data.pop("persona_ids", [])
+    row = models.ThirdPartyProduct(engagement_id=engagement_id, **data)
+    _set_tp_persona_tags(row, persona_ids)
     _normalize_third_party(eng, row)
     db.add(row)
     db.commit()
@@ -205,7 +282,10 @@ def update_third_party(engagement_id: str, tp_id: str, payload: schemas.ThirdPar
     row = db.get(models.ThirdPartyProduct, tp_id)
     if row is None or row.engagement_id != engagement_id:
         raise HTTPException(404, "Third-party product not found")
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    if "persona_ids" in data:
+        _set_tp_persona_tags(row, data.pop("persona_ids"))
+    for k, v in data.items():
         setattr(row, k, v)
     _normalize_third_party(eng, row)
     db.commit()
@@ -237,6 +317,10 @@ def list_coverage(engagement_id: str, db: Session = Depends(get_db)):
 def create_coverage(engagement_id: str, payload: schemas.CoverageIn, db: Session = Depends(get_db)):
     _require_engagement(db, engagement_id)
     row = models.CoverageMapEntry(engagement_id=engagement_id, **payload.model_dump())
+    # Resolve Microsoft SKU coverage onto its bundle so it keys the same way the
+    # seeded coverage does (the SKU → Bundle → Outcomes spine).
+    if row.product_kind == "MicrosoftSku" and row.bundle_id is None:
+        row.bundle_id = bundles.resolve_bundle(db, row.microsoft_sku_reference or "")
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -287,10 +371,28 @@ def list_scenarios(engagement_id: str, db: Session = Depends(get_db)):
     ).scalars().all()
 
 
+def _set_scenario_addons(row: models.PersonaScenario, addons: list):
+    """Reconcile a scenario's add-on bundles to the given set (by bundle_id)."""
+    want = {a["bundle_id"]: a for a in addons}
+    have = {ad.bundle_id: ad for ad in row.addons}
+    for bid, ad in list(have.items()):
+        if bid not in want:
+            row.addons.remove(ad)
+    for bid, a in want.items():
+        if bid in have:
+            have[bid].unit_price_annual = a["unit_price_annual"]
+        else:
+            row.addons.append(models.ScenarioAddon(
+                bundle_id=bid, unit_price_annual=a["unit_price_annual"]))
+
+
 @router.post("/scenarios", response_model=schemas.ScenarioOut, status_code=201)
 def create_scenario(engagement_id: str, payload: schemas.ScenarioIn, db: Session = Depends(get_db)):
     _require_engagement(db, engagement_id)
-    row = models.PersonaScenario(engagement_id=engagement_id, **payload.model_dump())
+    data = payload.model_dump()
+    addons = data.pop("addons", [])
+    row = models.PersonaScenario(engagement_id=engagement_id, **data)
+    _set_scenario_addons(row, addons)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -302,7 +404,10 @@ def update_scenario(engagement_id: str, scenario_id: str, payload: schemas.Scena
     row = db.get(models.PersonaScenario, scenario_id)
     if row is None or row.engagement_id != engagement_id:
         raise HTTPException(404, "Scenario not found")
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    if "addons" in data:
+        _set_scenario_addons(row, data.pop("addons") or [])
+    for k, v in data.items():
         setattr(row, k, v)
     db.commit()
     db.refresh(row)

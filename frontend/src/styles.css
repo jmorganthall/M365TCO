@@ -109,6 +109,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .badge.muted { color: var(--muted); }
 .headline { font-size: 2rem; font-weight: 700; }
 .popcheck { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: .6rem .8rem; margin: .6rem 0; }
+table.bridge td { border-bottom: none; padding: .3rem .55rem; }
+table.bridge tr.bridge-sub td { color: var(--muted); padding-left: 1.4rem; font-size: .8rem; }
+table.bridge tr.bridge-total td { border-top: 1px solid var(--border); padding-top: .45rem; }
 .err { color: var(--neg); font-size: .82rem; margin: .4rem 0; }
 .muted { color: var(--muted); }
 .flex-between { display: flex; align-items: center; justify-content: space-between; }
@@ -117,7 +120,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .pill-list { display: flex; flex-wrap: wrap; gap: .3rem; }
 small.src { color: var(--muted); font-size: .72rem; }
 
-/* ---- Searchable combobox (AI model picker) ---- */
+/* ---- Searchable combobox (AI model + SKU pickers) ---- */
 .combo { position: relative; }
 .combo-list {
   position: absolute; z-index: 60; top: 100%; left: 0; right: 0; margin-top: 2px;
@@ -131,3 +134,32 @@ small.src { color: var(--muted); font-size: .72rem; }
 .combo-id { font-size: .84rem; font-variant-numeric: tabular-nums; }
 .combo-name { font-size: .72rem; color: var(--muted); }
 .combo-item:hover .combo-name, .combo-item.sel .combo-name { color: #e8ebff; }
+
+/* ---- Data inspector ---- */
+.flow-strip { display: flex; align-items: stretch; gap: .5rem; flex-wrap: wrap; margin-top: .6rem; }
+.flow-stage { flex: 1; min-width: 180px; background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 8px; padding: .5rem .6rem; }
+.flow-stage-name { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--muted); margin-bottom: .3rem; }
+.flow-item { font-size: .8rem; padding: .12rem 0; }
+.flow-arrow { align-self: center; color: var(--muted); font-size: 1.1rem; }
+.inspect-row { border-top: 1px solid var(--border); }
+.inspect-row-head { display: flex; align-items: center; gap: .8rem; padding: .35rem 0; cursor: pointer; flex-wrap: wrap; }
+.inspect-primary { display: flex; flex-direction: column; gap: 1px; }
+.inspect-plabel { font-size: .66rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.inspect-detail { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: .5rem .9rem; padding: .5rem .2rem .7rem 2rem; background: var(--panel2); border-radius: 8px; margin-bottom: .3rem; }
+.inspect-field { display: flex; flex-direction: column; gap: 2px; }
+.inspect-flabel { font-size: .7rem; color: var(--muted); display: flex; align-items: center; gap: .3rem; }
+.kind-tag { font-size: .58rem; text-transform: uppercase; letter-spacing: .04em; padding: 0 .25rem;
+  border: 1px solid var(--border); border-radius: 4px; color: var(--muted); }
+.kind-derived { color: var(--warn); border-color: var(--warn); }
+.kind-provenance { color: var(--accent); border-color: var(--accent); }
+
+/* ---- Selectable tag toggle (persona tags): whole chip fills when on ---- */
+.tag-toggle {
+  cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--muted);
+  border-radius: 999px; padding: .16rem .6rem; font-size: .74rem; line-height: 1.25;
+}
+.tag-toggle:hover { border-color: var(--accent); color: var(--ink); }
+.tag-toggle.on { background: var(--accent); border-color: var(--accent); color: #fff; }

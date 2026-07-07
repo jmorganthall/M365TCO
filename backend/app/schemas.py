@@ -51,6 +51,34 @@ class DefaultOutcomeOut(ORMModel):
     sort_order: int
 
 
+class DefaultCoverageIn(BaseModel):
+    bundle_key: str
+    outcome_key: str
+    coverage: str = "Full"
+
+
+class DefaultCoverageOut(ORMModel):
+    id: str
+    bundle_key: str
+    outcome_key: str
+    coverage: str
+
+
+class BundleIn(BaseModel):
+    key: str
+    name: str
+    kind: str = "bundle"  # bundle | addon
+    base_bundle_id: Optional[str] = None
+    sort_order: int = 0
+
+
+class BundleUpdate(BaseModel):
+    name: Optional[str] = None
+    kind: Optional[str] = None
+    base_bundle_id: Optional[str] = None
+    sort_order: Optional[int] = None
+
+
 class EngagementUpdate(BaseModel):
     customer_name: Optional[str] = None
     market: Optional[str] = None
@@ -72,10 +100,12 @@ class EngagementOut(ORMModel):
 
 # ---- Persona ----
 class PersonaIn(BaseModel):
-    name: str
+    name: str = ""  # optional so a partial PATCH (e.g. just requirements) validates
     headcount: int = 0
     description: str = ""
     source_tag: str = "CustomerStated"
+    # Outcomes this persona requires (Personas tab). None = leave unchanged on PATCH.
+    required_outcome_ids: Optional[list[str]] = None
 
 
 class PersonaOut(ORMModel):
@@ -84,6 +114,7 @@ class PersonaOut(ORMModel):
     headcount: int
     description: str
     source_tag: str
+    required_outcome_ids: list[str] = []
 
 
 # ---- Outcome ----
@@ -108,7 +139,8 @@ class CurrentLicenseIn(BaseModel):
     unit_price_paid_annual: Decimal = Decimal("0")
     price_basis: str = "Unknown"
     discount_pct: Optional[Decimal] = None
-    persona_id: Optional[str] = None
+    # Personas this line applies to (many-to-many tags).
+    persona_ids: list[str] = []
     source_tag: str = "CustomerStated"
 
 
@@ -120,13 +152,14 @@ class CurrentLicenseOut(ORMModel):
     unit_price_paid_annual: Decimal
     price_basis: str
     discount_pct: Optional[Decimal]
-    persona_id: Optional[str]
+    persona_ids: list[str]
     source_tag: str
 
 
 # ---- Third-party product ----
 class ThirdPartyIn(BaseModel):
-    name: str
+    # Default "" so partial PATCH bodies validate (create guards non-empty).
+    name: str = ""
     vendor: str = ""
     raw_cost: Decimal = Decimal("0")
     cost_period: str = "Annual"
@@ -137,6 +170,8 @@ class ThirdPartyIn(BaseModel):
     is_managed: bool = False
     tooling_pct: Optional[Decimal] = None
     source_tag: str = "CustomerStated"
+    # Personas this product applies to (many-to-many tags).
+    persona_ids: list[str] = []
 
 
 class ThirdPartyOut(ORMModel):
@@ -155,12 +190,14 @@ class ThirdPartyOut(ORMModel):
     tooling_pct: Decimal
     effective_annual_cost: Decimal
     source_tag: str
+    persona_ids: list[str]
 
 
 # ---- Coverage map entry ----
 class CoverageIn(BaseModel):
     outcome_id: str
     product_kind: str  # MicrosoftSku | ThirdParty
+    bundle_id: Optional[str] = None
     microsoft_sku_reference: Optional[str] = None
     third_party_product_id: Optional[str] = None
     coverage: str = "Full"
@@ -172,6 +209,7 @@ class CoverageOut(ORMModel):
     id: str
     outcome_id: str
     product_kind: str
+    bundle_id: Optional[str]
     microsoft_sku_reference: Optional[str]
     third_party_product_id: Optional[str]
     coverage: str
@@ -180,17 +218,32 @@ class CoverageOut(ORMModel):
 
 
 # ---- Persona scenario ----
+class ScenarioAddonIn(BaseModel):
+    bundle_id: str
+    unit_price_annual: Decimal = Decimal("0")
+
+
+class ScenarioAddonOut(ORMModel):
+    id: str
+    bundle_id: str
+    unit_price_annual: Decimal
+
+
 class ScenarioIn(BaseModel):
     persona_id: str
     target_sku_reference: str = ""
     target_unit_price_annual: Decimal = Decimal("0")
+    target_discount_pct: Optional[Decimal] = None
     in_scope: bool = True
+    addons: list[ScenarioAddonIn] = []
 
 
 class ScenarioUpdate(BaseModel):
     target_sku_reference: Optional[str] = None
     target_unit_price_annual: Optional[Decimal] = None
+    target_discount_pct: Optional[Decimal] = None
     in_scope: Optional[bool] = None
+    addons: Optional[list[ScenarioAddonIn]] = None
 
 
 class ScenarioOut(ORMModel):
@@ -198,7 +251,9 @@ class ScenarioOut(ORMModel):
     persona_id: str
     target_sku_reference: str
     target_unit_price_annual: Decimal
+    target_discount_pct: Optional[Decimal]
     in_scope: bool
+    addons: list[ScenarioAddonOut]
     current_spend_annual: Decimal
     target_spend_annual: Decimal
     delta_annual: Decimal
@@ -220,6 +275,23 @@ class SecretIn(BaseModel):
 # ---- AI ----
 class CoverageSuggestRequest(BaseModel):
     third_party_product_id: str
+
+
+class TextParseRequest(BaseModel):
+    """Raw pasted text for any AI paste-to-parse function (third-party, licenses)."""
+    raw_text: str
+
+
+class AiPromptOut(ORMModel):
+    key: str
+    label: str
+    description: str
+    instructions: str
+    is_default: bool = False
+
+
+class AiPromptUpdate(BaseModel):
+    instructions: str
 
 
 class BundleAnalysisRequest(BaseModel):

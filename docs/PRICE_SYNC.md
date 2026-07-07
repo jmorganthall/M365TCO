@@ -77,6 +77,14 @@ pricing-API permission and the consent covered it, or the exchange to
 - **Day rule**: Fresh < `AGE_AGING_DAYS` ≤ Aging < `AGE_STALE_DAYS` ≤ Stale (or no sheet → Stale).
 - **Month rule** (optional): sheet data month ≠ current month → at least Aging.
 - The stricter state wins.
+- **Newest source wins**: freshness classifies the most recent *successful*
+  pricing load across **both** paths — the price-sync sheet on disk and a manual
+  CSV upload (each recorded as a `CatalogImport`, §4.4a of the data model). A
+  mixed shop always reflects whichever path last succeeded.
+- **CSV data month**: taken from the sheet's own `LastUpdatedDate` column, so an
+  uploaded sheet ages by *when Microsoft last revised it*, not when it was
+  uploaded. A pre-`LastUpdatedDate` sheet (no such column) falls back to the
+  upload month, so it still reads Fresh on upload.
 
 ## Storage
 Sheets + a JSON metadata sidecar are written to `DATA_DIR` with atomic

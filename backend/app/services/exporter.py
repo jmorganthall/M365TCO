@@ -53,6 +53,35 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         for d in result["dispositions"]
     )
 
+    # Spend bridge: existing (Microsoft + freed-up third-party) -> target -> net.
+    existing_ms = rollup["existing_microsoft_annual"]
+    existing_tp = rollup["existing_third_party_annual"]
+    target_ms = rollup["target_microsoft_annual"]
+    freed_rows = "".join(
+        f"<tr class='sub'><td>↳ {html.escape(f['third_party_product_name'])}"
+        + (
+            " — $0 credited (set its covered population to free up spend)"
+            if f["credited_annual"] == 0
+            else " freed up"
+        )
+        + f"</td><td class='num'>{_usd(f['credited_annual'])}</td></tr>"
+        for f in rollup["freed_third_party"]
+    )
+    bridge_rows = (
+        f"<tr><td>Existing Microsoft licensing (current assigned)</td>"
+        f"<td class='num'>{_usd(existing_ms)}</td></tr>"
+        f"<tr><td>Existing third-party tooling (freed up by in-scope moves)</td>"
+        f"<td class='num'>{_usd(existing_tp)}</td></tr>"
+        f"{freed_rows}"
+        f"<tr class='total'><td><b>Total existing spend (in scope)</b></td>"
+        f"<td class='num'><b>{_usd(existing_ms + existing_tp)}</b></td></tr>"
+        f"<tr><td>Target Microsoft licensing (new per-persona bundles)</td>"
+        f"<td class='num neg'>−{_usd(target_ms)}</td></tr>"
+        f"<tr class='total'><td><b>Net TCO delta</b> "
+        f"({'annual savings' if delta >= 0 else 'annual cost increase'})</td>"
+        f"<td class='num {'pos' if delta >= 0 else 'neg'}'><b>{_usd(delta)}</b></td></tr>"
+    )
+
     eliminated = "".join(
         f"<li>{html.escape(t)}</li>" for t in rollup["fully_eliminated_tools"]
     ) or "<li>None</li>"
@@ -102,6 +131,9 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
  table{{border-collapse:collapse;width:100%;margin:1rem 0}}
  th,td{{border:1px solid #ddd;padding:.45rem .6rem;text-align:left;font-size:.92rem}}
  th{{background:#fafafa}} td.num{{text-align:right;font-variant-numeric:tabular-nums}}
+ table.bridge td{{border:none;padding:.3rem .6rem}}
+ table.bridge tr.sub td{{color:#666;padding-left:1.8rem;font-size:.85rem}}
+ table.bridge tr.total td{{border-top:1px solid #ccc}}
  section{{margin:1.5rem 0}} ul{{margin:.3rem 0}}
  footer{{margin-top:2rem;color:#777;font-size:.8rem}}
 </style></head><body>
@@ -114,6 +146,12 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
  In-scope persona headcount: <b>{pop['in_scope_persona_headcount']}</b> ·
  Third-party covered population: <b>{pop['third_party_covered_population']}</b>.
  Gaps between these surface as residuals below.</div>
+
+<section><h2>How we get to the number</h2>
+<p class="sub">Existing annualized spend for the in-scope population, the third-party
+tooling those users free up when they move, and the target Microsoft licensing —
+building to the net TCO delta.</p>
+<table class="bridge"><tbody>{bridge_rows}</tbody></table></section>
 
 <section><h2>Per-persona scenarios</h2>
 <table><thead><tr><th>Persona</th><th>Target SKU</th><th>Headcount</th>
@@ -184,6 +222,15 @@ def build_xlsx(engagement: models.Engagement, result: dict) -> bytes:
     rollup = result["rollup"]
     pop = rollup["population_check"]
     wr.append(["Metric", "Value"])
+    wr.append(["Existing Microsoft licensing (annual, in scope)", rollup["existing_microsoft_annual"]])
+    wr.append(["Existing third-party freed up (annual, in scope)", rollup["existing_third_party_annual"]])
+    for f in rollup["freed_third_party"]:
+        wr.append([f"  freed up: {f['third_party_product_name']}", f["credited_annual"]])
+    wr.append([
+        "Total existing spend (annual, in scope)",
+        rollup["existing_microsoft_annual"] + rollup["existing_third_party_annual"],
+    ])
+    wr.append(["Target Microsoft licensing (annual, in scope)", rollup["target_microsoft_annual"]])
     wr.append(["Net TCO delta (annual)", rollup["net_tco_delta_annual"]])
     wr.append(["Residual third-party cost (annual)", rollup["residual_third_party_cost_annual"]])
     wr.append(["In-scope persona headcount", pop["in_scope_persona_headcount"]])

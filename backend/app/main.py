@@ -27,26 +27,66 @@ async def _daily_freshness_timer():
     import asyncio
 
     from .db import SessionLocal
-    from .pricesync import config as ps_config, freshness as ps_fresh, notify as ps_notify, storage as ps_storage
+    from .pricesync import config as ps_config, notify as ps_notify
+    from .services import catalog_provenance
 
     while True:
         db = SessionLocal()
         try:
             cfg = ps_config.load_config(db)
             if cfg.notify_webhook_url:
-                meta = ps_storage.read_latest(cfg)
-                fr = ps_fresh.classify(
-                    meta.get("fetched_at") if meta else None,
-                    meta.get("data_month") if meta else None,
-                    aging_days=cfg.aging_days, stale_days=cfg.stale_days,
-                    use_month_rule=cfg.use_month_rule,
-                )
+                fr, _source = catalog_provenance.pricing_freshness(cfg, db)
                 ps_notify.notify_if_stale(cfg, fr)
         except Exception:
             pass  # a monitoring loop must never crash the app
         finally:
             db.close()
         await asyncio.sleep(24 * 3600)
+
+
+def _backfill_license_persona_tags(db) -> None:
+    """One-time migration: seed the many-to-many persona tags from the deprecated
+    single persona_id for any license that doesn't have tags yet. Idempotent."""
+    from sqlalchemy import select
+
+    from . import models
+
+    rows = db.execute(
+        select(models.CurrentMicrosoftLicense).where(
+            models.CurrentMicrosoftLicense.persona_id.isnot(None)
+        )
+    ).scalars().all()
+    changed = False
+    for lic in rows:
+        if lic.persona_id and not lic.persona_links:
+            lic.persona_links.append(models.CurrentLicensePersona(persona_id=lic.persona_id))
+            changed = True
+    if changed:
+        db.commit()
+
+
+def _backfill_coverage_bundle_ids(db) -> None:
+    """One-time migration: resolve existing Microsoft SKU coverage rows onto a
+    Bundle id from their (shortcode) microsoft_sku_reference. Idempotent."""
+    from sqlalchemy import select
+
+    from . import models
+    from .services import bundles as bundles_service
+
+    rows = db.execute(
+        select(models.CoverageMapEntry).where(
+            models.CoverageMapEntry.product_kind == "MicrosoftSku",
+            models.CoverageMapEntry.bundle_id.is_(None),
+        )
+    ).scalars().all()
+    changed = False
+    for r in rows:
+        bid = bundles_service.resolve_bundle(db, r.microsoft_sku_reference or "")
+        if bid:
+            r.bundle_id = bid
+            changed = True
+    if changed:
+        db.commit()
 
 
 @asynccontextmanager
@@ -58,9 +98,20 @@ async def lifespan(_app: FastAPI):
     from .db import SessionLocal
     from .services import seeds as seeds_service
 
+    from .services import ai_prompts as ai_prompts_service
+
+    from .services import bundles as bundles_service
+
     db = SessionLocal()
     try:
         seeds_service.seed_default_outcomes(db)
+        seeds_service.seed_default_coverage(db)
+        ai_prompts_service.seed_defaults(db)
+        bundles_service.seed_bundles(db)
+        _backfill_license_persona_tags(db)
+        _backfill_coverage_bundle_ids(db)
+        _backfill_binary_coverage(db)
+        _backfill_new_default_outcomes(db)
     finally:
         db.close()
 
@@ -88,6 +139,61 @@ app.include_router(admin.router)
 app.include_router(pricesync.router)
 
 
+def _backfill_binary_coverage(db) -> None:
+    """One-time migration: coverage is now binary, so collapse any legacy 'Partial'
+    coverage rows to the single 'Full' marker. Raw SQL so it tolerates the old enum
+    values without the ORM validating them. Idempotent."""
+    from sqlalchemy import text
+
+    for table in ("coverage_map_entries", "default_bundle_coverage"):
+        db.execute(text(f"UPDATE {table} SET coverage='Full' WHERE coverage<>'Full'"))
+    db.commit()
+
+
+def _backfill_new_default_outcomes(db) -> None:
+    """Additive migration: insert any default outcome from the seed file whose key
+    is missing (so existing deployments pick up newly-added outcomes like Desktop
+    Software / Full-Size Cloud Storage), plus the default bundle coverage for those
+    NEW outcomes only. Never touches existing rows, so operator edits/deletes to
+    other outcomes and coverage are preserved. Idempotent."""
+    from sqlalchemy import select
+
+    from . import models
+    from .services import seeds as seeds_service
+
+    existing = {o.key for o in db.execute(select(models.DefaultOutcome)).scalars()}
+    if not existing:
+        return  # fresh DB — normal seeding handles it
+
+    max_sort = max(
+        (o.sort_order for o in db.execute(select(models.DefaultOutcome)).scalars()),
+        default=0,
+    )
+    added: set[str] = set()
+    for o in seeds_service.load_outcomes()["outcomes"]:
+        if o["key"] not in existing:
+            max_sort += 1
+            db.add(models.DefaultOutcome(
+                key=o["key"], name=o["name"],
+                description=o.get("description", ""), sort_order=max_sort))
+            added.add(o["key"])
+    if not added:
+        return
+    db.flush()
+
+    pairs = {
+        (c.bundle_key, c.outcome_key)
+        for c in db.execute(select(models.DefaultBundleCoverage)).scalars()
+    }
+    for item in seeds_service.load_coverage()["bundles"]:
+        for entry in item["coverage"]:
+            key = (item["bundle"], entry["outcome"])
+            if entry["outcome"] in added and key not in pairs:
+                db.add(models.DefaultBundleCoverage(
+                    bundle_key=item["bundle"], outcome_key=entry["outcome"], coverage="Full"))
+    db.commit()
+
+
 @app.get("/api/health")
 def health() -> dict:
     return {
@@ -97,6 +203,15 @@ def health() -> dict:
             "app.services.secrets", fromlist=["get_store"]
         ).get_store().enabled,
     }
+
+
+@app.get("/api/version")
+def version(force: bool = False) -> dict:
+    """Running build provenance + whether a newer image is published (best-effort,
+    cached, fail-silent). `force=true` bypasses the cache."""
+    from .services import updatecheck
+
+    return updatecheck.check(force=force)
 
 
 @app.get("/api/meta")

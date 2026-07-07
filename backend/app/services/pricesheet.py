@@ -41,6 +41,7 @@ _COLUMNS = {
     "segment": "Segment",
     "effective_start": "EffectiveStartDate",
     "effective_end": "EffectiveEndDate",
+    "last_updated": "LastUpdatedDate",
 }
 
 _TERM_MONTHS = {"P1M": 1, "P1Y": 12, "P3Y": 36}
@@ -171,6 +172,8 @@ def parse_rows(text: str) -> Iterable[dict]:
             "effective_end_date": _to_date(_get(raw, idx, "effective_end")),
             "market": _get(raw, idx, "market", "US") or "US",
             "currency": _get(raw, idx, "currency", "USD") or "USD",
+            # Sheet-reported freshness; not a catalog column (popped on import).
+            "last_updated_date": _to_date(_get(raw, idx, "last_updated")),
         }
 
 
@@ -178,10 +181,15 @@ def import_price_sheet(db: Session, text: str, catalog_version: str) -> dict:
     """Upsert SKU rows by natural key (8.1). Keeps the latest active row per
     product+sku+term+billing+market by EffectiveEndDate."""
     inserted = updated = skipped = 0
+    data_date = None  # newest date the sheet reports about itself
     for rec in parse_rows(text):
+        # Not a catalog column — it dates the sheet, not the SKU row.
+        last_updated = rec.pop("last_updated_date", None)
         if not rec["product_id"] or not rec["sku_id"]:
             skipped += 1
             continue
+        if last_updated and (data_date is None or last_updated > data_date):
+            data_date = last_updated
 
         existing = db.execute(
             select(models.MicrosoftSku).where(
@@ -211,6 +219,10 @@ def import_price_sheet(db: Session, text: str, catalog_version: str) -> dict:
     db.commit()
     return {
         "catalog_version": catalog_version,
+        # Data month from the sheet's own LastUpdatedDate (None if the column is
+        # absent — a pre-LastUpdatedDate sheet). Drives pricing freshness.
+        "data_month": data_date.strftime("%Y-%m") if data_date else None,
+        "data_date": data_date.isoformat() if data_date else None,
         "inserted": inserted,
         "updated": updated,
         "skipped": skipped,

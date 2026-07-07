@@ -59,9 +59,32 @@ def seed_default_outcomes(db: Session) -> None:
     db.commit()
 
 
+def coverage_library_version() -> str:
+    return load_coverage().get("version", "unknown")
+
+
+def seed_default_coverage(db: Session) -> None:
+    """Populate the DefaultBundleCoverage table from the seed file if it is empty.
+    The template for Microsoft bundle coverage new engagements inherit."""
+    exists = db.execute(select(models.DefaultBundleCoverage.id).limit(1)).first()
+    if exists:
+        return
+    for item in load_coverage()["bundles"]:
+        for entry in item["coverage"]:
+            db.add(
+                models.DefaultBundleCoverage(
+                    bundle_key=item["bundle"],
+                    outcome_key=entry["outcome"],
+                    coverage=entry["coverage"],
+                )
+            )
+    db.commit()
+
+
 def seed_engagement(db: Session, engagement: models.Engagement) -> None:
     """Copy default outcomes + Microsoft SKU coverage into the engagement."""
     seed_default_outcomes(db)  # ensure the global library exists
+    seed_default_coverage(db)
 
     defaults = db.execute(
         select(models.DefaultOutcome).order_by(models.DefaultOutcome.sort_order)
@@ -80,20 +103,29 @@ def seed_engagement(db: Session, engagement: models.Engagement) -> None:
         db.flush()  # assign id
         key_to_outcome[o.key] = row
 
-    coverage = load_coverage()["skus"]
-    for sku in coverage:
-        for entry in sku["coverage"]:
-            outcome = key_to_outcome.get(entry["outcome"])
-            if outcome is None:
-                continue  # coverage references a key not in the current library
-            db.add(
-                models.CoverageMapEntry(
-                    engagement_id=engagement.id,
-                    outcome_id=outcome.id,
-                    product_kind="MicrosoftSku",
-                    microsoft_sku_reference=sku["sku_reference"],
-                    coverage=entry["coverage"],
-                    ai_suggested=False,
-                    ratified=True,  # default library is pre-ratified
-                )
+    from . import bundles as bundles_service
+
+    bundle_by_key = {b.key: b for b in bundles_service.list_bundles(db)}
+    # Copy Microsoft coverage from the editable global default library, not the
+    # static file — so operator edits to the default (Settings) flow into new
+    # engagements while existing ones keep their own copy.
+    defaults_cov = db.execute(select(models.DefaultBundleCoverage)).scalars().all()
+    for dc in defaults_cov:
+        bundle = bundle_by_key.get(dc.bundle_key)
+        if bundle is None:
+            continue  # coverage references a bundle not in the library
+        outcome = key_to_outcome.get(dc.outcome_key)
+        if outcome is None:
+            continue  # coverage references an outcome key not in the library
+        db.add(
+            models.CoverageMapEntry(
+                engagement_id=engagement.id,
+                outcome_id=outcome.id,
+                product_kind="MicrosoftSku",
+                bundle_id=bundle.id,
+                microsoft_sku_reference=bundle.name,  # display / back-compat
+                coverage=dc.coverage,
+                ai_suggested=False,
+                ratified=True,  # default library is pre-ratified
             )
+        )

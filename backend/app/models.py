@@ -7,7 +7,7 @@ Period normalization to annual happens on input (services), never at read time.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from sqlalchemy import (
     Boolean,
@@ -31,12 +31,16 @@ PRICE_BASIS = ("ERP", "EA", "MCA-E", "CSP", "Negotiated", "Unknown")
 COST_PERIODS = ("Monthly", "Annual")
 UNIT_BASIS = ("Users", "Devices", "Units")
 PRODUCT_KINDS = ("MicrosoftSku", "ThirdParty")
-COVERAGE = ("Full", "Partial")
+# Coverage is binary: a CoverageMapEntry existing means the outcome IS covered.
+# ("Full" is the single stored marker — there is no partial coverage.)
+COVERAGE = ("Full",)
 DISPOSITIONS = ("FullyEliminated", "PartiallyReduced", "Unchanged")
 OVERRIDES = ("None", "ForceFullElimination")
 RESIDUAL_INTENTS = ("None", "IntendedOutOfScope")
 TERM_DURATIONS = ("P1M", "P1Y", "P3Y")
 BILLING_PLANS = ("Monthly", "Annual")
+# How a pricing-catalog load reached us. Both paths write a CatalogImport row.
+CATALOG_IMPORT_SOURCES = ("CsvUpload", "PriceSyncApi")
 
 
 def _uuid() -> str:
@@ -99,6 +103,33 @@ class Persona(Base):
     source_tag: Mapped[str] = _source_tag_col()
 
     engagement: Mapped[Engagement] = relationship(back_populates="personas")
+    requirement_links: Mapped[list["PersonaRequirement"]] = relationship(
+        back_populates="persona", cascade="all, delete-orphan"
+    )
+
+    @property
+    def required_outcome_ids(self) -> list[str]:
+        """Outcomes this persona is declared to REQUIRE (Personas tab). Feeds
+        recommend-a-path gap detection: a target bundle that misses one is a gap."""
+        return [link.outcome_id for link in self.requirement_links]
+
+
+class PersonaRequirement(Base):
+    """Persona ↔ Outcome requirement (association object): a capability the persona
+    needs, independent of what its current licenses happen to deliver. Used to tell
+    Frontline from mainline personas (e.g. requires Desktop Software / Full-Size
+    Cloud Storage) so recommend-a-path won't drop a needed capability."""
+
+    __tablename__ = "persona_requirements"
+    __table_args__ = (
+        UniqueConstraint("persona_id", "outcome_id", name="uq_persona_requirement"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    persona_id: Mapped[str] = mapped_column(ForeignKey("personas.id"), index=True)
+    outcome_id: Mapped[str] = mapped_column(ForeignKey("outcomes.id"))
+
+    persona: Mapped[Persona] = relationship(back_populates="requirement_links")
 
 
 class Outcome(Base):
@@ -149,6 +180,64 @@ class MicrosoftSku(Base):
     market: Mapped[str] = mapped_column(String, default="US")
     currency: Mapped[str] = mapped_column(String, default="USD")
     catalog_version: Mapped[str] = mapped_column(String, default="")
+    # SKU → Bundle (many priced variants collapse to one staple bundle). The
+    # accepted/ratified mapping, editable. Null until classified.
+    bundle_id: Mapped[str | None] = mapped_column(
+        ForeignKey("bundles.id"), nullable=True, index=True
+    )
+    # The import-time AI mapper's proposal, UNRATIFIED until the operator accepts
+    # it into bundle_id (mirrors CoverageMapEntry's suggested/ratified split so a
+    # mapping never silently enters the spine). Cleared on accept or reject.
+    suggested_bundle_id: Mapped[str | None] = mapped_column(
+        ForeignKey("bundles.id"), nullable=True
+    )
+    bundle_suggestion_reason: Mapped[str] = mapped_column(String, default="")
+
+
+class Bundle(Base):
+    """A staple Microsoft bundle — the stable identity the coverage map, scenarios,
+    and licenses all speak in, sitting between the many priced catalog SKUs and the
+    outcomes. `kind` is 'bundle' (a full base like Microsoft 365 E3) or 'addon' (a
+    composable add-on like E5 Security whose `base_bundle_id` names the base it
+    layers onto). Global + editable; seeded from seeds/bundles.json."""
+
+    __tablename__ = "bundles"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    key: Mapped[str] = mapped_column(String, unique=True)
+    name: Mapped[str] = mapped_column(String)
+    kind: Mapped[str] = mapped_column(String, default="bundle")  # bundle | addon
+    base_bundle_id: Mapped[str | None] = mapped_column(
+        ForeignKey("bundles.id"), nullable=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class CatalogImport(Base):
+    """Provenance for each SUCCESSFUL pricing-catalog load — the first-class
+    answer to "when was pricing last refreshed, and from where". Both the manual
+    CSV upload and the Partner Center price-sync API write one row here on
+    success (a failed import raises before recording, so a row always means a
+    load that worked). Freshness — the Readout pricing badge and the staleness
+    banner — reads the NEWEST row across sources, so whichever path ran most
+    recently and succeeded is the one that counts."""
+
+    __tablename__ = "catalog_imports"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    source: Mapped[str] = mapped_column(
+        SAEnum(*CATALOG_IMPORT_SOURCES, name="catalog_import_source")
+    )
+    # YYYY-MM the pricing is dated to (drives the freshness month rule).
+    data_month: Mapped[str] = mapped_column(String, default="")
+    catalog_version: Mapped[str] = mapped_column(String, default="")
+    sku_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Filesystem provenance, populated for the price-sync path (blank for CSV).
+    file_name: Mapped[str] = mapped_column(String, default="")
+    sha256: Mapped[str] = mapped_column(String, default="")
+    imported_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
 
 
 class CurrentMicrosoftLicense(Base):
@@ -164,12 +253,43 @@ class CurrentMicrosoftLicense(Base):
         SAEnum(*PRICE_BASIS, name="price_basis"), default="Unknown"
     )
     discount_pct: Mapped[float | None] = mapped_column(Numeric(6, 4), nullable=True)
+    # DEPRECATED single-persona link. Superseded by the many-to-many persona tags
+    # (CurrentLicensePersona). Kept for the one-time backfill; not read by the
+    # engine or API anymore.
     persona_id: Mapped[str | None] = mapped_column(
         ForeignKey("personas.id"), nullable=True
     )
     source_tag: Mapped[str] = _source_tag_col()
 
     engagement: Mapped[Engagement] = relationship(back_populates="current_licenses")
+    persona_links: Mapped[list["CurrentLicensePersona"]] = relationship(
+        cascade="all, delete-orphan", back_populates="license"
+    )
+
+    @property
+    def persona_ids(self) -> list[str]:
+        """The personas this license applies to (many-to-many tags)."""
+        return [pl.persona_id for pl in self.persona_links]
+
+
+class CurrentLicensePersona(Base):
+    """Association: a current license applies to a persona (a 'tag'). Many-to-many
+    so one line can cover several personas; the engine distributes the line's cost
+    across their combined headcount. A future `applies_pct` would live here to
+    model partial application (e.g. 5% of a persona)."""
+
+    __tablename__ = "current_license_personas"
+    __table_args__ = (
+        UniqueConstraint("current_license_id", "persona_id", name="uq_license_persona"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    current_license_id: Mapped[str] = mapped_column(
+        ForeignKey("current_microsoft_licenses.id"), index=True
+    )
+    persona_id: Mapped[str] = mapped_column(ForeignKey("personas.id"), index=True)
+
+    license: Mapped[CurrentMicrosoftLicense] = relationship(back_populates="persona_links")
 
 
 class ThirdPartyProduct(Base):
@@ -197,6 +317,33 @@ class ThirdPartyProduct(Base):
     source_tag: Mapped[str] = _source_tag_col()
 
     engagement: Mapped[Engagement] = relationship(back_populates="third_party_products")
+    persona_links: Mapped[list["ThirdPartyPersona"]] = relationship(
+        cascade="all, delete-orphan", back_populates="product"
+    )
+
+    @property
+    def persona_ids(self) -> list[str]:
+        """The personas this product applies to (many-to-many tags)."""
+        return [pl.persona_id for pl in self.persona_links]
+
+
+class ThirdPartyPersona(Base):
+    """Association: a third-party product applies to a persona (a 'tag'), mirroring
+    CurrentLicensePersona. Many-to-many so one product can serve several
+    personas. A future `applies_pct` would live here for partial application."""
+
+    __tablename__ = "third_party_personas"
+    __table_args__ = (
+        UniqueConstraint("third_party_product_id", "persona_id", name="uq_tp_persona"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    third_party_product_id: Mapped[str] = mapped_column(
+        ForeignKey("third_party_products.id"), index=True
+    )
+    persona_id: Mapped[str] = mapped_column(ForeignKey("personas.id"), index=True)
+
+    product: Mapped[ThirdPartyProduct] = relationship(back_populates="persona_links")
 
 
 class CoverageMapEntry(Base):
@@ -211,6 +358,10 @@ class CoverageMapEntry(Base):
     product_kind: Mapped[str] = mapped_column(
         SAEnum(*PRODUCT_KINDS, name="product_kind")
     )
+    # For MicrosoftSku coverage: the canonical Bundle it applies to (the stable
+    # SKU → Bundle → Outcomes key). microsoft_sku_reference is kept for display /
+    # back-compat and holds the bundle name.
+    bundle_id: Mapped[str | None] = mapped_column(ForeignKey("bundles.id"), nullable=True, index=True)
     microsoft_sku_reference: Mapped[str | None] = mapped_column(String, nullable=True)
     third_party_product_id: Mapped[str | None] = mapped_column(
         ForeignKey("third_party_products.id"), nullable=True
@@ -228,8 +379,12 @@ class PersonaScenario(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     engagement_id: Mapped[str] = mapped_column(ForeignKey("engagements.id"))
     persona_id: Mapped[str] = mapped_column(ForeignKey("personas.id"))
+    # The BASE bundle of the future state. Add-on bundles layer on via scenario_addons.
     target_sku_reference: Mapped[str] = mapped_column(String, default="")
     target_unit_price_annual: Mapped[float] = mapped_column(Numeric(14, 4), default=0)
+    # Discount off the composed list price (fraction; 0.15 = 15%). Applies to
+    # base + add-ons to yield the net target price.
+    target_discount_pct: Mapped[float | None] = mapped_column(Numeric(6, 4), nullable=True)
     in_scope: Mapped[bool] = mapped_column(Boolean, default=True)
     # Derived fields cached for snapshotting; recomputed by the engine on demand.
     current_spend_annual: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
@@ -237,6 +392,24 @@ class PersonaScenario(Base):
     delta_annual: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
 
     engagement: Mapped[Engagement] = relationship(back_populates="scenarios")
+    addons: Mapped[list["ScenarioAddon"]] = relationship(
+        cascade="all, delete-orphan", back_populates="scenario"
+    )
+
+
+class ScenarioAddon(Base):
+    """An add-on bundle layered onto a scenario's base target. The engine composes
+    the future state = base + add-ons (union outcomes, sum prices). Each carries its
+    own list price; the scenario's discount applies to the composed total."""
+
+    __tablename__ = "scenario_addons"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    scenario_id: Mapped[str] = mapped_column(ForeignKey("persona_scenarios.id"), index=True)
+    bundle_id: Mapped[str] = mapped_column(ForeignKey("bundles.id"))
+    unit_price_annual: Mapped[float] = mapped_column(Numeric(14, 4), default=0)
+
+    scenario: Mapped[PersonaScenario] = relationship(back_populates="addons")
 
 
 class ProductDisposition(Base):
@@ -338,3 +511,45 @@ class DefaultOutcome(Base):
     name: Mapped[str] = mapped_column(String)
     description: Mapped[str] = mapped_column(Text, default="")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class DefaultBundleCoverage(Base):
+    """Global default Microsoft bundle → outcome coverage library (PRD 5.3.1) as a
+    first-class, editable table rather than a static file. It is the TEMPLATE copied
+    into engagement-scoped CoverageMapEntry rows on engagement creation. Editing it
+    never touches existing engagements. Seeded from seeds/coverage.json on first run.
+    Keyed by stable `bundle_key` (a Bundle.key) + `outcome_key` (a DefaultOutcome.key)."""
+
+    __tablename__ = "default_bundle_coverage"
+    __table_args__ = (
+        UniqueConstraint("bundle_key", "outcome_key", name="uq_default_coverage"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    bundle_key: Mapped[str] = mapped_column(String, index=True)
+    outcome_key: Mapped[str] = mapped_column(String)
+    coverage: Mapped[str] = mapped_column(SAEnum(*COVERAGE, name="default_coverage_cov"), default="Full")
+
+
+class AiPrompt(Base):
+    """Editable system instructions for one AI function — a first-class, global
+    template so every AI call's prompt is visible and tunable in one place rather
+    than hard-coded. One row per function key (e.g. "coverage_suggest",
+    "third_party_parse"). Seeded from seeds/ai_prompts.json; the operator can edit
+    the instructions when output isn't great and reset to the seeded default."""
+
+    __tablename__ = "ai_prompts"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    key: Mapped[str] = mapped_column(String, unique=True)
+    label: Mapped[str] = mapped_column(String, default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    instructions: Mapped[str] = mapped_column(Text, default="")
+    # False while the row still matches the shipped default, so startup seeding
+    # can refresh unedited rows to an improved default without clobbering edits.
+    edited: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )

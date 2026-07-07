@@ -109,6 +109,14 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
         db.flush()
         outcome_map[o.id] = no.id
 
+    # Carry each persona's required-outcome links across (needs both maps).
+    for p in src.personas:
+        np_id = persona_map.get(p.id)
+        for link in p.requirement_links:
+            mapped = outcome_map.get(link.outcome_id)
+            if np_id and mapped:
+                db.add(models.PersonaRequirement(persona_id=np_id, outcome_id=mapped))
+
     tp_map: dict[str, str] = {}
     for tp in src.third_party_products:
         ntp = models.ThirdPartyProduct(
@@ -119,19 +127,28 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
             is_managed=tp.is_managed, tooling_pct=tp.tooling_pct,
             effective_annual_cost=tp.effective_annual_cost, source_tag=tp.source_tag,
         )
+        for pid in tp.persona_ids:
+            mapped = persona_map.get(pid)
+            if mapped:
+                ntp.persona_links.append(models.ThirdPartyPersona(persona_id=mapped))
         db.add(ntp)
         db.flush()
         tp_map[tp.id] = ntp.id
 
     for lic in src.current_licenses:
-        db.add(models.CurrentMicrosoftLicense(
+        nlic = models.CurrentMicrosoftLicense(
             engagement_id=dst.id, sku_reference=lic.sku_reference,
             quantity_purchased=lic.quantity_purchased, quantity_assigned=lic.quantity_assigned,
             unit_price_paid_annual=lic.unit_price_paid_annual, price_basis=lic.price_basis,
-            discount_pct=lic.discount_pct,
-            persona_id=persona_map.get(lic.persona_id) if lic.persona_id else None,
-            source_tag=lic.source_tag,
-        ))
+            discount_pct=lic.discount_pct, source_tag=lic.source_tag,
+        )
+        # Carry the persona tags across, remapped to the cloned personas.
+        src_pids = lic.persona_ids or ([lic.persona_id] if lic.persona_id else [])
+        for pid in src_pids:
+            mapped = persona_map.get(pid)
+            if mapped:
+                nlic.persona_links.append(models.CurrentLicensePersona(persona_id=mapped))
+        db.add(nlic)
 
     for ce in src.coverage_entries:
         db.add(models.CoverageMapEntry(
@@ -142,11 +159,17 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
         ))
 
     for s in src.scenarios:
-        db.add(models.PersonaScenario(
+        ns = models.PersonaScenario(
             engagement_id=dst.id, persona_id=persona_map.get(s.persona_id, s.persona_id),
             target_sku_reference=s.target_sku_reference,
-            target_unit_price_annual=s.target_unit_price_annual, in_scope=s.in_scope,
-        ))
+            target_unit_price_annual=s.target_unit_price_annual,
+            target_discount_pct=s.target_discount_pct, in_scope=s.in_scope,
+        )
+        # Bundle ids are global, so add-ons carry across unchanged.
+        for ad in s.addons:
+            ns.addons.append(models.ScenarioAddon(
+                bundle_id=ad.bundle_id, unit_price_annual=ad.unit_price_annual))
+        db.add(ns)
 
     for d in src.dispositions:
         db.add(models.ProductDisposition(

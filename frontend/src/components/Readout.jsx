@@ -59,6 +59,45 @@ export default function Readout({ engagement }) {
         </div>
       </div>
 
+      <div className="card">
+        <h2>How we get to the number</h2>
+        <p className="hint">Existing annualized spend for the in-scope population, the
+          third-party tooling those users free up when they move, and the target
+          Microsoft licensing — building to the net TCO delta above.</p>
+        <table className="bridge">
+          <tbody>
+            <tr>
+              <td>Existing Microsoft licensing <small className="muted">(current assigned)</small></td>
+              <td className="num">{usd(r.existing_microsoft_annual)}</td>
+            </tr>
+            <tr>
+              <td>Existing third-party tooling <small className="muted">(freed up by in-scope moves)</small></td>
+              <td className="num">{usd(r.existing_third_party_annual)}</td>
+            </tr>
+            {r.freed_third_party.map((f) => (
+              <tr key={f.third_party_product_id} className="bridge-sub">
+                <td>↳ {f.third_party_product_name}{f.credited_annual === 0
+                  ? <span className="muted"> — $0 credited (set its covered population to free up spend)</span>
+                  : ' freed up'}</td>
+                <td className="num">{usd(f.credited_annual)}</td>
+              </tr>
+            ))}
+            <tr className="bridge-total">
+              <td><b>Total existing spend (in scope)</b></td>
+              <td className="num"><b>{usd(r.existing_microsoft_annual + r.existing_third_party_annual)}</b></td>
+            </tr>
+            <tr>
+              <td>Target Microsoft licensing <small className="muted">(new per-persona bundles)</small></td>
+              <td className="num neg">−{usd(r.target_microsoft_annual)}</td>
+            </tr>
+            <tr className="bridge-total">
+              <td><b>Net TCO delta</b> <small className="muted">{pos ? '(annual savings)' : '(annual cost increase)'}</small></td>
+              <td className={`num ${pos ? 'pos' : 'neg'}`}><b>{usd(r.net_tco_delta_annual)}</b></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
       {needsClassify.length > 0 && (
         <div className="card" style={{ borderColor: 'var(--warn)' }}>
           <h2 className="warn">⚠ Residuals require classification</h2>

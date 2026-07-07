@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { api } from './api'
 import Sidebar from './components/Sidebar.jsx'
 import PricingBanner from './components/PricingBanner.jsx'
+import UpdateBanner from './components/UpdateBanner.jsx'
 import NewEngagement from './components/NewEngagement.jsx'
 import Personas from './components/Personas.jsx'
 import CurrentLicensing from './components/CurrentLicensing.jsx'
@@ -9,6 +10,7 @@ import ThirdParty from './components/ThirdParty.jsx'
 import CoverageMap from './components/CoverageMap.jsx'
 import Scenarios from './components/Scenarios.jsx'
 import Readout from './components/Readout.jsx'
+import DataInspector from './components/DataInspector.jsx'
 import AdminPanel from './components/AdminPanel.jsx'
 
 const STEPS = [
@@ -18,6 +20,7 @@ const STEPS = [
   ['coverage', '4 · Coverage Map'],
   ['scenarios', '5 · Scenarios'],
   ['readout', '6 · Readout'],
+  ['data', 'Data'],
 ]
 
 export default function App() {
@@ -67,6 +70,7 @@ export default function App() {
       <main className="main">
         {!active && (
           <div className="container">
+            <UpdateBanner />
             <PricingBanner onOpenSettings={() => setShowAdmin(true)} />
             <div className="welcome">
               <h1>Model a Microsoft 365 total cost of ownership.</h1>
@@ -80,6 +84,7 @@ export default function App() {
 
         {active && (
           <div className="container">
+            <UpdateBanner />
             <PricingBanner onOpenSettings={() => setShowAdmin(true)} />
             <div className="work-header">
               <div>
@@ -105,6 +110,7 @@ export default function App() {
             {tab === 'coverage' && <CoverageMap engagement={active} meta={meta} />}
             {tab === 'scenarios' && <Scenarios engagement={active} meta={meta} />}
             {tab === 'readout' && <Readout engagement={active} />}
+            {tab === 'data' && <DataInspector engagement={active} meta={meta} />}
           </div>
         )}
       </main>

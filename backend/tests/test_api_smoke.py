@@ -154,3 +154,113 @@ def test_price_sheet_tab_delimited_import(client):
     e5 = next(s for s in skus if s["sku_title"] == "M365 E5 Tab")
     assert e5["annual_unit_price"] == 660.0
     assert e5["annual_erp_price"] == 684.0
+
+
+def test_csv_import_clears_stale_pricing_badge(client):
+    # A manual CSV upload must make pricing read fresh — no price-sync API auth,
+    # no cached sheet on disk. Freshness now counts the CSV import provenance.
+    csv_text = (
+        "ProductTitle,ProductId,SkuId,SkuTitle,TermDuration,BillingPlan,Market,"
+        "Currency,UnitPrice,EffectiveStartDate,EffectiveEndDate,ERP Price,Segment\n"
+        "Microsoft 365 E5,CFQ7TTC0LF8R,0042,M365 E5 Fresh,P1Y,Annual,US,USD,"
+        "660.00,2026-01-01,2026-12-31,684.00,Commercial\n"
+    )
+    files = {"file": ("price.csv", csv_text, "text/csv")}
+    assert client.post("/api/catalog/import-csv", files=files).status_code == 200
+
+    st = client.get("/api/pricesync/status").json()
+    # CSV-only operator: not "configured" for the API pull, but pricing is fresh.
+    assert st["state"] == "fresh"
+    assert st["data_month"]  # a data month is now set (not None/"")
+    assert st["data_source"] == "CSV upload"
+
+
+def test_csv_last_updated_date_drives_data_month(client):
+    # When the sheet carries a LastUpdatedDate, the data month comes from it
+    # (not the upload date). A sheet last updated in 2020 reads as that month.
+    csv_text = (
+        "ProductTitle,ProductId,SkuId,SkuTitle,TermDuration,BillingPlan,Market,"
+        "Currency,UnitPrice,EffectiveStartDate,EffectiveEndDate,ERP Price,Segment,"
+        "LastUpdatedDate\n"
+        "Microsoft 365 E5,CFQ7TTC0LF8R,0043,M365 E5 Dated,P1Y,Annual,US,USD,"
+        "660.00,2020-01-01,2020-12-31,684.00,Commercial,2020-03-15T00:00:00.0000000Z\n"
+    )
+    files = {"file": ("price.csv", csv_text, "text/csv")}
+    r = client.post("/api/catalog/import-csv", files=files)
+    assert r.status_code == 200
+    assert r.json()["data_month"] == "2020-03"
+
+    st = client.get("/api/pricesync/status").json()
+    assert st["data_month"] == "2020-03"
+    assert st["data_source"] == "CSV upload"
+
+
+def test_current_license_persona_tags_roundtrip(client):
+    eng = client.post("/api/engagements", json={"customer_name": "Tags Co"}).json()
+    eid = eng["id"]
+    kw = client.post(f"/api/engagements/{eid}/personas", json={"name": "KW", "headcount": 500}).json()
+    fl = client.post(f"/api/engagements/{eid}/personas", json={"name": "FL", "headcount": 200}).json()
+    lic = client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "E3", "quantity_assigned": 700, "quantity_purchased": 700,
+        "unit_price_paid_annual": 100, "persona_ids": [kw["id"], fl["id"]],
+    }).json()
+    assert set(lic["persona_ids"]) == {kw["id"], fl["id"]}
+    # Patch replaces the tag set.
+    upd = client.patch(f"/api/engagements/{eid}/current-licenses/{lic['id']}",
+                       json={"persona_ids": [kw["id"]]}).json()
+    assert upd["persona_ids"] == [kw["id"]]
+    # A patch that doesn't mention persona_ids leaves the tags untouched.
+    upd2 = client.patch(f"/api/engagements/{eid}/current-licenses/{lic['id']}",
+                        json={"quantity_assigned": 650}).json()
+    assert upd2["persona_ids"] == [kw["id"]]
+    assert upd2["quantity_assigned"] == 650
+
+
+def test_data_inspector_surfaces_objects_and_refs(client):
+    eng = client.post("/api/engagements", json={"customer_name": "Inspect Co"}).json()
+    eid = eng["id"]
+    kw = client.post(f"/api/engagements/{eid}/personas", json={"name": "KW", "headcount": 500}).json()
+    client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "Microsoft 365 E3", "quantity_assigned": 500, "quantity_purchased": 500,
+        "unit_price_paid_annual": 384, "persona_ids": [kw["id"]],
+    })
+    data = client.get(f"/api/engagements/{eid}/inspect").json()
+    assert data["engagement"]["customer_name"] == "Inspect Co"
+    types = {o["type"]: o for o in data["objects"]}
+    assert {"Persona", "CurrentMicrosoftLicense", "ThirdPartyProduct"} <= set(types)
+    # Every persisted field is surfaced, including the ones with no edit UI.
+    lic = types["CurrentMicrosoftLicense"]
+    keys = {f["key"] for f in lic["fields"]}
+    assert {"source_tag", "persona_ids", "discount_pct"} <= keys
+    # The persona tag reference resolves to the persona name.
+    rec = lic["records"][0]
+    assert rec["cells"]["persona_ids"]["ref"]["label"] == "KW"
+    assert rec["cells"]["persona_ids"]["ref"]["ok"] is True
+    # Flow section present.
+    assert [s["stage"] for s in data["flow"]] == ["Inputs", "Engine", "Outputs"]
+
+
+def test_third_party_persona_tags_roundtrip(client):
+    eng = client.post("/api/engagements", json={"customer_name": "TP Tags Co"}).json()
+    eid = eng["id"]
+    kw = client.post(f"/api/engagements/{eid}/personas", json={"name": "KW", "headcount": 500}).json()
+    fl = client.post(f"/api/engagements/{eid}/personas", json={"name": "FL", "headcount": 200}).json()
+    tp = client.post(f"/api/engagements/{eid}/third-party", json={
+        "name": "Okta", "raw_cost": 50000, "covered_count": 700,
+        "persona_ids": [kw["id"], fl["id"]],
+    }).json()
+    assert set(tp["persona_ids"]) == {kw["id"], fl["id"]}
+    # Patch that omits persona_ids leaves tags intact but recomputes derived cost.
+    upd = client.patch(f"/api/engagements/{eid}/third-party/{tp['id']}",
+                       json={"is_managed": True, "tooling_pct": 0.3}).json()
+    assert set(upd["persona_ids"]) == {kw["id"], fl["id"]}
+    assert float(upd["effective_annual_cost"]) == 15000.0  # 50000 * 0.3
+    # Replace the tag set.
+    upd2 = client.patch(f"/api/engagements/{eid}/third-party/{tp['id']}",
+                        json={"persona_ids": [kw["id"]]}).json()
+    assert upd2["persona_ids"] == [kw["id"]]
+    # Inspector surfaces the tags on the product, resolved to names.
+    data = client.get(f"/api/engagements/{eid}/inspect").json()
+    tpo = [o for o in data["objects"] if o["type"] == "ThirdPartyProduct"][0]
+    assert "persona_ids" in {f["key"] for f in tpo["fields"]}
+    assert tpo["records"][0]["cells"]["persona_ids"]["ref"]["label"] == "KW"
