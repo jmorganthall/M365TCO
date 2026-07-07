@@ -55,9 +55,12 @@ export function PricingBadge() {
   useEffect(() => { api.get('/api/pricesync/status').then(setStatus).catch(() => {}) }, [])
   if (!status) return null
   const cls = status.state === 'stale' ? 'neg' : status.state === 'aging' ? 'warn' : 'muted'
+  // A loaded catalog with no dated provenance reads "loaded", not "not set" —
+  // the badge is tied to the catalog that actually feeds pricing.
+  const label = status.data_month || (status.catalog_sku_count > 0 ? 'loaded' : 'not set')
   return (
     <span className={`badge ${cls}`} title={(status.reasons || []).join(' ')}>
-      Pricing: {status.data_month || 'not set'} · {status.state}
+      Pricing: {label} · {status.state}
     </span>
   )
 }

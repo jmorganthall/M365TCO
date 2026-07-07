@@ -167,6 +167,117 @@ def test_gui_csp_config_enables_refresh(client):
     assert "client_secret" not in cfg and "refresh_token" not in cfg
 
 
+# ---- Catalog-derived freshness floor + provenance reconciliation ----
+# A catalog loaded before provenance recording existed populates MicrosoftSku but
+# writes no CatalogImport row. Freshness must still reflect the loaded catalog
+# rather than reading "not set · stale" (the two data sources cannot disagree).
+def _clear_catalog(db):
+    from app import models
+
+    db.query(models.CatalogImport).delete()
+    db.query(models.MicrosoftSku).delete()
+    db.commit()
+
+
+def _add_sku(db, *, version="", effective_start=None):
+    import uuid as _uuid
+    from datetime import date
+
+    from app import models
+
+    row = models.MicrosoftSku(
+        product_id=f"P-{_uuid.uuid4().hex[:8]}", sku_id="S1",
+        product_title="Microsoft 365 E3", sku_title="Microsoft 365 E3",
+        catalog_version=version,
+        effective_start_date=date.fromisoformat(effective_start) if effective_start else None,
+    )
+    db.add(row)
+    db.commit()
+
+
+def test_derive_catalog_signal_reads_month_from_version(client):
+    from app.db import SessionLocal
+    from app.services import catalog_provenance
+
+    db = SessionLocal()
+    try:
+        _clear_catalog(db)
+        assert catalog_provenance.derive_catalog_signal(db) is None  # empty catalog
+        _add_sku(db, version="2026-06")
+        anchor, data_month, version = catalog_provenance.derive_catalog_signal(db)
+        assert data_month == "2026-06"
+        assert version == "2026-06"
+        assert anchor is not None  # first-of-month anchor when only the month is known
+    finally:
+        _clear_catalog(db)
+        db.close()
+
+
+def test_derive_catalog_signal_falls_back_to_effective_date(client):
+    from app.db import SessionLocal
+    from app.services import catalog_provenance
+
+    db = SessionLocal()
+    try:
+        _clear_catalog(db)
+        # A filename version carries no month; the SKU effective date supplies it.
+        _add_sku(db, version="Jul_NCE_LicenseBasedPL_GA_UM.csv", effective_start="2026-06-01")
+        anchor, data_month, version = catalog_provenance.derive_catalog_signal(db)
+        assert data_month == "2026-06"
+        assert anchor is not None
+    finally:
+        _clear_catalog(db)
+        db.close()
+
+
+def test_reconcile_creates_provenance_and_is_idempotent(client):
+    from app.db import SessionLocal
+    from app.services import catalog_provenance
+
+    db = SessionLocal()
+    try:
+        _clear_catalog(db)
+        _add_sku(db, version="2026-06", effective_start="2026-06-01")
+        assert catalog_provenance.latest(db) is None  # catalog present, no provenance
+
+        row = catalog_provenance.reconcile_missing_provenance(db)
+        assert row is not None
+        assert row.source == "Reconciled"
+        assert row.data_month == "2026-06"
+        assert row.sku_count == 1
+
+        # Idempotent: a second pass creates nothing more.
+        assert catalog_provenance.reconcile_missing_provenance(db) is None
+        assert catalog_provenance.catalog_sku_count(db) == 1
+    finally:
+        _clear_catalog(db)
+        db.close()
+
+
+def test_status_never_reads_not_set_with_a_loaded_catalog(client):
+    """Regression: a catalog with SKUs but no CatalogImport row must not surface
+    as 'not set' — the badge is tied to the catalog that actually feeds pricing."""
+    from app.db import SessionLocal
+    from app.services import catalog_provenance
+
+    db = SessionLocal()
+    try:
+        _clear_catalog(db)
+        _add_sku(db, version="2026-06", effective_start="2026-06-01")
+    finally:
+        db.close()
+
+    st = client.get("/api/pricesync/status").json()
+    assert st["catalog_sku_count"] >= 1
+    assert st["data_month"] == "2026-06"  # derived from the catalog, not "not set"
+
+    db = SessionLocal()
+    try:
+        _clear_catalog(db)
+    finally:
+        db.close()
+
+
 def test_invalid_view_rejected(client):
     r = client.put("/api/pricesync/config", json={"pricesheet_view": "not_a_view"})
     assert r.status_code == 422

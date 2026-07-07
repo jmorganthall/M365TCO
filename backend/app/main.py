@@ -89,6 +89,16 @@ def _backfill_coverage_bundle_ids(db) -> None:
         db.commit()
 
 
+def _reconcile_catalog_provenance(db) -> None:
+    """One-time migration: give a catalog that predates provenance recording a
+    CatalogImport row derived from its own state, so freshness (the Readout badge
+    and staleness banner) never reads "not set · stale" against a catalog that is
+    demonstrably loaded. Idempotent. See services/catalog_provenance.py."""
+    from .services import catalog_provenance
+
+    catalog_provenance.reconcile_missing_provenance(db)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     import asyncio
@@ -112,6 +122,7 @@ async def lifespan(_app: FastAPI):
         _backfill_coverage_bundle_ids(db)
         _backfill_binary_coverage(db)
         _backfill_new_default_outcomes(db)
+        _reconcile_catalog_provenance(db)
     finally:
         db.close()
 

@@ -52,6 +52,9 @@ def status(db: Session = Depends(get_db)):
         "age_days": fr.age_days,
         "data_month": fr.data_month,
         "data_source": source_label,
+        # Ground truth for "is a catalog loaded at all", so the badge/banner can
+        # never say "not set" while priced SKUs exist (they read one source).
+        "catalog_sku_count": catalog_provenance.catalog_sku_count(db),
         "current_month": fr.current_month,
         "reasons": fr.reasons,
         "latest": storage.read_latest(cfg),

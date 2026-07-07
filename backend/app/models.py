@@ -39,8 +39,11 @@ OVERRIDES = ("None", "ForceFullElimination")
 RESIDUAL_INTENTS = ("None", "IntendedOutOfScope")
 TERM_DURATIONS = ("P1M", "P1Y", "P3Y")
 BILLING_PLANS = ("Monthly", "Annual")
-# How a pricing-catalog load reached us. Both paths write a CatalogImport row.
-CATALOG_IMPORT_SOURCES = ("CsvUpload", "PriceSyncApi")
+# How a pricing-catalog load reached us. The two load paths (manual CSV upload,
+# Partner Center price-sync) write a row on success; "Reconciled" is a row
+# synthesized from an already-loaded catalog that predates provenance recording,
+# so freshness can never disagree with a catalog that is demonstrably present.
+CATALOG_IMPORT_SOURCES = ("CsvUpload", "PriceSyncApi", "Reconciled")
 
 
 def _uuid() -> str:
