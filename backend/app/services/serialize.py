@@ -78,6 +78,19 @@ def result_to_dict(result: EngineResult) -> dict:
             "residual_third_party_cost_annual": _num(
                 result.rollup.residual_third_party_cost_annual
             ),
+            "existing_microsoft_annual": _num(result.rollup.existing_microsoft_annual),
+            "existing_third_party_annual": _num(
+                result.rollup.existing_third_party_annual
+            ),
+            "target_microsoft_annual": _num(result.rollup.target_microsoft_annual),
+            "freed_third_party": [
+                {
+                    "third_party_product_id": f.third_party_product_id,
+                    "third_party_product_name": f.third_party_product_name,
+                    "credited_annual": _num(f.credited_annual),
+                }
+                for f in result.rollup.freed_third_party
+            ],
             "population_check": {
                 "in_scope_persona_headcount": result.rollup.in_scope_persona_headcount,
                 "third_party_covered_population": result.rollup.third_party_covered_population,

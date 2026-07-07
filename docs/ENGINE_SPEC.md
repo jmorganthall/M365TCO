@@ -141,6 +141,26 @@ population_check = {
     in_scope_persona_headcount: Σ headcount of in-scope scenarios' personas,
     third_party_covered_population: Σ covered_count over all products
 }
+
+# Spend bridge — the components that build to net_tco_delta_annual over the
+# IN-SCOPE set, so a readout can show existing spend (Microsoft + third-party)
+# → target Microsoft → net delta. These are the same per-scenario numbers the
+# net delta already sums, regrouped; the identity below holds by construction.
+existing_microsoft_annual   = Σ current_microsoft_annual   over in-scope scenarios
+existing_third_party_annual = Σ current_third_party_offset over in-scope scenarios
+target_microsoft_annual     = Σ target_spend_annual        over in-scope scenarios
+
+net_tco_delta_annual = existing_microsoft_annual
+                     + existing_third_party_annual
+                     - target_microsoft_annual
+
+# Per-product freed-up savings: the in-scope offsets aggregated by product, so a
+# readout can name each displaced tool and the dollars it frees ("we freed up
+# SentinelOne, saving $X"). Sums to existing_third_party_annual. A product with
+# covered_count 0 has per-unit cost 0, so its credited_annual is 0 even when it
+# is displaced/eliminated — the freed dollars are 0 until a covered population
+# is entered.
+freed_third_party = [ {product, credited_annual = Σ its in-scope offsets} ]
 ```
 
 > Rule 2 — override disclosure: a ForceFullElimination override asserts savings
