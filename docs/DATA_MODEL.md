@@ -174,17 +174,31 @@ FK, UUID PK, cascade-deleted with the engagement.
 ### 4.4a CatalogImport — pricing-load provenance
 - **Identity:** `uuid`. **Scope:** **global** (one row per successful catalog load).
 - **Field ownership:** recorded on success by whichever path loaded pricing —
-  `source` (`CsvUpload` | `PriceSyncApi`), `data_month` (from the sheet's own
-  `LastUpdatedDate` for CSV, or the API metadata for price-sync; current month
-  only if the sheet reports no date), `catalog_version`, `sku_count`,
+  `source` (`CsvUpload` | `PriceSyncApi` | `Reconciled`), `data_month` (from the
+  sheet's own `LastUpdatedDate` for CSV, or the API metadata for price-sync;
+  current month only if the sheet reports no date), `catalog_version`, `sku_count`,
   `imported_at`, and (price-sync only) `file_name`/`sha256`.
 - **Write-normalization / CRUD:** `services/catalog_provenance.py` — the single
-  `record_import()` writer, plus `latest()` and `pricing_freshness()`.
+  `record_import()` writer, plus `latest()`, `pricing_freshness()`,
+  `derive_catalog_signal()`, and `reconcile_missing_provenance()`.
 - **Why it exists:** freshness (the Readout pricing badge and the staleness
   banner) must reflect *whichever source ran most recently and worked*. A row
   only exists for a load that succeeded, so "newest row across sources" is
   exactly "newest successful pricing." Without it, a CSV-only operator's upload
   was invisible to freshness and pricing read `not set · stale`.
+- **Freshness can never contradict the loaded catalog.** The provenance record is
+  a *separate object* from the catalog (`MicrosoftSku`) it describes, so the two
+  could historically drift: a catalog imported before provenance recording
+  existed left `MicrosoftSku` full but `catalog_imports` empty, and the badge read
+  `not set · stale` next to "1448 SKUs". Two mechanisms close this:
+  (1) `derive_catalog_signal()` computes a freshness *floor* from the catalog
+  itself — its `catalog_version` month, else the newest SKU effective-start date —
+  so `pricing_freshness()` classifies the loaded catalog even with no record;
+  (2) `reconcile_missing_provenance()` runs once at startup to materialize a
+  `Reconciled` row from that same signal, so the provenance history and the loaded
+  catalog agree. `Reconciled` is labelled as inferred (not an observed load) on the
+  readout. A real `CsvUpload`/`PriceSyncApi` load always outranks the derived floor
+  because it carries a true, newer `imported_at`.
 
 ### 4.4b Bundle — the staple bundle spine (SKU → Bundle → Outcomes)
 - **Identity:** `uuid` plus a unique `key`. **Scope:** **global**, editable,
