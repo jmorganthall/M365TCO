@@ -7,7 +7,12 @@ images, so we use the repo's commits/releases — which the published image tags
 mirror — as the robust proxy for "latest":
 
 - a versioned deploy (built from a `v*` tag) compares against the latest release;
-- a `:latest`/branch deploy compares its build sha against the default branch head.
+- a `:latest`/branch deploy asks GitHub whether the tracked trunk (`update_branch`,
+  = `main`, the branch that publishes `:latest`) is strictly AHEAD of its build
+  commit. We deliberately do NOT compare against the repo's *default branch* by
+  sha-inequality: the default branch can be a stale side branch, so "different
+  sha" would flag an OLDER commit as an update. Only "the trunk has commits this
+  build doesn't" counts.
 """
 
 from __future__ import annotations
@@ -56,13 +61,16 @@ def evaluate(
     running_version: str,
     *,
     latest_release_tag: str | None = None,
-    head_sha: str | None = None,
-    default_branch: str = "",
+    target_sha: str | None = None,
+    ahead_by: int = 0,
+    target_branch: str = "",
     repo: str = "",
 ) -> dict | None:
     """Pure comparison → an `update` dict or None. Kept free of I/O so it is unit
     testable. A versioned running build compares against the latest release tag;
-    otherwise the running sha is compared against the default-branch head sha."""
+    otherwise an update exists only when the tracked trunk is strictly AHEAD of
+    the running commit (`ahead_by > 0`) — a merely different or older sha is not
+    an update."""
     if is_versioned(running_version):
         cur, new = _semver_tuple(running_version), _semver_tuple(latest_release_tag or "")
         if cur and new and new > cur:
@@ -73,15 +81,14 @@ def evaluate(
                 "url": f"https://github.com/{repo}/releases/latest" if repo else None,
             }
         return None
-    # Branch / :latest build — compare commit shas.
-    if running_sha and head_sha and running_sha != head_sha \
-            and not head_sha.startswith(running_sha) and not running_sha.startswith(head_sha):
+    # Branch / :latest build — update only when the trunk is ahead of this build.
+    if running_sha and target_sha and ahead_by and ahead_by > 0:
         return {
             "available": True,
             "kind": "commit",
-            "latest": head_sha[:7],
-            "url": (f"https://github.com/{repo}/commits/{default_branch}"
-                    if repo and default_branch else None),
+            "latest": target_sha[:7],
+            "url": (f"https://github.com/{repo}/commits/{target_branch}"
+                    if repo and target_branch else None),
         }
     return None
 
@@ -102,11 +109,17 @@ def _fetch_update(run: dict) -> dict | None:
             rel = _get(client, f"/repos/{repo}/releases/latest")
             return evaluate(run["sha"], run["version"],
                             latest_release_tag=rel.get("tag_name"), repo=repo)
-        meta = _get(client, f"/repos/{repo}")
-        branch = meta.get("default_branch", "")
-        commit = _get(client, f"/repos/{repo}/commits/{branch}")
+        # Ask GitHub how the tracked trunk relates to the running commit. compare
+        # BASE...HEAD reports `ahead_by` = commits HEAD (the branch) has beyond
+        # BASE (this build); >0 means a real update, 0 means up to date or newer.
+        branch = settings.update_branch or "main"
+        cmp = _get(client, f"/repos/{repo}/compare/{run['sha']}...{branch}")
+        ahead_by = int(cmp.get("ahead_by", 0) or 0)
+        commits = cmp.get("commits") or []
+        target_sha = commits[-1]["sha"] if ahead_by > 0 and commits else run["sha"]
         return evaluate(run["sha"], run["version"],
-                        head_sha=commit.get("sha", ""), default_branch=branch, repo=repo)
+                        target_sha=target_sha, ahead_by=ahead_by,
+                        target_branch=branch, repo=repo)
 
 
 def check(force: bool = False) -> dict:

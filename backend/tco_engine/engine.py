@@ -97,6 +97,26 @@ class FreedThirdParty:
     third_party_product_id: str
     third_party_product_name: str
     credited_annual: Decimal
+    # True when the customer's CURRENT licensing already covers this product's
+    # outcomes — i.e. it's a quick win (redundant today), not value the move adds.
+    already_covered: bool = False
+
+
+@dataclass
+class QuickWin:
+    """A third-party product whose every delivered outcome is ALREADY covered by
+    the customer's current Microsoft licensing — a duplicate they can drop today,
+    with no scenario move. `credited_annual` is the saving on the overlapping
+    population (min of the product's covered_count and the seats that already hold
+    a covering license), on the effective (managed-split) cost basis."""
+
+    third_party_product_id: str
+    third_party_product_name: str
+    duplicated_outcome_ids: list[str]
+    covered_count: int
+    displaced_today: int
+    residual_today: int
+    credited_annual: Decimal
 
 
 @dataclass
@@ -118,6 +138,11 @@ class RollupResult:
     existing_third_party_annual: Decimal
     target_microsoft_annual: Decimal
     freed_third_party: list[FreedThirdParty]
+    # Quick wins: third-party spend already duplicated by the CURRENT licensing,
+    # savable today without any move. quick_win_savings_annual is the "save $X
+    # today" headline; quick_wins lists the redundant products.
+    quick_win_savings_annual: Decimal
+    quick_wins: list[QuickWin]
 
 
 @dataclass
@@ -209,7 +234,56 @@ def compute(engagement: Engagement) -> EngineResult:
 
     products_by_id = {p.id: p for p in engagement.third_party_products}
 
+    # ----- Quick wins: duplicates the CURRENT licensing already covers (6.10) -----
+    # Scenario-independent: outcomes the existing Microsoft licensing already
+    # delivers, and — per product — the seats that already hold a license covering
+    # all its outcomes. A product fully covered today is a duplicate the customer
+    # can drop now ("save $X today without doing anything").
+    current_covered_all: set[str] = set()
+    for line in engagement.current_licenses:
+        current_covered_all |= set(line.covered_outcome_ids)
+
+    quick_wins: list[QuickWin] = []
+    for product in engagement.third_party_products:
+        outs = product.delivered_outcome_ids
+        if not outs or not (set(outs) <= current_covered_all):
+            continue
+        # Seats already holding a current license that covers ALL this product's
+        # outcomes — the overlapping (redundant) population.
+        covered_pop = sum(
+            line.quantity_assigned
+            for line in engagement.current_licenses
+            if set(outs) <= set(line.covered_outcome_ids)
+        )
+        displaced_today = min(product.covered_count, covered_pop)
+        credited = _money(Decimal(displaced_today) * product.per_unit_annual_cost)
+        if credited <= 0:
+            continue
+        quick_wins.append(
+            QuickWin(
+                third_party_product_id=product.id,
+                third_party_product_name=product.name,
+                duplicated_outcome_ids=sorted(outs),
+                covered_count=product.covered_count,
+                displaced_today=displaced_today,
+                residual_today=max(product.covered_count - displaced_today, 0),
+                credited_annual=credited,
+            )
+        )
+    quick_win_ids = {q.third_party_product_id for q in quick_wins}
+    quick_win_savings = _money(
+        sum((q.credited_annual for q in quick_wins), Decimal("0"))
+    )
+
     # ----- Per-persona scenario math (Section 6.2 / 6.3) -----
+    # Personas that have a scenario (appear in the readout). An UNTAGGED current
+    # license — one the operator entered without attributing to a persona — is
+    # treated as an org-wide pool distributed across these, so it still counts as
+    # current spend and is retired when they move, instead of silently vanishing.
+    scenario_persona_ids = {
+        s.persona_id for s in engagement.scenarios if s.persona_id in personas
+    }
+
     scenario_results: list[ScenarioResult] = []
     for scenario in engagement.scenarios:
         persona = personas.get(scenario.persona_id)
@@ -218,20 +292,27 @@ def compute(engagement: Engagement) -> EngineResult:
 
         # Each current license applies to one or more personas; its total cost is
         # distributed across their combined headcount, so this persona's share is
-        # (its headcount / the tagged personas' total headcount). A single-persona
-        # line therefore counts in full, and a shared line is never double-counted
-        # across personas (Section 6.2).
+        # (its headcount / the pool's total headcount). A single-persona line
+        # therefore counts in full, and a shared line is never double-counted
+        # across personas (Section 6.2). An untagged line's pool is every persona
+        # with a scenario (org-wide), so it is attributed and retired rather than
+        # dropped.
         current_ms = Decimal("0")
         for line in engagement.current_licenses:
-            if persona.id not in line.persona_ids:
-                continue
+            if line.persona_ids:
+                if persona.id not in line.persona_ids:
+                    continue
+                pool = [pid for pid in line.persona_ids if pid in personas]
+            else:  # untagged -> org-wide pool of scenario personas
+                if persona.id not in scenario_persona_ids:
+                    continue
+                pool = list(scenario_persona_ids)
             line_total = Decimal(line.quantity_assigned) * line.unit_price_paid_annual
-            tagged = [pid for pid in line.persona_ids if pid in personas]
-            tagged_hc = sum(personas[pid].headcount for pid in tagged)
-            if tagged_hc > 0:
-                share = Decimal(persona.headcount) / Decimal(tagged_hc)
+            pool_hc = sum(personas[pid].headcount for pid in pool)
+            if pool_hc > 0:
+                share = Decimal(persona.headcount) / Decimal(pool_hc)
             else:  # personas with no headcount → even split so cost isn't lost
-                share = Decimal(1) / Decimal(len(tagged) or 1)
+                share = Decimal(1) / Decimal(len(pool) or 1)
             current_ms += line_total * share
 
         # Linear-by-user offset: each product this scenario displaces credits
@@ -352,6 +433,7 @@ def compute(engagement: Engagement) -> EngineResult:
                     third_party_product_id=o.third_party_product_id,
                     third_party_product_name=o.third_party_product_name,
                     credited_annual=o.credited_offset_annual,
+                    already_covered=o.third_party_product_id in quick_win_ids,
                 )
             else:
                 entry.credited_annual = _money(
@@ -373,6 +455,8 @@ def compute(engagement: Engagement) -> EngineResult:
         existing_third_party_annual=existing_third_party,
         target_microsoft_annual=target_microsoft,
         freed_third_party=freed_third_party,
+        quick_win_savings_annual=quick_win_savings,
+        quick_wins=quick_wins,
     )
 
     return EngineResult(

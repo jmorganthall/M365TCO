@@ -83,15 +83,22 @@ else:
 ## Per-persona scenario math (6.2 / 6.3)
 
 ```
-# A current license line applies to one or more personas. Its total annual cost
-# (quantity_assigned * unit_price_paid_annual) is distributed across the combined
-# headcount of its tagged personas, so this persona's share is its headcount over
-# the tagged total. A single-persona line therefore counts in full, and a shared
-# line is never double-counted across personas. (If the tagged personas have zero
+# A current license line applies to one or more personas (its `persona_ids`). Its
+# total annual cost (quantity_assigned * unit_price_paid_annual) is distributed
+# across the combined headcount of that pool, so this persona's share is its
+# headcount over the pool total. A single-persona line therefore counts in full,
+# and a shared line is never double-counted across personas. (If the pool has zero
 # total headcount, the line is split evenly by count so cost is not lost.)
-current_microsoft = Σ over lines tagged with this persona of
-      line_total * (persona.headcount / Σ headcount of the line's tagged personas)
+#
+# UNTAGGED lines (empty persona_ids) are treated as an ORG-WIDE pool: the pool is
+# every persona that has a scenario, distributed by headcount. This means a
+# current license the operator entered without attributing it to a persona (e.g.
+# "255 Business Premium") still counts as current spend and is retired when those
+# personas move to a target — rather than silently vanishing from the TCO.
+current_microsoft = Σ over lines whose pool includes this persona of
+      line_total * (persona.headcount / Σ headcount of the line's pool)
     where line_total = line.quantity_assigned * line.unit_price_paid_annual
+      and pool = line.persona_ids if set, else all personas with a scenario
 
 # Linear-by-user offset: for each product this scenario displaces, credit
 # headcount * per_unit_annual_cost. This is the persona's allocated share of
@@ -173,6 +180,29 @@ freed_third_party = [ {product, credited_annual = Σ its in-scope offsets} ]
 > M365 users) is recorded as `residual_intent = IntendedOutOfScope` and is **not**
 > an override. When a residual exists the tool must force the operator to choose
 > which case applies (`requires_residual_classification`).
+
+## Quick wins — duplicates the current licensing already covers (6.10)
+
+```
+# Scenario-independent. current_covered = union of covered_outcome_ids across all
+# current license lines (each line's bundle's ratified Microsoft coverage). A
+# third-party product is a QUICK WIN when it delivers ≥1 outcome and ALL of its
+# delivered outcomes are already in current_covered — the customer is paying twice
+# and can drop it TODAY, with no move ("save $X today without doing anything").
+for product where delivered_outcome_ids ⊆ current_covered and delivered ≠ ∅:
+    covered_pop      = Σ quantity_assigned of current lines whose covered_outcome_ids
+                       ⊇ product.delivered_outcome_ids            # seats already covered
+    displaced_today  = min(product.covered_count, covered_pop)
+    credited_annual  = displaced_today * product.per_unit_annual_cost   # effective basis
+    residual_today   = covered_count - displaced_today
+quick_win_savings_annual = Σ credited_annual over quick-win products (credited > 0)
+```
+
+Quick wins are surfaced as their own readout section and as the "save today"
+headline. In the spend bridge, each freed third-party product is tagged
+`already_covered` (it's a quick win) so the "existing third-party freed up" line
+splits into *already covered by current licensing* vs *additionally freed by the
+move* — the two sum to the same total, so the bridge still builds to the net delta.
 
 ## Recompute is total, not incremental (6.7)
 

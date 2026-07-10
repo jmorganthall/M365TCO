@@ -88,8 +88,22 @@ def result_to_dict(result: EngineResult) -> dict:
                     "third_party_product_id": f.third_party_product_id,
                     "third_party_product_name": f.third_party_product_name,
                     "credited_annual": _num(f.credited_annual),
+                    "already_covered": f.already_covered,
                 }
                 for f in result.rollup.freed_third_party
+            ],
+            "quick_win_savings_annual": _num(result.rollup.quick_win_savings_annual),
+            "quick_wins": [
+                {
+                    "third_party_product_id": q.third_party_product_id,
+                    "third_party_product_name": q.third_party_product_name,
+                    "duplicated_outcome_ids": q.duplicated_outcome_ids,
+                    "covered_count": q.covered_count,
+                    "displaced_today": q.displaced_today,
+                    "residual_today": q.residual_today,
+                    "credited_annual": _num(q.credited_annual),
+                }
+                for q in result.rollup.quick_wins
             ],
             "population_check": {
                 "in_scope_persona_headcount": result.rollup.in_scope_persona_headcount,

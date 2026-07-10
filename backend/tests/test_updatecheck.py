@@ -18,20 +18,22 @@ def test_evaluate_release_newer_and_same():
     assert updatecheck.evaluate("", "1.3.0", latest_release_tag="v1.2.9", repo="o/r") is None
 
 
-def test_evaluate_commit_differs_for_branch_build():
-    # Branch/:latest build (no semver) → compare shas.
-    up = updatecheck.evaluate("aaaaaaaaaaaa", "", head_sha="bbbbbbbbbbbb",
-                              default_branch="main", repo="o/r")
+def test_evaluate_commit_update_only_when_trunk_ahead():
+    # Branch/:latest build (no semver): trunk ahead by 3 → update.
+    up = updatecheck.evaluate("aaaaaaaaaaaa", "", target_sha="bbbbbbbbbbbb",
+                              ahead_by=3, target_branch="main", repo="o/r")
     assert up and up["kind"] == "commit" and up["latest"] == "bbbbbbb"
     assert up["url"] == "https://github.com/o/r/commits/main"
-    # Same sha → no update.
-    assert updatecheck.evaluate("aaaaaaaaaaaa", "", head_sha="aaaaaaaaaaaa",
-                                default_branch="main", repo="o/r") is None
+    # Trunk not ahead (identical, or the build is newer/on a stale branch) → no
+    # update, even though the compared sha differs. This is the stale-default-
+    # branch false-positive the fix kills.
+    assert updatecheck.evaluate("aaaaaaaaaaaa", "", target_sha="0ld0000",
+                                ahead_by=0, target_branch="main", repo="o/r") is None
 
 
-def test_evaluate_short_sha_prefix_matches():
-    # A running short sha that prefixes the head sha is considered up to date.
-    assert updatecheck.evaluate("abc1234", "", head_sha="abc1234def", repo="o/r") is None
+def test_evaluate_no_update_without_sha():
+    # Missing running sha (dev build) → never a commit update.
+    assert updatecheck.evaluate("", "", target_sha="bbbbbbb", ahead_by=5, repo="o/r") is None
 
 
 def test_check_silent_on_dev_build(monkeypatch):
