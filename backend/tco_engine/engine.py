@@ -210,6 +210,14 @@ def compute(engagement: Engagement) -> EngineResult:
     products_by_id = {p.id: p for p in engagement.third_party_products}
 
     # ----- Per-persona scenario math (Section 6.2 / 6.3) -----
+    # Personas that have a scenario (appear in the readout). An UNTAGGED current
+    # license — one the operator entered without attributing to a persona — is
+    # treated as an org-wide pool distributed across these, so it still counts as
+    # current spend and is retired when they move, instead of silently vanishing.
+    scenario_persona_ids = {
+        s.persona_id for s in engagement.scenarios if s.persona_id in personas
+    }
+
     scenario_results: list[ScenarioResult] = []
     for scenario in engagement.scenarios:
         persona = personas.get(scenario.persona_id)
@@ -218,20 +226,27 @@ def compute(engagement: Engagement) -> EngineResult:
 
         # Each current license applies to one or more personas; its total cost is
         # distributed across their combined headcount, so this persona's share is
-        # (its headcount / the tagged personas' total headcount). A single-persona
-        # line therefore counts in full, and a shared line is never double-counted
-        # across personas (Section 6.2).
+        # (its headcount / the pool's total headcount). A single-persona line
+        # therefore counts in full, and a shared line is never double-counted
+        # across personas (Section 6.2). An untagged line's pool is every persona
+        # with a scenario (org-wide), so it is attributed and retired rather than
+        # dropped.
         current_ms = Decimal("0")
         for line in engagement.current_licenses:
-            if persona.id not in line.persona_ids:
-                continue
+            if line.persona_ids:
+                if persona.id not in line.persona_ids:
+                    continue
+                pool = [pid for pid in line.persona_ids if pid in personas]
+            else:  # untagged -> org-wide pool of scenario personas
+                if persona.id not in scenario_persona_ids:
+                    continue
+                pool = list(scenario_persona_ids)
             line_total = Decimal(line.quantity_assigned) * line.unit_price_paid_annual
-            tagged = [pid for pid in line.persona_ids if pid in personas]
-            tagged_hc = sum(personas[pid].headcount for pid in tagged)
-            if tagged_hc > 0:
-                share = Decimal(persona.headcount) / Decimal(tagged_hc)
+            pool_hc = sum(personas[pid].headcount for pid in pool)
+            if pool_hc > 0:
+                share = Decimal(persona.headcount) / Decimal(pool_hc)
             else:  # personas with no headcount → even split so cost isn't lost
-                share = Decimal(1) / Decimal(len(tagged) or 1)
+                share = Decimal(1) / Decimal(len(pool) or 1)
             current_ms += line_total * share
 
         # Linear-by-user offset: each product this scenario displaces credits

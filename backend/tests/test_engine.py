@@ -51,6 +51,36 @@ def _engagement(personas, products, scenarios, current=None):
     )
 
 
+def test_untagged_current_license_counts_orgwide_and_is_retired():
+    """An untagged current Microsoft license (the operator didn't attribute it to
+    a persona) must still count as current spend and be retired when the persona
+    moves — not silently vanish. Mirrors the reported Business Premium -> E5 case."""
+    kw = Persona(id="kw", name="All Employees", headcount=250)
+    # 255 Business Premium @ $211.20/yr, entered WITHOUT a persona tag.
+    bp = CurrentLicenseLine(
+        quantity_assigned=255, unit_price_paid_annual=D("211.20"), persona_ids=()
+    )
+    scenario = PersonaScenario(
+        id="s", persona_id="kw", target_sku_reference="E5",
+        target_unit_price_annual=D("720"),  # 250 * 720 = 180000
+    )
+    eng = Engagement(
+        id="e", personas=[kw], third_party_products=[], scenarios=[scenario],
+        current_licenses=[bp],
+    )
+    res = compute(eng)
+    sc = res.scenarios[0]
+    # 255 * 211.20 = 53856 attributed to the sole scenario persona (full share).
+    assert sc.current_microsoft_annual == D("53856.00")
+    assert sc.current_spend_annual == D("53856.00")
+    assert sc.target_spend_annual == D("180000.00")
+    # cost increase: 180000 - 53856 = 126144 (positive = costs more)
+    assert sc.delta_annual == D("126144.00")
+    r = res.rollup
+    assert r.existing_microsoft_annual == D("53856.00")  # the "retired" line, non-zero
+    assert r.net_tco_delta_annual == D("126144.00")
+
+
 def test_okta_500_vs_450_partial_displacement():
     """Section 6.3 worked example. Okta covers 500; 450 Knowledge Workers
     displace it; 50 units remain and surface as a residual."""

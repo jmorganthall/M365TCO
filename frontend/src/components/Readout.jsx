@@ -308,42 +308,39 @@ export default function Readout({ engagement }) {
 function ResidualClassifier({ d, onSet, inline }) {
   const [reason, setReason] = useState('')
   const [mode, setMode] = useState('')
-  if (inline) {
-    return (
-      <button className="ghost sm warn" onClick={() => {
-        const choice = prompt('Type "force" for ForceFullElimination, or "residual" for intended out-of-scope residual:')
-        if (choice === 'residual') onSet(d.third_party_product_id, { override: 'None', residual_intent: 'IntendedOutOfScope' })
-        else if (choice === 'force') {
-          const why = prompt('Override reason (prints on the readout):')
-          if (why) onSet(d.third_party_product_id, { override: 'ForceFullElimination', override_reason: why })
-        }
-      }}>Classify…</button>
-    )
+  const apply = () => {
+    if (mode === 'residual') onSet(d.third_party_product_id, { override: 'None', residual_intent: 'IntendedOutOfScope' })
+    else if (mode === 'force' && reason.trim()) onSet(d.third_party_product_id, { override: 'ForceFullElimination', override_reason: reason })
   }
+  // A real dropdown (never a browser prompt) in both the inline table cell and
+  // the expanded card. Picking a mode reveals the reason field for force-elim.
+  const controls = (
+    <div className="toolbar" style={{ marginTop: inline ? 0 : '.5rem', gap: '.4rem', alignItems: 'flex-end' }}>
+      <div>
+        {!inline && <label>Classification</label>}
+        <select value={mode} onChange={(e) => setMode(e.target.value)} style={inline ? { minWidth: 160 } : undefined}>
+          <option value="">Classify…</option>
+          <option value="residual">Intended out-of-scope residual</option>
+          <option value="force">Force full elimination</option>
+        </select>
+      </div>
+      {mode === 'force' && (
+        <div style={{ flex: 2 }}>
+          {!inline && <label>Override reason (required)</label>}
+          <input value={reason} placeholder="Override reason (prints on readout)"
+            onChange={(e) => setReason(e.target.value)} />
+        </div>
+      )}
+      {mode && (
+        <button className="sm" disabled={mode === 'force' && !reason.trim()} onClick={apply}>Apply</button>
+      )}
+    </div>
+  )
+  if (inline) return controls
   return (
     <div className="card" style={{ background: 'var(--panel2)' }}>
       <b>{d.third_party_product_name}</b> — {d.residual_count} residual units, {usd(d.residual_annual_cost)}/yr
-      <div className="toolbar" style={{ marginTop: '.5rem' }}>
-        <div>
-          <label>Classification</label>
-          <select value={mode} onChange={(e) => setMode(e.target.value)}>
-            <option value="">Choose…</option>
-            <option value="residual">Intended out-of-scope residual</option>
-            <option value="force">Force full elimination</option>
-          </select>
-        </div>
-        {mode === 'force' && (
-          <div style={{ flex: 2 }}>
-            <label>Override reason (required)</label>
-            <input value={reason} onChange={(e) => setReason(e.target.value)} />
-          </div>
-        )}
-        <button className="sm" disabled={mode === '' || (mode === 'force' && !reason.trim())}
-          onClick={() => {
-            if (mode === 'residual') onSet(d.third_party_product_id, { override: 'None', residual_intent: 'IntendedOutOfScope' })
-            else onSet(d.third_party_product_id, { override: 'ForceFullElimination', override_reason: reason })
-          }}>Apply</button>
-      </div>
+      {controls}
     </div>
   )
 }

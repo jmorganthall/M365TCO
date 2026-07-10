@@ -51,6 +51,9 @@ function LicenseRow({ l, eng, meta, personas, segments, catalog, update, remove 
   if (l.price_basis && l.price_basis !== 'Unknown') chips.push(<span key="b" className="badge muted">{l.price_basis}</span>)
   if (overridden) chips.push(<span key="basis" className="badge muted" title="Pricing basis overrides the engagement default">{basis.segment} · {basis.term}</span>)
   tagNames.forEach((n, i) => chips.push(<span key={`p${i}`} className="badge muted">{n}</span>))
+  // No persona tag → the engine treats the line as an org-wide pool (spread
+  // across all personas that have a scenario). Say so, so it never looks lost.
+  if (tagIds.length === 0) chips.push(<span key="orgwide" className="badge muted" title="Not tagged to a persona — counted org-wide across all scenario personas by headcount. Expand ▸ to tag specific personas.">applies org-wide</span>)
 
   const togglePersona = (pid) => {
     const next = tagIds.includes(pid) ? tagIds.filter((x) => x !== pid) : [...tagIds, pid]
