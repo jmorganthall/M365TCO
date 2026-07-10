@@ -102,6 +102,11 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
             unit_price_paid_annual=_dec(lic.unit_price_paid_annual),
             sku_reference=lic.sku_reference,
             persona_ids=tuple(lic.persona_ids),
+            # What this existing license already delivers (its bundle's ratified
+            # coverage), for quick-win duplicate detection.
+            covered_outcome_ids=frozenset(
+                sku_outcomes.get(_cover_key(db, lic.sku_reference), set())
+            ),
         )
         for lic in eng.current_licenses
     ]

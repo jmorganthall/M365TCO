@@ -26,6 +26,7 @@ from .engine import (
     ProductDispositionResult,
     RollupResult,
     FreedThirdParty,
+    QuickWin,
     EngineResult,
 )
 from .optimizer import (
@@ -49,5 +50,6 @@ __all__ = [
     "ProductDispositionResult",
     "RollupResult",
     "FreedThirdParty",
+    "QuickWin",
     "EngineResult",
 ]

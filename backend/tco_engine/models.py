@@ -50,6 +50,10 @@ class CurrentLicenseLine:
     unit_price_paid_annual: Decimal
     sku_reference: str = ""
     persona_ids: tuple[str, ...] = ()
+    # Outcomes this existing license already delivers (its bundle's ratified
+    # coverage). Drives quick-win detection: a third-party product whose outcomes
+    # are all already covered here is a duplicate the customer can drop today.
+    covered_outcome_ids: frozenset[str] = field(default_factory=frozenset)
 
 
 @dataclass

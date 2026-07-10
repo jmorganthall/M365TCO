@@ -181,6 +181,29 @@ freed_third_party = [ {product, credited_annual = Σ its in-scope offsets} ]
 > an override. When a residual exists the tool must force the operator to choose
 > which case applies (`requires_residual_classification`).
 
+## Quick wins — duplicates the current licensing already covers (6.10)
+
+```
+# Scenario-independent. current_covered = union of covered_outcome_ids across all
+# current license lines (each line's bundle's ratified Microsoft coverage). A
+# third-party product is a QUICK WIN when it delivers ≥1 outcome and ALL of its
+# delivered outcomes are already in current_covered — the customer is paying twice
+# and can drop it TODAY, with no move ("save $X today without doing anything").
+for product where delivered_outcome_ids ⊆ current_covered and delivered ≠ ∅:
+    covered_pop      = Σ quantity_assigned of current lines whose covered_outcome_ids
+                       ⊇ product.delivered_outcome_ids            # seats already covered
+    displaced_today  = min(product.covered_count, covered_pop)
+    credited_annual  = displaced_today * product.per_unit_annual_cost   # effective basis
+    residual_today   = covered_count - displaced_today
+quick_win_savings_annual = Σ credited_annual over quick-win products (credited > 0)
+```
+
+Quick wins are surfaced as their own readout section and as the "save today"
+headline. In the spend bridge, each freed third-party product is tagged
+`already_covered` (it's a quick win) so the "existing third-party freed up" line
+splits into *already covered by current licensing* vs *additionally freed by the
+move* — the two sum to the same total, so the bridge still builds to the net delta.
+
 ## Recompute is total, not incremental (6.7)
 
 Toggling a scenario in/out of scope recomputes **all** dispositions from scratch.

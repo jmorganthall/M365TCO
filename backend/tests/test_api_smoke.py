@@ -145,6 +145,34 @@ def test_price_sheet_csv_import(client):
     assert segs[0] == "Commercial"  # known defaults first
 
 
+def test_quick_wins_surface_in_readout(client):
+    """A third-party product duplicating an outcome the CURRENT licensing already
+    delivers shows up as a quick win in the compute result and the HTML readout."""
+    eng = client.post("/api/engagements", json={"customer_name": "QW Co"}).json()
+    eid = eng["id"]
+    outcomes = client.get(f"/api/engagements/{eid}/outcomes").json()
+    identity = next(o for o in outcomes if "Identity" in o["name"])
+    kw = client.post(f"/api/engagements/{eid}/personas", json={"name": "KW", "headcount": 250}).json()
+    # Current Microsoft 365 E3 already delivers Identity (seed coverage), 250 seats.
+    client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "Microsoft 365 E3", "quantity_purchased": 250,
+        "quantity_assigned": 250, "unit_price_paid_annual": 300, "persona_ids": [kw["id"]]})
+    # Okta covers Identity for 250 → duplicates the current E3 coverage.
+    okta = client.post(f"/api/engagements/{eid}/third-party", json={
+        "name": "Okta", "raw_cost": 45000, "cost_period": "Annual", "covered_count": 250}).json()
+    client.post(f"/api/engagements/{eid}/coverage", json={
+        "outcome_id": identity["id"], "product_kind": "ThirdParty",
+        "third_party_product_id": okta["id"], "coverage": "Full", "ratified": True})
+
+    result = client.post(f"/api/engagements/{eid}/compute").json()
+    qw = result["rollup"]["quick_wins"]
+    assert any(q["third_party_product_name"] == "Okta" for q in qw)
+    assert result["rollup"]["quick_win_savings_annual"] == 45000.0
+
+    html_body = client.get(f"/api/engagements/{eid}/readout.html").text
+    assert "Quick wins" in html_body and "Okta" in html_body
+
+
 def test_readout_delta_sign_and_color_convention(client):
     """Saving = negative delta, shown green (pos); cost increase = positive delta,
     shown neutral (no red 'neg' class). Spending more isn't styled as an error."""

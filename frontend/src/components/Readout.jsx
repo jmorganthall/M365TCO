@@ -13,6 +13,8 @@ export default function Readout({ engagement }) {
   const [sanity, setSanity] = useState(null)
   const [narrating, setNarrating] = useState(false)
   const [narratives, setNarratives] = useState(null)
+  const [outcomes, setOutcomes] = useState([])
+  const outcomeName = (id) => outcomes.find((o) => o.id === id)?.name || id
 
   function compute() {
     setErr('')
@@ -23,6 +25,7 @@ export default function Readout({ engagement }) {
     compute()
     setSanity(null); setNarratives(null)
     api.get('/api/admin/ai/status').then((s) => setAiEnabled(s.enabled)).catch(() => {})
+    api.get(`/api/engagements/${eid}/outcomes`).then(setOutcomes).catch(() => setOutcomes([]))
   }, [eid])
 
   async function runSanity() {
@@ -85,14 +88,27 @@ export default function Readout({ engagement }) {
   // Cost-change convention: negative delta = saving (good -> green); positive =
   // a cost increase (neutral/default -> not alarming, spending more isn't bad).
   const saving = r.net_tco_delta_annual < 0
+  const quickWin = Number(r.quick_win_savings_annual) || 0
   const needsClassify = result.dispositions.filter((d) => d.requires_residual_classification)
 
   return (
     <>
+      {quickWin > 0 && (
+        <div className="card" style={{ borderColor: 'var(--pos, #127436)' }}>
+          <div className="muted">Quick wins — duplicates your current licensing already covers <PricingBadge /></div>
+          <div className="headline pos">{usd(quickWin)}</div>
+          <div className="muted">You could save this <b>today, without changing licenses</b> — by dropping third-party tools your existing Microsoft licensing already delivers. Detail below.</div>
+          <div className="muted" style={{ marginTop: '.4rem' }}>
+            …and <b>if you move to the target scenarios</b>, your future looks like{' '}
+            <b className={saving ? 'pos' : ''}>{usd(r.net_tco_delta_annual)}</b>/yr{' '}
+            {saving ? 'saved' : r.net_tco_delta_annual > 0 ? 'net cost — for the added capabilities below' : 'net'}.
+          </div>
+        </div>
+      )}
       <div className="card">
         <div className="flex-between">
           <div>
-            <div className="muted">Net TCO delta · annualized USD · <small>negative = saving</small> <PricingBadge /></div>
+            <div className="muted">Net TCO delta {'(future scenarios)'} · annualized USD · <small>negative = saving</small> <PricingBadge /></div>
             <div className={`headline ${saving ? 'pos' : ''}`}>{usd(r.net_tco_delta_annual)}</div>
             <div className="muted">{saving ? 'Hard-dollar annual savings' : r.net_tco_delta_annual > 0 ? 'Annual cost increase — shown honestly' : 'No net change'}</div>
           </div>
@@ -179,6 +195,35 @@ export default function Readout({ engagement }) {
         </div>
       )}
 
+      {r.quick_wins && r.quick_wins.length > 0 && (
+        <div className="card">
+          <div className="flex-between">
+            <h2 className="pos">💡 Quick wins — you're already covered</h2>
+            <b className="pos">{usd(quickWin)}/yr</b>
+          </div>
+          <p className="hint">These third-party tools deliver outcomes your <b>current</b> Microsoft
+            licensing already provides — you're paying twice. They can be retired <b>today</b>,
+            independent of any move to a new scenario.</p>
+          <table>
+            <thead><tr>
+              <th>Tool</th><th>Duplicated capability (already in current licensing)</th>
+              <th className="num">Covered</th><th className="num">Redundant today</th><th className="num">Save/yr</th>
+            </tr></thead>
+            <tbody>
+              {r.quick_wins.map((q) => (
+                <tr key={q.third_party_product_id}>
+                  <td>{q.third_party_product_name}</td>
+                  <td>{q.duplicated_outcome_ids.map(outcomeName).join(', ')}</td>
+                  <td className="num">{q.covered_count}</td>
+                  <td className="num">{q.displaced_today}{q.residual_today ? ` (${q.residual_today} left)` : ''}</td>
+                  <td className="num pos">{usd(q.credited_annual)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div className="card">
         <h2>How we get to the number</h2>
         <p className="hint">The new target Microsoft licensing, less the existing spend it
@@ -194,18 +239,36 @@ export default function Readout({ engagement }) {
               <td>Less: existing Microsoft licensing retired <small className="muted">(current assigned)</small></td>
               <td className="num pos">−{usd(r.existing_microsoft_annual)}</td>
             </tr>
-            <tr>
-              <td>Less: existing third-party tooling <small className="muted">(freed up by in-scope moves)</small></td>
-              <td className="num pos">−{usd(r.existing_third_party_annual)}</td>
-            </tr>
-            {r.freed_third_party.map((f) => (
-              <tr key={f.third_party_product_id} className="bridge-sub">
-                <td>↳ {f.third_party_product_name}{f.credited_annual === 0
-                  ? <span className="muted"> — $0 credited (set its covered population to free up spend)</span>
-                  : ' freed up'}</td>
-                <td className="num pos">{f.credited_annual ? `−${usd(f.credited_annual)}` : usd(0)}</td>
-              </tr>
-            ))}
+            {(() => {
+              const freed = r.freed_third_party || []
+              const already = freed.filter((f) => f.already_covered)
+              const newly = freed.filter((f) => !f.already_covered)
+              const sum = (arr) => arr.reduce((s, f) => s + Number(f.credited_annual || 0), 0)
+              const subRows = (arr) => arr.map((f) => (
+                <tr key={f.third_party_product_id} className="bridge-sub">
+                  <td>↳ {f.third_party_product_name}{f.credited_annual === 0
+                    ? <span className="muted"> — $0 credited (set its covered population to free up spend)</span>
+                    : ' freed up'}</td>
+                  <td className="num pos">{f.credited_annual ? `−${usd(f.credited_annual)}` : usd(0)}</td>
+                </tr>
+              ))
+              const block = (label, sub, arr) => (
+                <React.Fragment key={label}>
+                  <tr>
+                    <td>Less: {label} <small className="muted">{sub}</small></td>
+                    <td className="num pos">−{usd(sum(arr))}</td>
+                  </tr>
+                  {subRows(arr)}
+                </React.Fragment>
+              )
+              if (freed.length === 0) return (
+                <tr><td>Less: existing third-party tooling freed up <small className="muted">(none)</small></td><td className="num pos">−{usd(0)}</td></tr>
+              )
+              return <>
+                {already.length > 0 && block('third-party already covered by current licensing', '(quick win — free today)', already)}
+                {newly.length > 0 && block('third-party additionally freed by the move', '(new displacement from the target)', newly)}
+              </>
+            })()}
             <tr className="bridge-total">
               <td><b>Net TCO delta</b> <small className="muted">{saving ? '(annual savings)' : r.net_tco_delta_annual > 0 ? '(annual cost increase)' : '(no net change)'}</small></td>
               <td className={`num ${saving ? 'pos' : ''}`}><b>{usd(r.net_tco_delta_annual)}</b></td>

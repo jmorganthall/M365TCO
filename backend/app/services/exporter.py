@@ -73,31 +73,62 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         for d in result["dispositions"]
     )
 
+    # Quick wins: third-party duplicates the CURRENT licensing already covers.
+    outcome_name = {o.id: o.name for o in engagement.outcomes}
+    quick_wins = rollup.get("quick_wins", []) or []
+    quick_win_total = rollup.get("quick_win_savings_annual", 0) or 0
+    quick_win_rows = "".join(
+        f"<tr><td>{html.escape(q['third_party_product_name'])}</td>"
+        f"<td>{html.escape(', '.join(outcome_name.get(i, i) for i in q['duplicated_outcome_ids']))}</td>"
+        f"<td class='num'>{q['covered_count']}</td>"
+        f"<td class='num'>{q['displaced_today']}"
+        + (f" ({q['residual_today']} left)" if q["residual_today"] else "")
+        + f"</td><td class='num pos'>{_usd(q['credited_annual'])}</td></tr>"
+        for q in quick_wins
+    )
+    quick_win_section = (
+        f"<section><h2>💡 Quick wins — you're already covered</h2>"
+        f"<p class='sub'>These third-party tools deliver outcomes your <b>current</b> Microsoft "
+        f"licensing already provides — retirable <b>today</b>, independent of any move. "
+        f"Save <b class='pos'>{_usd(quick_win_total)}</b>/yr.</p>"
+        f"<table><thead><tr><th>Tool</th><th>Duplicated capability (already in current licensing)</th>"
+        f"<th>Covered</th><th>Redundant today</th><th>Save/yr</th></tr></thead>"
+        f"<tbody>{quick_win_rows}</tbody></table></section>"
+        if quick_wins else ""
+    )
+
     # Spend bridge (cost-change framing): the new target Microsoft cost, minus the
     # existing spend it retires (current Microsoft + freed-up third-party), builds
-    # to the net change. net = target − existing_ms − existing_tp.
+    # to the net change. The freed third-party splits into "already covered by
+    # current licensing (quick win)" and "additionally freed by the move".
     existing_ms = rollup["existing_microsoft_annual"]
-    existing_tp = rollup["existing_third_party_annual"]
     target_ms = rollup["target_microsoft_annual"]
-    freed_rows = "".join(
-        f"<tr class='sub'><td>↳ {html.escape(f['third_party_product_name'])}"
-        + (
-            " — $0 credited (set its covered population to free up spend)"
-            if f["credited_annual"] == 0
-            else " freed up"
+    freed = rollup["freed_third_party"]
+
+    def _freed_block(label, sub, items):
+        if not items:
+            return ""
+        total = sum(f["credited_annual"] for f in items)
+        rows = "".join(
+            f"<tr class='sub'><td>↳ {html.escape(f['third_party_product_name'])}"
+            + (" — $0 credited (set its covered population to free up spend)"
+               if f["credited_annual"] == 0 else " freed up")
+            + f"</td><td class='num pos'>{('−' + _usd(f['credited_annual'])) if f['credited_annual'] else _usd(0)}</td></tr>"
+            for f in items
         )
-        + f"</td><td class='num pos'>{('−' + _usd(f['credited_annual'])) if f['credited_annual'] else _usd(0)}</td></tr>"
-        for f in rollup["freed_third_party"]
-    )
+        return (f"<tr><td>Less: {label} <span style='color:#666'>{sub}</span></td>"
+                f"<td class='num pos'>−{_usd(total)}</td></tr>{rows}")
+
+    already = [f for f in freed if f.get("already_covered")]
+    newly = [f for f in freed if not f.get("already_covered")]
     bridge_rows = (
         f"<tr><td>Target Microsoft licensing (new per-persona bundles)</td>"
         f"<td class='num'>{_usd(target_ms)}</td></tr>"
         f"<tr><td>Less: existing Microsoft licensing retired (current assigned)</td>"
         f"<td class='num pos'>−{_usd(existing_ms)}</td></tr>"
-        f"<tr><td>Less: existing third-party tooling freed up by in-scope moves</td>"
-        f"<td class='num pos'>−{_usd(existing_tp)}</td></tr>"
-        f"{freed_rows}"
-        f"<tr class='total'><td><b>Net TCO delta</b> "
+        + _freed_block("third-party already covered by current licensing", "(quick win — free today)", already)
+        + _freed_block("third-party additionally freed by the move", "(new displacement from the target)", newly)
+        + f"<tr class='total'><td><b>Net TCO delta</b> "
         f"({'annual savings' if delta < 0 else 'annual cost increase' if delta > 0 else 'no net change'})</td>"
         f"<td class='num {delta_cls}'><b>{_usd(delta)}</b></td></tr>"
     )
@@ -174,12 +205,15 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 <h1>M365 TCO Readout</h1>
 <div class="sub">{html.escape(engagement.customer_name)} · {engagement.market}/{engagement.currency} · annualized USD</div>
 
-<div class="headline {delta_cls}">{_usd(delta)} <span style="font-size:1rem;font-weight:400">{delta_label}</span></div>
+{f'<div class="popcheck"><b>Quick wins — save {_usd(quick_win_total)}/yr today</b>, without changing licenses, by retiring third-party tools your current Microsoft licensing already covers (detail below). And if you move to the target scenarios, your future net change is <b>{_usd(delta)}</b> ({delta_label.lower()}).</div>' if quick_wins else ''}
+<div class="headline {delta_cls}">{_usd(delta)} <span style="font-size:1rem;font-weight:400">{delta_label} · future scenarios</span></div>
 
 <div class="popcheck"><b>Population check.</b>
  In-scope persona headcount: <b>{pop['in_scope_persona_headcount']}</b> ·
  Third-party covered population: <b>{pop['third_party_covered_population']}</b>.
  Gaps between these surface as residuals below.</div>
+
+{quick_win_section}
 
 <section><h2>How we get to the number</h2>
 <p class="sub">Existing annualized spend for the in-scope population, the third-party
