@@ -11,6 +11,8 @@ export default function Readout({ engagement }) {
   const [aiEnabled, setAiEnabled] = useState(false)
   const [checking, setChecking] = useState(false)
   const [sanity, setSanity] = useState(null)
+  const [narrating, setNarrating] = useState(false)
+  const [narratives, setNarratives] = useState(null)
 
   function compute() {
     setErr('')
@@ -19,7 +21,7 @@ export default function Readout({ engagement }) {
   }
   useEffect(() => {
     compute()
-    setSanity(null)
+    setSanity(null); setNarratives(null)
     api.get('/api/admin/ai/status').then((s) => setAiEnabled(s.enabled)).catch(() => {})
   }, [eid])
 
@@ -27,6 +29,11 @@ export default function Readout({ engagement }) {
     setChecking(true); setErr('')
     try { setSanity(await api.post(`/api/engagements/${eid}/sanity-check`)) }
     catch (e) { setErr(e.message) } finally { setChecking(false) }
+  }
+  async function runNarrative() {
+    setNarrating(true); setErr('')
+    try { setNarratives((await api.post(`/api/engagements/${eid}/narrative`)).narratives) }
+    catch (e) { setErr(e.message) } finally { setNarrating(false) }
   }
 
   // Readout branding (logo + theme colors). Local so edits reflect immediately;
@@ -93,6 +100,11 @@ export default function Readout({ engagement }) {
                 title="Ask an inexpensive model to flag likely mistakes before you present">
                 {checking ? 'Checking…' : '✨ AI sanity check'}</button>
             )}
+            {aiEnabled && (
+              <button className="ghost sm" onClick={runNarrative} disabled={narrating}
+                title="Draft the per-persona business narrative (today / what's new / value)">
+                {narrating ? 'Writing…' : '✨ Business narratives'}</button>
+            )}
             <a href={`/api/engagements/${eid}/readout.html`} target="_blank" rel="noreferrer">
               <button className="ghost sm">Open HTML readout</button></a>
             <a href={`/api/engagements/${eid}/readout.xlsx`}>
@@ -145,6 +157,25 @@ export default function Readout({ engagement }) {
           </div>
         )}
       </div>
+
+      {narratives && (
+        <div className="card">
+          <div className="flex-between">
+            <h2>Business narratives</h2>
+            <small className="src">AI draft per in-scope persona — review before you present. Advisory only.</small>
+          </div>
+          {narratives.length === 0
+            ? <p className="muted">No in-scope scenarios to narrate yet — set target bundles on the Scenarios tab.</p>
+            : narratives.map((n, i) => (
+              <div key={i} className="popcheck" style={{ marginTop: '.5rem' }}>
+                <b>{n.persona}</b>
+                {n.today && <p style={{ margin: '.3rem 0' }}><b>Today: </b>{n.today}</p>}
+                {n.whats_new && <p style={{ margin: '.3rem 0' }}><b>What's new: </b>{n.whats_new}</p>}
+                {n.value && <p style={{ margin: '.3rem 0' }}><b>Value: </b>{n.value}</p>}
+              </div>
+            ))}
+        </div>
+      )}
 
       <div className="card">
         <h2>How we get to the number</h2>

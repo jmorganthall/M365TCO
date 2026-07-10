@@ -277,6 +277,21 @@ def sanity_check(summary: dict, instructions: str, model: str | None = None) -> 
     return normalize_findings(data)
 
 
+def scenario_narratives(
+    scenarios: list[dict], instructions: str, model: str | None = None
+) -> list[dict]:
+    """Draft a per-scenario business narrative (today / what's new / value) from
+    the grounded inputs built by services/narrative.build_narrative_payload.
+    `instructions` is the editable system prompt (an AiPrompt). Returns
+    [{persona, today, whats_new, value}] for the operator to review — nothing is
+    persisted or fed to the math."""
+    from .narrative import normalize_narratives
+
+    user = json.dumps({"scenarios": scenarios}, default=str, indent=2)
+    data = _chat_json(instructions, user, model)
+    return normalize_narratives(data, [s.get("persona") for s in scenarios])
+
+
 def parse_current_licenses(raw_text: str, instructions: str, model: str | None = None) -> list[dict]:
     """Parse a block of customer-provided text into existing-license rows.
 

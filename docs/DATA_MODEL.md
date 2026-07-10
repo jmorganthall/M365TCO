@@ -414,10 +414,23 @@ read over existing first-class objects, the correct "don't create second-class
 data" outcome. `services/sanity.normalize_findings` is the pure validator (kept
 separate from the HTTP call for unit testing).
 
+### 4.10a-ter Scenario business narrative (derived, persists nothing)
+`POST …/narrative` drafts the sales story for each in-scope persona scenario —
+today / what's new / value — grounded in the computed scenarios
+(`services/narrative.build_narrative_payload` — pure: persona, headcount, current
+SKUs, target bundle + add-ons, displaced third-party tools, and the annual
+delta), via the editable `scenario_narrative` AiPrompt on the resolved main
+model. Returns `[{persona, today, whats_new, value}]` on the Readout view. Like
+§4.10a it **stores no state and never feeds the math** — an advisory draft the SA
+reviews. It is the buildable-today part of the "business narrative" goal; the
+market-research enrichment (an external agent) and the Forrester TEI soft-savings
+overlay (§10) attach later as their own first-class overlays, not edits here.
+
 ### 4.10b AiPrompt — editable AI instructions
 - **Identity:** `uuid` PK plus a unique `key` per AI function
   (`coverage_suggest`, `third_party_parse`, `current_license_parse`,
-  `sku_bundle_map`, `readout_sanity_check`). **Scope:** **global**.
+  `sku_bundle_map`, `readout_sanity_check`, `scenario_narrative`).
+  **Scope:** **global**.
 - **Field ownership:** seeded from `seeds/ai_prompts.json` (`label`,
   `description`, `instructions`); the operator edits `instructions` at runtime and
   can reset to the seeded default. `updated_at` stamps edits.

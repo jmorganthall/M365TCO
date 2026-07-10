@@ -144,6 +144,26 @@ def test_build_sanity_payload_shape():
     assert payload["rollup"]["net_tco_delta_annual"] == 1000
 
 
+def test_normalize_narratives_filters_and_validates():
+    from app.services import narrative
+    data = {"narratives": [
+        {"persona": "Knowledge Worker", "today": "E3 today", "whats_new": "E5 security", "value": "Consolidates Okta; $45k/yr."},
+        {"persona": "Ghost", "value": "not a real persona"},        # unknown -> dropped
+        {"persona": "Frontline", "today": "F1", "whats_new": "x", "value": "  "},  # empty value -> dropped
+        {"persona": "Knowledge Worker", "value": "dupe"},           # duplicate -> dropped
+    ]}
+    out = narrative.normalize_narratives(data, ["Knowledge Worker", "Frontline"])
+    assert len(out) == 1
+    assert out[0]["persona"] == "Knowledge Worker"
+    assert out[0]["whats_new"] == "E5 security"
+
+
+def test_narrative_requires_ai_enabled(client):
+    eng = client.post("/api/engagements", json={"customer_name": "Story Co"}).json()
+    r = client.post(f"/api/engagements/{eng['id']}/narrative")
+    assert r.status_code == 400  # no OpenRouter key in the test env
+
+
 def test_sanity_check_requires_ai_enabled(client):
     eng = client.post("/api/engagements", json={"customer_name": "Sanity Co"}).json()
     r = client.post(f"/api/engagements/{eng['id']}/sanity-check")
@@ -154,7 +174,7 @@ def test_ai_prompts_seeded_and_editable(client):
     prompts = client.get("/api/admin/ai/prompts").json()["prompts"]
     keys = {p["key"] for p in prompts}
     assert {"coverage_suggest", "third_party_parse", "current_license_parse",
-            "readout_sanity_check"} <= keys
+            "readout_sanity_check", "scenario_narrative"} <= keys
     assert all(p["is_default"] for p in prompts)  # freshly seeded
 
     # Edit one, then it is no longer flagged default.

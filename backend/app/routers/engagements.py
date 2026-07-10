@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..config import settings
 from ..db import get_db
-from ..services import ai, ai_prompts, compute, defaults, exporter, sanity, seeds
+from ..services import ai, ai_prompts, compute, defaults, exporter, narrative, sanity, seeds
 from ..services.serialize import result_to_dict
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
@@ -223,6 +223,30 @@ def sanity_check(engagement_id: str, db: Session = Depends(get_db)):
     except Exception as exc:  # network/model errors surface cleanly
         raise HTTPException(502, f"Sanity check failed: {exc}")
     return {"model": model, "findings": findings}
+
+
+@router.post("/{engagement_id}/narrative")
+def scenario_narrative(engagement_id: str, db: Session = Depends(get_db)):
+    """Advisory per-scenario business narrative (today / what's new / value) for
+    the in-scope personas. Grounded in the computed scenarios; drafts the story
+    for the SA to tell, then review. Never edits data or the math (PRD 9)."""
+    eng = _get_engagement(db, engagement_id)
+    if not ai.is_enabled():
+        raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
+    result = result_to_dict(compute.compute_and_persist(db, engagement_id))
+    scenarios = narrative.build_narrative_payload(eng, result)
+    if not scenarios:
+        return {"narratives": []}  # nothing in scope to narrate
+    model = defaults.get_defaults(db).openrouter_model or settings.openrouter_model
+    try:
+        narratives = ai.scenario_narratives(
+            scenarios,
+            instructions=ai_prompts.get_instructions(db, "scenario_narrative"),
+            model=model,
+        )
+    except Exception as exc:  # network/model errors surface cleanly
+        raise HTTPException(502, f"Narrative generation failed: {exc}")
+    return {"narratives": narratives}
 
 
 @router.get("/{engagement_id}/readout.html", response_class=HTMLResponse)
