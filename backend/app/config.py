@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     # Repo the update check queries (owner/name). Matches the ghcr image slug the
     # publish workflow uses. Overridable so a fork points at its own repo.
     update_repo: str = "jmorganthall/m365tco"
+    # Branch the update check treats as "latest" — the active trunk that publishes
+    # :latest, NOT the repo's default branch (which may be a stale side branch).
+    # An update is reported only when this branch is strictly AHEAD of the build.
+    update_branch: str = "main"
     # How long to cache the "latest" lookup, in seconds (default 6h).
     update_check_ttl_seconds: int = 21600
 
