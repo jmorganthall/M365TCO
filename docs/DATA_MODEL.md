@@ -208,6 +208,16 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Write-normalization / CRUD:** `services/catalog_provenance.py` — the single
   `record_import()` writer, plus `latest()`, `pricing_freshness()`,
   `derive_catalog_signal()`, and `reconcile_missing_provenance()`.
+- **Raw-file retention (download as-is):** the parsed `MicrosoftSku` rows are
+  normalized/annualized and can't reproduce the uploaded file, so the raw bytes
+  of the most recent CSV upload are retained on the persistent volume
+  (`services/catalog_file.py`; the price-sync path already retains its fetched
+  sheets in `pricesync/storage.py`). `GET /api/catalog/download` streams the file
+  backing the current catalog byte-for-byte — preferring the source of the newest
+  load, falling back to the other — so the operator can grab exactly what they
+  uploaded from Settings → Microsoft SKU catalog. `GET /api/catalog/version`
+  reports `file_available` + `file_name` so the button reflects availability
+  (a catalog loaded before retention existed offers nothing until re-imported).
 - **Why it exists:** freshness (the Readout pricing badge and the staleness
   banner) must reflect *whichever source ran most recently and worked*. A row
   only exists for a load that succeeded, so "newest row across sources" is
