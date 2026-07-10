@@ -320,8 +320,10 @@ def analyze_persona_bundles(
         return [outcome_names.get(i, i) for i in ids]
 
     def positioning(b) -> str:
-        """The value story to lead with for this bundle."""
-        saves = b.delta_annual >= 0
+        """The value story to lead with for this bundle. Cost-change convention:
+        delta < 0 saves money, delta > 0 costs more."""
+        saves = b.delta_annual < 0
+        higher = b.delta_annual > 0
         added = bool(b.added_outcome_ids)
         if saves and added:
             return "Lower TCO + new capabilities"
@@ -329,7 +331,9 @@ def analyze_persona_bundles(
             return "Lower TCO"
         if added:
             return "New capabilities + integrated ecosystem"
-        return "Higher cost — consider reimagining required outcomes"
+        if higher:
+            return "Higher cost — consider reimagining required outcomes"
+        return "Cost-neutral"
 
     return {
         "persona_id": persona.id,

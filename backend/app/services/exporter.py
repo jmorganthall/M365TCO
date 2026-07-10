@@ -46,7 +46,10 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     rollup = result["rollup"]
     pop = rollup["population_check"]
     delta = rollup["net_tco_delta_annual"]
-    delta_label = "Annual savings" if delta >= 0 else "Annual cost increase"
+    # Cost-change convention: negative = saving (good, green), positive = a cost
+    # increase (neutral — spending more isn't an error, just shown honestly).
+    delta_label = "Annual savings" if delta < 0 else "Annual cost increase" if delta > 0 else "No net change"
+    delta_cls = "pos" if delta < 0 else ""
 
     rows_scenarios = "".join(
         f"<tr><td>{html.escape(s['persona_name'])}</td>"
@@ -54,7 +57,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         f"<td>{s['headcount']}</td>"
         f"<td class='num'>{_usd(s['current_spend_annual'])}</td>"
         f"<td class='num'>{_usd(s['target_spend_annual'])}</td>"
-        f"<td class='num {'pos' if s['delta_annual'] >= 0 else 'neg'}'>{_usd(s['delta_annual'])}</td>"
+        f"<td class='num {'pos' if s['delta_annual'] < 0 else ''}'>{_usd(s['delta_annual'])}</td>"
         f"<td>{'In scope' if s['in_scope'] else 'Excluded'}</td></tr>"
         for s in result["scenarios"]
     )
@@ -70,7 +73,9 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         for d in result["dispositions"]
     )
 
-    # Spend bridge: existing (Microsoft + freed-up third-party) -> target -> net.
+    # Spend bridge (cost-change framing): the new target Microsoft cost, minus the
+    # existing spend it retires (current Microsoft + freed-up third-party), builds
+    # to the net change. net = target − existing_ms − existing_tp.
     existing_ms = rollup["existing_microsoft_annual"]
     existing_tp = rollup["existing_third_party_annual"]
     target_ms = rollup["target_microsoft_annual"]
@@ -81,22 +86,20 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
             if f["credited_annual"] == 0
             else " freed up"
         )
-        + f"</td><td class='num'>{_usd(f['credited_annual'])}</td></tr>"
+        + f"</td><td class='num pos'>{('−' + _usd(f['credited_annual'])) if f['credited_annual'] else _usd(0)}</td></tr>"
         for f in rollup["freed_third_party"]
     )
     bridge_rows = (
-        f"<tr><td>Existing Microsoft licensing (current assigned)</td>"
-        f"<td class='num'>{_usd(existing_ms)}</td></tr>"
-        f"<tr><td>Existing third-party tooling (freed up by in-scope moves)</td>"
-        f"<td class='num'>{_usd(existing_tp)}</td></tr>"
-        f"{freed_rows}"
-        f"<tr class='total'><td><b>Total existing spend (in scope)</b></td>"
-        f"<td class='num'><b>{_usd(existing_ms + existing_tp)}</b></td></tr>"
         f"<tr><td>Target Microsoft licensing (new per-persona bundles)</td>"
-        f"<td class='num neg'>−{_usd(target_ms)}</td></tr>"
+        f"<td class='num'>{_usd(target_ms)}</td></tr>"
+        f"<tr><td>Less: existing Microsoft licensing retired (current assigned)</td>"
+        f"<td class='num pos'>−{_usd(existing_ms)}</td></tr>"
+        f"<tr><td>Less: existing third-party tooling freed up by in-scope moves</td>"
+        f"<td class='num pos'>−{_usd(existing_tp)}</td></tr>"
+        f"{freed_rows}"
         f"<tr class='total'><td><b>Net TCO delta</b> "
-        f"({'annual savings' if delta >= 0 else 'annual cost increase'})</td>"
-        f"<td class='num {'pos' if delta >= 0 else 'neg'}'><b>{_usd(delta)}</b></td></tr>"
+        f"({'annual savings' if delta < 0 else 'annual cost increase' if delta > 0 else 'no net change'})</td>"
+        f"<td class='num {delta_cls}'><b>{_usd(delta)}</b></td></tr>"
     )
 
     eliminated = "".join(
@@ -171,7 +174,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 <h1>M365 TCO Readout</h1>
 <div class="sub">{html.escape(engagement.customer_name)} · {engagement.market}/{engagement.currency} · annualized USD</div>
 
-<div class="headline {'pos' if delta >= 0 else 'neg'}">{_usd(delta)} <span style="font-size:1rem;font-weight:400">{delta_label}</span></div>
+<div class="headline {delta_cls}">{_usd(delta)} <span style="font-size:1rem;font-weight:400">{delta_label}</span></div>
 
 <div class="popcheck"><b>Population check.</b>
  In-scope persona headcount: <b>{pop['in_scope_persona_headcount']}</b> ·

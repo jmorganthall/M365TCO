@@ -87,7 +87,7 @@ def test_okta_500_vs_450_partial_displacement():
     sc = res.scenarios[0]
     assert sc.current_third_party_offset_annual == D("45000.00")
     assert sc.current_spend_annual == D("45000.00")
-    assert sc.delta_annual == D("45000.00")  # all saving, target price 0
+    assert sc.delta_annual == D("-45000.00")  # all saving (negative = saving), target price 0
 
     # residual surfaces in rollup
     assert res.rollup.residual_third_party_cost_annual == D("5000.00")
@@ -328,11 +328,11 @@ def test_negative_delta_shown_honestly():
     )
     res = compute(_engagement([kw], [], [scenario], current))
     sc = res.scenarios[0]
-    # current = 100*100 = 10000; target = 100*600 = 60000; delta = -50000
+    # current = 100*100 = 10000; target = 100*600 = 60000; delta = +50000 (cost increase)
     assert sc.current_spend_annual == D("10000.00")
     assert sc.target_spend_annual == D("60000.00")
-    assert sc.delta_annual == D("-50000.00")
-    assert res.rollup.net_tco_delta_annual == D("-50000.00")
+    assert sc.delta_annual == D("50000.00")
+    assert res.rollup.net_tco_delta_annual == D("50000.00")
 
 
 def test_line_shared_by_personas_splits_cost_by_headcount():
@@ -354,7 +354,8 @@ def test_line_shared_by_personas_splits_cost_by_headcount():
     # 70000 split 500:200 -> 50000 / 20000; the two sum back to the line total.
     assert by["kw"].current_microsoft_annual == D("50000.00")
     assert by["fl"].current_microsoft_annual == D("20000.00")
-    assert res.rollup.net_tco_delta_annual == D("70000.00")
+    # Both targets are $0, so the move retires all $70k of current spend: a saving.
+    assert res.rollup.net_tco_delta_annual == D("-70000.00")
 
 
 def test_rollup_excludes_out_of_scope_scenarios():
@@ -373,8 +374,8 @@ def test_rollup_excludes_out_of_scope_scenarios():
         "fl": [CurrentLicenseLine(50, D("50"))],
     }
     res = compute(_engagement([kw, fl], [], [s1, s2], current))
-    # only kw counted in rollup and headcount
-    assert res.rollup.net_tco_delta_annual == D("10000.00")
+    # only kw counted in rollup and headcount (target $0 -> retires $10k = saving)
+    assert res.rollup.net_tco_delta_annual == D("-10000.00")
     assert res.rollup.in_scope_persona_headcount == 100
 
 
@@ -400,9 +401,9 @@ def test_spend_bridge_components_build_to_net_delta():
     assert r.existing_third_party_annual == D("50000.00")
     assert r.target_microsoft_annual == D("50000.00")
     assert (
-        r.existing_microsoft_annual
-        + r.existing_third_party_annual
-        - r.target_microsoft_annual
+        r.target_microsoft_annual
+        - r.existing_microsoft_annual
+        - r.existing_third_party_annual
         == r.net_tco_delta_annual
     )
     # one freed-up product, crediting the full offset
@@ -492,17 +493,17 @@ def test_analyze_bundles_recommends_max_savings_no_gap():
     )
     by_ref = {b.sku_reference: b for b in res}
 
-    # F: target 3000, offset 10000, delta 7000 (best no-gap)
-    assert by_ref["F"].delta_annual == D("7000.00")
-    # E5: target 6000, offset 10000, delta 4000; adds outcome B
-    assert by_ref["E5"].delta_annual == D("4000.00")
+    # F: target 3000, offset 10000, delta -7000 (biggest saving, best no-gap)
+    assert by_ref["F"].delta_annual == D("-7000.00")
+    # E5: target 6000, offset 10000, delta -4000; adds outcome B
+    assert by_ref["E5"].delta_annual == D("-4000.00")
     assert B in by_ref["E5"].added_outcome_ids
     # G: does not cover required A -> gap, not recommended
     assert by_ref["G"].covers_all_required is False
     assert A in by_ref["G"].gap_outcome_ids
     assert by_ref["G"].recommended is False
 
-    # Recommended = highest-delta, no-gap, priced bundle = F, sorted first.
+    # Recommended = biggest-saving (lowest-delta), no-gap, priced bundle = F, sorted first.
     assert res[0].sku_reference == "F"
     assert res[0].recommended is True
 
@@ -519,8 +520,8 @@ def test_analyze_bundles_net_increase_still_shows_added_outcomes():
         third_party_products=[],
     )
     b = res[0]
-    # target 5000 > current 1000 -> negative delta (net increase), shown honestly
-    assert b.delta_annual == D("-4000.00")
+    # target 5000 > current 1000 -> positive delta (net cost increase), shown honestly
+    assert b.delta_annual == D("4000.00")
     # but new capabilities B and C surface as the upside
     assert set(b.added_outcome_ids) == {B, C}
     # net increase with no no-gap-priced... it still covers required A (no gap)

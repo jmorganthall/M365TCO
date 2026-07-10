@@ -84,7 +84,7 @@ export default function BundleAnalysis({ engagement, persona, onApply, onClose }
                 </td>
                 <td className="num">{b.addon_total_annual ? usd(b.addon_total_annual / 12) : <span className="muted">—</span>}</td>
                 <td className="num">{usd(b.target_unit_price_annual / 12)}</td>
-                <td className={`num ${b.delta_annual >= 0 ? 'pos' : 'neg'}`}>{usd(b.delta_annual / 12)}</td>
+                <td className={`num ${b.delta_annual < 0 ? 'pos' : ''}`}>{usd(b.delta_annual / 12)}</td>
                 <td style={{ fontSize: '.78rem' }}>{b.positioning}</td>
                 <td style={{ fontSize: '.78rem' }}>
                   {b.displaced_products.length ? b.displaced_products.join(', ') : <span className="muted">—</span>}

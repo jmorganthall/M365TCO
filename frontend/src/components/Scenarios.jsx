@@ -62,7 +62,7 @@ function ScenarioRow({ p, s, r, bundles, basis, update, remove, onAnalyze }) {
           onChange={(e) => update(s.id, { in_scope: e.target.checked })} /></td>
         <td className="num">{r ? usd(r.current_spend_annual) : '—'}</td>
         <td className="num">{r ? usd(r.target_spend_annual) : '—'}</td>
-        <td className={`num ${r && r.delta_annual >= 0 ? 'pos' : 'neg'}`}>{r ? usd(r.delta_annual) : '—'}</td>
+        <td className={`num ${r && r.delta_annual < 0 ? 'pos' : ''}`}>{r ? usd(r.delta_annual) : '—'}</td>
         <td className="num">
           <button className="ghost sm" onClick={onAnalyze}>⚡</button>{' '}
           <button className="danger sm" onClick={() => remove(s.id)}>Remove</button>
@@ -216,9 +216,10 @@ export default function Scenarios({ engagement, meta }) {
       {result && (
         <div className="popcheck" style={{ marginTop: '1rem' }}>
           <b>Net TCO delta (in-scope):</b>{' '}
-          <span className={result.rollup.net_tco_delta_annual >= 0 ? 'pos' : 'neg'}>
+          <span className={result.rollup.net_tco_delta_annual < 0 ? 'pos' : ''}>
             {usd(result.rollup.net_tco_delta_annual)}
-          </span>
+          </span>{' '}
+          <small className="muted">{result.rollup.net_tco_delta_annual < 0 ? '(saving)' : result.rollup.net_tco_delta_annual > 0 ? '(cost increase)' : ''}</small>
           {' · '}In-scope headcount {result.rollup.population_check.in_scope_persona_headcount}
           {' · '}covered population {result.rollup.population_check.third_party_covered_population}
         </div>

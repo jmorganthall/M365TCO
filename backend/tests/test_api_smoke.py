@@ -55,8 +55,9 @@ def test_full_workshop_flow_okta_500_vs_450(client):
 
     sc = result["scenarios"][0]
     assert sc["current_third_party_offset_annual"] == 45000.0
-    assert sc["delta_annual"] == 45000.0
-    assert result["rollup"]["net_tco_delta_annual"] == 45000.0
+    # Cost-change convention: target $0 retires $45k of spend -> negative = saving.
+    assert sc["delta_annual"] == -45000.0
+    assert result["rollup"]["net_tco_delta_annual"] == -45000.0
     # partial -> renewal NOT eliminated
     assert result["rollup"]["eliminated_renewal_cycles"] == []
 
@@ -142,6 +143,41 @@ def test_price_sheet_csv_import(client):
     segs = client.get("/api/catalog/segments").json()["segments"]
     assert "Commercial" in segs and "Education" in segs
     assert segs[0] == "Commercial"  # known defaults first
+
+
+def test_readout_delta_sign_and_color_convention(client):
+    """Saving = negative delta, shown green (pos); cost increase = positive delta,
+    shown neutral (no red 'neg' class). Spending more isn't styled as an error."""
+    # Saving: target price 0 retires the current spend.
+    eng = client.post("/api/engagements", json={"customer_name": "Save Co"}).json()
+    eid = eng["id"]
+    kw = client.post(f"/api/engagements/{eid}/personas", json={"name": "KW", "headcount": 100}).json()
+    client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "M365 E3", "quantity_purchased": 100, "quantity_assigned": 100,
+        "unit_price_paid_annual": 300, "persona_ids": [kw["id"]]})
+    client.post(f"/api/engagements/{eid}/scenarios", json={
+        "persona_id": kw["id"], "target_sku_reference": "E3", "target_unit_price_annual": 0})
+    r = client.post(f"/api/engagements/{eid}/compute").json()
+    assert r["rollup"]["net_tco_delta_annual"] == -30000.0  # negative = saving
+    html_body = client.get(f"/api/engagements/{eid}/readout.html").text
+    assert "headline pos" in html_body            # saving -> green
+    assert "Annual savings" in html_body
+    assert "headline neg" not in html_body        # never red
+
+    # Cost increase: expensive target.
+    eng2 = client.post("/api/engagements", json={"customer_name": "Up Co"}).json()
+    e2 = eng2["id"]
+    kw2 = client.post(f"/api/engagements/{e2}/personas", json={"name": "KW", "headcount": 100}).json()
+    client.post(f"/api/engagements/{e2}/current-licenses", json={
+        "sku_reference": "x", "quantity_purchased": 100, "quantity_assigned": 100,
+        "unit_price_paid_annual": 100, "persona_ids": [kw2["id"]]})
+    client.post(f"/api/engagements/{e2}/scenarios", json={
+        "persona_id": kw2["id"], "target_sku_reference": "E5", "target_unit_price_annual": 600})
+    r2 = client.post(f"/api/engagements/{e2}/compute").json()
+    assert r2["rollup"]["net_tco_delta_annual"] == 50000.0  # positive = cost increase
+    html2 = client.get(f"/api/engagements/{e2}/readout.html").text
+    assert "Annual cost increase" in html2
+    assert "headline neg" not in html2            # increase is neutral, not red
 
 
 def test_readout_branding_applied_and_sanitized(client):

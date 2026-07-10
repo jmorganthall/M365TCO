@@ -73,7 +73,8 @@ def analyze_bundles(
         offset = _money(offset)
         target_spend = _money(Decimal(headcount) * c.target_unit_price_annual)
         current_spend = _money(current_microsoft_annual + offset)
-        delta = _money(current_spend - target_spend)
+        # Cost-change convention: delta = new − old (+ = costs more, − = saves).
+        delta = _money(target_spend - current_spend)
 
         gaps = sorted(required_outcome_ids - c.covered_outcome_ids)
         covered_req = sorted(required_outcome_ids & c.covered_outcome_ids)
@@ -98,13 +99,13 @@ def analyze_bundles(
             )
         )
 
-    # Recommend the highest-delta bundle that has no capability gap and a known
-    # price. (Delta ties broken by lower target spend.)
+    # Recommend the biggest-saving bundle (lowest cost-change delta) that has no
+    # capability gap and a known price. (Delta ties broken by lower target spend.)
     best = None
     for r in results:
         if not r.covers_all_required or not r.price_known:
             continue
-        if best is None or r.delta_annual > best.delta_annual or (
+        if best is None or r.delta_annual < best.delta_annual or (
             r.delta_annual == best.delta_annual
             and r.target_spend_annual < best.target_spend_annual
         ):
@@ -112,8 +113,8 @@ def analyze_bundles(
     if best is not None:
         best.recommended = True
 
-    # Sort: recommended first, then no-gap, then highest savings.
+    # Sort: recommended first, then no-gap, then biggest saving (lowest delta).
     results.sort(
-        key=lambda r: (not r.recommended, not r.covers_all_required, -r.delta_annual)
+        key=lambda r: (not r.recommended, not r.covers_all_required, r.delta_annual)
     )
     return results

@@ -106,11 +106,15 @@ current_spend_annual = current_microsoft + offset
 #   net = (base_list + Σ addon_list) * (1 - target_discount_pct)
 # target_covered_outcome_ids is the union across base + add-ons.
 target_spend_annual  = persona.headcount * scenario.target_unit_price_annual
-delta_annual         = current_spend_annual - target_spend_annual   # +saving / -cost
+delta_annual         = target_spend_annual - current_spend_annual   # +cost / -saving
 ```
 
-A negative delta is shown honestly as a cost; the M365 uplift can exceed the
-third-party cost it offsets.
+Cost-change convention (`delta = new − old`): a **positive** delta means the move
+costs MORE (a cost increase); a **negative** delta means it costs LESS (a
+hard-dollar saving). Saving money is the good outcome, so readouts show negative
+deltas in green and positive deltas neutrally — spending more is shown honestly,
+not as an error. The M365 uplift can exceed the third-party cost it offsets, which
+is a legitimate positive (cost-increase) delta.
 
 > Recommend-a-path (best-bundle optimizer): the optimizer (`tco_engine/optimizer.py`)
 > evaluates *composed* candidates, not raw SKUs. The hydrator builds one candidate
@@ -150,9 +154,9 @@ existing_microsoft_annual   = Σ current_microsoft_annual   over in-scope scenar
 existing_third_party_annual = Σ current_third_party_offset over in-scope scenarios
 target_microsoft_annual     = Σ target_spend_annual        over in-scope scenarios
 
-net_tco_delta_annual = existing_microsoft_annual
-                     + existing_third_party_annual
-                     - target_microsoft_annual
+net_tco_delta_annual = target_microsoft_annual
+                     - existing_microsoft_annual
+                     - existing_third_party_annual
 
 # Per-product freed-up savings: the in-scope offsets aggregated by product, so a
 # readout can name each displaced tool and the dollars it frees ("we freed up
