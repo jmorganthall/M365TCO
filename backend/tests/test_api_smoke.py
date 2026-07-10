@@ -198,6 +198,30 @@ def test_readout_branding_applied_and_sanitized(client):
     assert tiny_png[:30] in html_body       # logo embedded
 
 
+def test_download_existing_catalog_returns_uploaded_file_as_is(client):
+    # An unusual layout (extra column, CRLF, trailing note) that the parser would
+    # not reproduce — proving the download is the raw upload, not a re-export.
+    csv_text = (
+        "ProductTitle,ProductId,SkuId,SkuTitle,TermDuration,BillingPlan,Market,"
+        "Currency,UnitPrice,EffectiveStartDate,EffectiveEndDate,ERP Price,Segment,Notes\r\n"
+        "Microsoft 365 E5,CFQ7TTC0LF8R,0002,M365 E5,P1Y,Annual,US,USD,"
+        "660.00,2026-01-01,2026-12-31,684.00,Commercial,internal-tag-xyz\r\n"
+    )
+    files = {"file": ("my-pricesheet.csv", csv_text, "text/csv")}
+    resp = client.post("/api/catalog/import-csv", files=files, data={"catalog_version": "2026-06"})
+    assert resp.status_code == 200
+
+    ver = client.get("/api/catalog/version").json()
+    assert ver["file_available"] is True
+    assert ver["file_name"] == "my-pricesheet.csv"
+
+    dl = client.get("/api/catalog/download")
+    assert dl.status_code == 200
+    assert dl.content.decode() == csv_text  # byte-for-byte, incl. CRLF + extra column
+    assert "my-pricesheet.csv" in dl.headers.get("content-disposition", "")
+    assert dl.headers["content-type"].startswith("text/csv")
+
+
 def test_segment_inheritance_and_line_overrides(client):
     # Global default is Commercial out of the box.
     gd = client.get("/api/admin/defaults").json()

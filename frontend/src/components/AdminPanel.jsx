@@ -141,6 +141,24 @@ export default function AdminPanel({ onClose }) {
             Partner Center Pricing workspace. For automated acquisition, use <b>Pricing
             sync</b> above (CSP refresh token), then "Import latest into catalog".</p>
           <div className="muted">Current catalog: <b>{catalog?.catalog_version || 'none'}</b> · {catalog?.sku_count || 0} SKUs</div>
+          <div className="toolbar" style={{ marginTop: '.4rem', alignItems: 'center' }}>
+            {catalog?.file_available ? (
+              <a href="/api/catalog/download" download>
+                <button className="ghost sm">⬇ Download existing catalog</button>
+              </a>
+            ) : (
+              <button className="ghost sm" disabled
+                title="No stored file — re-import the price sheet to enable download">
+                ⬇ Download existing catalog
+              </button>
+            )}
+            {catalog?.file_available && catalog?.file_name && (
+              <small className="src">{catalog.file_name} — the uploaded file, as-is</small>
+            )}
+            {catalog && !catalog.file_available && (
+              <small className="src">Original file not retained — re-import to enable download.</small>
+            )}
+          </div>
           <div className="toolbar" style={{ marginTop: '.6rem' }}>
             <div style={{ flex: 2 }}>
               <label>Price-sheet CSV</label>

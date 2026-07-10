@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..config import settings
 from ..db import get_db
-from ..services import ai, ai_prompts, catalog_provenance, defaults, pricesheet
+from ..pricesync import config as ps_config, storage as ps_storage
+from ..services import ai, ai_prompts, catalog_file, catalog_provenance, defaults, pricesheet
 from ..services import bundles as bundles_service
 
 
@@ -288,11 +292,61 @@ def suggest_sku_bundles(limit: int = 150, db: Session = Depends(get_db)):
     }
 
 
+def _downloadable_catalog_file(db: Session) -> tuple[str, str] | None:
+    """(absolute_path, download_filename) for the raw file backing the current
+    catalog, or None if none is retained. Prefers the source of the most recent
+    load (price-sync sheet on disk for a PriceSyncApi load, else the retained
+    upload), falling back to the other so a present file is always offered."""
+    imp = catalog_provenance.latest(db)
+    prefer_sync = bool(imp and imp.source == "PriceSyncApi")
+
+    def _sync():
+        try:
+            p = ps_storage.latest_csv_path(ps_config.load_config(db))
+        except Exception:
+            return None
+        return (p, os.path.basename(p)) if p and os.path.exists(p) else None
+
+    def _upload():
+        up = catalog_file.latest_upload()
+        return (up[0], up[1].get("file_name") or "catalog.csv") if up else None
+
+    order = (_sync, _upload) if prefer_sync else (_upload, _sync)
+    for src in order:
+        got = src()
+        if got:
+            return got
+    return None
+
+
 @router.get("/version")
 def catalog_version(db: Session = Depends(get_db)):
     version = db.execute(select(models.MicrosoftSku.catalog_version).limit(1)).scalar()
     count = db.execute(select(models.MicrosoftSku.id)).scalars().all()
-    return {"catalog_version": version or "", "sku_count": len(count)}
+    downloadable = _downloadable_catalog_file(db)
+    return {
+        "catalog_version": version or "",
+        "sku_count": len(count),
+        # Whether the raw uploaded/fetched file is available to download as-is.
+        "file_available": downloadable is not None,
+        "file_name": downloadable[1] if downloadable else "",
+    }
+
+
+@router.get("/download")
+def download_catalog(db: Session = Depends(get_db)):
+    """Download the price-sheet file backing the current catalog, exactly as it
+    was uploaded/fetched (byte-for-byte) — not a re-export of the parsed rows."""
+    got = _downloadable_catalog_file(db)
+    if got is None:
+        raise HTTPException(
+            404,
+            "No stored catalog file to download. The catalog was loaded before "
+            "file retention existed, or the file was not kept — re-import the "
+            "price sheet to enable download.",
+        )
+    path, filename = got
+    return FileResponse(path, media_type="text/csv", filename=filename)
 
 
 @router.post("/import-csv")
@@ -312,12 +366,21 @@ async def import_csv(
         result = pricesheet.import_price_sheet(db, text, version)
     except pricesheet.PriceSheetError as exc:
         raise HTTPException(422, str(exc))
+    # Retain the raw upload so it can be downloaded as-is later (the parsed rows
+    # can't reproduce the original file). Best-effort: a storage hiccup must not
+    # fail an otherwise-successful import.
+    file_meta = {}
+    try:
+        file_meta = catalog_file.store_upload(raw, file.filename or "catalog.csv", version)
+    except OSError:
+        file_meta = {}
     # Record provenance so freshness (Readout badge / staleness banner) counts
     # this successful upload — a CSV operator should never read "not set · stale".
     catalog_provenance.record_import(
         db, source="CsvUpload",
         sku_count=result["inserted"] + result["updated"],
         catalog_version=version, data_month=result.get("data_month"),
+        file_name=file_meta.get("file_name", ""), sha256=file_meta.get("sha256", ""),
     )
     return result
 
