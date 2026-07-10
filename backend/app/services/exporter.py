@@ -210,8 +210,9 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 
 <div class="popcheck"><b>Population check.</b>
  In-scope persona headcount: <b>{pop['in_scope_persona_headcount']}</b> ·
- Third-party covered population: <b>{pop['third_party_covered_population']}</b>.
- Gaps between these surface as residuals below.</div>
+ Third-party tool-seats: <b>{pop['third_party_covered_population']}</b>
+ <span style="color:#666">(summed across tools; people may hold several, so this isn't a distinct-people count)</span>.
+ Per-tool coverage vs. displacement is in the dispositions below.</div>
 
 {quick_win_section}
 

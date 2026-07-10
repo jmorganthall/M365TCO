@@ -132,8 +132,9 @@ export default function Readout({ engagement }) {
         </div>
         <div className="popcheck">
           <b>Population check.</b> In-scope persona headcount{' '}
-          <b>{r.population_check.in_scope_persona_headcount}</b> · third-party covered population{' '}
-          <b>{r.population_check.third_party_covered_population}</b>. Gaps surface as residuals below.
+          <b>{r.population_check.in_scope_persona_headcount}</b> · third-party tool-seats{' '}
+          <b>{r.population_check.third_party_covered_population}</b>{' '}
+          <small className="muted">(summed across tools; people may hold several, so this isn't a distinct-people count)</small>. Per-tool coverage vs. displacement is in the dispositions below.
         </div>
         <details style={{ marginTop: '.5rem' }}>
           <summary className="src" style={{ cursor: 'pointer' }}>Readout branding (logo + theme colors)</summary>
