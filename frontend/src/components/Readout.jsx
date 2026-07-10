@@ -7,13 +7,27 @@ export default function Readout({ engagement }) {
   const [result, setResult] = useState(null)
   const [snapshots, setSnapshots] = useState([])
   const [err, setErr] = useState('')
+  // Pre-readout AI sanity check (advisory).
+  const [aiEnabled, setAiEnabled] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [sanity, setSanity] = useState(null)
 
   function compute() {
     setErr('')
     api.post(`/api/engagements/${eid}/compute`).then(setResult).catch((e) => setErr(e.message))
     api.get(`/api/engagements/${eid}/snapshots`).then(setSnapshots).catch(() => {})
   }
-  useEffect(() => { compute() }, [eid])
+  useEffect(() => {
+    compute()
+    setSanity(null)
+    api.get('/api/admin/ai/status').then((s) => setAiEnabled(s.enabled)).catch(() => {})
+  }, [eid])
+
+  async function runSanity() {
+    setChecking(true); setErr('')
+    try { setSanity(await api.post(`/api/engagements/${eid}/sanity-check`)) }
+    catch (e) { setErr(e.message) } finally { setChecking(false) }
+  }
 
   async function setOverride(tpId, payload) {
     try {
@@ -45,6 +59,11 @@ export default function Readout({ engagement }) {
             <div className="muted">{pos ? 'Hard-dollar annual savings' : 'Annual cost increase — shown honestly'}</div>
           </div>
           <div className="row" style={{ gap: '.4rem' }}>
+            {aiEnabled && (
+              <button className="ghost sm" onClick={runSanity} disabled={checking}
+                title="Ask an inexpensive model to flag likely mistakes before you present">
+                {checking ? 'Checking…' : '✨ AI sanity check'}</button>
+            )}
             <a href={`/api/engagements/${eid}/readout.html`} target="_blank" rel="noreferrer">
               <button className="ghost sm">Open HTML readout</button></a>
             <a href={`/api/engagements/${eid}/readout.xlsx`}>
@@ -57,6 +76,27 @@ export default function Readout({ engagement }) {
           <b>{r.population_check.in_scope_persona_headcount}</b> · third-party covered population{' '}
           <b>{r.population_check.third_party_covered_population}</b>. Gaps surface as residuals below.
         </div>
+        {sanity && (
+          <div className="popcheck" style={{ marginTop: '.5rem' }}>
+            <div className="flex-between">
+              <b>AI sanity check</b>
+              <small className="src">Advisory only — never edits your data. Model: {sanity.model}</small>
+            </div>
+            {sanity.findings.length === 0
+              ? <div className="muted" style={{ marginTop: '.3rem' }}>✓ No issues flagged — the numbers look reasonable.</div>
+              : (
+                <ul style={{ margin: '.4rem 0 0', paddingLeft: '1.1rem' }}>
+                  {sanity.findings.map((f, i) => (
+                    <li key={i} style={{ marginBottom: '.25rem' }}>
+                      <span className={`badge ${f.severity === 'error' ? 'neg' : f.severity === 'warn' ? 'warn' : 'muted'}`}>
+                        {f.severity}</span>{' '}
+                      {f.field && <b>{f.field}: </b>}{f.message}
+                    </li>
+                  ))}
+                </ul>
+              )}
+          </div>
+        )}
       </div>
 
       <div className="card">

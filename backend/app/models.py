@@ -501,6 +501,9 @@ class GlobalDefaults(Base):
     # Operator-selected OpenRouter model for AI assist. Empty = use the env
     # default (settings.openrouter_model). Operational config, runtime-editable.
     openrouter_model: Mapped[str] = mapped_column(String, default="")
+    # Model for the pre-readout sanity check. Empty = use the env default
+    # (settings.sanity_check_model, an inexpensive model). Operational config.
+    sanity_check_model: Mapped[str] = mapped_column(String, default="")
 
 
 class PriceSyncSettings(Base):

@@ -10,8 +10,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
+from ..config import settings
 from ..db import get_db
-from ..services import compute, defaults, exporter, seeds
+from ..services import ai, ai_prompts, compute, defaults, exporter, sanity, seeds
 from ..services.serialize import result_to_dict
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
@@ -196,6 +197,29 @@ def compute_engagement(engagement_id: str, db: Session = Depends(get_db)):
     _get_engagement(db, engagement_id)
     result = compute.compute_and_persist(db, engagement_id)
     return result_to_dict(result)
+
+
+@router.post("/{engagement_id}/sanity-check")
+def sanity_check(engagement_id: str, db: Session = Depends(get_db)):
+    """Advisory pre-readout AI check: "does this data make sense?" Computes the
+    engagement, summarizes it, and asks an inexpensive model to flag likely
+    mistakes. Never edits data or the math (PRD 9). Returns findings for the
+    operator to eyeball before showing a readout on a live call."""
+    eng = _get_engagement(db, engagement_id)
+    if not ai.is_enabled():
+        raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
+    result = result_to_dict(compute.compute_and_persist(db, engagement_id))
+    summary = sanity.build_sanity_payload(eng, result)
+    model = defaults.get_defaults(db).sanity_check_model or settings.sanity_check_model
+    try:
+        findings = ai.sanity_check(
+            summary,
+            instructions=ai_prompts.get_instructions(db, "readout_sanity_check"),
+            model=model,
+        )
+    except Exception as exc:  # network/model errors surface cleanly
+        raise HTTPException(502, f"Sanity check failed: {exc}")
+    return {"model": model, "findings": findings}
 
 
 @router.get("/{engagement_id}/readout.html", response_class=HTMLResponse)

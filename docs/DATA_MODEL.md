@@ -391,10 +391,23 @@ existing first-class objects** — it stores no new state, which is the correct
 The chosen bundle is applied by writing a normal `PersonaScenario` (§4.8); the
 analysis itself is transient.
 
+### 4.10a-bis Pre-readout sanity check (derived, persists nothing)
+`POST …/sanity-check` runs an advisory AI pass right before a readout: it
+computes the engagement, builds a compact summary (`services/sanity.build_sanity_payload`
+— pure), and asks an **inexpensive** model (`GlobalDefaults.sanity_check_model`,
+else `settings.sanity_check_model`) via the editable `readout_sanity_check`
+AiPrompt to flag likely mistakes (implausible per-seat prices, assigned > purchased,
+coverage/headcount mismatches, contradictory deltas). It returns
+`[{severity, field, message}]` for the operator to eyeball on the Readout view.
+Like §4.10a it **stores no new state and never feeds the math** — it is a pure
+read over existing first-class objects, the correct "don't create second-class
+data" outcome. `services/sanity.normalize_findings` is the pure validator (kept
+separate from the HTTP call for unit testing).
+
 ### 4.10b AiPrompt — editable AI instructions
 - **Identity:** `uuid` PK plus a unique `key` per AI function
-  (`coverage_suggest`, `third_party_parse`, `current_license_parse`).
-  **Scope:** **global**.
+  (`coverage_suggest`, `third_party_parse`, `current_license_parse`,
+  `sku_bundle_map`, `readout_sanity_check`). **Scope:** **global**.
 - **Field ownership:** seeded from `seeds/ai_prompts.json` (`label`,
   `description`, `instructions`); the operator edits `instructions` at runtime and
   can reset to the seeded default. `updated_at` stamps edits.
@@ -410,9 +423,11 @@ analysis itself is transient.
 - **GlobalDefaults / Settings (PRD 5.10):** the single-row `GlobalDefaults` table
   holds operator-editable, engagement-seeded defaults — `default_tooling_pct`,
   `default_modeling_horizon_years`, `default_segment` (the ground floor of the
-  pricing-basis chain, §4.1), and the operational `openrouter_model`. Edited in
-  Settings → Defaults (`GET/PUT /api/admin/defaults`); new engagements copy the
-  domain defaults on creation ("seed, then own"). The versioned **seed files**
+  pricing-basis chain, §4.1), and the operational `openrouter_model` /
+  `sanity_check_model` (the latter an inexpensive model for the advisory
+  pre-readout sanity check; blank falls back to `settings.sanity_check_model`).
+  Edited in Settings → Defaults (`GET/PUT /api/admin/defaults`); new engagements
+  copy the domain defaults on creation ("seed, then own"). The versioned **seed files**
   (`outcomes.json`, `coverage.json`) remain the source for the outcome/coverage
   libraries. Add new global defaults here, not as scattered constants.
 - **Secrets:** the OpenRouter key lives in the encrypted store

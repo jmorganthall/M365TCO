@@ -116,6 +116,18 @@ export default function AdminPanel({ onClose }) {
               </span>
             </div>
           )}
+          {ai.enabled && defaults && (
+            <div className="toolbar">
+              <div style={{ flex: 2 }}>
+                <label>Sanity-check model — inexpensive; used for the pre-readout “does this make sense?” pass</label>
+                <ModelCombobox models={models} value={defaults.sanity_check_model}
+                  onChange={(id) => saveDefaults({ sanity_check_model: id })} />
+              </div>
+              <span className="muted" style={{ alignSelf: 'flex-end', paddingBottom: '.5rem' }}>
+                Blank = built-in default
+              </span>
+            </div>
+          )}
           <AiInstructions onMsg={setMsg} onErr={setErr} />
         </div>
 

@@ -264,6 +264,19 @@ def normalize_parsed_licenses(data: dict) -> list[dict]:
     return out
 
 
+def sanity_check(summary: dict, instructions: str, model: str | None = None) -> list[dict]:
+    """Run the pre-readout "does this make sense?" pass over a compact engagement
+    summary (built by services/sanity.build_sanity_payload). `instructions` is the
+    editable system prompt (an AiPrompt). Returns advisory findings
+    [{severity, field, message}] — nothing is persisted or fed to the math. The
+    caller resolves an inexpensive `model` for this frequent, low-stakes check."""
+    from .sanity import normalize_findings
+
+    user = json.dumps(summary, default=str, indent=2)
+    data = _chat_json(instructions, user, model)
+    return normalize_findings(data)
+
+
 def parse_current_licenses(raw_text: str, instructions: str, model: str | None = None) -> list[dict]:
     """Parse a block of customer-provided text into existing-license rows.
 
