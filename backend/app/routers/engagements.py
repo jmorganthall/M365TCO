@@ -90,6 +90,9 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
         default_segment=src.default_segment,
         default_term_duration=src.default_term_duration,
         default_billing_plan=src.default_billing_plan,
+        brand_logo_data_url=src.brand_logo_data_url,
+        brand_primary_color=src.brand_primary_color,
+        brand_accent_color=src.brand_accent_color,
         notes=src.notes,
     )
     db.add(dst)

@@ -29,6 +29,35 @@ export default function Readout({ engagement }) {
     catch (e) { setErr(e.message) } finally { setChecking(false) }
   }
 
+  // Readout branding (logo + theme colors). Local so edits reflect immediately;
+  // persisted on the engagement and applied by the HTML readout.
+  const [brand, setBrand] = useState({
+    logo: engagement.brand_logo_data_url || '',
+    primary: engagement.brand_primary_color || '',
+    accent: engagement.brand_accent_color || '',
+  })
+  useEffect(() => setBrand({
+    logo: engagement.brand_logo_data_url || '',
+    primary: engagement.brand_primary_color || '',
+    accent: engagement.brand_accent_color || '',
+  }), [eid])
+  async function patchBrand(patch) {
+    const next = { ...brand, ...patch }
+    setBrand(next)
+    const body = {
+      brand_logo_data_url: next.logo, brand_primary_color: next.primary,
+      brand_accent_color: next.accent,
+    }
+    try { await api.patch(`/api/engagements/${eid}`, body) } catch (e) { setErr(e.message) }
+  }
+  function onLogoFile(file) {
+    if (!file) return
+    if (!file.type.startsWith('image/')) { setErr('Logo must be an image (PNG/SVG/JPG).'); return }
+    const reader = new FileReader()
+    reader.onload = () => patchBrand({ logo: reader.result })
+    reader.readAsDataURL(file)
+  }
+
   async function setOverride(tpId, payload) {
     try {
       await api.put(`/api/engagements/${eid}/dispositions/${tpId}/override`, payload)
@@ -76,6 +105,24 @@ export default function Readout({ engagement }) {
           <b>{r.population_check.in_scope_persona_headcount}</b> · third-party covered population{' '}
           <b>{r.population_check.third_party_covered_population}</b>. Gaps surface as residuals below.
         </div>
+        <details style={{ marginTop: '.5rem' }}>
+          <summary className="src" style={{ cursor: 'pointer' }}>Readout branding (logo + theme colors)</summary>
+          <div className="grid c4" style={{ marginTop: '.5rem', alignItems: 'end' }}>
+            <div><label>Logo (PNG/SVG)</label>
+              <input type="file" accept="image/*" onChange={(e) => onLogoFile(e.target.files?.[0])} />
+              {brand.logo && <div style={{ marginTop: '.3rem' }}>
+                <img src={brand.logo} alt="logo" style={{ maxHeight: 40, maxWidth: 140 }} />{' '}
+                <button className="ghost sm" onClick={() => patchBrand({ logo: '' })}>Clear</button>
+              </div>}</div>
+            <div><label>Primary color</label>
+              <input type="color" value={brand.primary || '#1a1a2e'}
+                onChange={(e) => patchBrand({ primary: e.target.value })} /></div>
+            <div><label>Accent color</label>
+              <input type="color" value={brand.accent || '#2563eb'}
+                onChange={(e) => patchBrand({ accent: e.target.value })} /></div>
+            <div><small className="src">Applied to the HTML readout header, section titles, and callout border. Entered per engagement.</small></div>
+          </div>
+        </details>
         {sanity && (
           <div className="popcheck" style={{ marginTop: '.5rem' }}>
             <div className="flex-between">

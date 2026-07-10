@@ -97,6 +97,9 @@ class EngagementUpdate(BaseModel):
     default_segment: Optional[str] = None
     default_term_duration: Optional[str] = None
     default_billing_plan: Optional[str] = None
+    brand_logo_data_url: Optional[str] = None
+    brand_primary_color: Optional[str] = None
+    brand_accent_color: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -110,6 +113,9 @@ class EngagementOut(ORMModel):
     default_segment: str
     default_term_duration: str
     default_billing_plan: str
+    brand_logo_data_url: str
+    brand_primary_color: str
+    brand_accent_color: str
     notes: str
 
 

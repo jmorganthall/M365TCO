@@ -102,7 +102,8 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Relationships:** one-to-many to all eight child sets, all `cascade="all, delete-orphan"`.
 - **Field ownership:** user-entered (`customer_name`, `market`, `currency`,
   `notes`, `global_tooling_pct`, `modeling_horizon_years`, `default_segment`,
-  `default_term_duration`, `default_billing_plan`); derived
+  `default_term_duration`, `default_billing_plan`, and the readout branding
+  `brand_logo_data_url` / `brand_primary_color` / `brand_accent_color`); derived
   (`created_at`, `updated_at`).
 - **CRUD:** `GET/POST/PATCH/DELETE /api/engagements`, plus `duplicate`, `compute`,
   `readout.html`, `readout.xlsx`, `snapshots`.
@@ -111,6 +112,15 @@ FK, UUID PK, cascade-deleted with the engagement.
   deep-copies every child (and the basis defaults) with id remapping.
 - **Note:** `global_tooling_pct` is the engagement default for the managed split;
   individual third-party rows may override it.
+- **Readout branding:** `brand_logo_data_url` (a base64 image data URL),
+  `brand_primary_color`, `brand_accent_color` are user-entered runtime data
+  applied to the HTML readout (blank = neutral built-in theme). They are the
+  customer/practice's own runtime branding — never a hard-coded identity — so
+  they honor the white-label rule (like `customer_name`). The exporter sanitizes
+  colors against a strict CSS-color pattern and the logo against a base64 image
+  data-URL pattern before inlining, so neither can break out of the readout's
+  `<style>`/`<img>` context. Editable on the Readout tab. A future reusable
+  `BrandTheme` library (global presets seeding these fields) would follow §2.
 - **Pricing-basis inheritance:** `default_segment` / `default_term_duration`
   (P1Y) / `default_billing_plan` (Annual) are the middle tier of a three-level
   chain — **GlobalDefaults → Engagement → line item** — that selects which priced

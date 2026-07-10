@@ -144,6 +144,24 @@ def test_price_sheet_csv_import(client):
     assert segs[0] == "Commercial"  # known defaults first
 
 
+def test_readout_branding_applied_and_sanitized(client):
+    eng = client.post("/api/engagements", json={"customer_name": "Brand Co"}).json()
+    eid = eng["id"]
+    tiny_png = ("data:image/png;base64,"
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+    out = client.patch(f"/api/engagements/{eid}", json={
+        "brand_primary_color": "#0a7d34",
+        "brand_accent_color": "red; } body { display:none",  # injection attempt
+        "brand_logo_data_url": tiny_png,
+    }).json()
+    assert out["brand_primary_color"] == "#0a7d34"
+
+    html_body = client.get(f"/api/engagements/{eid}/readout.html").text
+    assert "#0a7d34" in html_body           # valid color inlined
+    assert "display:none" not in html_body  # malicious accent color rejected
+    assert tiny_png[:30] in html_body       # logo embedded
+
+
 def test_segment_inheritance_and_line_overrides(client):
     # Global default is Commercial out of the box.
     gd = client.get("/api/admin/defaults").json()

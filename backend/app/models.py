@@ -85,6 +85,13 @@ class Engagement(Base):
     default_segment: Mapped[str] = mapped_column(String, default="Commercial")
     default_term_duration: Mapped[str] = mapped_column(String, default="P1Y")
     default_billing_plan: Mapped[str] = mapped_column(String, default="Annual")
+    # Readout branding (user-entered runtime data — never a hard-coded identity).
+    # A customer/practice logo as a base64 data URL, plus two theme colors applied
+    # to the HTML readout. Blank = the neutral built-in theme. (A future reusable
+    # BrandTheme library would seed these; today they're per-engagement fields.)
+    brand_logo_data_url: Mapped[str] = mapped_column(Text, default="")
+    brand_primary_color: Mapped[str] = mapped_column(String, default="")
+    brand_accent_color: Mapped[str] = mapped_column(String, default="")
 
     personas: Mapped[list["Persona"]] = relationship(
         back_populates="engagement", cascade="all, delete-orphan"

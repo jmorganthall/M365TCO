@@ -10,11 +10,28 @@ from __future__ import annotations
 
 import html
 import io
+import re
 from decimal import Decimal
 
 from openpyxl import Workbook
 
 from .. import models
+
+# A CSS color we're willing to inline into the readout <style>: a hex triplet or
+# an rgb()/rgba() with only digits, commas, dots, spaces. Anything else (which
+# could try to break out of the style context) falls back to the default.
+_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{3,8}$|^rgba?\([0-9.,\s]+\)$")
+
+
+def _safe_color(value: str, default: str) -> str:
+    value = (value or "").strip()
+    return value if _COLOR_RE.match(value) else default
+
+
+def _is_data_image(value: str) -> bool:
+    """True only for a base64-encoded image data URL, so the logo can't inject a
+    javascript: or external URL into the readout."""
+    return bool(re.match(r"^data:image/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+$", value or ""))
 
 
 def _usd(value) -> str:
@@ -120,14 +137,27 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         for lic in engagement.current_licenses
     ) or "<li>None entered</li>"
 
+    # Readout branding (user-entered). Sanitize hard: colors must match a strict
+    # CSS-color pattern and the logo must be a base64 image data URL, so neither
+    # can break out of the <style>/<img> context. Blank -> neutral built-in theme.
+    primary = _safe_color(engagement.brand_primary_color, "#1a1a2e")
+    accent = _safe_color(engagement.brand_accent_color, "#2563eb")
+    logo = engagement.brand_logo_data_url or ""
+    logo_html = (
+        f'<img src="{html.escape(logo, quote=True)}" alt="logo" '
+        f'style="max-height:56px;max-width:240px;margin-bottom:.5rem">'
+        if _is_data_image(logo) else ""
+    )
+
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>M365 TCO Readout — {html.escape(engagement.customer_name)}</title>
 <style>
  body{{font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin:2rem;color:#1a1a2e;max-width:1100px}}
- h1{{margin-bottom:0}} .sub{{color:#555}}
+ h1{{margin-bottom:0;color:{primary}}} .sub{{color:#555}}
  .headline{{font-size:2.2rem;font-weight:700;margin:.5rem 0}}
  .pos{{color:#127436}} .neg{{color:#b00020}}
- .popcheck{{background:#f3f6ff;border:1px solid #c9d6ff;padding:.75rem 1rem;border-radius:8px;margin:1rem 0}}
+ .popcheck{{background:#f3f6ff;border:1px solid {accent};padding:.75rem 1rem;border-radius:8px;margin:1rem 0}}
+ h2{{color:{primary}}}
  table{{border-collapse:collapse;width:100%;margin:1rem 0}}
  th,td{{border:1px solid #ddd;padding:.45rem .6rem;text-align:left;font-size:.92rem}}
  th{{background:#fafafa}} td.num{{text-align:right;font-variant-numeric:tabular-nums}}
@@ -137,6 +167,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
  section{{margin:1.5rem 0}} ul{{margin:.3rem 0}}
  footer{{margin-top:2rem;color:#777;font-size:.8rem}}
 </style></head><body>
+{logo_html}
 <h1>M365 TCO Readout</h1>
 <div class="sub">{html.escape(engagement.customer_name)} · {engagement.market}/{engagement.currency} · annualized USD</div>
 
