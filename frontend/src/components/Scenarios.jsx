@@ -26,7 +26,7 @@ const netAnnual = (s) => {
 
 // One scenario as an expandable line item: base bundle + net $/seat/mo up top;
 // base price, discount, and add-on bundles (composed) in the expander.
-function ScenarioRow({ p, s, r, bundles, update, remove, onAnalyze }) {
+function ScenarioRow({ p, s, r, bundles, basis, update, remove, onAnalyze }) {
   const [open, setOpen] = useState(false)
   const bundleName = (id) => bundles.find((b) => b.id === id)?.name || id
   const payload = () => (s.addons || []).map((a) => ({ bundle_id: a.bundle_id, unit_price_annual: a.unit_price_annual }))
@@ -48,6 +48,7 @@ function ScenarioRow({ p, s, r, bundles, update, remove, onAnalyze }) {
         <td className="num">{p.headcount}</td>
         <td>
           <SkuCombobox value={s.target_sku_reference} style={{ minWidth: 130 }}
+            segment={basis.segment} term={basis.term} billing={basis.billing}
             onChange={(v) => update(s.id, { target_sku_reference: v })}
             onSelectSku={(sku) => sku && update(s.id, { target_unit_price_annual: sku.annual_unit_price })} />
           {(s.addons || []).length > 0 && (
@@ -132,6 +133,12 @@ export default function Scenarios({ engagement, meta }) {
 
   const scenarioFor = (pid) => scenarios.find((s) => s.persona_id === pid)
   const resultFor = (sid) => result?.scenarios.find((r) => r.scenario_id === sid)
+  // Engagement pricing-basis default, so a target bundle resolves to the right
+  // segment/term variant's list price (same chain as Current Licensing).
+  const basis = {
+    segment: engagement.default_segment, term: engagement.default_term_duration,
+    billing: engagement.default_billing_plan,
+  }
 
   async function createScenario(pid) {
     try { await api.post(`/api/engagements/${eid}/scenarios`, { persona_id: pid, target_sku_reference: '', target_unit_price_annual: 0 }); load() }
@@ -194,7 +201,7 @@ export default function Scenarios({ engagement, meta }) {
               </tr>
             )
             return (
-              <ScenarioRow key={p.id} p={p} s={s} r={resultFor(s.id)} bundles={bundles}
+              <ScenarioRow key={p.id} p={p} s={s} r={resultFor(s.id)} bundles={bundles} basis={basis}
                 update={update} remove={remove} onAnalyze={() => setAnalyzePersona(p)} />
             )
           })}
