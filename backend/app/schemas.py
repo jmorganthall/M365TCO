@@ -22,18 +22,25 @@ class EngagementCreate(BaseModel):
     # When omitted, these inherit from GlobalDefaults at creation time.
     modeling_horizon_years: Optional[int] = None
     global_tooling_pct: Optional[Decimal] = None
+    # Pricing-basis defaults. `default_segment` omitted inherits GlobalDefaults;
+    # term/billing default to yearly commit / yearly purchase.
+    default_segment: Optional[str] = None
+    default_term_duration: str = "P1Y"
+    default_billing_plan: str = "Annual"
     notes: str = ""
 
 
 class GlobalDefaultsOut(ORMModel):
     default_tooling_pct: Decimal
     default_modeling_horizon_years: int
+    default_segment: str
     openrouter_model: str
 
 
 class GlobalDefaultsUpdate(BaseModel):
     default_tooling_pct: Optional[Decimal] = None
     default_modeling_horizon_years: Optional[int] = None
+    default_segment: Optional[str] = None
     openrouter_model: Optional[str] = None
 
 
@@ -85,6 +92,9 @@ class EngagementUpdate(BaseModel):
     currency: Optional[str] = None
     modeling_horizon_years: Optional[int] = None
     global_tooling_pct: Optional[Decimal] = None
+    default_segment: Optional[str] = None
+    default_term_duration: Optional[str] = None
+    default_billing_plan: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -95,6 +105,9 @@ class EngagementOut(ORMModel):
     currency: str
     modeling_horizon_years: int
     global_tooling_pct: Decimal
+    default_segment: str
+    default_term_duration: str
+    default_billing_plan: str
     notes: str
 
 
@@ -139,6 +152,10 @@ class CurrentLicenseIn(BaseModel):
     unit_price_paid_annual: Decimal = Decimal("0")
     price_basis: str = "Unknown"
     discount_pct: Optional[Decimal] = None
+    # Per-line pricing-basis overrides. None = inherit the engagement default.
+    segment: Optional[str] = None
+    term_duration: Optional[str] = None
+    billing_plan: Optional[str] = None
     # Personas this line applies to (many-to-many tags).
     persona_ids: list[str] = []
     source_tag: str = "CustomerStated"
@@ -152,6 +169,9 @@ class CurrentLicenseOut(ORMModel):
     unit_price_paid_annual: Decimal
     price_basis: str
     discount_pct: Optional[Decimal]
+    segment: Optional[str]
+    term_duration: Optional[str]
+    billing_plan: Optional[str]
     persona_ids: list[str]
     source_tag: str
 

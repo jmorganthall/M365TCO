@@ -24,27 +24,40 @@ router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 def list_skus(
     q: str | None = None,
     term: str | None = None,
+    billing: str | None = None,
+    segment: str | None = None,
     unmapped: bool = False,
-    limit: int = 200,
+    limit: int | None = None,
     db: Session = Depends(get_db),
 ):
+    """List catalog SKUs. Returns the FULL catalog by default — `limit` is opt-in,
+    not a silent cap — so nothing is hidden from search. `q` filters case-
+    insensitively in SQL across product/SKU title (fuzzy ranking is done client-
+    side over the full set). `segment`/`term`/`billing` narrow to a priced variant."""
     stmt = select(models.MicrosoftSku)
     if term:
         stmt = stmt.where(models.MicrosoftSku.term_duration == term)
+    if billing:
+        stmt = stmt.where(models.MicrosoftSku.billing_plan == billing)
+    if segment:
+        stmt = stmt.where(models.MicrosoftSku.segment == segment)
     if unmapped:  # not yet accepted onto a staple bundle (the mapper's work-list)
         stmt = stmt.where(models.MicrosoftSku.bundle_id.is_(None))
-    rows = db.execute(stmt.limit(limit)).scalars().all()
-    if q:
-        ql = q.lower()
-        rows = [
-            r for r in rows
-            if ql in (r.product_title or "").lower() or ql in (r.sku_title or "").lower()
-        ]
+    if q:  # filter in SQL so search spans the whole catalog, not a fetched page
+        like = f"%{q}%"
+        stmt = stmt.where(
+            models.MicrosoftSku.product_title.ilike(like)
+            | models.MicrosoftSku.sku_title.ilike(like)
+        )
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    rows = db.execute(stmt).scalars().all()
     return [
         {
             "id": r.id, "product_id": r.product_id, "sku_id": r.sku_id,
             "product_title": r.product_title, "sku_title": r.sku_title,
             "term_duration": r.term_duration, "billing_plan": r.billing_plan,
+            "segment": r.segment,
             "annual_unit_price": float(r.annual_unit_price),
             "annual_erp_price": float(r.annual_erp_price),
             "catalog_version": r.catalog_version,
@@ -54,6 +67,23 @@ def list_skus(
         }
         for r in rows
     ]
+
+
+@router.get("/segments")
+def list_segments(db: Session = Depends(get_db)):
+    """Distinct customer segments present in the catalog, for the data-driven
+    segment pickers (global default, engagement default, per-line override). We
+    never hard-code the list — it reflects what the loaded price sheet contains,
+    with the known defaults unioned in so the pickers work before any import."""
+    present = db.execute(
+        select(models.MicrosoftSku.segment).distinct()
+    ).scalars().all()
+    values = {s for s in present if s}
+    values.update(models.SEGMENTS)
+    # Known defaults first (in declared order), then any extras the sheet added.
+    ordered = [s for s in models.SEGMENTS if s in values]
+    ordered += sorted(v for v in values if v not in models.SEGMENTS)
+    return {"segments": ordered}
 
 
 def _bundle_list_price(db: Session, name: str) -> float:

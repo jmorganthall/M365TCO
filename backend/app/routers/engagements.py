@@ -41,6 +41,8 @@ def create_engagement(payload: schemas.EngagementCreate, db: Session = Depends(g
         data["global_tooling_pct"] = gd.default_tooling_pct
     if data.get("modeling_horizon_years") is None:
         data["modeling_horizon_years"] = gd.default_modeling_horizon_years
+    if data.get("default_segment") is None:
+        data["default_segment"] = gd.default_segment
     eng = models.Engagement(**data)
     db.add(eng)
     db.flush()
@@ -84,6 +86,9 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
         currency=src.currency,
         modeling_horizon_years=src.modeling_horizon_years,
         global_tooling_pct=src.global_tooling_pct,
+        default_segment=src.default_segment,
+        default_term_duration=src.default_term_duration,
+        default_billing_plan=src.default_billing_plan,
         notes=src.notes,
     )
     db.add(dst)
@@ -141,6 +146,8 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
             quantity_purchased=lic.quantity_purchased, quantity_assigned=lic.quantity_assigned,
             unit_price_paid_annual=lic.unit_price_paid_annual, price_basis=lic.price_basis,
             discount_pct=lic.discount_pct, source_tag=lic.source_tag,
+            segment=lic.segment, term_duration=lic.term_duration,
+            billing_plan=lic.billing_plan,
         )
         # Carry the persona tags across, remapped to the cloned personas.
         src_pids = lic.persona_ids or ([lic.persona_id] if lic.persona_id else [])

@@ -2,6 +2,16 @@ import React, { useEffect, useState } from 'react'
 import { api, usd, pct } from '../api'
 import SkuCombobox, { loadSkus, matchSku } from './SkuCombobox.jsx'
 
+// Term/billing choices, phrased the way an SA thinks about them on a call.
+const TERM_OPTS = [['P1Y', 'Yearly commit'], ['P1M', 'Monthly commit'], ['P3Y', '3-year commit']]
+const BILLING_OPTS = [['Annual', 'Yearly purchase'], ['Monthly', 'Monthly purchase']]
+// The effective pricing basis for a line = its override, else the engagement default.
+const effBasis = (l, eng) => ({
+  segment: l.segment || eng.default_segment,
+  term: l.term_duration || eng.default_term_duration,
+  billing: l.billing_plan || eng.default_billing_plan,
+})
+
 // Prices are stored annualized (the engine works in annual USD); the UI edits
 // per-seat MONTHLY. Convert at the boundary only.
 const annualToMonthly = (a) => (a ? Math.round((Number(a) / 12) * 100) / 100 : 0)
@@ -23,19 +33,23 @@ function MonthlyPriceInput({ annual, onCommit, style }) {
 // One license line. The row shows the common case (fully assigned); the ▸
 // expander reveals the non-standard modifiers — shelfware (assigned below
 // purchased), discount, price basis, persona — so they don't clutter the row.
-function LicenseRow({ l, meta, personas, catalog, update, remove }) {
+function LicenseRow({ l, eng, meta, personas, segments, catalog, update, remove }) {
   const [open, setOpen] = useState(false)
   const fullyAssigned = l.quantity_assigned === l.quantity_purchased
   const tagIds = l.persona_ids || []
   const tagNames = tagIds.map((id) => personas.find((p) => p.id === id)?.name).filter(Boolean)
+  const basis = effBasis(l, eng)
   // Flag a SKU that doesn't correspond to any official catalog SKU (only when a
-  // price list is loaded to validate against).
-  const notInCatalog = catalog.length && (l.sku_reference || '').trim() && !matchSku(catalog, l.sku_reference)
+  // price list is loaded to validate against). Resolve within the line's basis.
+  const notInCatalog = catalog.length && (l.sku_reference || '').trim() && !matchSku(catalog, l.sku_reference, basis)
+  // Show the basis on the row when a line overrides the engagement default.
+  const overridden = l.segment || l.term_duration || l.billing_plan
   const chips = []
   if (notInCatalog) chips.push(<span key="c" className="badge warn" title="No matching SKU in the imported price list">⚠ not in catalog</span>)
   if (!fullyAssigned) chips.push(<span key="a" className="badge warn">{l.quantity_assigned}/{l.quantity_purchased} assigned</span>)
   if (l.discount_pct) chips.push(<span key="d" className="badge muted">−{pct(l.discount_pct)}</span>)
   if (l.price_basis && l.price_basis !== 'Unknown') chips.push(<span key="b" className="badge muted">{l.price_basis}</span>)
+  if (overridden) chips.push(<span key="basis" className="badge muted" title="Pricing basis overrides the engagement default">{basis.segment} · {basis.term}</span>)
   tagNames.forEach((n, i) => chips.push(<span key={`p${i}`} className="badge muted">{n}</span>))
 
   const togglePersona = (pid) => {
@@ -57,10 +71,13 @@ function LicenseRow({ l, meta, personas, catalog, update, remove }) {
       <tr>
         <td><button className="ghost sm" title="Adjustments" onClick={() => setOpen(!open)}>{open ? '▾' : '▸'}</button></td>
         <td><SkuCombobox value={l.sku_reference}
+          segment={basis.segment} term={basis.term} billing={basis.billing}
           onChange={(v) => update(l.id, { sku_reference: v })}
           onSelectSku={(sku) => {
             // Only seed list price when the line has NO price yet — never clobber
-            // a captured customer/discounted rate when re-pointing the SKU.
+            // a captured customer/discounted rate when re-pointing the SKU. The
+            // picked row is already resolved to the line's basis, so the seeded
+            // price is the right variant's (fixes same-title mispricing).
             if (sku && !Number(l.unit_price_paid_annual)) {
               update(l.id, { unit_price_paid_annual: sku.annual_unit_price, source_tag: 'ListPrice' })
             }
@@ -102,6 +119,26 @@ function LicenseRow({ l, meta, personas, catalog, update, remove }) {
                 </div>
                 <small className="src">Tag one or more. Cost splits across the tagged personas by headcount.</small></div>
             </div>
+            <div className="grid c4" style={{ padding: '.4rem 0' }}>
+              <div><label>Segment</label>
+                <select value={l.segment || ''} onChange={(e) => update(l.id, { segment: e.target.value || null })}>
+                  <option value="">Default ({eng.default_segment})</option>
+                  {segments.filter((s) => s !== eng.default_segment).map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <small className="src">Overrides the engagement segment for this line only.</small></div>
+              <div><label>Commit term</label>
+                <select value={l.term_duration || ''} onChange={(e) => update(l.id, { term_duration: e.target.value || null })}>
+                  <option value="">Default ({eng.default_term_duration})</option>
+                  {TERM_OPTS.filter(([v]) => v !== eng.default_term_duration).map(([v, lbl]) => <option key={v} value={v}>{lbl}</option>)}
+                </select></div>
+              <div><label>Purchase</label>
+                <select value={l.billing_plan || ''} onChange={(e) => update(l.id, { billing_plan: e.target.value || null })}>
+                  <option value="">Default ({eng.default_billing_plan})</option>
+                  {BILLING_OPTS.filter(([v]) => v !== eng.default_billing_plan).map(([v, lbl]) => <option key={v} value={v}>{lbl}</option>)}
+                </select>
+                <small className="src">Re-pick the SKU after changing basis to reseed its list price.</small></div>
+              <div></div>
+            </div>
           </td>
         </tr>
       )}
@@ -114,6 +151,15 @@ export default function CurrentLicensing({ engagement, meta }) {
   const [items, setItems] = useState([])
   const [personas, setPersonas] = useState([])
   const [err, setErr] = useState('')
+  // Local copy of the engagement so its pricing-basis defaults edit live here.
+  const [eng, setEng] = useState(engagement)
+  const [segments, setSegments] = useState([])
+  useEffect(() => { setEng(engagement) }, [engagement.id])
+  async function patchEng(patch) {
+    setEng((e) => ({ ...e, ...patch }))
+    try { await api.patch(`/api/engagements/${engagement.id}`, patch) } catch (e) { setErr(e.message) }
+  }
+  const engBasis = { segment: eng.default_segment, term: eng.default_term_duration, billing: eng.default_billing_plan }
   const blank = {
     sku_reference: '', quantity: 0,
     unit_price_paid_annual: 0, price_basis: 'Unknown', source_tag: 'CustomerStated',
@@ -133,6 +179,7 @@ export default function CurrentLicensing({ engagement, meta }) {
   useEffect(() => {
     load()
     api.get('/api/admin/ai/status').then((s) => setAiEnabled(s.enabled)).catch(() => {})
+    api.get('/api/catalog/segments').then((r) => setSegments(r.segments || [])).catch(() => setSegments([]))
     loadSkus().then(setCatalog)
   }, [engagement.id])
 
@@ -156,7 +203,7 @@ export default function CurrentLicensing({ engagement, meta }) {
       // Canonicalize each description to the matching official SKU title where we
       // find one; leave unmatched descriptions as-is (flagged in the preview).
       setParsed((res.rows || []).map((r) => {
-        const m = matchSku(skus, r.product_description)
+        const m = matchSku(skus, r.product_description, engBasis)
         return { ...r, _include: true, product_description: m ? m.sku_title : r.product_description }
       }))
     } catch (e) { setErr(e.message) } finally { setParsing(false) }
@@ -208,6 +255,28 @@ export default function CurrentLicensing({ engagement, meta }) {
         don't assume ERP.</p>
       {err && <div className="err">{err}</div>}
 
+      <div className="card" style={{ background: 'var(--panel2)', marginBottom: '.8rem' }}>
+        <div className="flex-between">
+          <b>Pricing basis (engagement default)</b>
+          <small className="src">The default segment/term/purchase for this customer — inherited from the global default, overridable per line. Sets which catalog price a picked SKU seeds.</small>
+        </div>
+        <div className="grid c4" style={{ marginTop: '.4rem' }}>
+          <div><label>Segment</label>
+            <select value={eng.default_segment} onChange={(e) => patchEng({ default_segment: e.target.value })}>
+              {(segments.length ? segments : [eng.default_segment]).map((s) => <option key={s} value={s}>{s}</option>)}
+            </select></div>
+          <div><label>Commit term</label>
+            <select value={eng.default_term_duration} onChange={(e) => patchEng({ default_term_duration: e.target.value })}>
+              {TERM_OPTS.map(([v, lbl]) => <option key={v} value={v}>{lbl}</option>)}
+            </select></div>
+          <div><label>Purchase</label>
+            <select value={eng.default_billing_plan} onChange={(e) => patchEng({ default_billing_plan: e.target.value })}>
+              {BILLING_OPTS.map(([v, lbl]) => <option key={v} value={v}>{lbl}</option>)}
+            </select></div>
+          <div></div>
+        </div>
+      </div>
+
       {aiEnabled && (
         <div className="card" style={{ background: 'var(--panel2)', marginBottom: '.8rem' }}>
           <div className="flex-between">
@@ -234,7 +303,7 @@ export default function CurrentLicensing({ engagement, meta }) {
                     </tr></thead>
                     <tbody>
                       {parsed.map((r, i) => {
-                        const m = catalog.length ? matchSku(catalog, r.product_description) : null
+                        const m = catalog.length ? matchSku(catalog, r.product_description, engBasis) : null
                         const unmatched = catalog.length && (r.product_description || '').trim() && !m
                         return (
                           <tr key={i} style={{
@@ -244,6 +313,7 @@ export default function CurrentLicensing({ engagement, meta }) {
                             <td><input type="checkbox" style={{ width: 'auto' }} checked={r._include}
                               onChange={(e) => setParsedField(i, { _include: e.target.checked })} /></td>
                             <td><SkuCombobox value={r.product_description} style={{ minWidth: 160 }}
+                              segment={engBasis.segment} term={engBasis.term} billing={engBasis.billing}
                               onChange={(v) => setParsedField(i, { product_description: v })} /></td>
                             <td>
                               {!catalog.length
@@ -273,7 +343,7 @@ export default function CurrentLicensing({ engagement, meta }) {
                       })}
                     </tbody>
                   </table>
-                  {catalog.length > 0 && parsed.some((r) => (r.product_description || '').trim() && !matchSku(catalog, r.product_description)) && (
+                  {catalog.length > 0 && parsed.some((r) => (r.product_description || '').trim() && !matchSku(catalog, r.product_description, engBasis)) && (
                     <p className="hint" style={{ marginTop: '.3rem' }}>
                       ⚠ Highlighted lines don't match an official SKU in the price list — pick the right SKU or leave as a free-text reference.
                     </p>
@@ -298,7 +368,7 @@ export default function CurrentLicensing({ engagement, meta }) {
         </tr></thead>
         <tbody>
           {items.map((l) => (
-            <LicenseRow key={l.id} l={l} meta={meta} personas={personas} catalog={catalog} update={update} remove={remove} />
+            <LicenseRow key={l.id} l={l} eng={eng} meta={meta} personas={personas} segments={segments} catalog={catalog} update={update} remove={remove} />
           ))}
         </tbody>
       </table>
@@ -306,6 +376,7 @@ export default function CurrentLicensing({ engagement, meta }) {
       <div className="grid c4" style={{ marginTop: '.8rem' }}>
         <div><label>SKU reference</label>
           <SkuCombobox value={form.sku_reference} placeholder="Microsoft 365 E3"
+            segment={engBasis.segment} term={engBasis.term} billing={engBasis.billing}
             onChange={(v) => setForm((f) => ({ ...f, sku_reference: v }))}
             onSelectSku={(sku) => sku && setForm((f) => (
               // Keep a price the user already entered; only seed list when empty.

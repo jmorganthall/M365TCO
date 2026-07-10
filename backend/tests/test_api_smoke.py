@@ -123,8 +123,8 @@ def test_price_sheet_csv_import(client):
                        data={"catalog_version": "2026-06"})
     body = resp.json()
     assert resp.status_code == 200
-    # 2 commercial rows imported, 1 education filtered
-    assert body["inserted"] == 2
+    # All 3 rows imported — every segment is ingested (no Commercial-only filter).
+    assert body["inserted"] == 3
     skus = client.get("/api/catalog/skus").json()
     e3 = next(s for s in skus if "E3" in s["sku_title"])
     # P1M 32.00 -> annual 384.00
@@ -132,6 +132,45 @@ def test_price_sheet_csv_import(client):
     e5 = next(s for s in skus if "E5" in s["sku_title"])
     # P1Y 660.00 -> annual 660.00
     assert e5["annual_unit_price"] == 660.0
+    # The Education SKU is now present and tagged with its segment.
+    edu = next(s for s in skus if s["segment"] == "Education")
+    assert abs(edu["annual_unit_price"] - 10.0) < 0.01  # P1Y annualization rounding
+    # Filtering to a segment returns only that segment's rows.
+    edu_only = client.get("/api/catalog/skus?segment=Education").json()
+    assert [s["segment"] for s in edu_only] == ["Education"]
+    # The distinct-segments endpoint surfaces what the sheet contained.
+    segs = client.get("/api/catalog/segments").json()["segments"]
+    assert "Commercial" in segs and "Education" in segs
+    assert segs[0] == "Commercial"  # known defaults first
+
+
+def test_segment_inheritance_and_line_overrides(client):
+    # Global default is Commercial out of the box.
+    gd = client.get("/api/admin/defaults").json()
+    assert gd["default_segment"] == "Commercial"
+
+    # A new engagement inherits the global default segment ("seed, then own").
+    eng = client.post("/api/engagements", json={"customer_name": "Nonprofit Co"}).json()
+    eid = eng["id"]
+    assert eng["default_segment"] == "Commercial"
+    assert eng["default_term_duration"] == "P1Y"
+    assert eng["default_billing_plan"] == "Annual"
+
+    # The customer sets its own segment default (a Nonprofit) without touching global.
+    eng = client.patch(f"/api/engagements/{eid}", json={"default_segment": "Nonprofit"}).json()
+    assert eng["default_segment"] == "Nonprofit"
+    assert client.get("/api/admin/defaults").json()["default_segment"] == "Commercial"
+
+    # A line inherits by default (None), and can override per-line.
+    lic = client.post(f"/api/engagements/{eid}/current-licenses",
+                      json={"sku_reference": "M365 E5", "quantity_purchased": 10}).json()
+    assert lic["segment"] is None and lic["term_duration"] is None
+    lic = client.patch(f"/api/engagements/{eid}/current-licenses/{lic['id']}",
+                       json={"segment": "Education", "term_duration": "P1M",
+                             "billing_plan": "Monthly"}).json()
+    assert lic["segment"] == "Education"
+    assert lic["term_duration"] == "P1M"
+    assert lic["billing_plan"] == "Monthly"
 
 
 def test_price_sheet_tab_delimited_import(client):

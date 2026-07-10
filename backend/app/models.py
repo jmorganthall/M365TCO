@@ -39,6 +39,14 @@ OVERRIDES = ("None", "ForceFullElimination")
 RESIDUAL_INTENTS = ("None", "IntendedOutOfScope")
 TERM_DURATIONS = ("P1M", "P1Y", "P3Y")
 BILLING_PLANS = ("Monthly", "Annual")
+# Customer segments as they appear in the Microsoft price sheet's `Segment`
+# column. This is the KNOWN default set (used to seed the global-default dropdown
+# when the catalog is empty); the live segment pickers are data-driven from the
+# distinct segments actually present in the catalog, so an unforeseen sheet value
+# is never silently dropped. `segment` columns therefore stay plain strings, not
+# a DB enum. "Commercial" is the ground-floor default of the inheritance chain
+# (GlobalDefaults -> Engagement -> line item).
+SEGMENTS = ("Commercial", "Education", "Government", "Nonprofit", "Charity")
 # How a pricing-catalog load reached us. The two load paths (manual CSV upload,
 # Partner Center price-sync) write a row on success; "Reconciled" is a row
 # synthesized from an already-loaded catalog that predates provenance recording,
@@ -68,6 +76,15 @@ class Engagement(Base):
     modeling_horizon_years: Mapped[int] = mapped_column(Integer, default=3)
     global_tooling_pct: Mapped[float] = mapped_column(Numeric(6, 4), default=0.30)
     notes: Mapped[str] = mapped_column(Text, default="")
+    # Pricing basis defaults for this engagement (seeded from GlobalDefaults on
+    # creation — "seed, then own"). Each is the middle tier of an inheritance
+    # chain: a customer sets these once (e.g. a Nonprofit customer overrides the
+    # global Commercial default), and an individual license line can still
+    # override them. They select which priced catalog variant a picked SKU
+    # resolves to, so the seeded list price is the right one.
+    default_segment: Mapped[str] = mapped_column(String, default="Commercial")
+    default_term_duration: Mapped[str] = mapped_column(String, default="P1Y")
+    default_billing_plan: Mapped[str] = mapped_column(String, default="Annual")
 
     personas: Mapped[list["Persona"]] = relationship(
         back_populates="engagement", cascade="all, delete-orphan"
@@ -256,6 +273,13 @@ class CurrentMicrosoftLicense(Base):
         SAEnum(*PRICE_BASIS, name="price_basis"), default="Unknown"
     )
     discount_pct: Mapped[float | None] = mapped_column(Numeric(6, 4), nullable=True)
+    # Pricing basis for THIS line. NULL = inherit the engagement default (which
+    # itself inherits the global default). Set = this line overrides it. These
+    # pick which priced catalog variant seeds the list price and record the
+    # commitment basis (yearly vs monthly purchase/commit) for the readout.
+    segment: Mapped[str | None] = mapped_column(String, nullable=True)
+    term_duration: Mapped[str | None] = mapped_column(String, nullable=True)
+    billing_plan: Mapped[str | None] = mapped_column(String, nullable=True)
     # DEPRECATED single-persona link. Superseded by the many-to-many persona tags
     # (CurrentLicensePersona). Kept for the one-time backfill; not read by the
     # engine or API anymore.
@@ -470,6 +494,10 @@ class GlobalDefaults(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default="singleton")
     default_tooling_pct: Mapped[float] = mapped_column(Numeric(6, 4), default=0.30)
     default_modeling_horizon_years: Mapped[int] = mapped_column(Integer, default=3)
+    # Ground-floor pricing-segment default. New engagements copy this into their
+    # own `default_segment` on creation; changing it here retargets only NEW
+    # engagements. "Commercial" out of the box.
+    default_segment: Mapped[str] = mapped_column(String, default="Commercial")
     # Operator-selected OpenRouter model for AI assist. Empty = use the env
     # default (settings.openrouter_model). Operational config, runtime-editable.
     openrouter_model: Mapped[str] = mapped_column(String, default="")
