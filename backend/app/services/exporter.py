@@ -265,7 +265,7 @@ def build_xlsx(engagement: models.Engagement, result: dict) -> bytes:
         rollup["existing_microsoft_annual"] + rollup["existing_third_party_annual"],
     ])
     wr.append(["Target Microsoft licensing (annual, in scope)", rollup["target_microsoft_annual"]])
-    wr.append(["Net TCO delta (annual)", rollup["net_tco_delta_annual"]])
+    wr.append(["Net TCO delta (annual) — negative = saving", rollup["net_tco_delta_annual"]])
     wr.append(["Residual third-party cost (annual)", rollup["residual_third_party_cost_annual"]])
     wr.append(["In-scope persona headcount", pop["in_scope_persona_headcount"]])
     wr.append(["Third-party covered population", pop["third_party_covered_population"]])
