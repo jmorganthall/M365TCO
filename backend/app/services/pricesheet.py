@@ -128,7 +128,7 @@ def _detect_delimiter(header_line: str) -> str:
 
 
 def parse_rows(text: str) -> Iterable[dict]:
-    """Yield normalized SKU dicts from price-sheet text (Commercial only).
+    """Yield normalized SKU dicts from price-sheet text (all segments).
 
     Delimiter is auto-detected from the header line so comma-, tab-, or
     semicolon-delimited exports all work.
@@ -145,9 +145,12 @@ def parse_rows(text: str) -> Iterable[dict]:
     for raw in reader:
         if not raw or not any(cell.strip() for cell in raw):
             continue
+        # All segments are ingested (Commercial, Education, Government, Nonprofit,
+        # …). Curation is a downstream, engagement-scoped concern: the effective
+        # segment (line -> engagement -> global default) selects which segment's
+        # priced variant a SKU resolves to. Filtering at ingest would throw away
+        # data the operator may legitimately need.
         segment = _get(raw, idx, "segment", "Commercial")
-        if segment and segment.lower() != "commercial":
-            continue  # v1 filters to Commercial (8.1)
 
         term = _get(raw, idx, "term_duration", "P1Y") or "P1Y"
         unit_price = _to_decimal(_get(raw, idx, "unit_price"))

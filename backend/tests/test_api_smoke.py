@@ -55,8 +55,9 @@ def test_full_workshop_flow_okta_500_vs_450(client):
 
     sc = result["scenarios"][0]
     assert sc["current_third_party_offset_annual"] == 45000.0
-    assert sc["delta_annual"] == 45000.0
-    assert result["rollup"]["net_tco_delta_annual"] == 45000.0
+    # Cost-change convention: target $0 retires $45k of spend -> negative = saving.
+    assert sc["delta_annual"] == -45000.0
+    assert result["rollup"]["net_tco_delta_annual"] == -45000.0
     # partial -> renewal NOT eliminated
     assert result["rollup"]["eliminated_renewal_cycles"] == []
 
@@ -123,8 +124,8 @@ def test_price_sheet_csv_import(client):
                        data={"catalog_version": "2026-06"})
     body = resp.json()
     assert resp.status_code == 200
-    # 2 commercial rows imported, 1 education filtered
-    assert body["inserted"] == 2
+    # All 3 rows imported — every segment is ingested (no Commercial-only filter).
+    assert body["inserted"] == 3
     skus = client.get("/api/catalog/skus").json()
     e3 = next(s for s in skus if "E3" in s["sku_title"])
     # P1M 32.00 -> annual 384.00
@@ -132,6 +133,98 @@ def test_price_sheet_csv_import(client):
     e5 = next(s for s in skus if "E5" in s["sku_title"])
     # P1Y 660.00 -> annual 660.00
     assert e5["annual_unit_price"] == 660.0
+    # The Education SKU is now present and tagged with its segment.
+    edu = next(s for s in skus if s["segment"] == "Education")
+    assert abs(edu["annual_unit_price"] - 10.0) < 0.01  # P1Y annualization rounding
+    # Filtering to a segment returns only that segment's rows.
+    edu_only = client.get("/api/catalog/skus?segment=Education").json()
+    assert [s["segment"] for s in edu_only] == ["Education"]
+    # The distinct-segments endpoint surfaces what the sheet contained.
+    segs = client.get("/api/catalog/segments").json()["segments"]
+    assert "Commercial" in segs and "Education" in segs
+    assert segs[0] == "Commercial"  # known defaults first
+
+
+def test_readout_delta_sign_and_color_convention(client):
+    """Saving = negative delta, shown green (pos); cost increase = positive delta,
+    shown neutral (no red 'neg' class). Spending more isn't styled as an error."""
+    # Saving: target price 0 retires the current spend.
+    eng = client.post("/api/engagements", json={"customer_name": "Save Co"}).json()
+    eid = eng["id"]
+    kw = client.post(f"/api/engagements/{eid}/personas", json={"name": "KW", "headcount": 100}).json()
+    client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "M365 E3", "quantity_purchased": 100, "quantity_assigned": 100,
+        "unit_price_paid_annual": 300, "persona_ids": [kw["id"]]})
+    client.post(f"/api/engagements/{eid}/scenarios", json={
+        "persona_id": kw["id"], "target_sku_reference": "E3", "target_unit_price_annual": 0})
+    r = client.post(f"/api/engagements/{eid}/compute").json()
+    assert r["rollup"]["net_tco_delta_annual"] == -30000.0  # negative = saving
+    html_body = client.get(f"/api/engagements/{eid}/readout.html").text
+    assert "headline pos" in html_body            # saving -> green
+    assert "Annual savings" in html_body
+    assert "headline neg" not in html_body        # never red
+
+    # Cost increase: expensive target.
+    eng2 = client.post("/api/engagements", json={"customer_name": "Up Co"}).json()
+    e2 = eng2["id"]
+    kw2 = client.post(f"/api/engagements/{e2}/personas", json={"name": "KW", "headcount": 100}).json()
+    client.post(f"/api/engagements/{e2}/current-licenses", json={
+        "sku_reference": "x", "quantity_purchased": 100, "quantity_assigned": 100,
+        "unit_price_paid_annual": 100, "persona_ids": [kw2["id"]]})
+    client.post(f"/api/engagements/{e2}/scenarios", json={
+        "persona_id": kw2["id"], "target_sku_reference": "E5", "target_unit_price_annual": 600})
+    r2 = client.post(f"/api/engagements/{e2}/compute").json()
+    assert r2["rollup"]["net_tco_delta_annual"] == 50000.0  # positive = cost increase
+    html2 = client.get(f"/api/engagements/{e2}/readout.html").text
+    assert "Annual cost increase" in html2
+    assert "headline neg" not in html2            # increase is neutral, not red
+
+
+def test_readout_branding_applied_and_sanitized(client):
+    eng = client.post("/api/engagements", json={"customer_name": "Brand Co"}).json()
+    eid = eng["id"]
+    tiny_png = ("data:image/png;base64,"
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+    out = client.patch(f"/api/engagements/{eid}", json={
+        "brand_primary_color": "#0a7d34",
+        "brand_accent_color": "red; } body { display:none",  # injection attempt
+        "brand_logo_data_url": tiny_png,
+    }).json()
+    assert out["brand_primary_color"] == "#0a7d34"
+
+    html_body = client.get(f"/api/engagements/{eid}/readout.html").text
+    assert "#0a7d34" in html_body           # valid color inlined
+    assert "display:none" not in html_body  # malicious accent color rejected
+    assert tiny_png[:30] in html_body       # logo embedded
+
+
+def test_segment_inheritance_and_line_overrides(client):
+    # Global default is Commercial out of the box.
+    gd = client.get("/api/admin/defaults").json()
+    assert gd["default_segment"] == "Commercial"
+
+    # A new engagement inherits the global default segment ("seed, then own").
+    eng = client.post("/api/engagements", json={"customer_name": "Nonprofit Co"}).json()
+    eid = eng["id"]
+    assert eng["default_segment"] == "Commercial"
+    assert eng["default_term_duration"] == "P1Y"
+    assert eng["default_billing_plan"] == "Annual"
+
+    # The customer sets its own segment default (a Nonprofit) without touching global.
+    eng = client.patch(f"/api/engagements/{eid}", json={"default_segment": "Nonprofit"}).json()
+    assert eng["default_segment"] == "Nonprofit"
+    assert client.get("/api/admin/defaults").json()["default_segment"] == "Commercial"
+
+    # A line inherits by default (None), and can override per-line.
+    lic = client.post(f"/api/engagements/{eid}/current-licenses",
+                      json={"sku_reference": "M365 E5", "quantity_purchased": 10}).json()
+    assert lic["segment"] is None and lic["term_duration"] is None
+    lic = client.patch(f"/api/engagements/{eid}/current-licenses/{lic['id']}",
+                       json={"segment": "Education", "term_duration": "P1M",
+                             "billing_plan": "Monthly"}).json()
+    assert lic["segment"] == "Education"
+    assert lic["term_duration"] == "P1M"
+    assert lic["billing_plan"] == "Monthly"
 
 
 def test_price_sheet_tab_delimited_import(client):

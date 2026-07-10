@@ -8,6 +8,7 @@ export default function AdminPanel({ onClose }) {
   const [defaults, setDefaults] = useState(null)
   const [ai, setAi] = useState({ enabled: false, model: '' })
   const [models, setModels] = useState([])
+  const [segments, setSegments] = useState([])
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
   const fileRef = useRef()
@@ -17,6 +18,7 @@ export default function AdminPanel({ onClose }) {
     api.get('/api/admin/secrets').then(setSecrets).catch((e) => setErr(e.message))
     api.get('/api/catalog/version').then(setCatalog).catch(() => {})
     api.get('/api/admin/defaults').then(setDefaults).catch(() => {})
+    api.get('/api/catalog/segments').then((r) => setSegments(r.segments || [])).catch(() => {})
     api.get('/api/admin/ai/status').then((s) => {
       setAi(s)
       if (s.enabled) api.get('/api/admin/ai/models').then((r) => setModels(r.models)).catch(() => {})
@@ -78,6 +80,13 @@ export default function AdminPanel({ onClose }) {
                   defaultValue={defaults.default_modeling_horizon_years}
                   onBlur={(e) => saveDefaults({ default_modeling_horizon_years: Number(e.target.value) })} />
               </div>
+              <div>
+                <label>Default pricing segment</label>
+                <select value={defaults.default_segment}
+                  onChange={(e) => saveDefaults({ default_segment: e.target.value })}>
+                  {(segments.length ? segments : [defaults.default_segment]).map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
               <span className="muted" style={{ alignSelf: 'flex-end', paddingBottom: '.5rem' }}>
                 Current tooling split: {pct(defaults.default_tooling_pct)}
               </span>
@@ -104,6 +113,18 @@ export default function AdminPanel({ onClose }) {
               </div>
               <span className="muted" style={{ alignSelf: 'flex-end', paddingBottom: '.5rem' }}>
                 {models.length} models available
+              </span>
+            </div>
+          )}
+          {ai.enabled && defaults && (
+            <div className="toolbar">
+              <div style={{ flex: 2 }}>
+                <label>Sanity-check model — inexpensive; used for the pre-readout “does this make sense?” pass</label>
+                <ModelCombobox models={models} value={defaults.sanity_check_model}
+                  onChange={(id) => saveDefaults({ sanity_check_model: id })} />
+              </div>
+              <span className="muted" style={{ alignSelf: 'flex-end', paddingBottom: '.5rem' }}>
+                Blank = built-in default
               </span>
             </div>
           )}

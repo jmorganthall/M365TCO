@@ -7,13 +7,63 @@ export default function Readout({ engagement }) {
   const [result, setResult] = useState(null)
   const [snapshots, setSnapshots] = useState([])
   const [err, setErr] = useState('')
+  // Pre-readout AI sanity check (advisory).
+  const [aiEnabled, setAiEnabled] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [sanity, setSanity] = useState(null)
+  const [narrating, setNarrating] = useState(false)
+  const [narratives, setNarratives] = useState(null)
 
   function compute() {
     setErr('')
     api.post(`/api/engagements/${eid}/compute`).then(setResult).catch((e) => setErr(e.message))
     api.get(`/api/engagements/${eid}/snapshots`).then(setSnapshots).catch(() => {})
   }
-  useEffect(() => { compute() }, [eid])
+  useEffect(() => {
+    compute()
+    setSanity(null); setNarratives(null)
+    api.get('/api/admin/ai/status').then((s) => setAiEnabled(s.enabled)).catch(() => {})
+  }, [eid])
+
+  async function runSanity() {
+    setChecking(true); setErr('')
+    try { setSanity(await api.post(`/api/engagements/${eid}/sanity-check`)) }
+    catch (e) { setErr(e.message) } finally { setChecking(false) }
+  }
+  async function runNarrative() {
+    setNarrating(true); setErr('')
+    try { setNarratives((await api.post(`/api/engagements/${eid}/narrative`)).narratives) }
+    catch (e) { setErr(e.message) } finally { setNarrating(false) }
+  }
+
+  // Readout branding (logo + theme colors). Local so edits reflect immediately;
+  // persisted on the engagement and applied by the HTML readout.
+  const [brand, setBrand] = useState({
+    logo: engagement.brand_logo_data_url || '',
+    primary: engagement.brand_primary_color || '',
+    accent: engagement.brand_accent_color || '',
+  })
+  useEffect(() => setBrand({
+    logo: engagement.brand_logo_data_url || '',
+    primary: engagement.brand_primary_color || '',
+    accent: engagement.brand_accent_color || '',
+  }), [eid])
+  async function patchBrand(patch) {
+    const next = { ...brand, ...patch }
+    setBrand(next)
+    const body = {
+      brand_logo_data_url: next.logo, brand_primary_color: next.primary,
+      brand_accent_color: next.accent,
+    }
+    try { await api.patch(`/api/engagements/${eid}`, body) } catch (e) { setErr(e.message) }
+  }
+  function onLogoFile(file) {
+    if (!file) return
+    if (!file.type.startsWith('image/')) { setErr('Logo must be an image (PNG/SVG/JPG).'); return }
+    const reader = new FileReader()
+    reader.onload = () => patchBrand({ logo: reader.result })
+    reader.readAsDataURL(file)
+  }
 
   async function setOverride(tpId, payload) {
     try {
@@ -32,7 +82,9 @@ export default function Readout({ engagement }) {
   if (!result) return <div className="card"><p className="muted">Computing…</p></div>
 
   const r = result.rollup
-  const pos = r.net_tco_delta_annual >= 0
+  // Cost-change convention: negative delta = saving (good -> green); positive =
+  // a cost increase (neutral/default -> not alarming, spending more isn't bad).
+  const saving = r.net_tco_delta_annual < 0
   const needsClassify = result.dispositions.filter((d) => d.requires_residual_classification)
 
   return (
@@ -40,11 +92,21 @@ export default function Readout({ engagement }) {
       <div className="card">
         <div className="flex-between">
           <div>
-            <div className="muted">Net TCO delta · annualized USD <PricingBadge /></div>
-            <div className={`headline ${pos ? 'pos' : 'neg'}`}>{usd(r.net_tco_delta_annual)}</div>
-            <div className="muted">{pos ? 'Hard-dollar annual savings' : 'Annual cost increase — shown honestly'}</div>
+            <div className="muted">Net TCO delta · annualized USD · <small>negative = saving</small> <PricingBadge /></div>
+            <div className={`headline ${saving ? 'pos' : ''}`}>{usd(r.net_tco_delta_annual)}</div>
+            <div className="muted">{saving ? 'Hard-dollar annual savings' : r.net_tco_delta_annual > 0 ? 'Annual cost increase — shown honestly' : 'No net change'}</div>
           </div>
           <div className="row" style={{ gap: '.4rem' }}>
+            {aiEnabled && (
+              <button className="ghost sm" onClick={runSanity} disabled={checking}
+                title="Ask an inexpensive model to flag likely mistakes before you present">
+                {checking ? 'Checking…' : '✨ AI sanity check'}</button>
+            )}
+            {aiEnabled && (
+              <button className="ghost sm" onClick={runNarrative} disabled={narrating}
+                title="Draft the per-persona business narrative (today / what's new / value)">
+                {narrating ? 'Writing…' : '✨ Business narratives'}</button>
+            )}
             <a href={`/api/engagements/${eid}/readout.html`} target="_blank" rel="noreferrer">
               <button className="ghost sm">Open HTML readout</button></a>
             <a href={`/api/engagements/${eid}/readout.xlsx`}>
@@ -57,42 +119,96 @@ export default function Readout({ engagement }) {
           <b>{r.population_check.in_scope_persona_headcount}</b> · third-party covered population{' '}
           <b>{r.population_check.third_party_covered_population}</b>. Gaps surface as residuals below.
         </div>
+        <details style={{ marginTop: '.5rem' }}>
+          <summary className="src" style={{ cursor: 'pointer' }}>Readout branding (logo + theme colors)</summary>
+          <div className="grid c4" style={{ marginTop: '.5rem', alignItems: 'end' }}>
+            <div><label>Logo (PNG/SVG)</label>
+              <input type="file" accept="image/*" onChange={(e) => onLogoFile(e.target.files?.[0])} />
+              {brand.logo && <div style={{ marginTop: '.3rem' }}>
+                <img src={brand.logo} alt="logo" style={{ maxHeight: 40, maxWidth: 140 }} />{' '}
+                <button className="ghost sm" onClick={() => patchBrand({ logo: '' })}>Clear</button>
+              </div>}</div>
+            <div><label>Primary color</label>
+              <input type="color" value={brand.primary || '#1a1a2e'}
+                onChange={(e) => patchBrand({ primary: e.target.value })} /></div>
+            <div><label>Accent color</label>
+              <input type="color" value={brand.accent || '#2563eb'}
+                onChange={(e) => patchBrand({ accent: e.target.value })} /></div>
+            <div><small className="src">Applied to the HTML readout header, section titles, and callout border. Entered per engagement.</small></div>
+          </div>
+        </details>
+        {sanity && (
+          <div className="popcheck" style={{ marginTop: '.5rem' }}>
+            <div className="flex-between">
+              <b>AI sanity check</b>
+              <small className="src">Advisory only — never edits your data. Model: {sanity.model}</small>
+            </div>
+            {sanity.findings.length === 0
+              ? <div className="muted" style={{ marginTop: '.3rem' }}>✓ No issues flagged — the numbers look reasonable.</div>
+              : (
+                <ul style={{ margin: '.4rem 0 0', paddingLeft: '1.1rem' }}>
+                  {sanity.findings.map((f, i) => (
+                    <li key={i} style={{ marginBottom: '.25rem' }}>
+                      <span className={`badge ${f.severity === 'error' ? 'neg' : f.severity === 'warn' ? 'warn' : 'muted'}`}>
+                        {f.severity}</span>{' '}
+                      {f.field && <b>{f.field}: </b>}{f.message}
+                    </li>
+                  ))}
+                </ul>
+              )}
+          </div>
+        )}
       </div>
+
+      {narratives && (
+        <div className="card">
+          <div className="flex-between">
+            <h2>Business narratives</h2>
+            <small className="src">AI draft per in-scope persona — review before you present. Advisory only.</small>
+          </div>
+          {narratives.length === 0
+            ? <p className="muted">No in-scope scenarios to narrate yet — set target bundles on the Scenarios tab.</p>
+            : narratives.map((n, i) => (
+              <div key={i} className="popcheck" style={{ marginTop: '.5rem' }}>
+                <b>{n.persona}</b>
+                {n.today && <p style={{ margin: '.3rem 0' }}><b>Today: </b>{n.today}</p>}
+                {n.whats_new && <p style={{ margin: '.3rem 0' }}><b>What's new: </b>{n.whats_new}</p>}
+                {n.value && <p style={{ margin: '.3rem 0' }}><b>Value: </b>{n.value}</p>}
+              </div>
+            ))}
+        </div>
+      )}
 
       <div className="card">
         <h2>How we get to the number</h2>
-        <p className="hint">Existing annualized spend for the in-scope population, the
-          third-party tooling those users free up when they move, and the target
-          Microsoft licensing — building to the net TCO delta above.</p>
+        <p className="hint">The new target Microsoft licensing, less the existing spend it
+          retires (current Microsoft plus the third-party tooling those users free up),
+          building to the net change above. Negative = saving.</p>
         <table className="bridge">
           <tbody>
             <tr>
-              <td>Existing Microsoft licensing <small className="muted">(current assigned)</small></td>
-              <td className="num">{usd(r.existing_microsoft_annual)}</td>
+              <td>Target Microsoft licensing <small className="muted">(new per-persona bundles)</small></td>
+              <td className="num">{usd(r.target_microsoft_annual)}</td>
             </tr>
             <tr>
-              <td>Existing third-party tooling <small className="muted">(freed up by in-scope moves)</small></td>
-              <td className="num">{usd(r.existing_third_party_annual)}</td>
+              <td>Less: existing Microsoft licensing retired <small className="muted">(current assigned)</small></td>
+              <td className="num pos">−{usd(r.existing_microsoft_annual)}</td>
+            </tr>
+            <tr>
+              <td>Less: existing third-party tooling <small className="muted">(freed up by in-scope moves)</small></td>
+              <td className="num pos">−{usd(r.existing_third_party_annual)}</td>
             </tr>
             {r.freed_third_party.map((f) => (
               <tr key={f.third_party_product_id} className="bridge-sub">
                 <td>↳ {f.third_party_product_name}{f.credited_annual === 0
                   ? <span className="muted"> — $0 credited (set its covered population to free up spend)</span>
                   : ' freed up'}</td>
-                <td className="num">{usd(f.credited_annual)}</td>
+                <td className="num pos">{f.credited_annual ? `−${usd(f.credited_annual)}` : usd(0)}</td>
               </tr>
             ))}
             <tr className="bridge-total">
-              <td><b>Total existing spend (in scope)</b></td>
-              <td className="num"><b>{usd(r.existing_microsoft_annual + r.existing_third_party_annual)}</b></td>
-            </tr>
-            <tr>
-              <td>Target Microsoft licensing <small className="muted">(new per-persona bundles)</small></td>
-              <td className="num neg">−{usd(r.target_microsoft_annual)}</td>
-            </tr>
-            <tr className="bridge-total">
-              <td><b>Net TCO delta</b> <small className="muted">{pos ? '(annual savings)' : '(annual cost increase)'}</small></td>
-              <td className={`num ${pos ? 'pos' : 'neg'}`}><b>{usd(r.net_tco_delta_annual)}</b></td>
+              <td><b>Net TCO delta</b> <small className="muted">{saving ? '(annual savings)' : r.net_tco_delta_annual > 0 ? '(annual cost increase)' : '(no net change)'}</small></td>
+              <td className={`num ${saving ? 'pos' : ''}`}><b>{usd(r.net_tco_delta_annual)}</b></td>
             </tr>
           </tbody>
         </table>
@@ -121,7 +237,7 @@ export default function Readout({ engagement }) {
                 <td>{s.persona_name}</td><td>{s.target_sku_reference}</td><td className="num">{s.headcount}</td>
                 <td className="num">{usd(s.current_spend_annual)}</td>
                 <td className="num">{usd(s.target_spend_annual)}</td>
-                <td className={`num ${s.delta_annual >= 0 ? 'pos' : 'neg'}`}>{usd(s.delta_annual)}</td>
+                <td className={`num ${s.delta_annual < 0 ? 'pos' : ''}`}>{usd(s.delta_annual)}</td>
                 <td>{s.in_scope ? <span className="badge pos">In scope</span> : <span className="badge muted">Excluded</span>}</td>
               </tr>
             ))}

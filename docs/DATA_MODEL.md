@@ -101,14 +101,36 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Identity:** `uuid`. **Scope:** root (owns everything else).
 - **Relationships:** one-to-many to all eight child sets, all `cascade="all, delete-orphan"`.
 - **Field ownership:** user-entered (`customer_name`, `market`, `currency`,
-  `notes`, `global_tooling_pct`, `modeling_horizon_years`); derived
+  `notes`, `global_tooling_pct`, `modeling_horizon_years`, `default_segment`,
+  `default_term_duration`, `default_billing_plan`, and the readout branding
+  `brand_logo_data_url` / `brand_primary_color` / `brand_accent_color`); derived
   (`created_at`, `updated_at`).
 - **CRUD:** `GET/POST/PATCH/DELETE /api/engagements`, plus `duplicate`, `compute`,
   `readout.html`, `readout.xlsx`, `snapshots`.
 - **Lifecycle:** on create, seeds outcomes + Microsoft coverage from the seed
-  library (§6). `duplicate` deep-copies every child with id remapping.
+  library (§6), and copies `default_segment` from `GlobalDefaults`. `duplicate`
+  deep-copies every child (and the basis defaults) with id remapping.
 - **Note:** `global_tooling_pct` is the engagement default for the managed split;
   individual third-party rows may override it.
+- **Readout branding:** `brand_logo_data_url` (a base64 image data URL),
+  `brand_primary_color`, `brand_accent_color` are user-entered runtime data
+  applied to the HTML readout (blank = neutral built-in theme). They are the
+  customer/practice's own runtime branding — never a hard-coded identity — so
+  they honor the white-label rule (like `customer_name`). The exporter sanitizes
+  colors against a strict CSS-color pattern and the logo against a base64 image
+  data-URL pattern before inlining, so neither can break out of the readout's
+  `<style>`/`<img>` context. Editable on the Readout tab. A future reusable
+  `BrandTheme` library (global presets seeding these fields) would follow §2.
+- **Pricing-basis inheritance:** `default_segment` / `default_term_duration`
+  (P1Y) / `default_billing_plan` (Annual) are the middle tier of a three-level
+  chain — **GlobalDefaults → Engagement → line item** — that selects which priced
+  catalog variant a picked SKU resolves to. A Nonprofit customer sets
+  `default_segment = Nonprofit` once; a `CurrentMicrosoftLicense` can still
+  override any of the three per line (§4.5). Because the tuple `(segment, term,
+  billing)` resolves to exactly one priced `MicrosoftSku` row, the list price
+  seeded on a SKU pick is the correct variant's — no silent same-title collapse.
+  All three are GUI-surfaced: the global default in Settings → Defaults, the
+  engagement default and per-line overrides on the Current Licensing tab.
 
 ### 4.2 Persona
 - **Identity:** `uuid`. **Scope:** engagement-scoped.
@@ -159,8 +181,13 @@ FK, UUID PK, cascade-deleted with the engagement.
   leaves the SKU unmapped. All three are surfaced/editable in Settings → Staple
   bundles (`GET /api/catalog/skus`, `?unmapped=true` for the work-list).
 - **Write-normalization:** `services/pricesheet.py` — header-mapped parse,
-  Commercial filter, annualization, upsert by natural key keeping the latest
-  active row by `effective_end_date`. The AI mapper lives in `services/ai.py`
+  **all segments ingested** (no Commercial-only filter — segment curation is an
+  engagement-scoped, inherited concern, not an ingest-time drop), annualization,
+  upsert by natural key keeping the latest active row by `effective_end_date`.
+  `segment` is stored per row; `GET /api/catalog/skus` accepts `segment` / `term`
+  / `billing` filters and returns the FULL catalog by default (`limit` is opt-in,
+  never a silent cap); `GET /api/catalog/segments` lists the distinct segments
+  present for the data-driven pickers. The AI mapper lives in `services/ai.py`
   (`suggest_bundle_mappings` + pure `normalize_bundle_suggestions`) with its
   editable instructions in the `sku_bundle_map` AiPrompt.
 - **CRUD:** read-only pricing over the API (`GET /api/catalog/skus`); prices written
@@ -251,7 +278,9 @@ FK, UUID PK, cascade-deleted with the engagement.
   via `CurrentLicensePersona` (§4.5a). The legacy single `persona_id` column is
   deprecated (kept only for the one-time backfill).
 - **Field ownership:** user-entered (`quantity_assigned` ← model on this not
-  purchased, `unit_price_paid_annual`, `price_basis`, `discount_pct`); provenance.
+  purchased, `unit_price_paid_annual`, `price_basis`, `discount_pct`, and the
+  per-line basis overrides `segment` / `term_duration` / `billing_plan` where
+  NULL = inherit the engagement default per §4.1); provenance.
   API exposes `persona_ids` (the tags), not `persona_id`.
 - **CRUD:** `GET/POST/PATCH/DELETE …/current-licenses`; `persona_ids` on the body
   replaces the tag set.
@@ -372,9 +401,35 @@ existing first-class objects** — it stores no new state, which is the correct
 The chosen bundle is applied by writing a normal `PersonaScenario` (§4.8); the
 analysis itself is transient.
 
+### 4.10a-bis Pre-readout sanity check (derived, persists nothing)
+`POST …/sanity-check` runs an advisory AI pass right before a readout: it
+computes the engagement, builds a compact summary (`services/sanity.build_sanity_payload`
+— pure), and asks an **inexpensive** model (`GlobalDefaults.sanity_check_model`,
+else `settings.sanity_check_model`) via the editable `readout_sanity_check`
+AiPrompt to flag likely mistakes (implausible per-seat prices, assigned > purchased,
+coverage/headcount mismatches, contradictory deltas). It returns
+`[{severity, field, message}]` for the operator to eyeball on the Readout view.
+Like §4.10a it **stores no new state and never feeds the math** — it is a pure
+read over existing first-class objects, the correct "don't create second-class
+data" outcome. `services/sanity.normalize_findings` is the pure validator (kept
+separate from the HTTP call for unit testing).
+
+### 4.10a-ter Scenario business narrative (derived, persists nothing)
+`POST …/narrative` drafts the sales story for each in-scope persona scenario —
+today / what's new / value — grounded in the computed scenarios
+(`services/narrative.build_narrative_payload` — pure: persona, headcount, current
+SKUs, target bundle + add-ons, displaced third-party tools, and the annual
+delta), via the editable `scenario_narrative` AiPrompt on the resolved main
+model. Returns `[{persona, today, whats_new, value}]` on the Readout view. Like
+§4.10a it **stores no state and never feeds the math** — an advisory draft the SA
+reviews. It is the buildable-today part of the "business narrative" goal; the
+market-research enrichment (an external agent) and the Forrester TEI soft-savings
+overlay (§10) attach later as their own first-class overlays, not edits here.
+
 ### 4.10b AiPrompt — editable AI instructions
 - **Identity:** `uuid` PK plus a unique `key` per AI function
-  (`coverage_suggest`, `third_party_parse`, `current_license_parse`).
+  (`coverage_suggest`, `third_party_parse`, `current_license_parse`,
+  `sku_bundle_map`, `readout_sanity_check`, `scenario_narrative`).
   **Scope:** **global**.
 - **Field ownership:** seeded from `seeds/ai_prompts.json` (`label`,
   `description`, `instructions`); the operator edits `instructions` at runtime and
@@ -388,11 +443,16 @@ analysis itself is transient.
   output still passes through review (coverage ratification / parse preview).
 
 ### 4.11 Out-of-band data sets
-- **GlobalDefaults / Settings (PRD 5.10):** currently realized as the versioned
-  **seed files** (`outcomes.json`, `coverage.json`) plus `config.py` constants and
-  the per-engagement defaults on the Engagement row. If these need to become
-  operator-editable at runtime, promote them to a single-row `GlobalDefaults`
-  table following this same contract — do not scatter the values.
+- **GlobalDefaults / Settings (PRD 5.10):** the single-row `GlobalDefaults` table
+  holds operator-editable, engagement-seeded defaults — `default_tooling_pct`,
+  `default_modeling_horizon_years`, `default_segment` (the ground floor of the
+  pricing-basis chain, §4.1), and the operational `openrouter_model` /
+  `sanity_check_model` (the latter an inexpensive model for the advisory
+  pre-readout sanity check; blank falls back to `settings.sanity_check_model`).
+  Edited in Settings → Defaults (`GET/PUT /api/admin/defaults`); new engagements
+  copy the domain defaults on creation ("seed, then own"). The versioned **seed files**
+  (`outcomes.json`, `coverage.json`) remain the source for the outcome/coverage
+  libraries. Add new global defaults here, not as scattered constants.
 - **Secrets:** the OpenRouter key lives in the encrypted store
   (`services/secrets.py`), not the relational DB. Same get/set/delete contract,
   swappable for Azure Key Vault. Price-sheet sync uses interactive login and

@@ -54,5 +54,6 @@ in `backend/tests/test_engine.py`.
 ## Container image
 
 Published to `ghcr.io/jmorganthall/m365tco` by `.github/workflows/docker-publish.yml`
-on pushes to the default branch and `v*` tags. `:latest` tracks the repository's
-default branch.
+on pushes to `main`, the repository default branch, and `v*` tags. `:latest`
+tracks `main` (the development trunk) — or the default branch if it is pushed —
+so merges to `main` update the image `docker-compose.yml` pulls.

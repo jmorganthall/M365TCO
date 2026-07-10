@@ -108,11 +108,12 @@ class RollupResult:
     in_scope_persona_headcount: int
     third_party_covered_population: int
     # Spend bridge (Section 6.8): the components that build to net_tco_delta_annual
-    # over the IN-SCOPE set, so the readout can show existing spend (Microsoft +
-    # third-party) → target Microsoft → net delta. By construction
-    #   net_tco_delta_annual = existing_microsoft_annual
-    #                        + existing_third_party_annual
-    #                        - target_microsoft_annual
+    # over the IN-SCOPE set, so the readout can show the new target Microsoft cost
+    # minus the existing spend it retires → the net change. By construction, with
+    # the cost-change convention (delta = new − old):
+    #   net_tco_delta_annual = target_microsoft_annual
+    #                        - existing_microsoft_annual
+    #                        - existing_third_party_annual
     existing_microsoft_annual: Decimal
     existing_third_party_annual: Decimal
     target_microsoft_annual: Decimal
@@ -257,7 +258,11 @@ def compute(engagement: Engagement) -> EngineResult:
         target_spend = _money(
             Decimal(persona.headcount) * scenario.target_unit_price_annual
         )
-        delta = _money(current_spend - target_spend)
+        # Cost-change convention (Section 6.7): delta = new − old.
+        #   delta > 0  → spending MORE (a cost increase)
+        #   delta < 0  → spending LESS (a hard-dollar saving)
+        # Saving money is the good outcome, so a negative delta is the win.
+        delta = _money(target_spend - current_spend)
 
         scenario_results.append(
             ScenarioResult(
@@ -322,9 +327,9 @@ def compute(engagement: Engagement) -> EngineResult:
     )
 
     # Spend bridge over the in-scope set. The three totals build to net_delta:
-    # existing Microsoft + existing third-party (the credited offset) − target
-    # Microsoft. Summing the same per-scenario numbers the rollup already sums
-    # keeps the bridge exactly consistent with net_tco_delta_annual.
+    # target Microsoft − existing Microsoft − existing third-party (the credited
+    # offset). Summing the same per-scenario numbers the rollup already sums keeps
+    # the bridge exactly consistent with net_tco_delta_annual (delta = new − old).
     in_scope_results = [r for r in scenario_results if r.in_scope]
     existing_microsoft = _money(
         sum((r.current_microsoft_annual for r in in_scope_results), Decimal("0"))

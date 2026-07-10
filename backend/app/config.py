@@ -32,6 +32,11 @@ class Settings(BaseSettings):
 
     # OpenRouter model used for coverage suggestions (key comes from secret store).
     openrouter_model: str = "anthropic/claude-3.5-sonnet"
+    # Default model for the pre-readout sanity check — a deliberately inexpensive
+    # model, since the check is a cheap "does this make sense?" pass run often.
+    # Overridable per install in Settings (GlobalDefaults.sanity_check_model);
+    # empty there falls back to this.
+    sanity_check_model: str = "deepseek/deepseek-chat"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
     # Default market/currency (PRD 14: US/USD assumed).

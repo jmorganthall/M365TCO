@@ -106,10 +106,75 @@ def test_suggest_coverage_all_unknown_engagement_404(client):
     assert r.status_code == 404
 
 
+def test_normalize_findings_clamps_and_orders():
+    from app.services import sanity
+    data = {"findings": [
+        {"severity": "info", "field": "price", "message": "Looks fine."},
+        {"severity": "nope", "field": "x", "message": "Bad severity -> info."},
+        {"severity": "error", "field": "E5", "message": "$10/seat/yr is implausible."},
+        {"severity": "warn", "message": "  "},   # empty message -> dropped
+        {"field": "y"},                            # no message -> dropped
+    ]}
+    out = sanity.normalize_findings(data)
+    assert len(out) == 3
+    assert out[0]["severity"] == "error"      # most severe first
+    assert out[-1]["severity"] == "info"
+    assert any(f["severity"] == "info" and f["field"] == "x" for f in out)  # clamped
+
+
+def test_build_sanity_payload_shape():
+    from app.services import sanity
+
+    class L:
+        sku_reference = "M365 E5"; quantity_purchased = 10; quantity_assigned = 10
+        unit_price_paid_annual = 684; segment = None
+
+    class Eng:
+        customer_name = "Acme"; market = "US"; currency = "USD"
+        default_segment = "Commercial"
+        personas = []; current_licenses = [L()]; third_party_products = []
+
+    result = {"rollup": {"net_tco_delta_annual": 1000,
+                         "population_check": {"in_scope_persona_headcount": 10,
+                                              "third_party_covered_population": 0}},
+              "scenarios": []}
+    payload = sanity.build_sanity_payload(Eng(), result)
+    assert payload["current_licenses"][0]["segment"] == "Commercial"  # inherited
+    assert payload["current_licenses"][0]["unit_price_annual"] == 684.0
+    assert payload["rollup"]["net_tco_delta_annual"] == 1000
+
+
+def test_normalize_narratives_filters_and_validates():
+    from app.services import narrative
+    data = {"narratives": [
+        {"persona": "Knowledge Worker", "today": "E3 today", "whats_new": "E5 security", "value": "Consolidates Okta; $45k/yr."},
+        {"persona": "Ghost", "value": "not a real persona"},        # unknown -> dropped
+        {"persona": "Frontline", "today": "F1", "whats_new": "x", "value": "  "},  # empty value -> dropped
+        {"persona": "Knowledge Worker", "value": "dupe"},           # duplicate -> dropped
+    ]}
+    out = narrative.normalize_narratives(data, ["Knowledge Worker", "Frontline"])
+    assert len(out) == 1
+    assert out[0]["persona"] == "Knowledge Worker"
+    assert out[0]["whats_new"] == "E5 security"
+
+
+def test_narrative_requires_ai_enabled(client):
+    eng = client.post("/api/engagements", json={"customer_name": "Story Co"}).json()
+    r = client.post(f"/api/engagements/{eng['id']}/narrative")
+    assert r.status_code == 400  # no OpenRouter key in the test env
+
+
+def test_sanity_check_requires_ai_enabled(client):
+    eng = client.post("/api/engagements", json={"customer_name": "Sanity Co"}).json()
+    r = client.post(f"/api/engagements/{eng['id']}/sanity-check")
+    assert r.status_code == 400  # no OpenRouter key in the test env
+
+
 def test_ai_prompts_seeded_and_editable(client):
     prompts = client.get("/api/admin/ai/prompts").json()["prompts"]
     keys = {p["key"] for p in prompts}
-    assert {"coverage_suggest", "third_party_parse", "current_license_parse"} <= keys
+    assert {"coverage_suggest", "third_party_parse", "current_license_parse",
+            "readout_sanity_check", "scenario_narrative"} <= keys
     assert all(p["is_default"] for p in prompts)  # freshly seeded
 
     # Edit one, then it is no longer flagged default.
