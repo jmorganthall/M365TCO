@@ -84,7 +84,19 @@ erDiagram
     GLOBAL_DEFAULTS ||..|| ENGAGEMENT : "seeds defaults into"
     SEED_LIBRARY ||..o{ OUTCOME : "copied into"
     SEED_LIBRARY ||..o{ COVERAGE_MAP_ENTRY : "copied into (MS coverage)"
+
+    BUNDLE ||--o{ ADDON_ELIGIBILITY : "add-on eligible for base"
+    BUNDLE ||--o{ LICENSE_LIMIT_MEMBER : "counts toward"
+    LICENSE_LIMIT ||--o{ LICENSE_LIMIT_MEMBER : "pools"
+    BUNDLE }o..o{ COVERAGE_MAP_ENTRY : "bundle_id (MS coverage)"
+    BUNDLE }o..o{ PERSONA_SCENARIO : "base + add-ons"
 ```
+
+The global **rules layer over the Bundle spine** — `Bundle`, `AddonEligibility`
+(§4.4d), `LicenseLimit` + `LicenseLimitMember` (§4.4e) — is not engagement-owned;
+it is global, seeded, and editable, and it is evaluated *for* an engagement at
+compute time (limit checks, the Business Premium swap §4.8b) without persisting
+per-engagement state.
 
 Solid lines are hard foreign keys with cascade delete. **Dotted lines are soft
 references** — a string (`sku_reference`) resolved by lookup, not a database FK
@@ -164,7 +176,16 @@ FK, UUID PK, cascade-deleted with the engagement.
   edits never mutate the global library).
 - **Field ownership:** seeded (`name`, `description`, `seed_key` from the library);
   user-entered when added mid-workshop (`is_custom = true`).
-- **CRUD:** `GET/POST/PATCH/DELETE …/outcomes`.
+- **CRUD:** `GET/POST/PATCH/DELETE …/outcomes`. `OutcomeOut` exposes the
+  system-derived **`seed_key`** (the stable library identifier, null for custom
+  outcomes) so consumers — the AI coverage-suggest prompt, Coverage Check, tests —
+  reference an outcome by its durable identity, never by a mutable display name.
+- **Granularity:** the default outcomes are split to where Microsoft SKUs and
+  third-party tools actually differ — Endpoint = EPP vs EDR, Email = Hygiene vs
+  Advanced Threat Protection, Identity = Core vs Governance, plus CASB and the two
+  telephony layers (`telephony-pbx` Cloud PBX vs `telephony-pstn` dial-tone). The
+  set is fully data-driven: no product code hard-codes an outcome; splitting one is
+  a seed edit that flows through coverage, the engine, and the AI prompts unchanged.
 - **Lifecycle:** copied from `seeds/outcomes.json` on engagement creation; freely
   extended at runtime.
 
