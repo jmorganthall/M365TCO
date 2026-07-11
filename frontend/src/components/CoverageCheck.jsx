@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { api } from '../api'
 
+// Reusable $0 third party representing "covered by something out of scope".
+const OOS_NAME = 'Covered elsewhere (out of scope)'
+
 // Coverage validation, between Scenarios and Readout. Per persona, the outcomes
 // NOT delivered today by their current Microsoft licensing or a tagged third
 // party. The operator resolves each gap using EXISTING relationships — map a
@@ -35,6 +38,25 @@ export default function CoverageCheck({ engagement, onNavigate }) {
         })
       }
       load()
+    } catch (e) { setErr(e.message) }
+  }
+
+  // "Covered elsewhere, out of scope": the outcome is delivered by something we
+  // aren't costing. Recorded with existing objects only — a reusable $0
+  // third-party ("Covered elsewhere (out of scope)") mapped to the outcome and
+  // tagged to the persona. It drops off the gap list and never counts as a new
+  // outcome, and its $0 cost keeps it out of the TCO math.
+  async function markOutOfScope(persona, outcome) {
+    setErr('')
+    try {
+      let sentinel = data.third_parties.find((t) => t.name === OOS_NAME)
+      if (!sentinel) {
+        const c = await api.post(`${base}/third-party`, {
+          name: OOS_NAME, raw_cost: 0, cost_period: 'Annual', covered_count: 0,
+        })
+        sentinel = { id: c.id, name: c.name, persona_ids: c.persona_ids || [] }
+      }
+      await mapThirdParty(persona, outcome, sentinel.id)
     } catch (e) { setErr(e.message) }
   }
 
@@ -73,13 +95,15 @@ export default function CoverageCheck({ engagement, onNavigate }) {
                     <td>
                       <select value="" onChange={(e) => {
                         const v = e.target.value
-                        if (v === '__new') onNavigate && onNavigate('thirdparty')
+                        if (v === '__oos') markOutOfScope(p, o)
+                        else if (v === '__new') onNavigate && onNavigate('thirdparty')
                         else if (v) mapThirdParty(p, o, v)
                       }}>
                         <option value="">Leave as a new outcome (not covered today)</option>
-                        {data.third_parties.map((t) => (
+                        {data.third_parties.filter((t) => t.name !== OOS_NAME).map((t) => (
                           <option key={t.id} value={t.id}>✓ Actually covered by: {t.name}</option>
                         ))}
+                        <option value="__oos">✓ Covered elsewhere — out of scope (don't cost it)</option>
                         <option value="__new">+ Add a third-party solution…</option>
                       </select>
                     </td>
