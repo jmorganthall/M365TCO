@@ -37,7 +37,9 @@ class GlobalDefaultsOut(ORMModel):
     default_modeling_horizon_years: int
     default_segment: str
     openrouter_model: str
+    openrouter_web_search: bool
     sanity_check_model: str
+    sanity_check_web_search: bool
 
 
 class GlobalDefaultsUpdate(BaseModel):
@@ -45,7 +47,9 @@ class GlobalDefaultsUpdate(BaseModel):
     default_modeling_horizon_years: Optional[int] = None
     default_segment: Optional[str] = None
     openrouter_model: Optional[str] = None
+    openrouter_web_search: Optional[bool] = None
     sanity_check_model: Optional[str] = None
+    sanity_check_web_search: Optional[bool] = None
 
 
 class DefaultOutcomeIn(BaseModel):
@@ -133,6 +137,7 @@ class EngagementUpdate(BaseModel):
     brand_accent_color: Optional[str] = None
     notes: Optional[str] = None
     bp_swap_enabled: Optional[bool] = None
+    business_cap_enabled: Optional[bool] = None
     # Customer Info tab.
     workshop_date: Optional[date] = None
     industry: Optional[str] = None
@@ -156,6 +161,7 @@ class EngagementOut(ORMModel):
     brand_accent_color: str
     notes: str
     bp_swap_enabled: bool
+    business_cap_enabled: bool = False
     workshop_date: Optional[date] = None
     industry: str = ""
     hq_location: str = ""

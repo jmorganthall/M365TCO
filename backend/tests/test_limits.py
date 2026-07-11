@@ -106,6 +106,86 @@ def test_license_limit_crud_and_validation(client):
     assert lim["id"] not in keys
 
 
+# A price sheet that gives Business Premium (264) and E3 (432) a catalog ERP, so
+# both are priced candidates in the best-bundle optimizer.
+_PRICED_CSV = (
+    "ProductTitle,ProductId,SkuId,SkuTitle,TermDuration,BillingPlan,Market,"
+    "Currency,UnitPrice,EffectiveStartDate,EffectiveEndDate,ERP Price,Segment\n"
+    "Microsoft 365 E3,P1,001,M365 E3,P1Y,Annual,US,USD,384,2026-01-01,2026-12-31,432,Commercial\n"
+    "Microsoft 365 Business Premium,P2,002,M365 BP,P1Y,Annual,US,USD,264,2026-01-01,2026-12-31,264,Commercial\n"
+)
+
+
+def test_best_bundle_respects_business_cap_when_enabled(client):
+    """The best-bundle optimizer only gates on the Business seat cap when the
+    engagement opts in. A 400-seat persona can't fit under the 300 cap, so the
+    cheaper Business Premium is flagged and de-recommended in favor of E3."""
+    client.post("/api/catalog/import-csv", files={"file": ("p.csv", _PRICED_CSV, "text/csv")})
+    eng = client.post("/api/engagements", json={"customer_name": "OptCap Co"}).json()
+    eid = eng["id"]
+    p = client.post(f"/api/engagements/{eid}/personas",
+                    json={"name": "KW", "headcount": 400}).json()
+    # On E3 today → required = E3 outcomes, all covered by Business Premium (gapless).
+    client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "Microsoft 365 E3", "quantity_assigned": 400,
+        "unit_price_paid_annual": 432, "persona_ids": [p["id"]]})
+    url = f"/api/engagements/{eid}/personas/{p['id']}/bundle-analysis"
+
+    # Cap OFF (default): the cheaper Business Premium is recommended, no cap context.
+    res = client.post(url).json()
+    by = {b["sku_reference"]: b for b in res["bundles"]}
+    assert by["Microsoft 365 Business Premium"]["recommended"] is True
+    assert by["Microsoft 365 Business Premium"]["cap_limited"] is False
+    assert res["seat_caps"] == []
+
+    # Cap ON: 400 > 300 → Business Premium flagged cap_limited and de-recommended; E3 wins.
+    client.patch(f"/api/engagements/{eid}", json={"business_cap_enabled": True})
+    res = client.post(url).json()
+    by = {b["sku_reference"]: b for b in res["bundles"]}
+    assert by["Microsoft 365 Business Premium"]["cap_limited"] is True
+    assert by["Microsoft 365 Business Premium"]["cap_headroom"] == 300
+    assert by["Microsoft 365 Business Premium"]["recommended"] is False
+    assert by["Microsoft 365 E3"]["recommended"] is True
+    cap = next(c for c in res["seat_caps"] if c["cap"] == 300)
+    assert cap["consumed"] == 0 and cap["headroom"] == 300
+
+
+def test_best_bundle_cap_counts_seats_recommended_for_other_personas(client):
+    """Headroom nets out seats already recommended for OTHER personas, and excludes
+    the persona being analyzed from its own count."""
+    client.post("/api/catalog/import-csv", files={"file": ("p.csv", _PRICED_CSV, "text/csv")})
+    eng = client.post("/api/engagements", json={"customer_name": "OptCap2"}).json()
+    eid = eng["id"]
+    client.patch(f"/api/engagements/{eid}", json={"business_cap_enabled": True})
+    big = client.post(f"/api/engagements/{eid}/personas",
+                      json={"name": "Big", "headcount": 250}).json()
+    small = client.post(f"/api/engagements/{eid}/personas",
+                        json={"name": "Small", "headcount": 40}).json()
+    # Big is already planned onto Business Premium (in-scope) → 250 Business seats committed.
+    client.post(f"/api/engagements/{eid}/scenarios", json={
+        "persona_id": big["id"], "target_sku_reference": "Microsoft 365 Business Premium",
+        "target_unit_price_annual": 264, "in_scope": True})
+    # Small is on E3 today so Business Premium is gapless for it.
+    client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "Microsoft 365 E3", "quantity_assigned": 40,
+        "unit_price_paid_annual": 432, "persona_ids": [small["id"]]})
+
+    # Analyzing Small (40): 250 already recommended, 50 left → 40 fits, BP still recommended.
+    res = client.post(f"/api/engagements/{eid}/personas/{small['id']}/bundle-analysis").json()
+    cap = next(c for c in res["seat_caps"] if c["cap"] == 300)
+    assert cap["consumed"] == 250 and cap["headroom"] == 50
+    by = {b["sku_reference"]: b for b in res["bundles"]}
+    assert by["Microsoft 365 Business Premium"]["cap_limited"] is False
+    assert by["Microsoft 365 Business Premium"]["recommended"] is True
+
+    # Analyzing Big (250) itself: its OWN 250 is excluded → consumed 0, headroom 300, fits.
+    res2 = client.post(f"/api/engagements/{eid}/personas/{big['id']}/bundle-analysis").json()
+    cap2 = next(c for c in res2["seat_caps"] if c["cap"] == 300)
+    assert cap2["consumed"] == 0 and cap2["headroom"] == 300
+    by2 = {b["sku_reference"]: b for b in res2["bundles"]}
+    assert by2["Microsoft 365 Business Premium"]["recommended"] is True
+
+
 def test_new_bundle_coverage_backfill_is_additive(client):
     """On an already-seeded DB, the startup backfill seeds default coverage for a
     brand-new bundle (Business Standard) without disturbing existing bundles."""

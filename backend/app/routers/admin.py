@@ -87,6 +87,11 @@ def _resolved_model(db: Session) -> str:
     return defaults.get_defaults(db).openrouter_model or settings.openrouter_model
 
 
+def _main_web_search(db: Session) -> bool:
+    """Whether to attach OpenRouter web search to main-model calls."""
+    return defaults.get_defaults(db).openrouter_web_search
+
+
 # ---- Global default outcome library (template for new engagements) ----
 @router.get("/default-outcomes", response_model=list[schemas.DefaultOutcomeOut])
 def list_default_outcomes(db: Session = Depends(get_db)):
@@ -312,12 +317,14 @@ def _outcome_dicts(db: Session, engagement_id: str) -> list[dict]:
     return [{"id": o.id, "name": o.name, "description": o.description} for o in outcomes]
 
 
-def _suggest_and_persist(db, engagement_id, tp, outcome_dicts, instructions, model) -> list[dict]:
+def _suggest_and_persist(
+    db, engagement_id, tp, outcome_dicts, instructions, model, web_search=False
+) -> list[dict]:
     """Ask the model for tp's coverage and write unratified rows, skipping any
     product+outcome that already has an entry. Flushes but does not commit — the
     caller commits so a bulk run is one transaction. Returns the created rows."""
     suggestions = ai.suggest_coverage(
-        tp.name, outcome_dicts, instructions=instructions, model=model
+        tp.name, outcome_dicts, instructions=instructions, model=model, web_search=web_search
     )
     created = []
     for s in suggestions:
@@ -361,6 +368,7 @@ def suggest_coverage(
         created = _suggest_and_persist(
             db, engagement_id, tp, _outcome_dicts(db, engagement_id),
             ai_prompts.get_instructions(db, "coverage_suggest"), _resolved_model(db),
+            _main_web_search(db),
         )
     except Exception as exc:  # network/model errors surface cleanly
         raise HTTPException(502, f"AI suggestion failed: {exc}")
@@ -395,10 +403,13 @@ def suggest_coverage_all(engagement_id: str, db: Session = Depends(get_db)):
     outcome_dicts = _outcome_dicts(db, engagement_id)
     instructions = ai_prompts.get_instructions(db, "coverage_suggest")
     model = _resolved_model(db)
+    web_search = _main_web_search(db)
     created_total, results, errors = 0, [], []
     for tp in unmapped:
         try:
-            created = _suggest_and_persist(db, engagement_id, tp, outcome_dicts, instructions, model)
+            created = _suggest_and_persist(
+                db, engagement_id, tp, outcome_dicts, instructions, model, web_search
+            )
             created_total += len(created)
             # created == 0 means the model found no correlation for this product.
             results.append({"name": tp.name, "created": len(created)})
@@ -432,6 +443,7 @@ def parse_third_party(
             payload.raw_text,
             instructions=ai_prompts.get_instructions(db, "third_party_parse"),
             model=_resolved_model(db),
+            web_search=_main_web_search(db),
         )
     except Exception as exc:  # network/model errors surface cleanly
         raise HTTPException(502, f"AI parse failed: {exc}")
@@ -456,6 +468,7 @@ def parse_current_licenses(
             payload.raw_text,
             instructions=ai_prompts.get_instructions(db, "current_license_parse"),
             model=_resolved_model(db),
+            web_search=_main_web_search(db),
         )
     except Exception as exc:  # network/model errors surface cleanly
         raise HTTPException(502, f"AI parse failed: {exc}")
@@ -490,6 +503,7 @@ def research_customer(
             known,
             instructions=ai_prompts.get_instructions(db, "customer_research"),
             model=_resolved_model(db),
+            web_search=_main_web_search(db),
         )
     except Exception as exc:  # network/model errors surface cleanly
         raise HTTPException(502, f"AI research failed: {exc}")

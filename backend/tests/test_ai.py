@@ -233,6 +233,45 @@ def test_parse_third_party_requires_ai_enabled(client):
     assert r.status_code == 400
 
 
+def test_web_search_plugin_attached_only_when_enabled(monkeypatch):
+    """The OpenRouter web plugin is added to the request payload iff web_search is
+    set, and JSON mode is preserved either way."""
+    import app.services.ai as ai_mod
+
+    captured = {}
+
+    class FakeResp:
+        status_code = 200
+        text = ""
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"choices": [{"message": {"content": "{}"}}]}
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        captured["body"] = json
+        return FakeResp()
+
+    monkeypatch.setattr(ai_mod, "_api_key", lambda: "test-key")
+    monkeypatch.setattr(ai_mod.httpx, "post", fake_post)
+
+    # Off by default: no web plugin.
+    ai_mod.parse_third_party("some text", "instructions", model="x/y")
+    assert "plugins" not in captured["body"]
+    assert captured["body"]["response_format"] == {"type": "json_object"}
+
+    # Enabled: provider-agnostic web plugin attached, JSON mode kept.
+    ai_mod.parse_third_party("some text", "instructions", model="x/y", web_search=True)
+    assert captured["body"]["plugins"] == [{"id": "web"}]
+    assert captured["body"]["response_format"] == {"type": "json_object"}
+
+    # The web plugin also reaches customer research (the canonical web-search case).
+    ai_mod.research_customer({"customer_name": "Acme"}, "instructions", model="x/y", web_search=True)
+    assert captured["body"]["plugins"] == [{"id": "web"}]
+
+
 def test_normalize_customer_research_pure():
     """The customer-research normalizer: keeps confident fields, strips a website
     scheme, coerces employee_count to a positive int, drops blanks — no HTTP."""

@@ -94,22 +94,7 @@ export default function CoverageMap({ engagement, meta }) {
 
   return (
     <>
-      <div className="card">
-        <h2>Outcome coverage map</h2>
-        <p className="hint">The engine's lookup for what a target SKU displaces. Microsoft
-          SKU coverage is seeded and ratified. Capture third-party coverage per engagement.
-          <b> Unratified AI suggestions never feed the math.</b></p>
-        {err && <div className="err">{err}</div>}
-        <div className="toolbar">
-          <div style={{ flex: 2 }}>
-            <label>Add custom outcome (mid-workshop)</label>
-            <input value={newOutcome} placeholder="Unusual customer capability"
-              onChange={(e) => setNewOutcome(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && addCustomOutcome()} />
-          </div>
-          <button onClick={addCustomOutcome}>Add outcome</button>
-        </div>
-      </div>
+      {err && <div className="err">{err}</div>}
 
       <details className="card">
         <summary style={{ cursor: 'pointer' }}>
@@ -146,7 +131,8 @@ export default function CoverageMap({ engagement, meta }) {
         </div>
         <p className="hint">Map each product to the outcomes it delivers. A target SKU
           displaces a product only when it covers every outcome the product delivers.
-          <b> "AI suggest all"</b> runs only on products with no coverage yet.</p>
+          <b> "AI suggest all"</b> runs only on products with no coverage yet.
+          <b> Unratified AI suggestions never feed the math.</b></p>
         {msg && <div className="popcheck" style={{ margin: '.4rem 0' }}>{msg}</div>}
         {products.length === 0 && <p className="muted">Add third-party products first.</p>}
         {products.map((tp) => (
@@ -160,7 +146,7 @@ export default function CoverageMap({ engagement, meta }) {
                 <span key={c.id} className={`badge ${c.ratified ? 'pos' : 'warn'}`}>
                   {outcomeName(c.outcome_id)}
                   {c.ai_suggested && !c.ratified && ' · AI'}
-                  {!c.ratified && <button className="sm ghost" style={{ marginLeft: 6 }} onClick={() => ratify(c.id)}>ratify</button>}
+                  {!c.ratified && <button className="sm ghost" style={{ marginLeft: 6 }} onClick={() => ratify(c.id)}>Confirm</button>}
                   <button className="sm danger" style={{ marginLeft: 4 }} onClick={() => removeCoverage(c.id)}>×</button>
                 </span>
               ))}
@@ -193,7 +179,7 @@ export default function CoverageMap({ engagement, meta }) {
                 <span key={c.id} className={`badge ${c.ratified ? 'pos' : 'warn'}`}>
                   {outcomeName(c.outcome_id)}
                   {c.ai_suggested && !c.ratified && ' · AI'}
-                  {!c.ratified && <button className="sm ghost" style={{ marginLeft: 6 }} onClick={() => ratify(c.id)}>ratify</button>}
+                  {!c.ratified && <button className="sm ghost" style={{ marginLeft: 6 }} onClick={() => ratify(c.id)}>Confirm</button>}
                   <button className="sm danger" style={{ marginLeft: 4 }} onClick={() => removeCoverage(c.id)}>×</button>
                 </span>
               ))}
@@ -225,6 +211,25 @@ export default function CoverageMap({ engagement, meta }) {
           </>
         )}
       </details>
+
+      <div className="card">
+        <h2>Add a custom outcome</h2>
+        <p className="hint">An outcome is a capability that coverage maps to. This engagement
+          already has a seeded set (see <b>Outcomes in this engagement</b> at the top) — you rarely
+          need to add one. Use this only when a customer has a capability that isn't already on the
+          list (for example, something that surfaces mid-workshop). A new outcome becomes immediately
+          selectable in the third-party and Microsoft coverage sections above. It affects this
+          engagement only — never other engagements or the global default library.</p>
+        <div className="toolbar">
+          <div style={{ flex: 2 }}>
+            <label>New outcome name</label>
+            <input value={newOutcome} placeholder="e.g. Privileged access management"
+              onChange={(e) => setNewOutcome(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addCustomOutcome()} />
+          </div>
+          <button onClick={addCustomOutcome}>Add outcome</button>
+        </div>
+      </div>
     </>
   )
 }

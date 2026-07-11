@@ -607,7 +607,11 @@ trustworthy, without inventing data.
   pricing-basis chain, §4.1), and the operational `openrouter_model` /
   `sanity_check_model` (the latter an inexpensive model for the advisory
   pre-readout sanity check; blank falls back to `settings.sanity_check_model`).
-  Edited in Settings → Defaults (`GET/PUT /api/admin/defaults`); new engagements
+  Each model also has a per-model `openrouter_web_search` / `sanity_check_web_search`
+  flag: when set, that model's OpenRouter calls attach the provider-agnostic web
+  plugin so answers can be grounded in live search results (off by default — it
+  adds cost and latency, so the frequent sanity-check pass stays search-free unless
+  the operator opts in). Edited in Settings → Defaults (`GET/PUT /api/admin/defaults`); new engagements
   copy the domain defaults on creation ("seed, then own"). The versioned **seed files**
   (`outcomes.json`, `coverage.json`) remain the source for the outcome/coverage
   libraries. Add new global defaults here, not as scattered constants.

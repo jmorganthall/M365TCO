@@ -56,15 +56,30 @@ def list_models() -> list[dict]:
     return out
 
 
-def _chat_json(system: str, user: str, model: str | None) -> dict:
+def _chat_json(system: str, user: str, model: str | None, web_search: bool = False) -> dict:
     """POST a system+user turn to OpenRouter and return the parsed JSON object.
 
     Shared by every AI function so the auth, JSON-mode, error surfacing, and
     prose-wrapped-JSON salvage live in one place. `system` is the editable
     instruction template (an AiPrompt); `user` is the call-specific payload.
+    When `web_search` is set, OpenRouter's model-agnostic web plugin is attached
+    so the model can ground its answer in live search results (extra cost/latency).
     """
     api_key = _api_key()
     model = model or settings.openrouter_model
+    body = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "temperature": 0,
+        "response_format": {"type": "json_object"},
+    }
+    if web_search:
+        # OpenRouter's provider-agnostic web plugin (equivalent to the ":online"
+        # model suffix, but without mutating the operator's chosen model id).
+        body["plugins"] = [{"id": "web"}]
     resp = httpx.post(
         f"{settings.openrouter_base_url}/chat/completions",
         headers={
@@ -72,15 +87,7 @@ def _chat_json(system: str, user: str, model: str | None) -> dict:
             "Content-Type": "application/json",
             "X-Title": "M365 TCO Tool",
         },
-        json={
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            "temperature": 0,
-            "response_format": {"type": "json_object"},
-        },
+        json=body,
         timeout=60,
     )
     try:
@@ -101,7 +108,8 @@ def _chat_json(system: str, user: str, model: str | None) -> dict:
 
 
 def suggest_coverage(
-    product_name: str, outcomes: list[dict], instructions: str, model: str | None = None
+    product_name: str, outcomes: list[dict], instructions: str, model: str | None = None,
+    web_search: bool = False,
 ) -> list[dict]:
     """Ask the model which outcomes a third-party product delivers.
 
@@ -114,7 +122,7 @@ def suggest_coverage(
         f"- id={o['id']} | {o['name']}: {o.get('description', '')}" for o in outcomes
     )
     user = f"Product: {product_name}\n\nOutcomes:\n{outcome_lines}"
-    data = _chat_json(instructions, user, model)
+    data = _chat_json(instructions, user, model, web_search)
 
     valid_ids = {o["id"] for o in outcomes}
     out, seen = [], set()
@@ -152,7 +160,8 @@ def normalize_bundle_suggestions(
 
 
 def suggest_bundle_mappings(
-    skus: list[dict], bundles: list[dict], instructions: str, model: str | None = None
+    skus: list[dict], bundles: list[dict], instructions: str, model: str | None = None,
+    web_search: bool = False,
 ) -> list[dict]:
     """Classify priced catalog SKUs onto staple bundles. `skus` is a list of
     {id, product_title, sku_title}; `bundles` is a list of {key, name, kind}.
@@ -167,7 +176,7 @@ def suggest_bundle_mappings(
         f"- key={b['key']} | {b['name']} ({b['kind']})" for b in bundles
     )
     user = f"SKUs to classify:\n{sku_lines}\n\nBundles:\n{bundle_lines}"
-    data = _chat_json(instructions, user, model)
+    data = _chat_json(instructions, user, model, web_search)
     return normalize_bundle_suggestions(
         data, {s["id"] for s in skus}, {b["key"] for b in bundles}
     )
@@ -217,14 +226,16 @@ def normalize_parsed_products(data: dict) -> list[dict]:
     return out
 
 
-def parse_third_party(raw_text: str, instructions: str, model: str | None = None) -> list[dict]:
+def parse_third_party(
+    raw_text: str, instructions: str, model: str | None = None, web_search: bool = False
+) -> list[dict]:
     """Parse a block of customer-provided text into third-party product rows.
 
     `instructions` is the editable system prompt (an AiPrompt). Returns a list of
     {name, vendor, raw_cost, cost_period, covered_count} for the caller to show
     for review — nothing is persisted here.
     """
-    data = _chat_json(instructions, raw_text, model)
+    data = _chat_json(instructions, raw_text, model, web_search)
     return normalize_parsed_products(data)
 
 
@@ -284,20 +295,25 @@ def normalize_customer_research(data: dict) -> dict:
     return out
 
 
-def research_customer(known: dict, instructions: str, model: str | None = None) -> dict:
+def research_customer(
+    known: dict, instructions: str, model: str | None = None, web_search: bool = False
+) -> dict:
     """Given whatever is known about a customer (at minimum a name, maybe a location
     or website), ask the model to fill in the rest — industry, HQ location, website,
     employee count, and a short description — from its knowledge. `instructions` is
     the editable system prompt (an AiPrompt). Advisory: the caller shows the
     suggestions for review and fills empty fields only; nothing is persisted here.
-    Returns a dict of just the fields the model was confident about."""
+    Returns a dict of just the fields the model was confident about. `web_search`
+    grounds the lookup in live results (researching a company is the canonical case)."""
     lines = [f"{k}: {v}" for k, v in known.items() if v]
     user = "Known about the customer company:\n" + ("\n".join(lines) if lines else "(name only)")
-    data = _chat_json(instructions, user, model)
+    data = _chat_json(instructions, user, model, web_search)
     return normalize_customer_research(data)
 
 
-def sanity_check(summary: dict, instructions: str, model: str | None = None) -> list[dict]:
+def sanity_check(
+    summary: dict, instructions: str, model: str | None = None, web_search: bool = False
+) -> list[dict]:
     """Run the pre-readout "does this make sense?" pass over a compact engagement
     summary (built by services/sanity.build_sanity_payload). `instructions` is the
     editable system prompt (an AiPrompt). Returns advisory findings
@@ -306,12 +322,13 @@ def sanity_check(summary: dict, instructions: str, model: str | None = None) -> 
     from .sanity import normalize_findings
 
     user = json.dumps(summary, default=str, indent=2)
-    data = _chat_json(instructions, user, model)
+    data = _chat_json(instructions, user, model, web_search)
     return normalize_findings(data)
 
 
 def scenario_narratives(
-    scenarios: list[dict], instructions: str, model: str | None = None
+    scenarios: list[dict], instructions: str, model: str | None = None,
+    web_search: bool = False,
 ) -> list[dict]:
     """Draft a per-scenario business narrative (today / what's new / value) from
     the grounded inputs built by services/narrative.build_narrative_payload.
@@ -321,16 +338,18 @@ def scenario_narratives(
     from .narrative import normalize_narratives
 
     user = json.dumps({"scenarios": scenarios}, default=str, indent=2)
-    data = _chat_json(instructions, user, model)
+    data = _chat_json(instructions, user, model, web_search)
     return normalize_narratives(data, [s.get("persona") for s in scenarios])
 
 
-def parse_current_licenses(raw_text: str, instructions: str, model: str | None = None) -> list[dict]:
+def parse_current_licenses(
+    raw_text: str, instructions: str, model: str | None = None, web_search: bool = False
+) -> list[dict]:
     """Parse a block of customer-provided text into existing-license rows.
 
     `instructions` is the editable system prompt (an AiPrompt). Returns rows with
     the stated price/period/scope plus a normalized annual per-seat price, for the
     caller to review — nothing is persisted here.
     """
-    data = _chat_json(instructions, raw_text, model)
+    data = _chat_json(instructions, raw_text, model, web_search)
     return normalize_parsed_licenses(data)

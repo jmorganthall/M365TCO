@@ -105,6 +105,12 @@ class Engagement(Base):
     # unless that persona opts out (PersonaScenario.bp_swap_optout). The 300-seat
     # cap (LicenseLimit) bounds it. User-entered.
     bp_swap_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Engagement-level "respect the Microsoft 365 Business seat cap in best-bundle
+    # recommendations" toggle. When on, the optimizer is given the remaining headroom
+    # under each max_total_seats LicenseLimit (300 for Business) net of seats already
+    # recommended, and will not recommend a Business plan for a persona that would push
+    # the tenant over the cap — it falls through to the next-best plan. User-entered.
+    business_cap_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
 
     personas: Mapped[list["Persona"]] = relationship(
         back_populates="engagement", cascade="all, delete-orphan"
@@ -599,9 +605,16 @@ class GlobalDefaults(Base):
     # Operator-selected OpenRouter model for AI assist. Empty = use the env
     # default (settings.openrouter_model). Operational config, runtime-editable.
     openrouter_model: Mapped[str] = mapped_column(String, default="")
+    # Feed OpenRouter's web-search plugin to the main model's calls (coverage,
+    # parsing, narratives). Adds live web results at extra cost/latency; off by
+    # default. Operational config, runtime-editable.
+    openrouter_web_search: Mapped[bool] = mapped_column(Boolean, default=False)
     # Model for the pre-readout sanity check. Empty = use the env default
     # (settings.sanity_check_model, an inexpensive model). Operational config.
     sanity_check_model: Mapped[str] = mapped_column(String, default="")
+    # Feed OpenRouter's web-search plugin to the sanity-check call. Off by default
+    # to keep this frequent, low-stakes pass cheap and fast. Operational config.
+    sanity_check_web_search: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class PriceSyncSettings(Base):

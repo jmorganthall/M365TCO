@@ -23,6 +23,8 @@ def test_adds_missing_columns_to_existing_table(tmp_path):
 
     cols = {c["name"] for c in inspect(eng).get_columns("global_defaults")}
     assert "openrouter_model" in cols
+    assert "openrouter_web_search" in cols
+    assert "sanity_check_web_search" in cols
     assert "default_modeling_horizon_years" in cols
     # Existing data preserved.
     with eng.connect() as c:

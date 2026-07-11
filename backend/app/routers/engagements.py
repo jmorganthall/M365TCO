@@ -228,12 +228,14 @@ def sanity_check(engagement_id: str, db: Session = Depends(get_db)):
         raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
     result = result_to_dict(compute.compute_and_persist(db, engagement_id))
     summary = sanity.build_sanity_payload(eng, result)
-    model = defaults.get_defaults(db).sanity_check_model or settings.sanity_check_model
+    row = defaults.get_defaults(db)
+    model = row.sanity_check_model or settings.sanity_check_model
     try:
         findings = ai.sanity_check(
             summary,
             instructions=ai_prompts.get_instructions(db, "readout_sanity_check"),
             model=model,
+            web_search=row.sanity_check_web_search,
         )
     except Exception as exc:  # network/model errors surface cleanly
         raise HTTPException(502, f"Sanity check failed: {exc}")
@@ -252,12 +254,14 @@ def scenario_narrative(engagement_id: str, db: Session = Depends(get_db)):
     scenarios = narrative.build_narrative_payload(eng, result)
     if not scenarios:
         return {"narratives": []}  # nothing in scope to narrate
-    model = defaults.get_defaults(db).openrouter_model or settings.openrouter_model
+    row = defaults.get_defaults(db)
+    model = row.openrouter_model or settings.openrouter_model
     try:
         narratives = ai.scenario_narratives(
             scenarios,
             instructions=ai_prompts.get_instructions(db, "scenario_narrative"),
             model=model,
+            web_search=row.openrouter_web_search,
         )
     except Exception as exc:  # network/model errors surface cleanly
         raise HTTPException(502, f"Narrative generation failed: {exc}")

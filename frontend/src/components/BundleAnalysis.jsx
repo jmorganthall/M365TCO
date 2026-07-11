@@ -53,6 +53,17 @@ export default function BundleAnalysis({ engagement, persona, onApply, onClose }
         </div>
       )}
 
+      {data?.seat_caps?.map((c) => (
+        <div key={c.name} className="popcheck" style={{ marginBottom: '.5rem', fontSize: '.8rem' }}>
+          <b>{c.name}:</b> {c.consumed} of {c.cap} seats already recommended ·{' '}
+          <b>{c.headroom}</b> left for {persona.name} ({persona.headcount}).
+          {persona.headcount > c.headroom && (
+            <span className="neg"> Business plans can't cover all {persona.headcount} seats —
+              recommending the next-best plan instead.</span>
+          )}
+        </div>
+      ))}
+
       {data && (
         <table>
           <thead><tr>
@@ -67,6 +78,12 @@ export default function BundleAnalysis({ engagement, persona, onApply, onClose }
                 <td>
                   <b>{b.sku_reference}</b>{' '}
                   {b.recommended && <span className="badge pos">Recommended</span>}
+                  {b.cap_limited && (
+                    <span className="badge neg"
+                      title={`Only ${b.cap_headroom} Business seats remain; this persona needs ${persona.headcount}.`}>
+                      Business cap reached
+                    </span>
+                  )}
                   {b.addons.length > 0 && (
                     <div className="pill-list" style={{ marginTop: 3 }}>
                       {b.addons.map((a) => (
