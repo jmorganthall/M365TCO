@@ -45,10 +45,11 @@ def test_swap_inherited_when_enabled_and_eligible(client):
     # Effective target substituted with Business Premium; target spend uses BP price.
     assert s["target_sku_reference"] == "Microsoft 365 Business Premium"
     assert s["target_spend_annual"] == 26400.0        # 100 * 264
-    assert s["delta_annual"] == 16800.0               # 43200 current - 26400
+    # Delta convention (main): target - current, so a saving is NEGATIVE.
+    assert s["delta_annual"] == -16800.0              # 26400 target - 43200 current
     sw = r["bp_swap"]
     assert sw["eligible_count"] == 1 and sw["swapped_count"] == 1
-    assert sw["swapped_users"] == 100 and sw["swap_delta_annual"] == 16800.0
+    assert sw["swapped_users"] == 100 and sw["swap_delta_annual"] == -16800.0
     # The swapped seats count against the Business 300-seat cap.
     assert _biz_seats(r) == 100
 

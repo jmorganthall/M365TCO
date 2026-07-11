@@ -22,6 +22,7 @@ export default function AdminPanel({ onClose }) {
     ['catalog', '📦 SKU catalog'],
     ['bundles', '🧩 Staple bundles'],
     ['coverage', '🗺 Default coverage'],
+    ['limits', '🚦 License limits'],
     ['outcomes', '🎯 Default outcomes'],
     ['secrets', '🔑 Secrets'],
   ]
@@ -120,6 +121,8 @@ export default function AdminPanel({ onClose }) {
         {section === 'outcomes' && <DefaultOutcomes onMsg={setMsg} onErr={setErr} />}
 
         {section === 'coverage' && <DefaultCoverage onMsg={setMsg} onErr={setErr} />}
+
+        {section === 'limits' && <LicenseLimits onMsg={setMsg} onErr={setErr} />}
 
         {section === 'ai' && (
         <div className="card">
@@ -875,9 +878,7 @@ function BundleLibrary({ onMsg, onErr }) {
 }
 
 // One editable bundle row: name/sort commit on blur; kind + base commit on change.
-// An add-on requires a base; switching to base clears it. For add-ons, the
-// eligible-base cell toggles which bases the add-on may layer onto (the logic
-// layer); no selection = à-la-carte (any base).
+// An add-on requires a base; switching to base clears it.
 function BundleEditRow({ b, baseBundles, onSave, onDelete, onEligibility }) {
   const bases = baseBundles.filter((x) => x.id !== b.id)
   const eligible = new Set(b.eligible_base_ids || [])

@@ -322,10 +322,10 @@ export default function Readout({ engagement }) {
                   <td>{l.name}</td>
                   <td className="muted" style={{ fontSize: '.8rem' }}>{l.member_bundle_names.join(', ')}</td>
                   <td className="num">{l.max_quantity}</td>
-                  <td className={`num ${l.current_over_by > 0 ? 'neg' : ''}`}>{l.current_seats}</td>
-                  <td className={`num ${l.target_over_by > 0 ? 'neg' : ''}`}>{l.target_seats}</td>
+                  <td className={`num ${l.current_over_by > 0 ? 'warn' : ''}`}>{l.current_seats}</td>
+                  <td className={`num ${l.target_over_by > 0 ? 'warn' : ''}`}>{l.target_seats}</td>
                   <td>{l.violated
-                    ? <span className="badge neg">Over by {Math.max(l.current_over_by, l.target_over_by)}</span>
+                    ? <span className="badge warn">Over by {Math.max(l.current_over_by, l.target_over_by)}</span>
                     : <span className="badge pos">Within cap</span>}</td>
                 </tr>
               ))}
@@ -342,8 +342,8 @@ export default function Readout({ engagement }) {
           <div className="popcheck">
             <b>{result.bp_swap.swapped_users}</b> users swapped to Business Premium ·
             combined annual delta{' '}
-            <b className={result.bp_swap.swap_delta_annual >= 0 ? 'pos' : 'neg'}>{usd(result.bp_swap.swap_delta_annual)}</b>
-            {result.bp_swap.swap_delta_annual >= 0 ? ' saved' : ' added'}.
+            <b className={result.bp_swap.swap_delta_annual < 0 ? 'pos' : ''}>{usd(result.bp_swap.swap_delta_annual)}</b>
+            {result.bp_swap.swap_delta_annual < 0 ? ' (saving)' : result.bp_swap.swap_delta_annual > 0 ? ' (cost increase)' : ''}.
           </div>
         </div>
       )}
