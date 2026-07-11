@@ -130,6 +130,7 @@ class EngagementUpdate(BaseModel):
     brand_primary_color: Optional[str] = None
     brand_accent_color: Optional[str] = None
     notes: Optional[str] = None
+    bp_swap_enabled: Optional[bool] = None
 
 
 class EngagementOut(ORMModel):
@@ -146,6 +147,7 @@ class EngagementOut(ORMModel):
     brand_primary_color: str
     brand_accent_color: str
     notes: str
+    bp_swap_enabled: bool
 
 
 # ---- Persona ----
@@ -292,6 +294,7 @@ class ScenarioIn(BaseModel):
     target_unit_price_annual: Decimal = Decimal("0")
     target_discount_pct: Optional[Decimal] = None
     in_scope: bool = True
+    bp_swap_optout: bool = False
     addons: list[ScenarioAddonIn] = []
 
 
@@ -300,6 +303,7 @@ class ScenarioUpdate(BaseModel):
     target_unit_price_annual: Optional[Decimal] = None
     target_discount_pct: Optional[Decimal] = None
     in_scope: Optional[bool] = None
+    bp_swap_optout: Optional[bool] = None
     addons: Optional[list[ScenarioAddonIn]] = None
 
 
@@ -310,6 +314,7 @@ class ScenarioOut(ORMModel):
     target_unit_price_annual: Decimal
     target_discount_pct: Optional[Decimal]
     in_scope: bool
+    bp_swap_optout: bool
     addons: list[ScenarioAddonOut]
     current_spend_annual: Decimal
     target_spend_annual: Decimal

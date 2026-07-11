@@ -112,6 +112,12 @@ current_spend_annual = current_microsoft + offset
 # the scenario discount to yield the net target_unit_price_annual the engine uses:
 #   net = (base_list + Σ addon_list) * (1 - target_discount_pct)
 # target_covered_outcome_ids is the union across base + add-ons.
+# Business Premium swap (data layer): when the engagement's BP swap is active for a
+# scenario (inherited, not opted out, and Business Premium covers every outcome the
+# persona requires), the hydrator substitutes the EFFECTIVE target with Business
+# Premium (its covered outcomes + catalog price × (1 - discount)) before the engine
+# runs. The engine math below is unchanged — it consumes whichever target the data
+# layer resolved.
 target_spend_annual  = persona.headcount * scenario.target_unit_price_annual
 delta_annual         = target_spend_annual - current_spend_annual   # +cost / -saving
 ```
