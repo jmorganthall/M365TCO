@@ -42,12 +42,12 @@ export default function CoverageCheck({ engagement, onNavigate }) {
 
   return (
     <div className="card">
-      <h2>Coverage check — confirm what's not delivered today</h2>
-      <p className="hint">Per persona, the outcomes <b>not</b> delivered today by their current
-        Microsoft licensing or a tagged third party. Resolve each: pick a third party that actually
-        delivers it (we didn't map it), add a new one, or leave it — a genuine gap the target
-        scenario will light up as a <b>new outcome</b>. This keeps the value story honest and
-        avoids costing something that's already covered elsewhere.</p>
+      <h2>Coverage check — confirm the target's new outcomes</h2>
+      <p className="hint">For each persona, the outcomes their <b>proposed target scenario</b> would
+        deliver that <b>aren't</b> delivered today (by their current Microsoft licensing or a mapped
+        third party). Resolve each: pick a third party that actually delivers it (we didn't map it),
+        add a new one, or leave it — a genuine gap the target lights up as a <b>new outcome</b>. This
+        keeps the value story honest and avoids costing something already covered elsewhere.</p>
       {err && <div className="err">{err}</div>}
       {data.personas.length === 0 && <p className="muted">No personas yet — add personas first.</p>}
 
@@ -55,10 +55,14 @@ export default function CoverageCheck({ engagement, onNavigate }) {
         <div key={p.persona_id} className="card" style={{ background: 'var(--panel2)' }}>
           <div className="flex-between">
             <b>{p.persona_name} <span className="muted">· {p.headcount} users</span></b>
-            <span className="muted">{p.covered_count}/{data.outcome_count} outcomes covered today</span>
+            {p.has_scenario && (
+              <span className="muted">{p.covered_of_target}/{p.target_outcome_count} target outcomes already delivered today</span>
+            )}
           </div>
-          {p.uncovered_outcomes.length === 0 ? (
-            <p className="pos" style={{ margin: '.5rem 0 0' }}>✓ Every outcome is accounted for.</p>
+          {!p.has_scenario ? (
+            <p className="muted" style={{ margin: '.5rem 0 0' }}>No target scenario set — pick a target on the Scenarios tab to validate its new outcomes.</p>
+          ) : p.uncovered_outcomes.length === 0 ? (
+            <p className="pos" style={{ margin: '.5rem 0 0' }}>✓ Every outcome the target delivers is already accounted for.</p>
           ) : (
             <table>
               <thead><tr><th>Uncovered outcome</th><th style={{ width: 320 }}>Resolve</th></tr></thead>
