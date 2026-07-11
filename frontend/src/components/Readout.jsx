@@ -307,6 +307,33 @@ export default function Readout({ engagement }) {
         </div>
       )}
 
+      {(result.license_limits || []).length > 0 && (
+        <div className="card" style={{ borderColor: (result.license_limits.some((l) => l.violated) ? 'var(--warn)' : undefined) }}>
+          <h2 className={result.license_limits.some((l) => l.violated) ? 'warn' : undefined}>
+            {result.license_limits.some((l) => l.violated) ? '⚠ ' : ''}License limits</h2>
+          <p className="hint">Microsoft licensing caps evaluated tenant-wide — current state (existing
+            licenses) and future state (in-scope scenarios) summed across all personas.</p>
+          <table>
+            <thead><tr><th>Limit</th><th>Applies to</th><th className="num">Cap</th>
+              <th className="num">Current</th><th className="num">Target (in-scope)</th><th>Status</th></tr></thead>
+            <tbody>
+              {result.license_limits.map((l) => (
+                <tr key={l.id}>
+                  <td>{l.name}</td>
+                  <td className="muted" style={{ fontSize: '.8rem' }}>{l.member_bundle_names.join(', ')}</td>
+                  <td className="num">{l.max_quantity}</td>
+                  <td className={`num ${l.current_over_by > 0 ? 'neg' : ''}`}>{l.current_seats}</td>
+                  <td className={`num ${l.target_over_by > 0 ? 'neg' : ''}`}>{l.target_seats}</td>
+                  <td>{l.violated
+                    ? <span className="badge neg">Over by {Math.max(l.current_over_by, l.target_over_by)}</span>
+                    : <span className="badge pos">Within cap</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div className="card">
         <h2>Per-persona scenarios</h2>
         <table>

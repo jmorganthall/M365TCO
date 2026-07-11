@@ -12,8 +12,19 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..config import settings
 from ..db import get_db
-from ..services import ai, ai_prompts, compute, defaults, exporter, narrative, sanity, seeds
+from ..services import (
+    ai, ai_prompts, compute, defaults, exporter, limits, narrative, sanity, seeds,
+)
 from ..services.serialize import result_to_dict
+
+
+def _computed_dict(db, engagement_id: str) -> dict:
+    """The serialized engine result plus the tenant-wide license-limit evaluation
+    (§ services/limits) — so every readout consumer (compute, HTML/xlsx export,
+    snapshot) carries the limit check and a violation is never hidden."""
+    result = result_to_dict(compute.compute_and_persist(db, engagement_id))
+    result["license_limits"] = limits.evaluate(db, engagement_id)
+    return result
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
 
@@ -198,8 +209,7 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
 @router.post("/{engagement_id}/compute")
 def compute_engagement(engagement_id: str, db: Session = Depends(get_db)):
     _get_engagement(db, engagement_id)
-    result = compute.compute_and_persist(db, engagement_id)
-    return result_to_dict(result)
+    return _computed_dict(db, engagement_id)
 
 
 @router.post("/{engagement_id}/sanity-check")
@@ -311,14 +321,14 @@ def coverage_gaps(engagement_id: str, db: Session = Depends(get_db)):
 @router.get("/{engagement_id}/readout.html", response_class=HTMLResponse)
 def readout_html(engagement_id: str, db: Session = Depends(get_db)):
     eng = _get_engagement(db, engagement_id)
-    result = result_to_dict(compute.compute_and_persist(db, engagement_id))
+    result = _computed_dict(db, engagement_id)
     return HTMLResponse(exporter.build_html(eng, result))
 
 
 @router.get("/{engagement_id}/readout.xlsx")
 def readout_xlsx(engagement_id: str, db: Session = Depends(get_db)):
     eng = _get_engagement(db, engagement_id)
-    result = result_to_dict(compute.compute_and_persist(db, engagement_id))
+    result = _computed_dict(db, engagement_id)
     data = exporter.build_xlsx(eng, result)
     return Response(
         content=data,
@@ -333,7 +343,7 @@ def readout_xlsx(engagement_id: str, db: Session = Depends(get_db)):
 def create_snapshot(engagement_id: str, label: str = "", db: Session = Depends(get_db)):
     """Reproducible saved readout (PRD 12) — survives later catalog updates."""
     _get_engagement(db, engagement_id)
-    result = result_to_dict(compute.compute_and_persist(db, engagement_id))
+    result = _computed_dict(db, engagement_id)
     catalog_version = (
         db.execute(select(models.MicrosoftSku.catalog_version).limit(1)).scalar() or ""
     )
