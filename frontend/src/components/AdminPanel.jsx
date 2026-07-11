@@ -13,6 +13,18 @@ export default function AdminPanel({ onClose }) {
   const [err, setErr] = useState('')
   const fileRef = useRef()
   const [version, setVersion] = useState('')
+  const [section, setSection] = useState('general')
+
+  const SECTIONS = [
+    ['general', '⚙ General'],
+    ['ai', '✨ AI assist'],
+    ['pricing', '🔄 Pricing sync'],
+    ['catalog', '📦 SKU catalog'],
+    ['bundles', '🧩 Staple bundles'],
+    ['coverage', '🗺 Default coverage'],
+    ['outcomes', '🎯 Default outcomes'],
+    ['secrets', '🔑 Secrets'],
+  ]
 
   function load() {
     api.get('/api/admin/secrets').then(setSecrets).catch((e) => setErr(e.message))
@@ -51,15 +63,25 @@ export default function AdminPanel({ onClose }) {
   }
 
   return (
-    <div style={overlay} onClick={onClose}>
-      <div style={panel} onClick={(e) => e.stopPropagation()}>
-        <div className="flex-between">
-          <h2 style={{ margin: 0 }}>Settings</h2>
-          <button className="ghost sm" onClick={onClose}>Close</button>
-        </div>
-        {msg && <div className="muted" style={{ margin: '.4rem 0' }}>{msg}</div>}
-        {err && <div className="err">{err}</div>}
+    <div className="container settings-page">
+      <div className="flex-between" style={{ marginBottom: '.6rem' }}>
+        <h1 style={{ margin: 0 }}>Settings</h1>
+        <button className="ghost sm" onClick={onClose}>← Back</button>
+      </div>
+      {msg && <div className="muted" style={{ margin: '.4rem 0' }}>{msg}</div>}
+      {err && <div className="err">{err}</div>}
 
+      <div className="settings-layout">
+        <nav className="settings-nav">
+          {SECTIONS.map(([k, label]) => (
+            <button key={k} className={section === k ? 'active' : ''} onClick={() => setSection(k)}>
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="settings-content">
+        {section === 'general' && <>
         <VersionInfo />
 
         <div className="card">
@@ -93,11 +115,13 @@ export default function AdminPanel({ onClose }) {
             </div>
           )}
         </div>
+        </>}
 
-        <DefaultOutcomes onMsg={setMsg} onErr={setErr} />
+        {section === 'outcomes' && <DefaultOutcomes onMsg={setMsg} onErr={setErr} />}
 
-        <DefaultCoverage onMsg={setMsg} onErr={setErr} />
+        {section === 'coverage' && <DefaultCoverage onMsg={setMsg} onErr={setErr} />}
 
+        {section === 'ai' && (
         <div className="card">
           <h2>AI assist (OpenRouter)</h2>
           <p className="hint">Coverage suggestions are advisory and written as unratified
@@ -130,11 +154,13 @@ export default function AdminPanel({ onClose }) {
           )}
           <AiInstructions onMsg={setMsg} onErr={setErr} />
         </div>
+        )}
 
-        <PricingSync onMsg={setMsg} onErr={setErr} />
+        {section === 'pricing' && <PricingSync onMsg={setMsg} onErr={setErr} />}
 
-        <BundleLibrary onMsg={setMsg} onErr={setErr} />
+        {section === 'bundles' && <BundleLibrary onMsg={setMsg} onErr={setErr} />}
 
+        {section === 'catalog' && (
         <div className="card">
           <h2>Microsoft SKU catalog</h2>
           <p className="hint">Import the new-commerce license-based price list CSV from the
@@ -171,7 +197,9 @@ export default function AdminPanel({ onClose }) {
             <button onClick={importCsv}>Import CSV</button>
           </div>
         </div>
+        )}
 
+        {section === 'secrets' && (
         <div className="card">
           <h2>Secrets</h2>
           <p className="hint">Stored encrypted-at-rest, keyed by the operator master secret.
@@ -181,6 +209,8 @@ export default function AdminPanel({ onClose }) {
             <SecretRow key={s.key} s={s} disabled={!secrets.store_enabled}
               onSave={saveSecret} onClear={clearSecret} />
           ))}
+        </div>
+        )}
         </div>
       </div>
     </div>
@@ -836,9 +866,3 @@ function SecretRow({ s, onSave, onClear, disabled }) {
     </div>
   )
 }
-
-const overlay = {
-  position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex',
-  alignItems: 'flex-start', justifyContent: 'center', padding: '3rem 1rem', overflow: 'auto', zIndex: 50,
-}
-const panel = { background: 'var(--bg)', borderRadius: 12, padding: '1.2rem', width: 'min(820px, 100%)', border: '1px solid var(--border)' }

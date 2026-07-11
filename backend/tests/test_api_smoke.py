@@ -145,6 +145,30 @@ def test_price_sheet_csv_import(client):
     assert segs[0] == "Commercial"  # known defaults first
 
 
+def test_coverage_gaps_per_persona(client):
+    eng = client.post("/api/engagements", json={"customer_name": "Gap Co"}).json()
+    eid = eng["id"]
+    outcomes = client.get(f"/api/engagements/{eid}/outcomes").json()
+    total = len(outcomes)
+    identity = next(o for o in outcomes if "Identity" in o["name"])
+    kw = client.post(f"/api/engagements/{eid}/personas", json={"name": "KW", "headcount": 100}).json()
+
+    # No coverage yet → every outcome is a gap for the persona.
+    gaps = client.get(f"/api/engagements/{eid}/coverage-gaps").json()
+    p = next(pp for pp in gaps["personas"] if pp["persona_id"] == kw["id"])
+    assert p["covered_count"] == 0
+    assert len(p["uncovered_outcomes"]) == total
+
+    # Current E3 (delivers Identity per seed) tagged to the persona closes gaps.
+    client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "Microsoft 365 E3", "quantity_purchased": 100,
+        "quantity_assigned": 100, "unit_price_paid_annual": 300, "persona_ids": [kw["id"]]})
+    gaps = client.get(f"/api/engagements/{eid}/coverage-gaps").json()
+    p = next(pp for pp in gaps["personas"] if pp["persona_id"] == kw["id"])
+    assert p["covered_count"] >= 1
+    assert identity["id"] not in [o["id"] for o in p["uncovered_outcomes"]]
+
+
 def test_quick_wins_surface_in_readout(client):
     """A third-party product duplicating an outcome the CURRENT licensing already
     delivers shows up as a quick win in the compute result and the HTML readout."""
