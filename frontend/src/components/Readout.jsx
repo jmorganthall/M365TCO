@@ -2,6 +2,20 @@ import React, { useEffect, useState } from 'react'
 import { api, usd, pct } from '../api'
 import { PricingBadge } from './PricingBanner.jsx'
 
+// Sanity-check results persist across tab navigation (per engagement) without a
+// new data field — a module-level cache that outlives the Readout unmount.
+const _sanityCache = {}
+
+function timeAgo(ms) {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000))
+  if (s < 60) return `${s}s ago`
+  const m = Math.round(s / 60)
+  if (m < 60) return `${m}m ago`
+  const h = Math.round(m / 60)
+  if (h < 24) return `${h}h ago`
+  return `${Math.round(h / 24)}d ago`
+}
+
 export default function Readout({ engagement }) {
   const eid = engagement.id
   const [result, setResult] = useState(null)
@@ -23,15 +37,20 @@ export default function Readout({ engagement }) {
   }
   useEffect(() => {
     compute()
-    setSanity(null); setNarratives(null)
+    // Restore any prior sanity result for this engagement (survives navigation).
+    setSanity(_sanityCache[eid] || null); setNarratives(null)
     api.get('/api/admin/ai/status').then((s) => setAiEnabled(s.enabled)).catch(() => {})
     api.get(`/api/engagements/${eid}/outcomes`).then(setOutcomes).catch(() => setOutcomes([]))
   }, [eid])
 
   async function runSanity() {
     setChecking(true); setErr('')
-    try { setSanity(await api.post(`/api/engagements/${eid}/sanity-check`)) }
-    catch (e) { setErr(e.message) } finally { setChecking(false) }
+    try {
+      const res = await api.post(`/api/engagements/${eid}/sanity-check`)
+      const entry = { ...res, at: Date.now() }
+      _sanityCache[eid] = entry
+      setSanity(entry)
+    } catch (e) { setErr(e.message) } finally { setChecking(false) }
   }
   async function runNarrative() {
     setNarrating(true); setErr('')
@@ -142,28 +161,40 @@ export default function Readout({ engagement }) {
             <div><small className="src">Applied to the HTML readout header, section titles, and callout border. Entered per engagement.</small></div>
           </div>
         </details>
-        {sanity && (
-          <div className="popcheck" style={{ marginTop: '.5rem' }}>
-            <div className="flex-between">
-              <b>AI sanity check</b>
-              <small className="src">Advisory only — never edits your data. Model: {sanity.model}</small>
-            </div>
-            {sanity.findings.length === 0
-              ? <div className="muted" style={{ marginTop: '.3rem' }}>✓ No issues flagged — the numbers look reasonable.</div>
-              : (
-                <ul style={{ margin: '.4rem 0 0', paddingLeft: '1.1rem' }}>
-                  {sanity.findings.map((f, i) => (
-                    <li key={i} style={{ marginBottom: '.25rem' }}>
-                      <span className={`badge ${f.severity === 'error' ? 'neg' : f.severity === 'warn' ? 'warn' : 'muted'}`}>
-                        {f.severity}</span>{' '}
-                      {f.field && <b>{f.field}: </b>}{f.message}
-                    </li>
-                  ))}
-                </ul>
-              )}
-          </div>
-        )}
       </div>
+
+      {aiEnabled && (
+        <details className="card">
+          <summary style={{ cursor: 'pointer', listStyle: 'revert' }}>
+            <b>AI Sanity Check</b>{' '}
+            {sanity
+              ? <small className="muted">— last run {timeAgo(sanity.at)} · {sanity.findings.length === 0 ? 'no issues' : `${sanity.findings.length} finding(s)`}</small>
+              : <small className="muted">— not run yet</small>}
+          </summary>
+          <div style={{ marginTop: '.6rem' }}>
+            <div className="flex-between">
+              <small className="src">Advisory only — never edits your data.{sanity ? ` Model: ${sanity.model}` : ''}</small>
+              <button className="ghost sm" onClick={runSanity} disabled={checking}>
+                {checking ? 'Checking…' : sanity ? '↻ Re-run' : 'Run sanity check'}</button>
+            </div>
+            {!sanity && <div className="muted" style={{ marginTop: '.4rem' }}>Not run yet — run it to flag likely mistakes before you present.</div>}
+            {sanity && sanity.findings.length === 0 && (
+              <div className="muted" style={{ marginTop: '.4rem' }}>✓ No issues flagged — the numbers look reasonable.</div>
+            )}
+            {sanity && sanity.findings.length > 0 && (
+              <ul style={{ margin: '.4rem 0 0', paddingLeft: '1.1rem' }}>
+                {sanity.findings.map((f, i) => (
+                  <li key={i} style={{ marginBottom: '.25rem' }}>
+                    <span className={`badge ${f.severity === 'error' ? 'neg' : f.severity === 'warn' ? 'warn' : 'muted'}`}>
+                      {f.severity}</span>{' '}
+                    {f.field && <b>{f.field}: </b>}{f.message}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </details>
+      )}
 
       {r.quick_wins && r.quick_wins.length > 0 && (
         <div className="card" style={{ borderColor: 'var(--pos, #127436)' }}>
