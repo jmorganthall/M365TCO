@@ -436,6 +436,20 @@ reviews. It is the buildable-today part of the "business narrative" goal; the
 market-research enrichment (an external agent) and the Forrester TEI soft-savings
 overlay (§10) attach later as their own first-class overlays, not edits here.
 
+### 4.10a-quater Coverage check / gap validation (derived, persists nothing)
+`GET …/coverage-gaps` returns, per persona, the engagement outcomes **not**
+delivered today by that persona's current Microsoft licensing (its bundles'
+ratified coverage, tagged-or-org-wide lines) or a third party **tagged to it**.
+It is a pure read over existing coverage relationships — no new state, no new
+field. The Coverage Check step (between Scenarios and Readout) walks each gap and
+the operator resolves it with **existing** actions only: map a third party that
+actually delivers it (a `CoverageMapEntry` third-party row **+** a
+`ThirdPartyPersona` tag so it counts for that persona), add a new third party, or
+leave it as a genuine gap the target scenario lights up as a **new outcome**.
+This validates coverage so a future per-persona "new outcomes" report — an
+outcome is *new* iff the target delivers it and nothing delivered it today — is
+trustworthy, without inventing data.
+
 ### 4.10b AiPrompt — editable AI instructions
 - **Identity:** `uuid` PK plus a unique `key` per AI function
   (`coverage_suggest`, `third_party_parse`, `current_license_parse`,
