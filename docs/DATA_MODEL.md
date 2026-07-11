@@ -587,8 +587,8 @@ trustworthy, without inventing data.
 ### 4.10b AiPrompt — editable AI instructions
 - **Identity:** `uuid` PK plus a unique `key` per AI function
   (`coverage_suggest`, `third_party_parse`, `current_license_parse`,
-  `sku_bundle_map`, `readout_sanity_check`, `scenario_narrative`).
-  **Scope:** **global**.
+  `sku_bundle_map`, `readout_sanity_check`, `scenario_narrative`,
+  `customer_research`). **Scope:** **global**.
 - **Field ownership:** seeded from `seeds/ai_prompts.json` (`label`,
   `description`, `instructions`); the operator edits `instructions` at runtime and
   can reset to the seeded default. `updated_at` stamps edits.

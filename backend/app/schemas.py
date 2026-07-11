@@ -361,6 +361,16 @@ class TextParseRequest(BaseModel):
     raw_text: str
 
 
+class CustomerResearchRequest(BaseModel):
+    """Whatever the operator has already entered on the Customer Info tab; the AI
+    fills in the rest. All optional — a name is the minimum useful input."""
+    customer_name: str = ""
+    hq_location: str = ""
+    website: str = ""
+    industry: str = ""
+    employee_count: Optional[int] = None
+
+
 class AiPromptOut(ORMModel):
     key: str
     label: str
