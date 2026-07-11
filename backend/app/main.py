@@ -161,12 +161,16 @@ def _backfill_new_bundle_coverage(db) -> None:
 # linger in the global default library — otherwise a DB first seeded before the
 # refinement keeps both the coarse outcome and its finer replacements, and every
 # NEW engagement inherits both (and the AI coverage mapper suggests both).
-#   telephony        -> telephony-pbx + telephony-pstn
-#   endpoint-security-> endpoint-protection + endpoint-edr
-#   email-security   -> email-hygiene + email-atp
-#   identity-access  -> identity-access-core + identity-governance
+#   telephony            -> telephony-pbx + telephony-pstn
+#   endpoint-security    -> endpoint-protection + endpoint-edr
+#   email-security       -> email-hygiene + email-atp
+#   identity-access      -> identity-access-core + identity-governance
+#   identity-access-core -> identity-sso + identity-mfa
+# Also retires a re-scoped outcome whose key changed with its meaning:
+#   collaboration-productivity -> chat-meetings (narrowed to Team Chat & Meetings)
 RETIRED_OUTCOME_KEYS = (
     "telephony", "endpoint-security", "email-security", "identity-access",
+    "identity-access-core", "collaboration-productivity",
 )
 
 
