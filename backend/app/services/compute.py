@@ -266,9 +266,11 @@ def analyze_persona_bundles(
         return Decimal(str(override)) if override is not None else _catalog_annual_erp(db, bundle.name)
 
     # Compose each base bundle with the cheapest add-ons that close its gaps. An
-    # add-on is applicable to a base when it is à-la-carte (no base link) or its
-    # base link points at this base (e.g. E5 Security → E3). `composition[name]`
+    # add-on is applicable to a base when it is eligible for it — à-la-carte add-ons
+    # (no eligibility rows) apply to any base; otherwise the base must be in the
+    # add-on's AddonEligibility set (e.g. E5 Security → E3). `composition[name]`
     # carries the chosen add-ons back to the UI (and the "Use" apply).
+    elig_map = bundles.eligibility_map(db)
     candidates = []
     composition: dict[str, dict] = {}
     for base in base_bundles:
@@ -277,7 +279,7 @@ def analyze_persona_bundles(
         gaps = frozenset(required - base_cover)
         options = []
         for a in addon_bundles:
-            if a.base_bundle_id not in (None, base.id):
+            if not bundles.addon_applies(a.id, base.id, elig_map):
                 continue
             cover = frozenset(sku_outcomes.get(a.id, set())) & gaps
             if cover:  # only add-ons that close a real gap are worth composing

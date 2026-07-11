@@ -30,7 +30,15 @@ function ScenarioRow({ p, s, r, bundles, update, remove, onAnalyze }) {
   const [open, setOpen] = useState(false)
   const bundleName = (id) => bundles.find((b) => b.id === id)?.name || id
   const payload = () => (s.addons || []).map((a) => ({ bundle_id: a.bundle_id, unit_price_annual: a.unit_price_annual }))
-  const available = bundles.filter((b) => b.kind === 'addon' && !(s.addons || []).some((a) => a.bundle_id === b.id))
+  // Resolve the scenario's base bundle (by name/key) so only add-ons ELIGIBLE for
+  // that base are offered (the composition logic layer). À-la-carte add-ons layer
+  // onto anything; if the base can't be resolved yet, don't filter.
+  const baseBundle = bundles.find((b) => b.kind === 'bundle'
+    && (b.name === s.target_sku_reference || b.key === s.target_sku_reference))
+  const eligibleForBase = (b) => b.alacarte || !baseBundle
+    || (b.eligible_base_ids || []).includes(baseBundle.id)
+  const available = bundles.filter((b) => b.kind === 'addon'
+    && !(s.addons || []).some((a) => a.bundle_id === b.id) && eligibleForBase(b))
 
   const addAddon = (bid) => {
     const b = bundles.find((x) => x.id === bid)

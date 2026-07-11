@@ -638,6 +638,11 @@ function BundleLibrary({ onMsg, onErr }) {
     try { await api.post('/api/catalog/bundles', payload); onMsg?.('Bundle added.'); load() }
     catch (e) { onErr?.(e.message) }
   }
+  async function setEligibility(id, baseIds) {
+    onErr?.('')
+    try { await api.put(`/api/catalog/bundles/${id}/eligibility`, { base_bundle_ids: baseIds }); load() }
+    catch (e) { onErr?.(e.message) }
+  }
   const baseBundles = bundles.filter((b) => b.kind === 'bundle')
 
   return (
@@ -654,15 +659,20 @@ function BundleLibrary({ onMsg, onErr }) {
         re-creates it on restart — delete is for operator-added bundles.</p>
       <table style={{ marginBottom: '.5rem' }}>
         <thead><tr>
-          <th>Name</th><th>Kind</th><th>Base</th><th className="num">Sort</th><th></th>
+          <th>Name</th><th>Kind</th><th>Base</th><th>Eligible bases (add-ons)</th>
+          <th className="num">Sort</th><th></th>
         </tr></thead>
         <tbody>
           {bundles.map((b) => (
             <BundleEditRow key={b.id} b={b} baseBundles={baseBundles}
-              onSave={(patch) => saveBundle(b.id, patch)} onDelete={() => removeBundle(b.id)} />
+              onSave={(patch) => saveBundle(b.id, patch)} onDelete={() => removeBundle(b.id)}
+              onEligibility={(ids) => setEligibility(b.id, ids)} />
           ))}
         </tbody>
       </table>
+      <p className="hint" style={{ marginTop: '-.2rem' }}>An add-on's <b>eligible bases</b> are the bundles it may
+        layer onto (the composition logic layer — e.g. F5 Security only onto F3). No selection = <b>à-la-carte</b>
+        (any base). Scenarios and recommend-a-path enforce this.</p>
       <NewBundleForm baseBundles={baseBundles} onAdd={addBundle} />
 
       {unmapped.length === 0 ? (
@@ -715,9 +725,17 @@ function BundleLibrary({ onMsg, onErr }) {
 }
 
 // One editable bundle row: name/sort commit on blur; kind + base commit on change.
-// An add-on requires a base; switching to base clears it.
-function BundleEditRow({ b, baseBundles, onSave, onDelete }) {
+// An add-on requires a base; switching to base clears it. For add-ons, the
+// eligible-base cell toggles which bases the add-on may layer onto (the logic
+// layer); no selection = à-la-carte (any base).
+function BundleEditRow({ b, baseBundles, onSave, onDelete, onEligibility }) {
   const bases = baseBundles.filter((x) => x.id !== b.id)
+  const eligible = new Set(b.eligible_base_ids || [])
+  function toggleBase(id) {
+    const next = new Set(eligible)
+    next.has(id) ? next.delete(id) : next.add(id)
+    onEligibility([...next])
+  }
   return (
     <tr>
       <td>
@@ -738,6 +756,19 @@ function BundleEditRow({ b, baseBundles, onSave, onDelete }) {
           <select value={b.base_bundle_id || ''} onChange={(e) => onSave({ base_bundle_id: e.target.value })}>
             {bases.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
           </select>
+        ) : <span className="muted">—</span>}
+      </td>
+      <td>
+        {b.kind === 'addon' ? (
+          <div className="pill-list" style={{ gap: '.25rem', maxWidth: 320 }}>
+            {bases.map((x) => (
+              <button key={x.id} type="button"
+                className={`sm ${eligible.has(x.id) ? '' : 'ghost'}`}
+                title={eligible.has(x.id) ? 'Eligible — click to remove' : 'Click to allow this base'}
+                onClick={() => toggleBase(x.id)}>{x.name.replace('Microsoft 365 ', '')}</button>
+            ))}
+            {eligible.size === 0 && <span className="muted" style={{ fontSize: '.72rem' }}>à-la-carte (any base)</span>}
+          </div>
         ) : <span className="muted">—</span>}
       </td>
       <td className="num">

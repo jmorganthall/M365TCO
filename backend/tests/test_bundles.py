@@ -49,6 +49,122 @@ def test_map_catalog_sku_to_bundle(client):
     assert client.patch(f"/api/catalog/skus/{sku['id']}/bundle", json={"bundle_id": "nope"}).status_code == 422
 
 
+def test_addon_eligibility_seeded_and_alacarte(client):
+    """Add-on eligibility (the composition logic layer) is seeded from the add-on
+    base links: E5 Security → E3 only, F5 Security → F3 only. À-la-carte add-ons
+    (no base) carry no eligibility and layer onto any base."""
+    bundles = client.get("/api/catalog/bundles").json()
+    by_key = {b["key"]: b for b in bundles}
+
+    e3, f3 = by_key["m365-e3"]["id"], by_key["m365-f3"]["id"]
+    assert by_key["e5-security"]["eligible_base_ids"] == [e3]
+    assert by_key["e5-security"]["alacarte"] is False
+    assert by_key["f5-security"]["eligible_base_ids"] == [f3]
+    # Teams Phone is à-la-carte (base: null) → eligible for any base.
+    assert by_key["teams-phone"]["eligible_base_ids"] == []
+    assert by_key["teams-phone"]["alacarte"] is True
+
+
+def test_addon_eligibility_crud_and_validation(client):
+    bundles = client.get("/api/catalog/bundles").json()
+    by_key = {b["key"]: b for b in bundles}
+    e5sec = by_key["e5-security"]["id"]
+    e3, e5 = by_key["m365-e3"]["id"], by_key["m365-e5"]["id"]
+
+    # Broaden E5 Security to E3 + E5.
+    r = client.put(f"/api/catalog/bundles/{e5sec}/eligibility",
+                   json={"base_bundle_ids": [e3, e5]})
+    assert r.status_code == 200 and set(r.json()["eligible_base_ids"]) == {e3, e5}
+    assert r.json()["alacarte"] is False
+
+    # Empty set = à-la-carte.
+    r = client.put(f"/api/catalog/bundles/{e5sec}/eligibility", json={"base_bundle_ids": []})
+    assert r.status_code == 200 and r.json()["alacarte"] is True
+
+    # Validation: a base bundle can't take eligibility; unknown/non-base ids rejected.
+    assert client.put(f"/api/catalog/bundles/{e3}/eligibility",
+                      json={"base_bundle_ids": []}).status_code == 422
+    assert client.put(f"/api/catalog/bundles/{e5sec}/eligibility",
+                      json={"base_bundle_ids": ["nope"]}).status_code == 422
+    assert client.put(f"/api/catalog/bundles/{e5sec}/eligibility",
+                      json={"base_bundle_ids": [by_key["f5-security"]["id"]]}).status_code == 422
+
+    # Restore the seeded eligibility so other tests aren't affected.
+    client.put(f"/api/catalog/bundles/{e5sec}/eligibility", json={"base_bundle_ids": [e3]})
+
+
+def test_scenario_addon_eligibility_enforced(client):
+    """A scenario can only add an add-on eligible for its base bundle: F5 Security
+    (F3-only) is rejected on an E3 base; E5 Security (E3) and an à-la-carte add-on
+    are accepted."""
+    eng = client.post("/api/engagements", json={"customer_name": "Elig Co"}).json()
+    eid = eng["id"]
+    kw = client.post(f"/api/engagements/{eid}/personas",
+                     json={"name": "KW", "headcount": 10}).json()
+    by_key = {b["key"]: b for b in client.get("/api/catalog/bundles").json()}
+    f5sec, e5sec, teams = (by_key["f5-security"]["id"],
+                           by_key["e5-security"]["id"], by_key["teams-phone"]["id"])
+
+    # F5 Security (eligible for F3 only) onto an E3 base → 422.
+    r = client.post(f"/api/engagements/{eid}/scenarios", json={
+        "persona_id": kw["id"], "target_sku_reference": "Microsoft 365 E3",
+        "target_unit_price_annual": 400, "in_scope": True,
+        "addons": [{"bundle_id": f5sec, "unit_price_annual": 10}]})
+    assert r.status_code == 422 and "not eligible" in r.json()["detail"]
+
+    # E5 Security (E3) + Teams Phone (à-la-carte) onto E3 → accepted.
+    r = client.post(f"/api/engagements/{eid}/scenarios", json={
+        "persona_id": kw["id"], "target_sku_reference": "Microsoft 365 E3",
+        "target_unit_price_annual": 400, "in_scope": True,
+        "addons": [{"bundle_id": e5sec, "unit_price_annual": 100},
+                   {"bundle_id": teams, "unit_price_annual": 80}]})
+    assert r.status_code == 201
+    sid = r.json()["id"]
+
+    # PATCH is enforced too — adding the ineligible F5 Security is rejected.
+    r = client.patch(f"/api/engagements/{eid}/scenarios/{sid}", json={
+        "addons": [{"bundle_id": f5sec, "unit_price_annual": 10}]})
+    assert r.status_code == 422
+
+
+def test_optimizer_respects_addon_eligibility(client):
+    """Restricting an à-la-carte add-on away from a base removes it from that base's
+    recommend-a-path composition. Defender for Endpoint P2 (normally à-la-carte,
+    free, closes E3's Endpoint gap) is restricted to F3 → E3 must fall back to the
+    priced E5 Security add-on instead."""
+    eng = client.post("/api/engagements", json={"customer_name": "Opt Elig"}).json()
+    eid = eng["id"]
+    kw = client.post(f"/api/engagements/{eid}/personas",
+                     json={"name": "KW", "headcount": 100}).json()
+    endpoint = next(o for o in client.get(f"/api/engagements/{eid}/outcomes").json()
+                    if "Endpoint Security" in o["name"])
+    edr = client.post(f"/api/engagements/{eid}/third-party",
+                      json={"name": "CrowdStrike", "raw_cost": 20000, "covered_count": 100}).json()
+    client.post(f"/api/engagements/{eid}/coverage",
+                json={"outcome_id": endpoint["id"], "product_kind": "ThirdParty",
+                      "third_party_product_id": edr["id"], "coverage": "Full", "ratified": True})
+    client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "Microsoft 365 E5", "quantity_assigned": 100,
+        "unit_price_paid_annual": 0, "persona_ids": [kw["id"]]})
+
+    by_key = {b["key"]: b for b in client.get("/api/catalog/bundles").json()}
+    defender = by_key["defender-endpoint-p2"]["id"]
+    f3 = by_key["m365-f3"]["id"]
+    # Restrict the free Endpoint add-on to F3 only, so E3 can't use it.
+    client.put(f"/api/catalog/bundles/{defender}/eligibility", json={"base_bundle_ids": [f3]})
+    try:
+        res = client.post(f"/api/engagements/{eid}/personas/{kw['id']}/bundle-analysis",
+                          json={"prices": {"Microsoft 365 E3": 400,
+                                           "Microsoft 365 E5 Security": 100}}).json()
+        e3 = {b["sku_reference"]: b for b in res["bundles"]}["Microsoft 365 E3"]
+        assert "Endpoint Security" not in e3["gap_outcomes"]  # still closed…
+        # …but no longer for free — the E5 Security add-on (100) is now chosen.
+        assert e3["addon_total_annual"] == 100.0
+        assert not any("Defender for Endpoint" in a["name"] for a in e3["addons"])
+    finally:
+        client.put(f"/api/catalog/bundles/{defender}/eligibility", json={"base_bundle_ids": []})
+
+
 def test_scenario_targeting_bundle_name_resolves_and_displaces(client):
     """The bug fix: a scenario target that names the bundle ("Microsoft 365 E3"),
     not the old "E3" shortcode, now resolves to the bundle and displaces."""

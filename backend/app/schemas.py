@@ -79,6 +79,12 @@ class BundleUpdate(BaseModel):
     sort_order: Optional[int] = None
 
 
+class AddonEligibilityIn(BaseModel):
+    # The full set of base bundles this add-on may layer onto. Empty = à-la-carte
+    # (eligible for any base).
+    base_bundle_ids: list[str] = []
+
+
 class EngagementUpdate(BaseModel):
     customer_name: Optional[str] = None
     market: Optional[str] = None
