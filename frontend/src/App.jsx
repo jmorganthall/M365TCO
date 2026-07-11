@@ -28,7 +28,9 @@ export default function App() {
   const [active, setActive] = useState(null)
   const [tab, setTab] = useState('personas')
   const [meta, setMeta] = useState(null)
-  const [showAdmin, setShowAdmin] = useState(false)
+  const [view, setView] = useState('app')  // 'app' | 'settings'
+  const openSettings = () => setView('settings')
+  const closeSettings = () => { setView('app'); api.get('/api/meta').then(setMeta).catch(() => {}) }
 
   useEffect(() => { api.get('/api/meta').then(setMeta).catch(() => {}) }, [])
 
@@ -56,7 +58,17 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-root">
+      <header className="topbar">
+        <div className="topbar-brand">Microsoft 365 TCO</div>
+        <button className={`gear ${view === 'settings' ? 'active' : ''}`} title="Settings"
+          onClick={() => setView(view === 'settings' ? 'app' : 'settings')}>⚙</button>
+      </header>
+
+      {view === 'settings' ? (
+        <main className="main"><AdminPanel onClose={closeSettings} /></main>
+      ) : (
+      <div className="app-shell">
       <Sidebar
         engagements={engagements}
         activeId={active?.id}
@@ -64,14 +76,14 @@ export default function App() {
         onSelect={open}
         onDuplicate={duplicate}
         onDelete={remove}
-        onSettings={() => setShowAdmin(true)}
+        onSettings={openSettings}
       />
 
       <main className="main">
         {!active && (
           <div className="container">
             <UpdateBanner />
-            <PricingBanner onOpenSettings={() => setShowAdmin(true)} />
+            <PricingBanner onOpenSettings={openSettings} />
             <div className="welcome">
               <h1>Model a Microsoft 365 total cost of ownership.</h1>
               <p className="muted">Create an engagement, then work through personas,
@@ -85,7 +97,7 @@ export default function App() {
         {active && (
           <div className="container">
             <UpdateBanner />
-            <PricingBanner onOpenSettings={() => setShowAdmin(true)} />
+            <PricingBanner onOpenSettings={openSettings} />
             <div className="work-header">
               <div>
                 <h2 style={{ margin: 0 }}>{active.customer_name || 'Untitled engagement'}</h2>
@@ -114,8 +126,8 @@ export default function App() {
           </div>
         )}
       </main>
-
-      {showAdmin && <AdminPanel onClose={() => { setShowAdmin(false); api.get('/api/meta').then(setMeta).catch(() => {}) }} />}
+      </div>
+      )}
     </div>
   )
 }

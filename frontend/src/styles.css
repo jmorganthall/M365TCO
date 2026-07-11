@@ -20,12 +20,46 @@ body {
 }
 a { color: var(--accent); }
 /* ---- App shell: fixed left sidebar + scrollable main ---- */
-.app-shell { display: flex; min-height: 100vh; }
-.main { flex: 1; min-width: 0; height: 100vh; overflow-y: auto; }
+/* App chrome: a fixed top bar over a flexible body (sidebar + main). */
+.app-root { display: flex; flex-direction: column; height: 100vh; }
+.topbar {
+  flex-shrink: 0; height: 50px; display: flex; align-items: center;
+  justify-content: space-between; padding: 0 1rem; gap: 1rem;
+  background: var(--panel); border-bottom: 1px solid var(--border);
+}
+.topbar-brand { font-weight: 700; letter-spacing: .01em; color: var(--ink); }
+.gear {
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+  border-radius: 8px; width: 34px; height: 34px; font-size: 1.1rem; line-height: 1;
+  cursor: pointer; padding: 0;
+}
+.gear:hover { color: var(--ink); border-color: var(--accent); }
+.gear.active { color: var(--ink); border-color: var(--accent); background: var(--panel2); }
+
+.app-shell { display: flex; flex: 1; min-height: 0; }
+.main { flex: 1; min-width: 0; overflow-y: auto; }
 .container { max-width: 1180px; margin: 0 auto; padding: 1.2rem; }
 
+/* Settings as a dedicated page: left section nav + content pane. */
+.settings-page { max-width: 1180px; }
+.settings-layout { display: flex; gap: 1.2rem; align-items: flex-start; }
+.settings-nav {
+  width: 210px; flex-shrink: 0; display: flex; flex-direction: column; gap: .25rem;
+  position: sticky; top: 0;
+}
+.settings-nav button {
+  width: 100%; text-align: left; background: transparent; border: 1px solid transparent;
+  color: var(--muted); border-radius: 8px; padding: .5rem .7rem; font-size: .9rem; cursor: pointer;
+}
+.settings-nav button:hover { background: var(--panel2); color: var(--ink); }
+.settings-nav button.active {
+  background: var(--panel2); color: var(--ink); border-color: var(--border);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.settings-content { flex: 1; min-width: 0; }
+
 .sidebar {
-  width: 264px; flex-shrink: 0; height: 100vh; position: sticky; top: 0;
+  width: 264px; flex-shrink: 0; height: 100%; overflow-y: auto; position: sticky; top: 0;
   background: var(--panel); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; padding: .8rem .7rem;
 }
