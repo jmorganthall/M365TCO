@@ -149,6 +149,7 @@ export default function Scenarios({ engagement, meta }) {
   const [err, setErr] = useState('')
   const [analyzePersona, setAnalyzePersona] = useState(null)
   const [swapEnabled, setSwapEnabled] = useState(!!engagement.bp_swap_enabled)
+  const [capEnabled, setCapEnabled] = useState(!!engagement.business_cap_enabled)
 
   function load() {
     api.get(`/api/engagements/${eid}/personas`).then(setPersonas)
@@ -170,6 +171,15 @@ export default function Scenarios({ engagement, meta }) {
     try { await api.patch(`/api/engagements/${eid}`, { bp_swap_enabled: on }); compute() }
     catch (e) { setErr(e.message); setSwapEnabled(!on) }
   }
+  async function toggleCap(on) {
+    setCapEnabled(on)  // optimistic
+    setErr('')
+    try { await api.patch(`/api/engagements/${eid}`, { business_cap_enabled: on }); compute() }
+    catch (e) { setErr(e.message); setCapEnabled(!on) }
+  }
+  // The tenant seat caps (Business ≤ 300) as evaluated by the readout, for the
+  // "how many Business seats are already recommended" indicator next to the toggle.
+  const seatCaps = (result?.license_limits || []).filter((l) => l.limit_type === 'max_total_seats')
   // Engagement pricing-basis default, so a target bundle resolves to the right
   // segment/term variant's list price (same chain as Current Licensing).
   const basis = {
@@ -218,6 +228,21 @@ export default function Scenarios({ engagement, meta }) {
       <p className="hint">One target-state plan per persona. The future state is a base bundle
         plus optional add-ons (E5 Security, etc.) — the engine unions their outcomes and sums
         their prices; a discount applies to the total. Prices are per-seat monthly.</p>
+
+      <div className="popcheck" style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '.4rem', margin: 0 }}>
+          <input type="checkbox" checked={capEnabled} onChange={(e) => toggleCap(e.target.checked)} />
+          <b>Use Microsoft 365 Business plans, capped at the tenant seat limit</b>
+        </label>
+        <span className="muted" style={{ fontSize: '.8rem' }}>
+          Best-bundle recommendations respect the Business seat cap (Basic/Standard/Premium ≤ 300/tenant);
+          a persona that would push the tenant over gets the next-best plan instead.
+          {capEnabled && seatCaps.map((l) => (
+            <span key={l.id}> · Business seats recommended:{' '}
+              <b className={l.target_over_by > 0 ? 'neg' : ''}>{l.target_seats}</b> of {l.max_quantity}</span>
+          ))}
+        </span>
+      </div>
 
       <div className="popcheck" style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: '.4rem', margin: 0 }}>

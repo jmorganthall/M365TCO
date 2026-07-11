@@ -9,6 +9,14 @@ linear-by-user offset, applied per candidate bundle.
 Ranking (v1): among bundles that cover every REQUIRED outcome (no capability
 gap), the one with the highest annual delta (savings vs today) is recommended.
 Bundles with gaps are returned and flagged, but never recommended.
+
+Seat caps (v2): a candidate may belong to a seat-capped bundle family (e.g.
+Microsoft 365 Business is limited to 300 seats per tenant). The caller passes the
+remaining headroom for such references; a candidate whose whole persona headcount
+would not fit the remaining seats is flagged `cap_limited` and, like a gapped or
+unpriced bundle, is returned but never recommended — the optimizer falls through to
+the next-best bundle that is not seat-capped. This keeps the recommendation from
+proposing a Business plan for more users than the tenant may license.
 """
 
 from __future__ import annotations
@@ -47,6 +55,12 @@ class BundleAnalysis:
     covers_all_required: bool
     price_known: bool
     recommended: bool = False
+    # Seat-cap gate: True when this candidate is a seat-capped family (e.g. M365
+    # Business) and the persona's headcount exceeds the remaining seats under the
+    # tenant cap. cap_headroom is the remaining seats for that family (None = the
+    # candidate is not seat-capped). A cap_limited candidate is never recommended.
+    cap_limited: bool = False
+    cap_headroom: int | None = None
 
 
 def analyze_bundles(
@@ -56,7 +70,14 @@ def analyze_bundles(
     current_capability_outcome_ids: frozenset[str],
     candidates: list[CandidateBundle],
     third_party_products: list[ThirdPartyProduct],
+    cap_headroom_by_reference: dict[str, int] | None = None,
 ) -> list[BundleAnalysis]:
+    """`cap_headroom_by_reference` maps a candidate's `sku_reference` to the seats
+    still available under a tenant cap its bundle family shares (e.g. all Business
+    references → the seats left under the 300 cap). A candidate whose reference is in
+    the map and whose `headcount` exceeds that headroom is flagged `cap_limited` and
+    excluded from the recommendation. Omit (or pass empty) for no cap awareness."""
+    caps = cap_headroom_by_reference or {}
     results: list[BundleAnalysis] = []
 
     for c in candidates:
@@ -82,6 +103,10 @@ def analyze_bundles(
         # upside story (new outcomes), even when the delta is a net increase.
         added = sorted(c.covered_outcome_ids - current_capability_outcome_ids)
 
+        # Seat-cap gate: only when the caller supplied headroom for this reference.
+        headroom = caps.get(c.sku_reference)
+        cap_limited = headroom is not None and headcount > headroom
+
         results.append(
             BundleAnalysis(
                 sku_reference=c.sku_reference,
@@ -96,14 +121,17 @@ def analyze_bundles(
                 displaced_product_ids=displaced,
                 covers_all_required=not gaps,
                 price_known=c.target_unit_price_annual > 0,
+                cap_limited=cap_limited,
+                cap_headroom=headroom,
             )
         )
 
     # Recommend the biggest-saving bundle (lowest cost-change delta) that has no
-    # capability gap and a known price. (Delta ties broken by lower target spend.)
+    # capability gap, a known price, and is not seat-capped for this headcount.
+    # (Delta ties broken by lower target spend.)
     best = None
     for r in results:
-        if not r.covers_all_required or not r.price_known:
+        if not r.covers_all_required or not r.price_known or r.cap_limited:
             continue
         if best is None or r.delta_annual < best.delta_annual or (
             r.delta_annual == best.delta_annual
@@ -113,8 +141,8 @@ def analyze_bundles(
     if best is not None:
         best.recommended = True
 
-    # Sort: recommended first, then no-gap, then biggest saving (lowest delta).
+    # Sort: recommended first, then no-gap, then within-cap, then biggest saving.
     results.sort(
-        key=lambda r: (not r.recommended, not r.covers_all_required, r.delta_annual)
+        key=lambda r: (not r.recommended, not r.covers_all_required, r.cap_limited, r.delta_annual)
     )
     return results

@@ -27,7 +27,7 @@ from tco_engine import (
 from tco_engine.engine import EngineResult
 
 from .. import models
-from . import bundles, seeds, swap
+from . import bundles, limits, seeds, swap
 
 
 def _dec(value) -> Decimal:
@@ -328,9 +328,25 @@ def analyze_persona_bundles(
             "addon_total_annual": float(addon_total),
         }
 
+    # Seat-cap headroom (opt-in): when the engagement enables the Business seat cap,
+    # tell the optimizer how many seats each capped family (e.g. M365 Business ≤ 300)
+    # has left AFTER the seats already recommended for OTHER personas + current
+    # licenses — so it won't recommend a Business plan this persona can't fully fit.
+    cap_headroom_by_reference: dict[str, int] = {}
+    seat_caps: list[dict] = []
+    if eng.business_cap_enabled:
+        seat_caps = limits.seat_cap_context(db, engagement_id, exclude_persona_id=persona_id)
+        for cap in seat_caps:
+            for ref in cap["member_references"]:
+                # If a reference is capped by more than one limit, the tightest wins.
+                cap_headroom_by_reference[ref] = min(
+                    cap["headroom"], cap_headroom_by_reference.get(ref, cap["headroom"])
+                )
+
     analyses = analyze_bundles(
         persona.headcount, current_ms, frozenset(required),
         frozenset(current_capability), candidates, third_party,
+        cap_headroom_by_reference=cap_headroom_by_reference,
     )
 
     def names(ids):
@@ -378,9 +394,20 @@ def analyze_persona_bundles(
                 "covers_all_required": b.covers_all_required,
                 "price_known": b.price_known,
                 "recommended": b.recommended,
+                "cap_limited": b.cap_limited,
+                "cap_headroom": b.cap_headroom,
                 "positioning": positioning(b),
             }
             for b in analyses
+        ],
+        # Seat-cap context (empty unless the engagement opted in) so the UI can show
+        # how many capped-family seats are already recommended and how many remain.
+        "seat_caps": [
+            {
+                "name": c["name"], "cap": c["cap"], "consumed": c["consumed"],
+                "headroom": c["headroom"], "member_bundle_names": c["member_bundle_names"],
+            }
+            for c in seat_caps
         ],
     }
 

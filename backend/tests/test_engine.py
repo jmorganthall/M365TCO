@@ -573,6 +573,45 @@ def test_analyze_bundles_recommends_max_savings_no_gap():
     assert res[0].recommended is True
 
 
+def test_analyze_bundles_seat_cap_excludes_over_cap_business_from_recommendation():
+    # Two gapless, priced candidates. "Business" is the biggest saver but is a
+    # seat-capped family; "Enterprise" is not capped. With only 50 Business seats
+    # left and a 100-person persona, Business cannot cover the whole persona.
+    candidates = [
+        CandidateBundle("Business", frozenset({A}), D("20")),    # cheapest
+        CandidateBundle("Enterprise", frozenset({A}), D("40")),  # not capped
+    ]
+    res = analyze_bundles(
+        headcount=100,
+        current_microsoft_annual=D("0"),
+        required_outcome_ids=frozenset({A}),
+        current_capability_outcome_ids=frozenset({A}),
+        candidates=candidates,
+        third_party_products=[],
+        cap_headroom_by_reference={"Business": 50},  # 50 seats left, persona is 100
+    )
+    by_ref = {b.sku_reference: b for b in res}
+    # Business is flagged cap-limited and not recommended despite the lower cost.
+    assert by_ref["Business"].cap_limited is True
+    assert by_ref["Business"].cap_headroom == 50
+    assert by_ref["Business"].recommended is False
+    # The recommendation falls through to the within-cap Enterprise bundle.
+    assert by_ref["Enterprise"].cap_limited is False
+    assert by_ref["Enterprise"].recommended is True
+    assert res[0].sku_reference == "Enterprise"
+
+    # Same inputs but ample headroom (300 left) -> Business fits and wins again.
+    res2 = analyze_bundles(
+        headcount=100, current_microsoft_annual=D("0"),
+        required_outcome_ids=frozenset({A}), current_capability_outcome_ids=frozenset({A}),
+        candidates=candidates, third_party_products=[],
+        cap_headroom_by_reference={"Business": 300},
+    )
+    by_ref2 = {b.sku_reference: b for b in res2}
+    assert by_ref2["Business"].cap_limited is False
+    assert by_ref2["Business"].recommended is True
+
+
 def test_analyze_bundles_net_increase_still_shows_added_outcomes():
     # No third party; current MS cheap; bundle pricier but adds capabilities.
     candidates = [CandidateBundle("E5", frozenset({A, B, C}), D("50"))]

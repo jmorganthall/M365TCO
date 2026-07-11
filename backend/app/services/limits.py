@@ -172,3 +172,71 @@ def evaluate(db: Session, engagement_id: str) -> list[dict]:
             "violated": current_seats > cap or target_seats > cap,
         })
     return out
+
+
+def seat_cap_context(
+    db: Session, engagement_id: str, exclude_persona_id: str | None = None
+) -> list[dict]:
+    """The remaining headroom under each tenant seat cap (max_total_seats), for the
+    best-bundle optimizer. Mirrors `evaluate`'s counting — current-license seats plus
+    the headcount of in-scope scenarios touching a member bundle — but EXCLUDES the
+    persona currently being analyzed, so the optimizer sees how many Business seats are
+    already recommended elsewhere and how many are left for this persona.
+
+    Returns one dict per cap: {name, cap, consumed, headroom, member_bundle_names,
+    member_references} where member_references are the member bundle NAMES (what an
+    optimizer candidate's sku_reference is). Empty when no such limit is defined."""
+    eng = db.get(models.Engagement, engagement_id)
+    if eng is None:
+        return []
+    seed_license_limits(db)
+    limits = [
+        lim for lim in db.execute(
+            select(models.LicenseLimit).order_by(models.LicenseLimit.sort_order)
+        ).scalars().all()
+        if lim.limit_type == "max_total_seats"
+    ]
+    if not limits:
+        return []
+
+    members = _members_by_limit(db)
+    bundle_name = {b.id: b.name for b in db.execute(select(models.Bundle)).scalars().all()}
+    headcount = {p.id: p.headcount for p in eng.personas}
+
+    swap_ctx = swap_service.compute_context(db, eng)
+    bp_id = swap_ctx["bp"].id if swap_ctx["bp"] is not None else None
+    ref_cache: dict[str, str | None] = {}
+
+    def _resolve(ref: str) -> str | None:
+        if ref not in ref_cache:
+            ref_cache[ref] = bundles_service.resolve_bundle(db, ref or "")
+        return ref_cache[ref]
+
+    def _scenario_bundle_ids(s: models.PersonaScenario) -> set[str]:
+        if bp_id is not None and swap_service.applies(eng, swap_ctx, s):
+            return {bp_id}
+        return {_resolve(s.target_sku_reference)} | {a.bundle_id for a in s.addons}
+
+    out: list[dict] = []
+    for lim in limits:
+        mset = members.get(lim.id, set())
+        consumed = sum(
+            lic.quantity_assigned
+            for lic in eng.current_licenses
+            if _resolve(lic.sku_reference) in mset
+        )
+        for s in eng.scenarios:
+            if not s.in_scope or s.persona_id == exclude_persona_id:
+                continue
+            if _scenario_bundle_ids(s) & mset:
+                consumed += headcount.get(s.persona_id, 0)
+        member_names = sorted(bundle_name[i] for i in mset if i in bundle_name)
+        out.append({
+            "name": lim.name,
+            "cap": lim.max_quantity,
+            "consumed": consumed,
+            "headroom": max(0, lim.max_quantity - consumed),
+            "member_bundle_names": member_names,
+            "member_references": member_names,
+        })
+    return out

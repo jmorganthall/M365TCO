@@ -105,6 +105,12 @@ class Engagement(Base):
     # unless that persona opts out (PersonaScenario.bp_swap_optout). The 300-seat
     # cap (LicenseLimit) bounds it. User-entered.
     bp_swap_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Engagement-level "respect the Microsoft 365 Business seat cap in best-bundle
+    # recommendations" toggle. When on, the optimizer is given the remaining headroom
+    # under each max_total_seats LicenseLimit (300 for Business) net of seats already
+    # recommended, and will not recommend a Business plan for a persona that would push
+    # the tenant over the cap — it falls through to the next-best plan. User-entered.
+    business_cap_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
 
     personas: Mapped[list["Persona"]] = relationship(
         back_populates="engagement", cascade="all, delete-orphan"
