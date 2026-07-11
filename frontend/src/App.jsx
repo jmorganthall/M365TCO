@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar.jsx'
 import PricingBanner from './components/PricingBanner.jsx'
 import UpdateBanner from './components/UpdateBanner.jsx'
 import NewEngagement from './components/NewEngagement.jsx'
+import CustomerInfo from './components/CustomerInfo.jsx'
 import Personas from './components/Personas.jsx'
 import CurrentLicensing from './components/CurrentLicensing.jsx'
 import ThirdParty from './components/ThirdParty.jsx'
@@ -15,6 +16,7 @@ import DataInspector from './components/DataInspector.jsx'
 import AdminPanel from './components/AdminPanel.jsx'
 
 const STEPS = [
+  ['info', 'Customer Info'],
   ['personas', 'Personas'],
   ['licensing', 'Current Licensing'],
   ['thirdparty', 'Third-Party'],
@@ -122,6 +124,8 @@ export default function App() {
               })}
             </div>
 
+            {tab === 'info' && <CustomerInfo engagement={active}
+              onUpdate={(u) => { setActive(u); reload() }} />}
             {tab === 'personas' && <Personas engagement={active} meta={meta} />}
             {tab === 'licensing' && <CurrentLicensing engagement={active} meta={meta} />}
             {tab === 'thirdparty' && <ThirdParty engagement={active} meta={meta} />}

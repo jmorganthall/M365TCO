@@ -131,6 +131,12 @@ class EngagementUpdate(BaseModel):
     brand_accent_color: Optional[str] = None
     notes: Optional[str] = None
     bp_swap_enabled: Optional[bool] = None
+    # Customer Info tab.
+    workshop_date: Optional[date] = None
+    industry: Optional[str] = None
+    hq_location: Optional[str] = None
+    website: Optional[str] = None
+    employee_count: Optional[int] = None
 
 
 class EngagementOut(ORMModel):
@@ -148,6 +154,11 @@ class EngagementOut(ORMModel):
     brand_accent_color: str
     notes: str
     bp_swap_enabled: bool
+    workshop_date: Optional[date] = None
+    industry: str = ""
+    hq_location: str = ""
+    website: str = ""
+    employee_count: Optional[int] = None
 
 
 # ---- Persona ----

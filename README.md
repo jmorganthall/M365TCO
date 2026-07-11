@@ -94,6 +94,9 @@ npm run dev                            # http://localhost:5173
 
 The steps run along a chevron **progress stepper** at the top of an engagement:
 
+0. **Customer Info** — the editable engagement/customer name plus basic customer
+   context (workshop date, industry, HQ location, website, employee count, notes),
+   for display and later AI business-narrative grounding.
 1. **Personas & headcounts.**
 2. **Current Microsoft licensing** — model on *assigned*, enter the real price paid.
    A **pricing basis** (segment / commit term / purchase term) is inherited
