@@ -3,8 +3,15 @@
 A quantitative Microsoft 365 Total Cost of Ownership tool for a Microsoft partner
 practice. It compares a customer's current licensing spend against a
 target-state M365 licensing spend, persona by persona, and rolls the scenarios
-into a single hard-dollar savings story: current spend, target spend, net delta,
+into a single hard-dollar story: current spend, target spend, net delta,
 third-party tools eliminated, and renewal cycles removed.
+
+The Net TCO delta uses a **cost-change convention** — `delta = new − old`, so a
+**negative** number is a saving (shown green) and a **positive** number is a
+cost increase (shown neutrally, for the added capabilities). The readout also
+surfaces **Quick wins** (third-party tools the customer's *current* licensing
+already duplicates — droppable today) and an advisory **AI sanity check** and
+**per-persona business narratives**.
 
 > v1 is a **pure licensing TCO** — tooling cost for tooling cost. It does not
 > model managed-services, migration/PS, Microsoft funding, Azure consumption, or
@@ -85,15 +92,31 @@ npm run dev                            # http://localhost:5173
 
 ## Workshop flow (PRD Section 3)
 
-1. **Create/open an engagement** — seeds the outcome library + Microsoft SKU coverage.
-2. **Personas & headcounts.**
-3. **Current Microsoft licensing** — model on *assigned*, enter the real price paid.
-4. **Third-party products** — cost, term, unit basis, count, renewal, managed flag, tooling split.
-5. **Coverage map** — confirm/extend; AI-assist proposes third-party coverage (human-ratified).
-6. **Scenarios** — one target SKU per persona.
-7. **Reconcile** — residuals and partial displacement per product.
-8. **In/out of scope toggle** — recomputes everything.
-9. **Readout & export** — HTML + spreadsheet.
+The steps run along a chevron **progress stepper** at the top of an engagement:
+
+1. **Personas & headcounts.**
+2. **Current Microsoft licensing** — model on *assigned*, enter the real price paid.
+   A **pricing basis** (segment / commit term / purchase term) is inherited
+   `Global default → Engagement → line item`, so a picked SKU seeds the right
+   priced variant (e.g. a Nonprofit customer's Business Premium price).
+3. **Third-party products** — cost, term, unit basis, count, renewal, managed flag, tooling split.
+4. **Coverage map** — confirm/extend; AI-assist proposes third-party coverage (human-ratified).
+5. **Scenarios** — a base target bundle **+** composable add-ons per persona.
+6. **Coverage Check** — per-persona validation: outcomes not delivered today by a
+   persona's current licensing or a tagged third party. Resolve each (map an
+   existing third party, add one, or leave it as a genuine gap the target lights
+   up as a *new outcome*) so the value story stays honest. Reads existing
+   relationships only.
+7. **Readout & export** — the Net TCO delta, the Quick-wins "save today" story,
+   the spend bridge, per-persona scenarios, third-party dispositions, and rollup;
+   plus advisory **AI sanity check** + **business narratives**, per-engagement
+   **readout branding** (logo + theme colors), and HTML / xlsx export.
+
+The **in/out-of-scope** toggle on a scenario recomputes everything.
+
+**Settings** is a dedicated page (top-bar ⚙ gear) with a left-hand section nav —
+General/defaults, AI assist, Pricing sync, SKU catalog, Staple bundles, Default
+coverage, Default outcomes, and Secrets.
 
 ## The engine (the spine)
 
@@ -111,12 +134,21 @@ Key rules:
   eliminated.
 - **Override disclosure** — forcing full elimination on undisplaced users requires
   a reason that prints on the readout; an intended residual is recorded separately.
+- **Quick wins** — third-party products whose outcomes the customer's *current*
+  licensing already delivers are flagged as droppable-today savings, separate
+  from what the target move adds (spec §6.10).
+- **Cost-change delta** — `delta = target − current` (negative = saving); the
+  optimizer recommends the biggest-saving bundle.
 
 ## Catalog & integrations (PRD Sections 8–9)
 
-- **Price-sheet CSV import** (permanent fallback): Settings → import the
-  new-commerce license-based price list. The parser maps by column name and
-  tolerates Microsoft's column drift; prices are annualized on import.
+- **Price-sheet CSV import** (permanent fallback): Settings → SKU catalog →
+  import the new-commerce license-based price list. The parser maps by column
+  name and tolerates Microsoft's column drift; **all segments** are ingested
+  (Commercial, Education, Government, Nonprofit, …) and prices are annualized on
+  import. The full catalog is searchable (no silent row cap), with fuzzy SKU
+  matching ("O365 E5" → "Office 365 E5"). The raw uploaded file is retained so
+  it can be **downloaded as-is** later.
 - **Partner Center price-sheet sync** (automated acquisition): Cloud Solution
   Provider auth (Secure Application Model). A one-time partner consent yields a
   refresh token (stored encrypted) that the app exchanges for access tokens
