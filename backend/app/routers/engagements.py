@@ -11,16 +11,18 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
-from ..services import compute, defaults, exporter, limits, seeds
+from ..services import compute, defaults, exporter, limits, seeds, swap
 from ..services.serialize import result_to_dict
 
 
 def _computed_dict(db, engagement_id: str) -> dict:
     """The serialized engine result plus the tenant-wide license-limit evaluation
-    (§ services/limits) — so every readout consumer (compute, HTML/xlsx export,
-    snapshot) carries the limit check and a violation is never hidden."""
+    (§ services/limits) and the Business Premium swap summary (§ services/swap) —
+    so every readout consumer (compute, HTML/xlsx export, snapshot) carries the
+    guardrail check and the swap story, and neither is hidden."""
     result = result_to_dict(compute.compute_and_persist(db, engagement_id))
     result["license_limits"] = limits.evaluate(db, engagement_id)
+    result["bp_swap"] = swap.summarize(db, engagement_id, result)
     return result
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])

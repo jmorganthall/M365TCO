@@ -65,6 +65,11 @@ class Engagement(Base):
     modeling_horizon_years: Mapped[int] = mapped_column(Integer, default=3)
     global_tooling_pct: Mapped[float] = mapped_column(Numeric(6, 4), default=0.30)
     notes: Mapped[str] = mapped_column(Text, default="")
+    # Engagement-level "swap eligible users to Microsoft 365 Business Premium to
+    # save" toggle. When on, every capability-eligible scenario INHERITS the swap
+    # unless that persona opts out (PersonaScenario.bp_swap_optout). The 300-seat
+    # cap (LicenseLimit) bounds it. User-entered.
+    bp_swap_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
 
     personas: Mapped[list["Persona"]] = relationship(
         back_populates="engagement", cascade="all, delete-orphan"
@@ -460,6 +465,10 @@ class PersonaScenario(Base):
     # base + add-ons to yield the net target price.
     target_discount_pct: Mapped[float | None] = mapped_column(Numeric(6, 4), nullable=True)
     in_scope: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Per-persona opt-OUT of the engagement's Business Premium swap (the inheritance
+    # override). False = inherit the engagement default; True = keep this persona's
+    # own target even when the engagement swap is on. User-entered.
+    bp_swap_optout: Mapped[bool] = mapped_column(Boolean, default=False)
     # Derived fields cached for snapshotting; recomputed by the engine on demand.
     current_spend_annual: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
     target_spend_annual: Mapped[float] = mapped_column(Numeric(14, 2), default=0)

@@ -98,6 +98,20 @@ export default function Readout({ engagement }) {
         </div>
       )}
 
+      {result.bp_swap?.enabled && result.bp_swap.swapped_count > 0 && (
+        <div className="card" style={{ background: 'var(--panel2)' }}>
+          <h2>Microsoft 365 Business Premium swap</h2>
+          <p className="hint">Eligible personas moved to Business Premium (Business Premium covers every
+            outcome they require). {result.bp_swap.eligible_count} eligible · {result.bp_swap.swapped_count} applied.</p>
+          <div className="popcheck">
+            <b>{result.bp_swap.swapped_users}</b> users swapped to Business Premium ·
+            combined annual delta{' '}
+            <b className={result.bp_swap.swap_delta_annual >= 0 ? 'pos' : 'neg'}>{usd(result.bp_swap.swap_delta_annual)}</b>
+            {result.bp_swap.swap_delta_annual >= 0 ? ' saved' : ' added'}.
+          </div>
+        </div>
+      )}
+
       <div className="card">
         <h2>Per-persona scenarios</h2>
         <table>

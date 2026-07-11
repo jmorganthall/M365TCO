@@ -101,8 +101,11 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Identity:** `uuid`. **Scope:** root (owns everything else).
 - **Relationships:** one-to-many to all eight child sets, all `cascade="all, delete-orphan"`.
 - **Field ownership:** user-entered (`customer_name`, `market`, `currency`,
-  `notes`, `global_tooling_pct`, `modeling_horizon_years`); derived
-  (`created_at`, `updated_at`).
+  `notes`, `global_tooling_pct`, `modeling_horizon_years`, `bp_swap_enabled`);
+  derived (`created_at`, `updated_at`).
+- **Note:** `bp_swap_enabled` is the engagement-level "swap eligible users to
+  Business Premium to save" toggle (§4.8b). Each eligible scenario inherits it
+  unless the persona opts out.
 - **CRUD:** `GET/POST/PATCH/DELETE /api/engagements`, plus `duplicate`, `compute`,
   `readout.html`, `readout.xlsx`, `snapshots`.
 - **Lifecycle:** on create, seeds outcomes + Microsoft coverage from the seed
@@ -365,8 +368,12 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Relationships:** hard FK `persona_id`; **soft ref** to the base target bundle
   via `target_sku_reference`; **add-on bundles** via `ScenarioAddon` (§4.8a).
 - **Field ownership:** user-entered (`target_sku_reference` + `target_unit_price_annual`
-  = the base bundle & its list price, `target_discount_pct`, `in_scope`);
-  **engine-output cache** (`current_spend_annual`, `target_spend_annual`, `delta_annual`).
+  = the base bundle & its list price, `target_discount_pct`, `in_scope`,
+  `bp_swap_optout`); **engine-output cache** (`current_spend_annual`,
+  `target_spend_annual`, `delta_annual`).
+- **`bp_swap_optout`** is the per-persona override of the engagement's Business
+  Premium swap (§4.8b): `false` = inherit the engagement default, `true` = keep this
+  persona's own target even when the swap is on.
 - **Composition:** future state = base bundle **+** add-ons. The hydrator unions the
   covered outcomes and sums the list prices, then applies the discount → the net
   `target_unit_price_annual` the engine consumes (ENGINE_SPEC 6.2/6.3).
@@ -381,6 +388,30 @@ FK, UUID PK, cascade-deleted with the engagement.
   scenario's base bundle via `AddonEligibility` (§4.4d) — an add-on not eligible for
   the base is rejected (422), so a scenario can never compose an impossible pairing
   (e.g. F5 Security onto E3). The Scenarios tab only offers eligible add-ons.
+
+### 4.8b Business Premium swap (derived, persists nothing)
+The actionable side of the Business seat cap (§4.4e). Two first-class fields drive
+it — `Engagement.bp_swap_enabled` (the engagement default) and
+`PersonaScenario.bp_swap_optout` (the per-persona override) — an **inheritance
+model**: turning the swap on at the engagement makes every *eligible* scenario
+inherit it unless that persona opts out. There is **no new object** — the effect is
+a pure computation over existing first-class data (`services/swap.py`):
+- **Eligibility is by capability:** Business Premium must cover every outcome the
+  persona requires today (the outcomes its current Microsoft licenses deliver ∪ its
+  declared `PersonaRequirement`s). Swapping therefore never drops a capability. It
+  is *not* keyed to the persona's current SKU.
+- **Effect:** when the swap applies, the engine hydrator substitutes the scenario's
+  **effective target** with Business Premium (its covered outcomes + catalog price ×
+  `(1 − discount)`) — the persona's own `target_sku_reference` is left intact, so
+  opting out reverts with no data loss. The swap is a declared, GUI-visible transform
+  (like the ratify gate or the managed split), not a shadow write.
+- **Cap coupling:** a swapped scenario's effective target is Business Premium, so it
+  counts against the §4.4e Business cap — `services/limits` and the hydrator share
+  the same `swap.applies` decision, so the guardrail and the action never disagree.
+- **Surface:** the compute/readout response carries `bp_swap` (per-scenario
+  eligible/opted-out/applied + aggregate swapped-user count and combined delta). The
+  Scenarios tab shows the engagement toggle, a per-persona opt-out, and an
+  ineligible marker; the Readout shows the aggregate savings line. No hidden data.
 
 ### 4.9 ProductDisposition — split ownership, by design
 This is the canonical example of the field-ownership rule, because one row mixes
@@ -492,9 +523,10 @@ The global library is never mutated by workshop edits — this is the
 3. **Persist back** only engine-output fields (scenario spend cache + disposition
    outputs), preserving operator-owned fields.
 4. The readout routes then append the **license-limit evaluation**
-   (`services/limits.evaluate`, §4.4e) as `license_limits` — a tenant-wide derived
-   aggregate that persists nothing but rides on every readout consumer (compute,
-   HTML/xlsx export, snapshot).
+   (`services/limits.evaluate`, §4.4e) as `license_limits` and the **Business
+   Premium swap summary** (`services/swap.summarize`, §4.8b) as `bp_swap` — both
+   derived, persisting nothing, riding on every readout consumer (compute, HTML/xlsx
+   export, snapshot). The swap also shapes step 1's hydration (effective target).
 
 ### 6.3 Snapshot
 `POST …/snapshots` computes, then freezes the serialized result + `catalog_version`
