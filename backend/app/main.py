@@ -157,6 +157,36 @@ def _backfill_new_bundle_coverage(db) -> None:
         db.commit()
 
 
+# Outcome keys that were SPLIT AWAY by later taxonomy refinements and must not
+# linger in the global default library — otherwise a DB first seeded before the
+# refinement keeps both the coarse outcome and its finer replacements, and every
+# NEW engagement inherits both (and the AI coverage mapper suggests both).
+#   telephony        -> telephony-pbx + telephony-pstn
+#   endpoint-security-> endpoint-protection + endpoint-edr
+#   email-security   -> email-hygiene + email-atp
+#   identity-access  -> identity-access-core + identity-governance
+RETIRED_OUTCOME_KEYS = (
+    "telephony", "endpoint-security", "email-security", "identity-access",
+)
+
+
+def _retire_split_outcomes(db) -> None:
+    """Remove retired (split-away) outcomes from the GLOBAL default library
+    (DefaultOutcome + their DefaultBundleCoverage) so new engagements inherit only
+    the current taxonomy. Targets an explicit key list, so operator-added custom
+    default outcomes are never touched. Idempotent; a no-op on a fresh DB (which
+    never seeded the retired keys)."""
+    from sqlalchemy import delete
+
+    from . import models
+
+    db.execute(delete(models.DefaultBundleCoverage).where(
+        models.DefaultBundleCoverage.outcome_key.in_(RETIRED_OUTCOME_KEYS)))
+    db.execute(delete(models.DefaultOutcome).where(
+        models.DefaultOutcome.key.in_(RETIRED_OUTCOME_KEYS)))
+    db.commit()
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     import asyncio
@@ -184,6 +214,7 @@ async def lifespan(_app: FastAPI):
         _backfill_coverage_bundle_ids(db)
         _backfill_binary_coverage(db)
         _backfill_new_default_outcomes(db)
+        _retire_split_outcomes(db)  # drop split-away outcomes from the global library
         _reconcile_catalog_provenance(db)
     finally:
         db.close()
