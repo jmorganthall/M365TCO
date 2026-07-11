@@ -51,9 +51,38 @@ implements `docs/ENGINE_SPEC.md` exactly and must stay framework-free so it can
 be ported. Any change to the math requires updating the spec and the unit tests
 in `backend/tests/test_engine.py`.
 
+## Branch / trunk
+
+`main` is the trunk **and** the repository default branch. Branch new work from
+`main` and open PRs **against `main`**; a PR targeting anything else won't publish
+`:latest`. Don't trust a session's reported "default HEAD" if it isn't `main` —
+verify against `main` before building (a `claude/*` branch is a feature branch,
+not the trunk).
+
+## Seeds, defaults & migrations
+
+Seed files (`seeds/*.json`) are the versioned source for the global, editable
+tables (`DefaultOutcome`, `DefaultBundleCoverage`, `Bundle` + `AddonEligibility`,
+`LicenseLimit`, `AiPrompt`). On engagement creation they are **copied** into
+engagement-scoped rows — an engagement owns its copy for life.
+
+- **Never mutate an existing engagement's data in a migration.** Existing
+  engagements keep the taxonomy/coverage they were created with; to adopt a change
+  the operator recreates the engagement (or edits it in the GUI). Migrations touch
+  only the global tables.
+- **Adding a seeded default → add an additive startup backfill** (populate-if-empty
+  seeds a fresh DB; an idempotent `_backfill_*` inserts the new rows on an
+  already-seeded DB).
+- **Splitting or retiring a seeded default → also add a targeted retirement
+  migration** that removes the retired keys from the global template by an
+  *explicit key list* (so operator-added customs are never touched). Additive
+  backfills alone leave the old keys behind, so **new** engagements keep inheriting
+  the stale ones.
+- Reference an object by its **stable key/id**, never a mutable display name (the
+  API exposes `seed_key` for exactly this).
+
 ## Container image
 
 Published to `ghcr.io/jmorganthall/m365tco` by `.github/workflows/docker-publish.yml`
-on pushes to `main`, the repository default branch, and `v*` tags. `:latest`
-tracks `main` (the development trunk) — or the default branch if it is pushed —
-so merges to `main` update the image `docker-compose.yml` pulls.
+on pushes to `main` and `v*` tags. `:latest` tracks `main`, so merges to `main`
+update the image `docker-compose.yml` pulls.
