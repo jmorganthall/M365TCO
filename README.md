@@ -100,13 +100,18 @@ The steps run along a chevron **progress stepper** at the top of an engagement:
    `Global default → Engagement → line item`, so a picked SKU seeds the right
    priced variant (e.g. a Nonprofit customer's Business Premium price).
 3. **Third-party products** — cost, term, unit basis, count, renewal, managed flag, tooling split.
-4. **Coverage map** — confirm/extend; AI-assist proposes third-party coverage (human-ratified).
+4. **Coverage map** — confirm/extend; AI-assist proposes third-party coverage
+   (human-ratified). Microsoft bundle coverage (the reference map) is collapsed
+   by default so the tab leads with third-party coverage.
 5. **Scenarios** — a base target bundle **+** composable add-ons per persona.
-6. **Coverage Check** — per-persona validation: outcomes not delivered today by a
-   persona's current licensing or a tagged third party. Resolve each (map an
-   existing third party, add one, or leave it as a genuine gap the target lights
-   up as a *new outcome*) so the value story stays honest. Reads existing
-   relationships only.
+6. **Coverage Check** — per-persona validation, scoped to the outcomes the
+   persona's **proposed target scenario** would deliver (the *new-outcome*
+   candidates) that aren't delivered today by their current licensing or a
+   mapped third party (tagged or org-wide, so existing coverage-map mappings
+   count). Resolve each: map a third party that actually delivers it, mark it
+   *covered elsewhere / out of scope* (recorded as a $0 sentinel, so it's kept
+   out of cost and the new-outcome story), add a third party, or leave it as a
+   genuine new outcome the target lights up. Reads existing relationships only.
 7. **Readout & export** — the Net TCO delta, the Quick-wins "save today" story,
    the spend bridge, per-persona scenarios, third-party dispositions, and rollup;
    plus advisory **AI sanity check** + **business narratives**, per-engagement
