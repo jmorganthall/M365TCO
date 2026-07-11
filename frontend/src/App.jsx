@@ -15,22 +15,21 @@ import Readout from './components/Readout.jsx'
 import DataInspector from './components/DataInspector.jsx'
 import AdminPanel from './components/AdminPanel.jsx'
 
+// The progress stepper — the workshop flow. "Data" is NOT a step; it's an
+// engagement tool reached from the header Tools menu.
 const STEPS = [
-  ['info', 'Customer Info'],
-  ['personas', 'Personas'],
-  ['licensing', 'Current Licensing'],
+  ['baseline', 'Baseline Data'],
   ['thirdparty', 'Third-Party'],
   ['coverage', 'Coverage Map'],
   ['scenarios', 'Scenarios'],
   ['gaps', 'Coverage Check'],
   ['readout', 'Readout'],
-  ['data', 'Data'],
 ]
 
 export default function App() {
   const [engagements, setEngagements] = useState([])
   const [active, setActive] = useState(null)
-  const [tab, setTab] = useState('personas')
+  const [tab, setTab] = useState('baseline')
   const [meta, setMeta] = useState(null)
   const [view, setView] = useState('app')  // 'app' | 'settings'
   const openSettings = () => setView('settings')
@@ -43,7 +42,7 @@ export default function App() {
   }
   useEffect(() => { reload() }, [])
 
-  function open(e) { setActive(e); setTab('personas') }
+  function open(e) { setActive(e); setTab('baseline') }
 
   async function duplicate(id) {
     const copy = await api.post(`/api/engagements/${id}/duplicate`)
@@ -110,6 +109,7 @@ export default function App() {
                   tooling split {Math.round(active.global_tooling_pct * 100)}%
                 </span>
               </div>
+              <EngagementTools active={tab === 'data'} onData={() => setTab('data')} />
             </div>
 
             <div className="stepper">
@@ -124,10 +124,13 @@ export default function App() {
               })}
             </div>
 
-            {tab === 'info' && <CustomerInfo engagement={active}
-              onUpdate={(u) => { setActive(u); reload() }} />}
-            {tab === 'personas' && <Personas engagement={active} meta={meta} />}
-            {tab === 'licensing' && <CurrentLicensing engagement={active} meta={meta} />}
+            {tab === 'baseline' && (
+              <>
+                <CustomerInfo engagement={active} onUpdate={(u) => { setActive(u); reload() }} />
+                <Personas engagement={active} meta={meta} />
+                <CurrentLicensing engagement={active} meta={meta} />
+              </>
+            )}
             {tab === 'thirdparty' && <ThirdParty engagement={active} meta={meta} />}
             {tab === 'coverage' && <CoverageMap engagement={active} meta={meta} />}
             {tab === 'scenarios' && <Scenarios engagement={active} meta={meta} />}
@@ -138,6 +141,33 @@ export default function App() {
         )}
       </main>
       </div>
+      )}
+    </div>
+  )
+}
+
+// Engagement-specific tools — reached from the header, not the progress stepper.
+// Holds the Data inspector today; a natural home for future per-engagement tools.
+function EngagementTools({ active, onData }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={{ position: 'relative' }}>
+      <button className={`ghost sm ${active ? 'active' : ''}`} onClick={() => setOpen((o) => !o)}>
+        🔧 Tools ▾
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 10 }} />
+          <div style={{
+            position: 'absolute', right: 0, top: '100%', marginTop: 4, zIndex: 20, minWidth: 180,
+            background: 'var(--panel2)', border: '1px solid rgba(255,255,255,.12)',
+            borderRadius: 8, padding: 4, boxShadow: '0 6px 18px rgba(0,0,0,.4)',
+          }}>
+            <button className={`ghost sm ${active ? 'active' : ''}`}
+              style={{ display: 'block', width: '100%', textAlign: 'left' }}
+              onClick={() => { onData(); setOpen(false) }}>📊 Data inspector</button>
+          </div>
+        </>
       )}
     </div>
   )
