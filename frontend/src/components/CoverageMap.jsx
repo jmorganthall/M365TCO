@@ -152,11 +152,15 @@ export default function CoverageMap({ engagement, meta }) {
         ))}
       </div>
 
-      <div className="card">
-        <h2>Microsoft bundle coverage</h2>
-        <p className="hint">What each staple bundle delivers — the reference map the displacement
-          test reads (via the SKU → Bundle → Outcomes spine). Seeded per engagement and fully
-          editable: add or remove an outcome to tune coverage for this customer.</p>
+      <details className="card">
+        <summary style={{ cursor: 'pointer' }}>
+          <h2 style={{ display: 'inline', margin: 0 }}>Microsoft bundle coverage</h2>
+          <span className="muted"> — the reference map (collapsed; expand to tune)</span>
+        </summary>
+        <p className="hint" style={{ marginTop: '.6rem' }}>What each staple bundle delivers — the
+          reference map the displacement test reads (via the SKU → Bundle → Outcomes spine). Seeded
+          per engagement and fully editable: add or remove an outcome to tune coverage for this
+          customer.</p>
         {bundles.length === 0 && <p className="muted">Bundle library not loaded.</p>}
         {bundles.map((b) => (
           <div key={b.id} className="card" style={{ background: 'var(--panel2)' }}>
@@ -199,7 +203,7 @@ export default function CoverageMap({ engagement, meta }) {
             ))}
           </>
         )}
-      </div>
+      </details>
     </>
   )
 }

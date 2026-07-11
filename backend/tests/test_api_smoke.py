@@ -145,27 +145,39 @@ def test_price_sheet_csv_import(client):
     assert segs[0] == "Commercial"  # known defaults first
 
 
-def test_coverage_gaps_per_persona(client):
+def test_coverage_gaps_scoped_to_scenario(client):
     eng = client.post("/api/engagements", json={"customer_name": "Gap Co"}).json()
     eid = eng["id"]
     outcomes = client.get(f"/api/engagements/{eid}/outcomes").json()
-    total = len(outcomes)
     identity = next(o for o in outcomes if "Identity" in o["name"])
     kw = client.post(f"/api/engagements/{eid}/personas", json={"name": "KW", "headcount": 100}).json()
 
-    # No coverage yet → every outcome is a gap for the persona.
+    # No scenario yet → nothing to validate (not busy work over all outcomes).
     gaps = client.get(f"/api/engagements/{eid}/coverage-gaps").json()
     p = next(pp for pp in gaps["personas"] if pp["persona_id"] == kw["id"])
-    assert p["covered_count"] == 0
-    assert len(p["uncovered_outcomes"]) == total
+    assert p["has_scenario"] is False
+    assert p["uncovered_outcomes"] == []
 
-    # Current E3 (delivers Identity per seed) tagged to the persona closes gaps.
-    client.post(f"/api/engagements/{eid}/current-licenses", json={
-        "sku_reference": "Microsoft 365 E3", "quantity_purchased": 100,
-        "quantity_assigned": 100, "unit_price_paid_annual": 300, "persona_ids": [kw["id"]]})
+    # Propose a target (E3 delivers Identity per seed). Its outcomes are now the
+    # universe; Identity isn't delivered today → a gap (candidate new outcome).
+    client.post(f"/api/engagements/{eid}/scenarios", json={
+        "persona_id": kw["id"], "target_sku_reference": "Microsoft 365 E3",
+        "target_unit_price_annual": 0})
     gaps = client.get(f"/api/engagements/{eid}/coverage-gaps").json()
     p = next(pp for pp in gaps["personas"] if pp["persona_id"] == kw["id"])
-    assert p["covered_count"] >= 1
+    assert p["has_scenario"] is True
+    assert p["target_outcome_count"] > 0
+    assert identity["id"] in [o["id"] for o in p["uncovered_outcomes"]]
+
+    # Map a third party (untagged) to Identity via the coverage map → it's now
+    # delivered today, so it drops off the gap list even though it's not tagged.
+    okta = client.post(f"/api/engagements/{eid}/third-party", json={
+        "name": "Okta", "raw_cost": 45000, "cost_period": "Annual", "covered_count": 100}).json()
+    client.post(f"/api/engagements/{eid}/coverage", json={
+        "outcome_id": identity["id"], "product_kind": "ThirdParty",
+        "third_party_product_id": okta["id"], "coverage": "Full", "ratified": True})
+    gaps = client.get(f"/api/engagements/{eid}/coverage-gaps").json()
+    p = next(pp for pp in gaps["personas"] if pp["persona_id"] == kw["id"])
     assert identity["id"] not in [o["id"] for o in p["uncovered_outcomes"]]
 
 

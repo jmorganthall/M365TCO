@@ -251,42 +251,61 @@ def scenario_narrative(engagement_id: str, db: Session = Depends(get_db)):
 
 @router.get("/{engagement_id}/coverage-gaps")
 def coverage_gaps(engagement_id: str, db: Session = Depends(get_db)):
-    """Per-persona coverage validation (derived, persists nothing). For each
-    persona, which engagement outcomes are NOT delivered today by either its
-    current Microsoft licensing OR a third-party tagged to it. Reads only existing
-    coverage relationships — the operator resolves each gap by mapping an existing
-    third party (or adding one), so the future new-outcomes story is trustworthy."""
+    """Per-persona coverage validation (derived, persists nothing). We check ONLY
+    the outcomes a persona's PROPOSED target scenario (base bundle + add-ons)
+    would deliver — the potential "new outcomes" — and surface the ones NOT
+    already delivered today. "Delivered today" reads the existing coverage map:
+    the persona's current Microsoft licensing (its bundles' ratified coverage,
+    tagged-or-org-wide lines) plus third parties whose ratified coverage applies
+    to the persona (tagged to it, or untagged = org-wide). Reads relationships
+    only; the operator resolves each gap by mapping an existing third party (or
+    adding one), so the future new-outcomes story is trustworthy."""
     eng = _get_engagement(db, engagement_id)
     sku_outcomes = compute._ratified_sku_outcomes(db, engagement_id)
     tp_outcomes = compute._ratified_thirdparty_outcomes(db, engagement_id)
-    outcomes = [{"id": o.id, "name": o.name} for o in eng.outcomes]
+    name_by_id = {o.id: o.name for o in eng.outcomes}
     third_parties = [
         {"id": t.id, "name": t.name, "persona_ids": list(t.persona_ids)}
         for t in eng.third_party_products
     ]
 
+    # Outcomes each persona's proposed scenario (base target + add-ons) delivers.
+    target_by_persona: dict[str, set[str]] = {}
+    for s in eng.scenarios:
+        covered = set(sku_outcomes.get(compute._cover_key(db, s.target_sku_reference), set()))
+        for addon in s.addons:
+            covered |= sku_outcomes.get(addon.bundle_id, set())
+        target_by_persona[s.persona_id] = covered
+
     personas = []
     for p in eng.personas:
-        covered: set[str] = set()
+        target_outcomes = target_by_persona.get(p.id, set())
+        covered_today: set[str] = set()
         # Current Microsoft licensing: lines tagged to this persona, plus untagged
         # (org-wide) lines that apply to everyone.
         for lic in eng.current_licenses:
             if lic.persona_ids and p.id not in lic.persona_ids:
                 continue
-            covered |= sku_outcomes.get(compute._cover_key(db, lic.sku_reference), set())
-        # Third parties tagged to this persona.
+            covered_today |= sku_outcomes.get(compute._cover_key(db, lic.sku_reference), set())
+        # Third parties per the ratified coverage map: tagged to this persona, or
+        # untagged (org-wide) — so established mappings are reflected even before
+        # a product is persona-tagged.
         for t in eng.third_party_products:
-            if p.id in t.persona_ids:
-                covered |= tp_outcomes.get(t.id, set())
+            if t.persona_ids and p.id not in t.persona_ids:
+                continue
+            covered_today |= tp_outcomes.get(t.id, set())
+        # Only the target's outcomes that aren't already delivered today.
+        uncovered = sorted(target_outcomes - covered_today)
         personas.append({
             "persona_id": p.id,
             "persona_name": p.name,
             "headcount": p.headcount,
-            "covered_count": len(covered),
-            "uncovered_outcomes": [o for o in outcomes if o["id"] not in covered],
+            "has_scenario": p.id in target_by_persona,
+            "target_outcome_count": len(target_outcomes),
+            "covered_of_target": len(target_outcomes & covered_today),
+            "uncovered_outcomes": [{"id": oid, "name": name_by_id.get(oid, oid)} for oid in uncovered],
         })
-    return {"personas": personas, "third_parties": third_parties,
-            "outcome_count": len(outcomes)}
+    return {"personas": personas, "third_parties": third_parties}
 
 
 @router.get("/{engagement_id}/readout.html", response_class=HTMLResponse)
