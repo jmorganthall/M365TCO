@@ -70,12 +70,12 @@ def test_persona_can_opt_out_of_inherited_swap(client):
 
 def test_swap_eligibility_requires_capability_match(client):
     """A persona whose required outcomes Business Premium does NOT cover (Business
-    Premium lacks telephony) is ineligible — the swap never drops a capability."""
+    Premium lacks PSTN dial-tone) is ineligible — the swap never drops a capability."""
     eid, p = _setup(client)
     outs = {o["name"]: o["id"] for o in client.get(f"/api/engagements/{eid}/outcomes").json()}
-    # Require Telephony — Business Premium doesn't cover it.
+    # Require PSTN Dial-Tone — Business Premium doesn't cover it.
     client.patch(f"/api/engagements/{eid}/personas/{p['id']}",
-                 json={"required_outcome_ids": [outs["Telephony"]]})
+                 json={"required_outcome_ids": [outs["PSTN Dial-Tone"]]})
     client.patch(f"/api/engagements/{eid}", json={"bp_swap_enabled": True})
     r = client.post(f"/api/engagements/{eid}/compute").json()
     assert r["scenarios"][0]["target_sku_reference"] == "Microsoft 365 E3"  # not swapped

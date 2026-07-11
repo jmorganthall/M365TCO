@@ -1,6 +1,6 @@
 {
-  "version": "2026-07-seed-v4-bundles",
-  "note": "Default Bundle -> outcome coverage library, keyed by Bundle key (see seeds/bundles.json) and outcomes.json keys. Seeded (ratified) into engagement-scoped CoverageMapEntry rows (bundle_id set) on engagement creation. A first-pass authored default — the SA refines per engagement (and, later, the global library) in the GUI.",
+  "version": "2026-07-seed-v5-telephony-split",
+  "note": "Default Bundle -> outcome coverage library, keyed by Bundle key (see seeds/bundles.json) and outcomes.json keys. Seeded (ratified) into engagement-scoped CoverageMapEntry rows (bundle_id set) on engagement creation. A first-pass authored default — the SA refines per engagement (and, later, the global library) in the GUI. Telephony is modeled as TWO capabilities: telephony-pbx (Cloud PBX / call control, e.g. Teams Phone; included in E5) and telephony-pstn (dial-tone; the Calling Plan add-on). Keeping them separate is what makes Phone System vs dial-tone explicit without exploding a bundle into calling/non-calling variants.",
   "bundles": [
     {"bundle": "m365-f1", "coverage": [
       {"outcome": "identity-access", "coverage": "Full"},
@@ -74,7 +74,7 @@
       {"outcome": "drive-encryption", "coverage": "Full"},
       {"outcome": "security-awareness", "coverage": "Full"},
       {"outcome": "collaboration-productivity", "coverage": "Full"},
-      {"outcome": "telephony", "coverage": "Full"},
+      {"outcome": "telephony-pbx", "coverage": "Full"},
       {"outcome": "analytics-bi", "coverage": "Full"},
       {"outcome": "process-automation", "coverage": "Full"},
       {"outcome": "threat-vuln-management", "coverage": "Full"},
@@ -108,7 +108,10 @@
       {"outcome": "siem", "coverage": "Full"}
     ]},
     {"bundle": "teams-phone", "coverage": [
-      {"outcome": "telephony", "coverage": "Full"}
+      {"outcome": "telephony-pbx", "coverage": "Full"}
+    ]},
+    {"bundle": "calling-plan", "coverage": [
+      {"outcome": "telephony-pstn", "coverage": "Full"}
     ]},
     {"bundle": "power-bi-pro", "coverage": [
       {"outcome": "analytics-bi", "coverage": "Full"}

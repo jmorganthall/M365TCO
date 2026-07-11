@@ -569,3 +569,41 @@ def test_recommend_path_composes_base_plus_gap_closing_addon(client):
     # Cheapest cover: a free add-on that covers Endpoint Security beats the priced
     # E5 Security bundle, so no add-on cost is incurred to close that gap.
     assert e3["addon_total_annual"] == 0.0
+
+
+def test_telephony_split_pbx_vs_pstn(client):
+    """Telephony is modeled as two capabilities — Cloud PBX (call control) and PSTN
+    dial-tone — so the PBX-vs-dial-tone distinction is explicit. E5 includes the
+    Cloud PBX (Phone System) but NOT a calling plan; Teams Phone delivers the PBX
+    and the Calling Plan add-on delivers the PSTN dial-tone."""
+    eng = client.post("/api/engagements", json={"customer_name": "Tel Co"}).json()
+    eid = eng["id"]
+    outs = {o["name"]: o["id"] for o in client.get(f"/api/engagements/{eid}/outcomes").json()}
+    # The split outcomes exist; the old single "Telephony" is gone.
+    assert "Cloud PBX / Call Control" in outs and "PSTN Dial-Tone" in outs
+    assert "Telephony" not in outs
+
+    cov = client.get(f"/api/engagements/{eid}/coverage").json()
+
+    def covers(bundle_name, outcome_id):
+        return any(c["product_kind"] == "MicrosoftSku"
+                   and c["microsoft_sku_reference"] == bundle_name
+                   and c["outcome_id"] == outcome_id for c in cov)
+
+    pbx, pstn = outs["Cloud PBX / Call Control"], outs["PSTN Dial-Tone"]
+    # E5 has the Cloud PBX but not the calling plan.
+    assert covers("Microsoft 365 E5", pbx)
+    assert not covers("Microsoft 365 E5", pstn)
+    # Teams Phone = PBX; Calling Plan = PSTN dial-tone.
+    assert covers("Microsoft Teams Phone", pbx)
+    assert not covers("Microsoft Teams Phone", pstn)
+    assert covers("Microsoft Teams Calling Plan", pstn)
+    assert not covers("Microsoft Teams Calling Plan", pbx)
+
+
+def test_calling_plan_bundle_seeded(client):
+    """The Calling Plan add-on is a seeded à-la-carte bundle (the PSTN layer)."""
+    by_key = {b["key"]: b for b in client.get("/api/catalog/bundles").json()}
+    assert "calling-plan" in by_key
+    assert by_key["calling-plan"]["kind"] == "addon"
+    assert by_key["calling-plan"]["alacarte"] is True  # layers onto any base
