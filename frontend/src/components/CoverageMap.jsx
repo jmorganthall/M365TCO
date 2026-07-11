@@ -111,6 +111,27 @@ export default function CoverageMap({ engagement, meta }) {
         </div>
       </div>
 
+      <details className="card">
+        <summary style={{ cursor: 'pointer' }}>
+          <h2 style={{ display: 'inline', margin: 0 }}>Outcomes in this engagement ({outcomes.length})</h2>
+          <span className="muted"> — the capability list coverage maps to (expand)</span>
+        </summary>
+        <p className="hint" style={{ marginTop: '.6rem' }}>Every capability this engagement can map coverage
+          to. <b>Seeded</b> outcomes were copied from the global default library when the engagement was
+          created (Settings → Default outcomes is the template for <b>new</b> engagements only); <b>custom</b>
+          ones were added here. Editing an engagement's outcomes never changes any other engagement or the
+          global library. Third-party and Microsoft coverage below can only reference outcomes on this list.</p>
+        <div className="pill-list" style={{ margin: '.3rem 0' }}>
+          {[...outcomes].sort((a, b) => a.name.localeCompare(b.name)).map((o) => (
+            <span key={o.id} className={`badge ${o.is_custom ? 'warn' : 'muted'}`}
+              title={o.description || ''}>
+              {o.name}{o.is_custom ? ' · custom' : ''}
+            </span>
+          ))}
+          {outcomes.length === 0 && <span className="muted">No outcomes yet.</span>}
+        </div>
+      </details>
+
       <div className="card">
         <div className="flex-between">
           <h2 style={{ margin: 0 }}>Third-party coverage</h2>

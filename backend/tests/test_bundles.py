@@ -605,3 +605,44 @@ def test_calling_plan_bundle_seeded(client):
     assert "calling-plan" in by_key
     assert by_key["calling-plan"]["kind"] == "addon"
     assert by_key["calling-plan"]["alacarte"] is True  # layers onto any base
+
+
+def test_retired_outcomes_purged_from_global_library(client):
+    """A DB first seeded before a taxonomy refinement keeps the retired coarse
+    outcomes (e.g. endpoint-security) in the GLOBAL library; the retirement
+    migration removes those keys + their default coverage so NEW engagements
+    inherit only the current taxonomy. It touches the global template ONLY — never
+    an existing engagement's own outcome/coverage copy. Custom outcomes are safe."""
+    from sqlalchemy import select
+    from app.db import SessionLocal
+    from app.main import _retire_split_outcomes, RETIRED_OUTCOME_KEYS
+    from app import models
+
+    client.get("/api/admin/default-outcomes")  # ensure the library is seeded
+    db = SessionLocal()
+    try:
+        # Simulate the pre-refinement library: re-insert a retired outcome + its
+        # default coverage, plus an operator CUSTOM default outcome that must survive.
+        db.add(models.DefaultOutcome(key="endpoint-security", name="Endpoint Security", sort_order=99))
+        db.add(models.DefaultBundleCoverage(bundle_key="m365-e5", outcome_key="endpoint-security", coverage="Full"))
+        db.add(models.DefaultOutcome(key="my-custom-thing", name="My Custom Thing", sort_order=100))
+        db.commit()
+
+        _retire_split_outcomes(db)
+
+        keys = {o.key for o in db.execute(select(models.DefaultOutcome)).scalars()}
+        assert "endpoint-security" not in keys                      # retired outcome gone
+        assert not any(k in keys for k in RETIRED_OUTCOME_KEYS)     # all retired keys gone
+        assert "my-custom-thing" in keys                           # operator custom untouched
+        assert "endpoint-protection" in keys and "endpoint-edr" in keys  # replacements remain
+        cov = {(c.bundle_key, c.outcome_key)
+               for c in db.execute(select(models.DefaultBundleCoverage)).scalars()}
+        assert ("m365-e5", "endpoint-security") not in cov         # retired coverage gone
+    finally:
+        db.close()
+
+    # And the payoff: a brand-new engagement inherits none of the retired outcomes.
+    eng = client.post("/api/engagements", json={"customer_name": "Post-retire"}).json()
+    names = {o["name"] for o in client.get(f"/api/engagements/{eng['id']}/outcomes").json()}
+    assert "Endpoint Security" not in names and "Identity & Access Management" not in names
+    assert "Endpoint Protection (EPP)" in names
