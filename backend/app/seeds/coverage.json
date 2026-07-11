@@ -1,30 +1,30 @@
 {
-  "version": "2026-07-seed-v5-telephony-split",
-  "note": "Default Bundle -> outcome coverage library, keyed by Bundle key (see seeds/bundles.json) and outcomes.json keys. Seeded (ratified) into engagement-scoped CoverageMapEntry rows (bundle_id set) on engagement creation. A first-pass authored default — the SA refines per engagement (and, later, the global library) in the GUI. Telephony is modeled as TWO capabilities: telephony-pbx (Cloud PBX / call control, e.g. Teams Phone; included in E5) and telephony-pstn (dial-tone; the Calling Plan add-on). Keeping them separate is what makes Phone System vs dial-tone explicit without exploding a bundle into calling/non-calling variants.",
+  "version": "2026-07-seed-v6-security-taxonomy",
+  "note": "Default Bundle -> outcome coverage library, keyed by Bundle key (see seeds/bundles.json) and outcomes.json keys. Seeded (ratified) into engagement-scoped CoverageMapEntry rows (bundle_id set) on engagement creation. A first-pass authored default from standard Microsoft SKU inclusions — the SA refines per engagement (and, later, the global library) in the GUI. Security outcomes are split: Endpoint = EPP (anti-malware/AV) vs EDR (behavioral detection) — both come from Defender for Endpoint P2 / Defender for Business; Email = Hygiene (EOP, on every Exchange bundle) vs Advanced Threat Protection (Defender for Office 365); Identity = Core (Entra P1: SSO/MFA/CA) vs Governance (Entra P2: PIM/Identity Protection/access reviews); plus CASB (Defender for Cloud Apps, in the E5/F5 security suites) and the two telephony layers (PBX vs PSTN).",
   "bundles": [
     {"bundle": "m365-f1", "coverage": [
-      {"outcome": "identity-access", "coverage": "Full"},
+      {"outcome": "identity-access-core", "coverage": "Full"},
       {"outcome": "collaboration-productivity", "coverage": "Full"},
       {"outcome": "information-governance", "coverage": "Full"}
     ]},
     {"bundle": "m365-f3", "coverage": [
-      {"outcome": "identity-access", "coverage": "Full"},
-      {"outcome": "email-security", "coverage": "Full"},
+      {"outcome": "identity-access-core", "coverage": "Full"},
+      {"outcome": "email-hygiene", "coverage": "Full"},
       {"outcome": "device-management", "coverage": "Full"},
       {"outcome": "information-protection", "coverage": "Full"},
       {"outcome": "collaboration-productivity", "coverage": "Full"},
       {"outcome": "information-governance", "coverage": "Full"}
     ]},
     {"bundle": "m365-business-basic", "coverage": [
-      {"outcome": "identity-access", "coverage": "Full"},
-      {"outcome": "email-security", "coverage": "Full"},
+      {"outcome": "identity-access-core", "coverage": "Full"},
+      {"outcome": "email-hygiene", "coverage": "Full"},
       {"outcome": "cloud-storage-full", "coverage": "Full"},
       {"outcome": "collaboration-productivity", "coverage": "Full"},
       {"outcome": "information-governance", "coverage": "Full"}
     ]},
     {"bundle": "m365-business-standard", "coverage": [
-      {"outcome": "identity-access", "coverage": "Full"},
-      {"outcome": "email-security", "coverage": "Full"},
+      {"outcome": "identity-access-core", "coverage": "Full"},
+      {"outcome": "email-hygiene", "coverage": "Full"},
       {"outcome": "cloud-storage-full", "coverage": "Full"},
       {"outcome": "desktop-software", "coverage": "Full"},
       {"outcome": "collaboration-productivity", "coverage": "Full"},
@@ -33,10 +33,12 @@
     {"bundle": "m365-business-premium", "coverage": [
       {"outcome": "desktop-software", "coverage": "Full"},
       {"outcome": "cloud-storage-full", "coverage": "Full"},
-      {"outcome": "endpoint-security", "coverage": "Full"},
-      {"outcome": "email-security", "coverage": "Full"},
+      {"outcome": "endpoint-protection", "coverage": "Full"},
+      {"outcome": "endpoint-edr", "coverage": "Full"},
+      {"outcome": "email-hygiene", "coverage": "Full"},
+      {"outcome": "email-atp", "coverage": "Full"},
       {"outcome": "device-management", "coverage": "Full"},
-      {"outcome": "identity-access", "coverage": "Full"},
+      {"outcome": "identity-access-core", "coverage": "Full"},
       {"outcome": "information-protection", "coverage": "Full"},
       {"outcome": "drive-encryption", "coverage": "Full"},
       {"outcome": "collaboration-productivity", "coverage": "Full"},
@@ -46,16 +48,19 @@
       {"outcome": "desktop-software", "coverage": "Full"},
       {"outcome": "cloud-storage-full", "coverage": "Full"},
       {"outcome": "device-management", "coverage": "Full"},
-      {"outcome": "identity-access", "coverage": "Full"},
+      {"outcome": "identity-access-core", "coverage": "Full"},
       {"outcome": "information-protection", "coverage": "Full"},
       {"outcome": "drive-encryption", "coverage": "Full"},
-      {"outcome": "email-security", "coverage": "Full"},
+      {"outcome": "email-hygiene", "coverage": "Full"},
       {"outcome": "collaboration-productivity", "coverage": "Full"},
       {"outcome": "information-governance", "coverage": "Full"}
     ]},
     {"bundle": "e5-security", "coverage": [
-      {"outcome": "endpoint-security", "coverage": "Full"},
-      {"outcome": "email-security", "coverage": "Full"},
+      {"outcome": "endpoint-protection", "coverage": "Full"},
+      {"outcome": "endpoint-edr", "coverage": "Full"},
+      {"outcome": "email-atp", "coverage": "Full"},
+      {"outcome": "identity-governance", "coverage": "Full"},
+      {"outcome": "cloud-app-security", "coverage": "Full"},
       {"outcome": "security-awareness", "coverage": "Full"},
       {"outcome": "threat-vuln-management", "coverage": "Full"}
     ]},
@@ -66,13 +71,17 @@
     {"bundle": "m365-e5", "coverage": [
       {"outcome": "desktop-software", "coverage": "Full"},
       {"outcome": "cloud-storage-full", "coverage": "Full"},
-      {"outcome": "endpoint-security", "coverage": "Full"},
-      {"outcome": "email-security", "coverage": "Full"},
+      {"outcome": "endpoint-protection", "coverage": "Full"},
+      {"outcome": "endpoint-edr", "coverage": "Full"},
+      {"outcome": "email-hygiene", "coverage": "Full"},
+      {"outcome": "email-atp", "coverage": "Full"},
       {"outcome": "device-management", "coverage": "Full"},
-      {"outcome": "identity-access", "coverage": "Full"},
+      {"outcome": "identity-access-core", "coverage": "Full"},
+      {"outcome": "identity-governance", "coverage": "Full"},
       {"outcome": "information-protection", "coverage": "Full"},
       {"outcome": "drive-encryption", "coverage": "Full"},
       {"outcome": "security-awareness", "coverage": "Full"},
+      {"outcome": "cloud-app-security", "coverage": "Full"},
       {"outcome": "collaboration-productivity", "coverage": "Full"},
       {"outcome": "telephony-pbx", "coverage": "Full"},
       {"outcome": "analytics-bi", "coverage": "Full"},
@@ -85,8 +94,11 @@
       {"outcome": "cloud-storage-full", "coverage": "Full"}
     ]},
     {"bundle": "f5-security", "coverage": [
-      {"outcome": "endpoint-security", "coverage": "Full"},
-      {"outcome": "email-security", "coverage": "Full"},
+      {"outcome": "endpoint-protection", "coverage": "Full"},
+      {"outcome": "endpoint-edr", "coverage": "Full"},
+      {"outcome": "email-atp", "coverage": "Full"},
+      {"outcome": "identity-governance", "coverage": "Full"},
+      {"outcome": "cloud-app-security", "coverage": "Full"},
       {"outcome": "security-awareness", "coverage": "Full"}
     ]},
     {"bundle": "f5-compliance", "coverage": [
@@ -94,14 +106,16 @@
       {"outcome": "information-governance", "coverage": "Full"}
     ]},
     {"bundle": "entra-id-p2", "coverage": [
-      {"outcome": "identity-access", "coverage": "Full"}
+      {"outcome": "identity-access-core", "coverage": "Full"},
+      {"outcome": "identity-governance", "coverage": "Full"}
     ]},
     {"bundle": "defender-endpoint-p2", "coverage": [
-      {"outcome": "endpoint-security", "coverage": "Full"},
+      {"outcome": "endpoint-protection", "coverage": "Full"},
+      {"outcome": "endpoint-edr", "coverage": "Full"},
       {"outcome": "threat-vuln-management", "coverage": "Full"}
     ]},
     {"bundle": "defender-office-p2", "coverage": [
-      {"outcome": "email-security", "coverage": "Full"},
+      {"outcome": "email-atp", "coverage": "Full"},
       {"outcome": "security-awareness", "coverage": "Full"}
     ]},
     {"bundle": "sentinel", "coverage": [
