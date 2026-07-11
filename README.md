@@ -179,7 +179,12 @@ Key rules:
   A local age check flags staleness. See [`docs/PRICE_SYNC.md`](docs/PRICE_SYNC.md).
   "Import latest into catalog" then feeds the same parser.
 - **OpenRouter AI assist**: proposes third-party → outcome coverage as *unratified*
-  suggestions. AI never writes a final number.
+  suggestions, parses pasted third-party/license text, drafts business narratives,
+  runs the pre-readout sanity check, and — from the Customer Info tab — **researches
+  customer info** (industry, HQ, website, employee count, a short description) from
+  the company name to fill the empty fields for the operator to verify. AI is
+  advisory: it never writes a final number, and every function's prompt is an
+  editable `AiPrompt` (Settings → AI assist).
 
 ## Seed libraries
 

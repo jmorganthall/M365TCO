@@ -264,6 +264,39 @@ def normalize_parsed_licenses(data: dict) -> list[dict]:
     return out
 
 
+def normalize_customer_research(data: dict) -> dict:
+    """Pure: model output -> validated suggested customer-info fields. Returns only
+    the keys the model gave a non-empty value for; `employee_count` coerced to a
+    positive int. Kept separate from the HTTP call for unit testing."""
+    src = data.get("customer") if isinstance(data.get("customer"), dict) else data
+    out: dict = {}
+    for k in ("industry", "hq_location", "website", "description"):
+        v = src.get(k)
+        v = v.strip() if isinstance(v, str) else v
+        if v:
+            out[k] = str(v)
+    # A bare domain, not a URL.
+    if "website" in out:
+        out["website"] = out["website"].removeprefix("https://").removeprefix("http://").rstrip("/")
+    n = int(_to_number(src.get("employee_count")))
+    if n > 0:
+        out["employee_count"] = n
+    return out
+
+
+def research_customer(known: dict, instructions: str, model: str | None = None) -> dict:
+    """Given whatever is known about a customer (at minimum a name, maybe a location
+    or website), ask the model to fill in the rest — industry, HQ location, website,
+    employee count, and a short description — from its knowledge. `instructions` is
+    the editable system prompt (an AiPrompt). Advisory: the caller shows the
+    suggestions for review and fills empty fields only; nothing is persisted here.
+    Returns a dict of just the fields the model was confident about."""
+    lines = [f"{k}: {v}" for k, v in known.items() if v]
+    user = "Known about the customer company:\n" + ("\n".join(lines) if lines else "(name only)")
+    data = _chat_json(instructions, user, model)
+    return normalize_customer_research(data)
+
+
 def sanity_check(summary: dict, instructions: str, model: str | None = None) -> list[dict]:
     """Run the pre-readout "does this make sense?" pass over a compact engagement
     summary (built by services/sanity.build_sanity_payload). `instructions` is the

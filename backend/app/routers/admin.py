@@ -462,6 +462,40 @@ def parse_current_licenses(
     return {"rows": rows}
 
 
+@router.post("/engagements/{engagement_id}/ai/research-customer")
+def research_customer(
+    engagement_id: str, payload: schemas.CustomerResearchRequest, db: Session = Depends(get_db)
+):
+    """From the Customer Info tab: given whatever the operator has entered (at least
+    a customer name), suggest the rest — industry, HQ location, website, employee
+    count, and a short description. Advisory only — returns suggestions for the
+    operator to verify and apply; nothing is persisted here."""
+    eng = db.get(models.Engagement, engagement_id)
+    if eng is None:
+        raise HTTPException(404, "Engagement not found")
+    if not ai.is_enabled():
+        raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
+    # Merge the live form values over anything already stored on the engagement.
+    known = {
+        "customer_name": payload.customer_name or eng.customer_name,
+        "hq_location": payload.hq_location or eng.hq_location,
+        "website": payload.website or eng.website,
+        "industry": payload.industry or eng.industry,
+        "employee_count": payload.employee_count or eng.employee_count,
+    }
+    if not (known["customer_name"] or "").strip():
+        raise HTTPException(422, "Enter a customer name first.")
+    try:
+        suggestions = ai.research_customer(
+            known,
+            instructions=ai_prompts.get_instructions(db, "customer_research"),
+            model=_resolved_model(db),
+        )
+    except Exception as exc:  # network/model errors surface cleanly
+        raise HTTPException(502, f"AI research failed: {exc}")
+    return {"suggestions": suggestions}
+
+
 # ---- Editable AI instruction templates (AiPrompt) ----
 def _prompt_payload(row: models.AiPrompt) -> dict:
     return {
