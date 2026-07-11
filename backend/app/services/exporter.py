@@ -205,8 +205,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 <h1>M365 TCO Readout</h1>
 <div class="sub">{html.escape(engagement.customer_name)} · {engagement.market}/{engagement.currency} · annualized USD</div>
 
-{f'<div class="popcheck"><b>Quick wins — save {_usd(quick_win_total)}/yr today</b>, without changing licenses, by retiring third-party tools your current Microsoft licensing already covers (detail below). And if you move to the target scenarios, your future net change is <b>{_usd(delta)}</b> ({delta_label.lower()}).</div>' if quick_wins else ''}
-<div class="headline {delta_cls}">{_usd(delta)} <span style="font-size:1rem;font-weight:400">{delta_label} · future scenarios</span></div>
+<div class="headline {delta_cls}">{_usd(delta)} <span style="font-size:1rem;font-weight:400">{delta_label}{' if you move to the target scenarios' if delta != 0 else ''}</span></div>
 
 <div class="popcheck"><b>Population check.</b>
  In-scope persona headcount: <b>{pop['in_scope_persona_headcount']}</b> ·
