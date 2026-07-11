@@ -249,6 +249,46 @@ def scenario_narrative(engagement_id: str, db: Session = Depends(get_db)):
     return {"narratives": narratives}
 
 
+@router.get("/{engagement_id}/coverage-gaps")
+def coverage_gaps(engagement_id: str, db: Session = Depends(get_db)):
+    """Per-persona coverage validation (derived, persists nothing). For each
+    persona, which engagement outcomes are NOT delivered today by either its
+    current Microsoft licensing OR a third-party tagged to it. Reads only existing
+    coverage relationships — the operator resolves each gap by mapping an existing
+    third party (or adding one), so the future new-outcomes story is trustworthy."""
+    eng = _get_engagement(db, engagement_id)
+    sku_outcomes = compute._ratified_sku_outcomes(db, engagement_id)
+    tp_outcomes = compute._ratified_thirdparty_outcomes(db, engagement_id)
+    outcomes = [{"id": o.id, "name": o.name} for o in eng.outcomes]
+    third_parties = [
+        {"id": t.id, "name": t.name, "persona_ids": list(t.persona_ids)}
+        for t in eng.third_party_products
+    ]
+
+    personas = []
+    for p in eng.personas:
+        covered: set[str] = set()
+        # Current Microsoft licensing: lines tagged to this persona, plus untagged
+        # (org-wide) lines that apply to everyone.
+        for lic in eng.current_licenses:
+            if lic.persona_ids and p.id not in lic.persona_ids:
+                continue
+            covered |= sku_outcomes.get(compute._cover_key(db, lic.sku_reference), set())
+        # Third parties tagged to this persona.
+        for t in eng.third_party_products:
+            if p.id in t.persona_ids:
+                covered |= tp_outcomes.get(t.id, set())
+        personas.append({
+            "persona_id": p.id,
+            "persona_name": p.name,
+            "headcount": p.headcount,
+            "covered_count": len(covered),
+            "uncovered_outcomes": [o for o in outcomes if o["id"] not in covered],
+        })
+    return {"personas": personas, "third_parties": third_parties,
+            "outcome_count": len(outcomes)}
+
+
 @router.get("/{engagement_id}/readout.html", response_class=HTMLResponse)
 def readout_html(engagement_id: str, db: Session = Depends(get_db)):
     eng = _get_engagement(db, engagement_id)

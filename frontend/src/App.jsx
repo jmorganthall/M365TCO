@@ -9,17 +9,19 @@ import CurrentLicensing from './components/CurrentLicensing.jsx'
 import ThirdParty from './components/ThirdParty.jsx'
 import CoverageMap from './components/CoverageMap.jsx'
 import Scenarios from './components/Scenarios.jsx'
+import CoverageCheck from './components/CoverageCheck.jsx'
 import Readout from './components/Readout.jsx'
 import DataInspector from './components/DataInspector.jsx'
 import AdminPanel from './components/AdminPanel.jsx'
 
 const STEPS = [
-  ['personas', '1 · Personas'],
-  ['licensing', '2 · Current Licensing'],
-  ['thirdparty', '3 · Third-Party'],
-  ['coverage', '4 · Coverage Map'],
-  ['scenarios', '5 · Scenarios'],
-  ['readout', '6 · Readout'],
+  ['personas', 'Personas'],
+  ['licensing', 'Current Licensing'],
+  ['thirdparty', 'Third-Party'],
+  ['coverage', 'Coverage Map'],
+  ['scenarios', 'Scenarios'],
+  ['gaps', 'Coverage Check'],
+  ['readout', 'Readout'],
   ['data', 'Data'],
 ]
 
@@ -108,12 +110,16 @@ export default function App() {
               </div>
             </div>
 
-            <div className="tabs">
-              {STEPS.map(([k, label]) => (
-                <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>
-                  {label}
-                </button>
-              ))}
+            <div className="stepper">
+              {STEPS.map(([k, label], i) => {
+                const activeIdx = STEPS.findIndex(([sk]) => sk === tab)
+                const state = i === activeIdx ? 'current' : i < activeIdx ? 'done' : 'upcoming'
+                return (
+                  <button key={k} className={`step ${state}`} onClick={() => setTab(k)}>
+                    <span className="step-dot">{state === 'done' ? '✓' : ''}</span>{label}
+                  </button>
+                )
+              })}
             </div>
 
             {tab === 'personas' && <Personas engagement={active} meta={meta} />}
@@ -121,6 +127,7 @@ export default function App() {
             {tab === 'thirdparty' && <ThirdParty engagement={active} meta={meta} />}
             {tab === 'coverage' && <CoverageMap engagement={active} meta={meta} />}
             {tab === 'scenarios' && <Scenarios engagement={active} meta={meta} />}
+            {tab === 'gaps' && <CoverageCheck engagement={active} onNavigate={setTab} />}
             {tab === 'readout' && <Readout engagement={active} />}
             {tab === 'data' && <DataInspector engagement={active} meta={meta} />}
           </div>
