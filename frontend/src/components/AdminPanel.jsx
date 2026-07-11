@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { api, pct } from '../api'
+import { api, pct, usd } from '../api'
 import { VersionInfo } from './UpdateBanner.jsx'
 
 export default function AdminPanel({ onClose }) {
@@ -744,15 +744,24 @@ function AiInstructions({ onMsg, onErr }) {
 function BundleLibrary({ onMsg, onErr }) {
   const [bundles, setBundles] = useState([])
   const [unmapped, setUnmapped] = useState([])
+  const [allSkus, setAllSkus] = useState([])
   const [busy, setBusy] = useState(false)
   const byId = (id) => bundles.find((b) => b.id === id)?.name || id
 
   function load() {
     api.get('/api/catalog/bundles').then(setBundles).catch(() => {})
     api.get('/api/catalog/skus?unmapped=true&limit=500').then(setUnmapped).catch(() => {})
+    // Every priced SKU (mapped + unmapped) so we can show how the catalog buckets
+    // onto the bundle spine.
+    api.get('/api/catalog/skus?limit=2000').then(setAllSkus).catch(() => {})
   }
   useEffect(load, [])
   if (bundles.length === 0) return null
+
+  // Group mapped catalog SKUs by their bundle — the "which priced variants collapse
+  // onto this staple" rollup (all the E5 variants → E5, etc.).
+  const skusByBundle = {}
+  for (const s of allSkus) if (s.bundle_id) (skusByBundle[s.bundle_id] ||= []).push(s)
 
   // Suggestions first, then the rest of the unmapped work-list.
   const rows = [...unmapped].sort((a, b) => (b.suggested_bundle_id ? 1 : 0) - (a.suggested_bundle_id ? 1 : 0))
@@ -827,6 +836,43 @@ function BundleLibrary({ onMsg, onErr }) {
         layer onto (the composition logic layer — e.g. F5 Security only onto F3). No selection = <b>à-la-carte</b>
         (any base). Scenarios and recommend-a-path enforce this.</p>
       <NewBundleForm baseBundles={baseBundles} onAdd={addBundle} />
+
+      {allSkus.length > 0 && (
+        <details style={{ marginTop: '.8rem' }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
+            How catalog SKUs bucket into bundles ({allSkus.filter((s) => s.bundle_id).length} mapped)
+          </summary>
+          <p className="hint">Each staple bundle collapses many priced catalog variants (terms, segments,
+            with/without Teams calling, unattended, …). This is that mapping — the "strata" the SKU intake
+            resolves into. Telephony is modeled as two capabilities (Cloud PBX vs PSTN dial-tone), so a
+            calling variant maps to the base bundle and the telephony layer is an add-on.</p>
+          {bundles.filter((b) => (skusByBundle[b.id] || []).length).map((b) => (
+            <details key={b.id} className="card" style={{ background: 'var(--panel2)', marginBottom: '.4rem' }}>
+              <summary style={{ cursor: 'pointer' }}>
+                <b>{b.name}</b> <span className="badge muted">{skusByBundle[b.id].length} SKU(s)</span>
+                {b.kind === 'addon' && <span className="muted" style={{ fontSize: '.75rem' }}> · add-on</span>}
+              </summary>
+              <table style={{ marginTop: '.4rem' }}>
+                <thead><tr><th>Product / SKU</th><th>Term</th><th className="num">List $/yr</th></tr></thead>
+                <tbody>
+                  {skusByBundle[b.id].map((s) => (
+                    <tr key={s.id}>
+                      <td>{s.product_title || s.sku_title}
+                        {s.sku_title && s.sku_title !== s.product_title &&
+                          <small className="muted"> · {s.sku_title}</small>}</td>
+                      <td className="muted" style={{ fontSize: '.8rem' }}>{s.term_duration} / {s.billing_plan}</td>
+                      <td className="num">{s.annual_unit_price ? usd(s.annual_unit_price) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
+          ))}
+          {bundles.every((b) => !(skusByBundle[b.id] || []).length) && (
+            <div className="muted" style={{ fontSize: '.82rem' }}>No SKUs mapped yet — map some below to see the buckets.</div>
+          )}
+        </details>
+      )}
 
       {unmapped.length === 0 ? (
         <div className="muted" style={{ fontSize: '.82rem' }}>Every catalog SKU is mapped to a bundle. 🎉</div>
