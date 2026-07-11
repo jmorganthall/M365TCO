@@ -93,24 +93,12 @@ export default function Readout({ engagement }) {
 
   return (
     <>
-      {quickWin > 0 && (
-        <div className="card" style={{ borderColor: 'var(--pos, #127436)' }}>
-          <div className="muted">Quick wins — duplicates your current licensing already covers <PricingBadge /></div>
-          <div className="headline pos">{usd(quickWin)}</div>
-          <div className="muted">You could save this <b>today, without changing licenses</b> — by dropping third-party tools your existing Microsoft licensing already delivers. Detail below.</div>
-          <div className="muted" style={{ marginTop: '.4rem' }}>
-            …and <b>if you move to the target scenarios</b>, your future looks like{' '}
-            <b className={saving ? 'pos' : ''}>{usd(r.net_tco_delta_annual)}</b>/yr{' '}
-            {saving ? 'saved' : r.net_tco_delta_annual > 0 ? 'net cost — for the added capabilities below' : 'net'}.
-          </div>
-        </div>
-      )}
       <div className="card">
         <div className="flex-between">
           <div>
-            <div className="muted">Net TCO delta {'(future scenarios)'} · annualized USD · <small>negative = saving</small> <PricingBadge /></div>
-            <div className={`headline ${saving ? 'pos' : ''}`}>{usd(r.net_tco_delta_annual)}</div>
-            <div className="muted">{saving ? 'Hard-dollar annual savings' : r.net_tco_delta_annual > 0 ? 'Annual cost increase — shown honestly' : 'No net change'}</div>
+            <div className="muted">Net TCO delta · annualized USD · <small>negative = saving</small> <PricingBadge /></div>
+            <div className={`headline ${saving ? 'pos' : ''}`} style={{ fontSize: '2.6rem' }}>{usd(r.net_tco_delta_annual)}</div>
+            <div className="muted">{saving ? 'Hard-dollar annual savings if you move to the target scenarios' : r.net_tco_delta_annual > 0 ? 'Annual cost increase — shown honestly (for the added capabilities below)' : 'No net change'}</div>
           </div>
           <div className="row" style={{ gap: '.4rem' }}>
             {aiEnabled && (
@@ -177,31 +165,10 @@ export default function Readout({ engagement }) {
         )}
       </div>
 
-      {narratives && (
-        <div className="card">
-          <div className="flex-between">
-            <h2>Business narratives</h2>
-            <small className="src">AI draft per in-scope persona — review before you present. Advisory only.</small>
-          </div>
-          {narratives.length === 0
-            ? <p className="muted">No in-scope scenarios to narrate yet — set target bundles on the Scenarios tab.</p>
-            : narratives.map((n, i) => (
-              <div key={i} className="popcheck" style={{ marginTop: '.5rem' }}>
-                <b>{n.persona}</b>
-                {n.today && <p style={{ margin: '.3rem 0' }}><b>Today: </b>{n.today}</p>}
-                {n.whats_new && <p style={{ margin: '.3rem 0' }}><b>What's new: </b>{n.whats_new}</p>}
-                {n.value && <p style={{ margin: '.3rem 0' }}><b>Value: </b>{n.value}</p>}
-              </div>
-            ))}
-        </div>
-      )}
-
       {r.quick_wins && r.quick_wins.length > 0 && (
-        <div className="card">
-          <div className="flex-between">
-            <h2 className="pos">💡 Quick wins — you're already covered</h2>
-            <b className="pos">{usd(quickWin)}/yr</b>
-          </div>
+        <div className="card" style={{ borderColor: 'var(--pos, #127436)' }}>
+          <div className="muted">💡 Quick wins — save today, without changing licenses <small>(duplicates your current licensing already covers)</small></div>
+          <div className="headline pos">{usd(quickWin)}<span style={{ fontSize: '1rem', fontWeight: 400 }}>/yr</span></div>
           <p className="hint">These third-party tools deliver outcomes your <b>current</b> Microsoft
             licensing already provides — you're paying twice. They can be retired <b>today</b>,
             independent of any move to a new scenario.</p>
@@ -222,6 +189,25 @@ export default function Readout({ engagement }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {narratives && (
+        <div className="card">
+          <div className="flex-between">
+            <h2>Business narratives</h2>
+            <small className="src">AI draft per in-scope persona — review before you present. Advisory only.</small>
+          </div>
+          {narratives.length === 0
+            ? <p className="muted">No in-scope scenarios to narrate yet — set target bundles on the Scenarios tab.</p>
+            : narratives.map((n, i) => (
+              <div key={i} className="popcheck" style={{ marginTop: '.5rem' }}>
+                <b>{n.persona}</b>
+                {n.today && <p style={{ margin: '.3rem 0' }}><b>Today: </b>{n.today}</p>}
+                {n.whats_new && <p style={{ margin: '.3rem 0' }}><b>What's new: </b>{n.whats_new}</p>}
+                {n.value && <p style={{ margin: '.3rem 0' }}><b>Value: </b>{n.value}</p>}
+              </div>
+            ))}
         </div>
       )}
 
