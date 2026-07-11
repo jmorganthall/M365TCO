@@ -27,7 +27,7 @@ from tco_engine import (
 from tco_engine.engine import EngineResult
 
 from .. import models
-from . import bundles, seeds
+from . import bundles, seeds, swap
 
 
 def _dec(value) -> Decimal:
@@ -134,19 +134,29 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
 
     # Compose each scenario's future state = base bundle + add-on bundles: union
     # the covered outcomes, sum the list prices, then apply the discount to yield
-    # the net per-seat price the engine consumes.
+    # the net per-seat price the engine consumes. When the engagement's Business
+    # Premium swap is active for a scenario (inherited, not opted out, capability-
+    # eligible), the effective target is substituted with Business Premium.
+    swap_ctx = swap.compute_context(db, eng)
     scenarios = []
     for s in eng.scenarios:
-        covered = set(sku_outcomes.get(_cover_key(db, s.target_sku_reference), set()))
-        list_price = _dec(s.target_unit_price_annual)
-        for addon in s.addons:
-            covered |= sku_outcomes.get(addon.bundle_id, set())
-            list_price += _dec(addon.unit_price_annual)
+        if swap.applies(eng, swap_ctx, s):
+            bp = swap_ctx["bp"]
+            covered = set(swap_ctx["bp_covered"])
+            list_price = _catalog_annual_erp(db, bp.name)
+            target_ref = bp.name
+        else:
+            covered = set(sku_outcomes.get(_cover_key(db, s.target_sku_reference), set()))
+            list_price = _dec(s.target_unit_price_annual)
+            for addon in s.addons:
+                covered |= sku_outcomes.get(addon.bundle_id, set())
+                list_price += _dec(addon.unit_price_annual)
+            target_ref = s.target_sku_reference
         net_price = list_price * (Decimal("1") - _dec(s.target_discount_pct))
         scenarios.append(EngScenario(
             id=s.id,
             persona_id=s.persona_id,
-            target_sku_reference=s.target_sku_reference,
+            target_sku_reference=target_ref,
             target_unit_price_annual=net_price,
             in_scope=s.in_scope,
             target_covered_outcome_ids=frozenset(covered),
@@ -271,9 +281,11 @@ def analyze_persona_bundles(
         return Decimal(str(override)) if override is not None else _catalog_annual_erp(db, bundle.name)
 
     # Compose each base bundle with the cheapest add-ons that close its gaps. An
-    # add-on is applicable to a base when it is à-la-carte (no base link) or its
-    # base link points at this base (e.g. E5 Security → E3). `composition[name]`
+    # add-on is applicable to a base when it is eligible for it — à-la-carte add-ons
+    # (no eligibility rows) apply to any base; otherwise the base must be in the
+    # add-on's AddonEligibility set (e.g. E5 Security → E3). `composition[name]`
     # carries the chosen add-ons back to the UI (and the "Use" apply).
+    elig_map = bundles.eligibility_map(db)
     candidates = []
     composition: dict[str, dict] = {}
     for base in base_bundles:
@@ -282,7 +294,7 @@ def analyze_persona_bundles(
         gaps = frozenset(required - base_cover)
         options = []
         for a in addon_bundles:
-            if a.base_bundle_id not in (None, base.id):
+            if not bundles.addon_applies(a.id, base.id, elig_map):
                 continue
             cover = frozenset(sku_outcomes.get(a.id, set())) & gaps
             if cover:  # only add-ons that close a real gap are worth composing

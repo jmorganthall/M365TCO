@@ -1,0 +1,16 @@
+{
+  "version": "2026-07-limits-v1",
+  "note": "Global Microsoft licensing limits over the Bundle spine. Seeded into first-class LicenseLimit + LicenseLimitMember rows on first run (populate-if-empty). `bundles` lists Bundle keys (see bundles.json) that share the ceiling. Evaluation is a tenant-wide derived aggregate at compute time — see services/limits.py; it persists nothing.",
+  "limits": [
+    {
+      "key": "m365-business-seat-cap",
+      "name": "Microsoft 365 Business (tenant seat cap)",
+      "limit_type": "max_total_seats",
+      "max_quantity": 300,
+      "unit_basis": "Users",
+      "scope": "tenant",
+      "sort_order": 10,
+      "bundles": ["m365-business-basic", "m365-business-standard", "m365-business-premium"]
+    }
+  ]
+}

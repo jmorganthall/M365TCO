@@ -371,9 +371,30 @@ def list_scenarios(engagement_id: str, db: Session = Depends(get_db)):
     ).scalars().all()
 
 
-def _set_scenario_addons(row: models.PersonaScenario, addons: list):
-    """Reconcile a scenario's add-on bundles to the given set (by bundle_id)."""
+def _validate_addon_eligibility(db: Session, base_ref: str, addon_bundle_ids: list[str]):
+    """Enforce the composition "logic layer": each add-on must be eligible for the
+    scenario's base bundle (à-la-carte add-ons layer onto anything). Skips when the
+    base can't be resolved yet (no target set) — there's nothing to check against."""
+    base_id = bundles.resolve_bundle(db, base_ref or "")
+    if base_id is None:
+        return
+    elig_map = bundles.eligibility_map(db)
+    for bid in addon_bundle_ids:
+        if not bundles.addon_applies(bid, base_id, elig_map):
+            addon = db.get(models.Bundle, bid)
+            base = db.get(models.Bundle, base_id)
+            raise HTTPException(
+                422,
+                f"'{addon.name if addon else bid}' cannot be added to "
+                f"'{base.name if base else base_ref}': it is not eligible for that base.",
+            )
+
+
+def _set_scenario_addons(db: Session, row: models.PersonaScenario, addons: list, base_ref: str):
+    """Reconcile a scenario's add-on bundles to the given set (by bundle_id), after
+    validating each is eligible for the scenario's base bundle."""
     want = {a["bundle_id"]: a for a in addons}
+    _validate_addon_eligibility(db, base_ref, list(want))
     have = {ad.bundle_id: ad for ad in row.addons}
     for bid, ad in list(have.items()):
         if bid not in want:
@@ -392,7 +413,7 @@ def create_scenario(engagement_id: str, payload: schemas.ScenarioIn, db: Session
     data = payload.model_dump()
     addons = data.pop("addons", [])
     row = models.PersonaScenario(engagement_id=engagement_id, **data)
-    _set_scenario_addons(row, addons)
+    _set_scenario_addons(db, row, addons, row.target_sku_reference)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -406,7 +427,10 @@ def update_scenario(engagement_id: str, scenario_id: str, payload: schemas.Scena
         raise HTTPException(404, "Scenario not found")
     data = payload.model_dump(exclude_unset=True)
     if "addons" in data:
-        _set_scenario_addons(row, data.pop("addons") or [])
+        # Validate against the base being set in this same PATCH if present, else
+        # the scenario's existing base.
+        base_ref = data.get("target_sku_reference", row.target_sku_reference)
+        _set_scenario_addons(db, row, data.pop("addons") or [], base_ref)
     for k, v in data.items():
         setattr(row, k, v)
     db.commit()

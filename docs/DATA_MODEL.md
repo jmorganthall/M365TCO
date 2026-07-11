@@ -102,9 +102,12 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Relationships:** one-to-many to all eight child sets, all `cascade="all, delete-orphan"`.
 - **Field ownership:** user-entered (`customer_name`, `market`, `currency`,
   `notes`, `global_tooling_pct`, `modeling_horizon_years`, `default_segment`,
-  `default_term_duration`, `default_billing_plan`, and the readout branding
-  `brand_logo_data_url` / `brand_primary_color` / `brand_accent_color`); derived
-  (`created_at`, `updated_at`).
+  `default_term_duration`, `default_billing_plan`, `bp_swap_enabled`, and the
+  readout branding `brand_logo_data_url` / `brand_primary_color` /
+  `brand_accent_color`); derived (`created_at`, `updated_at`).
+- **Note:** `bp_swap_enabled` is the engagement-level "swap eligible users to
+  Business Premium to save" toggle (§4.8b). Each eligible scenario inherits it
+  unless the persona opts out.
 - **CRUD:** `GET/POST/PATCH/DELETE /api/engagements`, plus `duplicate`, `compute`,
   `readout.html`, `readout.xlsx`, `snapshots`.
 - **Lifecycle:** on create, seeds outcomes + Microsoft coverage from the seed
@@ -241,14 +244,17 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Identity:** `uuid` plus a unique `key`. **Scope:** **global**, editable,
   seeded from `seeds/bundles.json` (`services/bundles.py`).
 - **Shape:** `name`, `kind` (`bundle` = a full base like *Microsoft 365 E3*;
-  `addon` = a composable add-on like *E5 Security* whose `base_bundle_id` names the
-  base it layers onto), `sort_order`.
+  `addon` = a composable add-on like *E5 Security*), `sort_order`. `base_bundle_id`
+  is the add-on's **primary/canonical** base (for display and the compact seed form);
+  the **full set** of bases an add-on may layer onto is the M:N `AddonEligibility`
+  (§4.4d) — the primary base is always a member of that set.
 - **CRUD (slice E2-bundles):** `GET/POST/PATCH/DELETE …/catalog/bundles`, edited in
   Settings → Staple bundles (inline name/kind/base/sort + add-bundle form). Shape
   rules are enforced (a base has no parent; an add-on must point at an existing base
   bundle). **Delete is blocked (409) while anything references the bundle** —
   `MicrosoftSku.bundle_id`/`suggested_bundle_id`, `CoverageMapEntry.bundle_id`,
-  `ScenarioAddon.bundle_id`, or a child add-on — so a delete never orphans the spine.
+  `ScenarioAddon.bundle_id`, a child add-on, or an `AddonEligibility` link — so a
+  delete never orphans the spine.
   `key` is immutable (the stable id); a deleted *seed* staple is re-created on the
   next startup by `seed_bundles`, so delete is meaningful for operator-added bundles.
 - **Why it exists:** the stable identity between the many priced catalog SKUs and
@@ -280,6 +286,63 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **CRUD:** `GET/POST/PATCH/DELETE …/admin/default-coverage` (keys validated against the
   bundle library + `DefaultOutcome`; the pair is unique; PATCH edits coverage only).
   `seeds/coverage.json` remains the version-controlled seed source.
+
+### 4.4d AddonEligibility — the add-on composition logic layer
+- **Identity:** `uuid` plus a unique `(addon_bundle_id, base_bundle_id)`. **Scope:**
+  **global**, editable, seeded from the add-on `base`/`bases` in `seeds/bundles.json`
+  (`services/bundles.py`). **Association object** — the many-to-many "this add-on may
+  layer onto this base bundle" (per §5: model M:N as a first-class association, not a
+  single FK or a delimited string).
+- **Shape:** `addon_bundle_id` → an `addon`-kind Bundle, `base_bundle_id` → a
+  `bundle`-kind Bundle.
+- **Semantics (the rule):** an add-on **with ≥1 eligibility row** is restricted to
+  exactly those bases; an add-on with **no rows is à-la-carte** — eligible for any
+  base (this makes the legacy `base_bundle_id = null` behaviour explicit). An add-on's
+  primary `base_bundle_id` is always mirrored in as a member, so a based add-on is
+  enforced from creation.
+- **Why it exists:** *F5 Security only onto F3, E5 Security only onto E3* is a real
+  Microsoft composition constraint. It was a single nullable FK (1:1, unenforced);
+  it's now a first-class M:N that both the **scenario add-on API**
+  (`_validate_addon_eligibility` in `routers/entities.py` — a soft-ref-against-source
+  validation rejecting an ineligible add-on 422) and the **recommend-a-path optimizer**
+  (`services/compute.py`, via `bundles.addon_applies`) enforce.
+- **CRUD:** read via `GET /api/catalog/bundles` (each add-on carries `eligible_base_ids`,
+  `eligible_base_names`, `alacarte`); set via `PUT /api/catalog/bundles/{addon_id}/eligibility`
+  (replace-the-set; empty = à-la-carte), edited in Settings → Staple bundles. Keys
+  validated: target must be an add-on, each base must be an existing base bundle.
+- **Lifecycle:** seeded on startup (`seed_bundles`); a one-time
+  `_backfill_addon_eligibility` (`app/main.py`) carries the legacy single
+  `base_bundle_id` forward for any add-on with a base but no rows. Idempotent.
+
+### 4.4e LicenseLimit + LicenseLimitMember — Microsoft licensing caps
+- **Identity:** `LicenseLimit` — `uuid` + unique `key`; `LicenseLimitMember` — `uuid`
+  + unique `(license_limit_id, bundle_id)`. **Scope:** **global**, editable, seeded
+  from `seeds/license_limits.json` (`services/limits.seed_license_limits`,
+  populate-if-empty).
+- **Shape:** a `LicenseLimit` is `name`, `limit_type` (today `max_total_seats`),
+  `max_quantity`, `unit_basis`, `scope` (`tenant`), `sort_order`. `LicenseLimitMember`
+  is the **first-class M:N** of the bundles that share one ceiling — Business
+  Basic + Standard + Premium share the 300-seat pool (per §5: a *family* is an
+  association set, not a delimited string of SKU names).
+- **Why it exists:** *Microsoft 365 Business is capped at 300 seats in the tenant*
+  is a real Microsoft constraint that spans a **family** of bundles and must be
+  checked against the **totality** of current + future state — so it is neither a
+  field on one bundle nor a per-line value.
+- **Evaluation (derived, persists nothing):** `services/limits.evaluate` computes a
+  **tenant-wide aggregate** at compute time — current-license seats plus in-scope
+  scenario headcount on member bundles (a scenario counts once whether its base or
+  an add-on is a member), compared to the cap. It is a **pure computation over
+  existing first-class objects** (the correct "don't create second-class data"
+  outcome, like §4.10a); the result rides on the compute/readout response as
+  `license_limits` and is shown on the Readout, so a violation is never hidden.
+- **CRUD:** `GET/POST/PATCH/DELETE /api/admin/license-limits` +
+  `PUT …/{id}/members` (replace the member set), edited in Settings → License
+  limits. `key` is immutable; `limit_type` validated against `LIMIT_TYPES`; members
+  validated against the bundle library.
+- **Lifecycle:** seeded on startup after `seed_bundles` (needs the bundles to
+  resolve `bundles` keys → ids). The two new Business staples (Basic/Standard) added
+  to the spine get default coverage on fresh installs and via the idempotent
+  `_backfill_new_bundle_coverage` on existing DBs.
 
 ### 4.5 CurrentMicrosoftLicense — the customer's existing licensing
 - **Identity:** `uuid`. **Scope:** engagement-scoped.
@@ -358,8 +421,12 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Relationships:** hard FK `persona_id`; **soft ref** to the base target bundle
   via `target_sku_reference`; **add-on bundles** via `ScenarioAddon` (§4.8a).
 - **Field ownership:** user-entered (`target_sku_reference` + `target_unit_price_annual`
-  = the base bundle & its list price, `target_discount_pct`, `in_scope`);
-  **engine-output cache** (`current_spend_annual`, `target_spend_annual`, `delta_annual`).
+  = the base bundle & its list price, `target_discount_pct`, `in_scope`,
+  `bp_swap_optout`); **engine-output cache** (`current_spend_annual`,
+  `target_spend_annual`, `delta_annual`).
+- **`bp_swap_optout`** is the per-persona override of the engagement's Business
+  Premium swap (§4.8b): `false` = inherit the engagement default, `true` = keep this
+  persona's own target even when the swap is on.
 - **Composition:** future state = base bundle **+** add-ons. The hydrator unions the
   covered outcomes and sums the list prices, then applies the discount → the net
   `target_unit_price_annual` the engine consumes (ENGINE_SPEC 6.2/6.3).
@@ -370,6 +437,34 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Identity:** `uuid`. **Scope:** engagement-scoped (via the scenario).
   **Association object** linking a scenario to an add-on `Bundle` with its own
   `unit_price_annual`. Composing base + add-ons is how "E3 + E5 Security" is modeled.
+- **Eligibility gate:** on create/PATCH, each add-on is validated against the
+  scenario's base bundle via `AddonEligibility` (§4.4d) — an add-on not eligible for
+  the base is rejected (422), so a scenario can never compose an impossible pairing
+  (e.g. F5 Security onto E3). The Scenarios tab only offers eligible add-ons.
+
+### 4.8b Business Premium swap (derived, persists nothing)
+The actionable side of the Business seat cap (§4.4e). Two first-class fields drive
+it — `Engagement.bp_swap_enabled` (the engagement default) and
+`PersonaScenario.bp_swap_optout` (the per-persona override) — an **inheritance
+model**: turning the swap on at the engagement makes every *eligible* scenario
+inherit it unless that persona opts out. There is **no new object** — the effect is
+a pure computation over existing first-class data (`services/swap.py`):
+- **Eligibility is by capability:** Business Premium must cover every outcome the
+  persona requires today (the outcomes its current Microsoft licenses deliver ∪ its
+  declared `PersonaRequirement`s). Swapping therefore never drops a capability. It
+  is *not* keyed to the persona's current SKU.
+- **Effect:** when the swap applies, the engine hydrator substitutes the scenario's
+  **effective target** with Business Premium (its covered outcomes + catalog price ×
+  `(1 − discount)`) — the persona's own `target_sku_reference` is left intact, so
+  opting out reverts with no data loss. The swap is a declared, GUI-visible transform
+  (like the ratify gate or the managed split), not a shadow write.
+- **Cap coupling:** a swapped scenario's effective target is Business Premium, so it
+  counts against the §4.4e Business cap — `services/limits` and the hydrator share
+  the same `swap.applies` decision, so the guardrail and the action never disagree.
+- **Surface:** the compute/readout response carries `bp_swap` (per-scenario
+  eligible/opted-out/applied + aggregate swapped-user count and combined delta). The
+  Scenarios tab shows the engagement toggle, a per-persona opt-out, and an
+  ineligible marker; the Readout shows the aggregate savings line. No hidden data.
 
 ### 4.9 ProductDisposition — split ownership, by design
 This is the canonical example of the field-ownership rule, because one row mixes
@@ -537,6 +632,11 @@ The global library is never mutated by workshop edits — this is the
 2. Run the pure engine (`tco_engine.compute`).
 3. **Persist back** only engine-output fields (scenario spend cache + disposition
    outputs), preserving operator-owned fields.
+4. The readout routes then append the **license-limit evaluation**
+   (`services/limits.evaluate`, §4.4e) as `license_limits` and the **Business
+   Premium swap summary** (`services/swap.summarize`, §4.8b) as `bp_swap` — both
+   derived, persisting nothing, riding on every readout consumer (compute, HTML/xlsx
+   export, snapshot). The swap also shapes step 1's hydration (effective target).
 
 ### 6.3 Snapshot
 `POST …/snapshots` computes, then freezes the serialized result + `catalog_version`

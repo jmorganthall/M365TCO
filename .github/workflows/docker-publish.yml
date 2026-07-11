@@ -4,15 +4,12 @@ name: Publish container image
 # Container Registry so docker-compose.yml can pull ghcr.io/<owner>/m365tco:latest.
 #
 # `:latest` tracks `main` (the active development trunk) OR the repository's
-# DEFAULT branch — whichever is pushed (see the metadata step). Development
-# happens on `main` and PRs merge there, so `:latest` must follow `main` even
-# when the repo default branch is set to something else; the default-branch
-# check is kept so `:latest` also stays correct if the default is later changed.
-# List every branch that should publish here because a push trigger's branch
-# filter can't be an expression.
+# DEFAULT branch — whichever is pushed (see the metadata step). `main` is both
+# the trunk and the default branch; the default-branch check is kept so `:latest`
+# also stays correct if the default is ever changed.
 on:
   push:
-    branches: [main, claude/m365-tco-tool-j39gf2]
+    branches: [main]
     tags: ['v*.*.*']
   workflow_dispatch:
 
