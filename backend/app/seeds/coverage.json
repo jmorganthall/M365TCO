@@ -1,7 +1,37 @@
 {
-  "version": "2026-07-seed-v6-security-taxonomy",
+  "version": "2026-07-seed-v7-o365-bundles",
   "note": "Default Bundle -> outcome coverage library, keyed by Bundle key (see seeds/bundles.json) and outcomes.json keys. Seeded (ratified) into engagement-scoped CoverageMapEntry rows (bundle_id set) on engagement creation. A first-pass authored default from standard Microsoft SKU inclusions — the SA refines per engagement (and, later, the global library) in the GUI. Security outcomes are split: Endpoint = EPP (anti-malware/AV) vs EDR (behavioral detection) — both come from Defender for Endpoint P2 / Defender for Business; Email = Hygiene (EOP, on every Exchange bundle) vs Advanced Threat Protection (Defender for Office 365); Identity = Core (Entra P1: SSO/MFA/CA) vs Governance (Entra P2: PIM/Identity Protection/access reviews); plus CASB (Defender for Cloud Apps, in the E5/F5 security suites) and the two telephony layers (PBX vs PSTN).",
   "bundles": [
+    {"bundle": "o365-e1", "coverage": [
+      {"outcome": "identity-access-core", "coverage": "Full"},
+      {"outcome": "email-hygiene", "coverage": "Full"},
+      {"outcome": "cloud-storage-full", "coverage": "Full"},
+      {"outcome": "collaboration-productivity", "coverage": "Full"},
+      {"outcome": "information-governance", "coverage": "Full"}
+    ]},
+    {"bundle": "o365-e3", "coverage": [
+      {"outcome": "desktop-software", "coverage": "Full"},
+      {"outcome": "cloud-storage-full", "coverage": "Full"},
+      {"outcome": "identity-access-core", "coverage": "Full"},
+      {"outcome": "email-hygiene", "coverage": "Full"},
+      {"outcome": "information-protection", "coverage": "Full"},
+      {"outcome": "collaboration-productivity", "coverage": "Full"},
+      {"outcome": "information-governance", "coverage": "Full"}
+    ]},
+    {"bundle": "o365-e5", "coverage": [
+      {"outcome": "desktop-software", "coverage": "Full"},
+      {"outcome": "cloud-storage-full", "coverage": "Full"},
+      {"outcome": "identity-access-core", "coverage": "Full"},
+      {"outcome": "email-hygiene", "coverage": "Full"},
+      {"outcome": "email-atp", "coverage": "Full"},
+      {"outcome": "information-protection", "coverage": "Full"},
+      {"outcome": "security-awareness", "coverage": "Full"},
+      {"outcome": "collaboration-productivity", "coverage": "Full"},
+      {"outcome": "telephony-pbx", "coverage": "Full"},
+      {"outcome": "analytics-bi", "coverage": "Full"},
+      {"outcome": "process-automation", "coverage": "Full"},
+      {"outcome": "information-governance", "coverage": "Full"}
+    ]},
     {"bundle": "m365-f1", "coverage": [
       {"outcome": "identity-access-core", "coverage": "Full"},
       {"outcome": "collaboration-productivity", "coverage": "Full"},

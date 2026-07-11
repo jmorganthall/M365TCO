@@ -148,6 +148,7 @@ def _norm(s: str) -> str:
 _ALIASES = {
     "f1": "m365-f1", "f3": "m365-f3", "e3": "m365-e3", "e5": "m365-e5",
     "e7": "m365-e7", "business premium": "m365-business-premium",
+    "o365 e1": "o365-e1", "o365 e3": "o365-e3", "o365 e5": "o365-e5",
     "entra id p2": "entra-id-p2", "defender for endpoint p2": "defender-endpoint-p2",
     "defender for office 365 p2": "defender-office-p2", "sentinel": "sentinel",
     "teams phone": "teams-phone", "power bi pro": "power-bi-pro",

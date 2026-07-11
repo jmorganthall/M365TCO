@@ -401,6 +401,77 @@ def test_new_outcome_backfill_is_additive_for_existing_dbs(client):
         db.close()
 
 
+def test_o365_bundles_seeded_with_coverage(client):
+    """Office 365 E1/E3/E5 seed as first-class bundles with default coverage that
+    reflects M365 = O365 + EMS + Windows: O365 carries the productivity/collaboration
+    and (E5) advanced email/compliance/voice/analytics outcomes, but NOT the EMS/Windows
+    security stack (Intune device mgmt, Defender for Endpoint, Entra P2, CASB)."""
+    by_key = {b["key"]: b for b in client.get("/api/catalog/bundles").json()}
+    assert {"o365-e1", "o365-e3", "o365-e5"} <= set(by_key)
+    for k in ("o365-e1", "o365-e3", "o365-e5"):
+        assert by_key[k]["kind"] == "bundle" and by_key[k]["base_bundle_id"] is None
+
+    eng = client.post("/api/engagements", json={"customer_name": "O365 Co"}).json()
+    eid = eng["id"]
+    cov = client.get(f"/api/engagements/{eid}/coverage").json()
+    outs = {o["seed_key"]: o["id"] for o in client.get(f"/api/engagements/{eid}/outcomes").json()}
+
+    def covers(bundle_name, seed_key):
+        return any(c["product_kind"] == "MicrosoftSku"
+                   and c["microsoft_sku_reference"] == bundle_name
+                   and c["outcome_id"] == outs[seed_key] for c in cov)
+
+    # E1 = cloud collaboration suite: no desktop apps, no EMS security stack.
+    assert covers("Office 365 E1", "collaboration-productivity")
+    assert covers("Office 365 E1", "email-hygiene")
+    assert not covers("Office 365 E1", "desktop-software")
+    assert not covers("Office 365 E1", "device-management")
+
+    # E3 adds desktop apps + info protection; still no Intune / Defender / Entra P2.
+    assert covers("Office 365 E3", "desktop-software")
+    assert covers("Office 365 E3", "information-protection")
+    assert not covers("Office 365 E3", "device-management")   # Intune is EMS/M365 only
+    assert not covers("Office 365 E3", "endpoint-edr")
+
+    # E5 adds MDO P2 (ATP), Phone System (PBX), Power BI (BI) — but NOT Defender for
+    # Endpoint (EDR), Entra P2 (governance), or CASB (all EMS/Windows, M365-only).
+    assert covers("Office 365 E5", "email-atp")
+    assert covers("Office 365 E5", "telephony-pbx")
+    assert covers("Office 365 E5", "analytics-bi")
+    assert not covers("Office 365 E5", "endpoint-edr")
+    assert not covers("Office 365 E5", "identity-governance")
+    assert not covers("Office 365 E5", "cloud-app-security")
+
+
+def test_o365_bundle_coverage_backfill_is_additive(client):
+    """On an already-seeded DB, the startup backfill inserts default coverage for the
+    new O365 bundles (by key, from coverage.json) without disturbing existing bundles."""
+    from sqlalchemy import delete, select
+    from app.db import SessionLocal
+    from app.main import _backfill_new_bundle_coverage
+    from app import models
+
+    client.get("/api/admin/default-coverage")  # ensure the default library is seeded
+    db = SessionLocal()
+    try:
+        # Simulate a DB that predates the O365 bundles.
+        db.execute(delete(models.DefaultBundleCoverage).where(
+            models.DefaultBundleCoverage.bundle_key.in_(("o365-e1", "o365-e3", "o365-e5"))))
+        db.commit()
+
+        _backfill_new_bundle_coverage(db)
+
+        pairs = {(c.bundle_key, c.outcome_key)
+                 for c in db.execute(select(models.DefaultBundleCoverage)).scalars()}
+        assert ("o365-e1", "collaboration-productivity") in pairs   # restored
+        assert ("o365-e3", "desktop-software") in pairs
+        assert ("o365-e5", "telephony-pbx") in pairs
+        assert ("o365-e5", "endpoint-edr") not in pairs             # correctly excluded
+        assert ("m365-e3", "desktop-software") in pairs             # existing untouched
+    finally:
+        db.close()
+
+
 def test_default_coverage_validation_and_crud(client):
     # Operate on a throwaway entry (E7 has empty seed coverage) so no seed row is
     # mutated for other tests.
