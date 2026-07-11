@@ -317,7 +317,11 @@ export default function Readout({ engagement }) {
                     ? <span className="badge neg" title={d.override_reason}>Forced · {d.override_reason.slice(0, 30)}</span>
                     : d.residual_intent === 'IntendedOutOfScope'
                       ? <span className="badge muted">Intended residual</span>
-                      : <ResidualClassifier inline d={d} onSet={setOverride} />}
+                      : d.requires_residual_classification
+                        // Only when unclassified residual users remain is there
+                        // anything to override. FullyEliminated (0 residual) has none.
+                        ? <ResidualClassifier inline d={d} onSet={setOverride} />
+                        : <span className="muted">—</span>}
                 </td>
               </tr>
             ))}
