@@ -203,7 +203,7 @@ def test_scenario_composes_base_plus_addons_with_discount(client):
     prices, apply the discount to the net the engine uses."""
     eng = client.post("/api/engagements", json={"customer_name": "Compose Co"}).json()
     eid = eng["id"]
-    ident = _outcome(client, eid, "identity-access-core")   # covered by the E3 base
+    ident = _outcome(client, eid, "identity-sso")   # covered by the E3 base
     endpoint = _outcome(client, eid, "endpoint-edr")        # covered by the E5 Security add-on
     kw = client.post(f"/api/engagements/{eid}/personas", json={"name": "KW", "headcount": 100}).json()
 
@@ -248,7 +248,7 @@ def test_default_coverage_seeds_and_editing_affects_new_engagements_only(client)
     assert lib, "default coverage library should seed from coverage.json"
     # E3 covers Identity (Core) by default; it does NOT cover endpoint EPP/EDR.
     e3 = [r for r in lib if r["bundle_key"] == "m365-e3"]
-    assert any(r["outcome_key"] == "identity-access-core" for r in e3)
+    assert any(r["outcome_key"] == "identity-sso" for r in e3)
     assert not any(r["outcome_key"] == "endpoint-protection" for r in e3)
 
     # Engagement A, created BEFORE the edit.
@@ -257,7 +257,7 @@ def test_default_coverage_seeds_and_editing_affects_new_engagements_only(client)
     # Add Identity (Core) to E7 (seeded with EMPTY coverage) in the default library
     # — a throwaway pairing so the shared default library isn't left mutated.
     r = client.post("/api/admin/default-coverage",
-                    json={"bundle_key": "m365-e7", "outcome_key": "identity-access-core", "coverage": "Full"})
+                    json={"bundle_key": "m365-e7", "outcome_key": "identity-sso", "coverage": "Full"})
     assert r.status_code == 201
     added_id = r.json()["id"]
 
@@ -266,7 +266,7 @@ def test_default_coverage_seeds_and_editing_affects_new_engagements_only(client)
 
     def e7_covers_identity(eid):
         cov = client.get(f"/api/engagements/{eid}/coverage").json()
-        ident = _outcome(client, eid, "identity-access-core")
+        ident = _outcome(client, eid, "identity-sso")
         return any(c["product_kind"] == "MicrosoftSku"
                    and c["microsoft_sku_reference"] == "Microsoft 365 E7"
                    and c["outcome_id"] == ident["id"] for c in cov)
@@ -401,11 +401,154 @@ def test_new_outcome_backfill_is_additive_for_existing_dbs(client):
         db.close()
 
 
+def test_o365_bundles_seeded_with_coverage(client):
+    """Office 365 E1/E3/E5 seed as first-class bundles with default coverage that
+    reflects M365 = O365 + EMS + Windows: O365 carries the productivity/collaboration
+    and (E5) advanced email/compliance/voice/analytics outcomes, but NOT the EMS/Windows
+    security stack (Intune device mgmt, Defender for Endpoint, Entra P2, CASB)."""
+    by_key = {b["key"]: b for b in client.get("/api/catalog/bundles").json()}
+    assert {"o365-e1", "o365-e3", "o365-e5"} <= set(by_key)
+    for k in ("o365-e1", "o365-e3", "o365-e5"):
+        assert by_key[k]["kind"] == "bundle" and by_key[k]["base_bundle_id"] is None
+
+    eng = client.post("/api/engagements", json={"customer_name": "O365 Co"}).json()
+    eid = eng["id"]
+    cov = client.get(f"/api/engagements/{eid}/coverage").json()
+    outs = {o["seed_key"]: o["id"] for o in client.get(f"/api/engagements/{eid}/outcomes").json()}
+
+    def covers(bundle_name, seed_key):
+        return any(c["product_kind"] == "MicrosoftSku"
+                   and c["microsoft_sku_reference"] == bundle_name
+                   and c["outcome_id"] == outs[seed_key] for c in cov)
+
+    # E1 = cloud collaboration suite: no desktop apps, no EMS security stack.
+    assert covers("Office 365 E1", "chat-meetings")
+    assert covers("Office 365 E1", "email-hygiene")
+    assert not covers("Office 365 E1", "desktop-software")
+    assert not covers("Office 365 E1", "device-management")
+
+    # E3 adds desktop apps + info protection; still no Intune / Defender / Entra P2.
+    assert covers("Office 365 E3", "desktop-software")
+    assert covers("Office 365 E3", "information-protection")
+    assert not covers("Office 365 E3", "device-management")   # Intune is EMS/M365 only
+    assert not covers("Office 365 E3", "endpoint-edr")
+
+    # E5 adds MDO P2 (ATP), Phone System (PBX), Power BI (BI) — but NOT Defender for
+    # Endpoint (EDR), Entra P2 (governance), or CASB (all EMS/Windows, M365-only).
+    assert covers("Office 365 E5", "email-atp")
+    assert covers("Office 365 E5", "telephony-pbx")
+    assert covers("Office 365 E5", "analytics-bi")
+    assert not covers("Office 365 E5", "endpoint-edr")
+    assert not covers("Office 365 E5", "identity-governance")
+    assert not covers("Office 365 E5", "cloud-app-security")
+
+
+def test_o365_bundle_coverage_backfill_is_additive(client):
+    """On an already-seeded DB, the startup backfill inserts default coverage for the
+    new O365 bundles (by key, from coverage.json) without disturbing existing bundles."""
+    from sqlalchemy import delete, select
+    from app.db import SessionLocal
+    from app.main import _backfill_new_bundle_coverage
+    from app import models
+
+    client.get("/api/admin/default-coverage")  # ensure the default library is seeded
+    db = SessionLocal()
+    try:
+        # Simulate a DB that predates the O365 bundles.
+        db.execute(delete(models.DefaultBundleCoverage).where(
+            models.DefaultBundleCoverage.bundle_key.in_(("o365-e1", "o365-e3", "o365-e5"))))
+        db.commit()
+
+        _backfill_new_bundle_coverage(db)
+
+        pairs = {(c.bundle_key, c.outcome_key)
+                 for c in db.execute(select(models.DefaultBundleCoverage)).scalars()}
+        assert ("o365-e1", "chat-meetings") in pairs   # restored
+        assert ("o365-e3", "desktop-software") in pairs
+        assert ("o365-e5", "telephony-pbx") in pairs
+        assert ("o365-e5", "endpoint-edr") not in pairs             # correctly excluded
+        assert ("m365-e3", "desktop-software") in pairs             # existing untouched
+    finally:
+        db.close()
+
+
+def test_identity_split_and_chat_rescope(client):
+    """identity-access-core splits into SSO/IdP (broad) + MFA & Conditional Access
+    (Entra P1 only), and collaboration-productivity is re-scoped to Team Chat &
+    Meetings. A new engagement inherits the new taxonomy — not the retired keys — and
+    the MFA outcome differentiates M365 (Entra P1) from O365 / Business Basic-Standard."""
+    eng = client.post("/api/engagements", json={"customer_name": "IdSplit Co"}).json()
+    eid = eng["id"]
+    by_seed = {o["seed_key"]: o for o in client.get(f"/api/engagements/{eid}/outcomes").json()}
+    assert {"identity-sso", "identity-mfa", "chat-meetings"} <= set(by_seed)
+    assert "identity-access-core" not in by_seed
+    assert "collaboration-productivity" not in by_seed
+
+    cov = client.get(f"/api/engagements/{eid}/coverage").json()
+
+    def covers(bundle_name, seed_key):
+        oid = by_seed[seed_key]["id"]
+        return any(c["product_kind"] == "MicrosoftSku"
+                   and c["microsoft_sku_reference"] == bundle_name
+                   and c["outcome_id"] == oid for c in cov)
+
+    # SSO/IdP is on every suite; MFA & Conditional Access (Entra P1) is M365-only.
+    assert covers("Microsoft 365 E3", "identity-sso") and covers("Microsoft 365 E3", "identity-mfa")
+    assert covers("Office 365 E3", "identity-sso")
+    assert not covers("Office 365 E3", "identity-mfa")                  # O365 has no Entra P1
+    assert covers("Microsoft 365 Business Basic", "identity-sso")
+    assert not covers("Microsoft 365 Business Basic", "identity-mfa")   # security defaults only
+    assert covers("Microsoft 365 Business Premium", "identity-mfa")     # BP includes Entra P1
+
+    # Team Chat & Meetings replaces the old collaboration catch-all (present broadly).
+    assert covers("Microsoft 365 E3", "chat-meetings")
+    assert covers("Office 365 E1", "chat-meetings")
+
+
+def test_identity_and_chat_retirement_migration(client):
+    """On an already-seeded global library, the retirement migration removes the
+    split-away identity-access-core and re-scoped collaboration-productivity keys
+    (and their default coverage) by explicit key list — operator customs untouched."""
+    from sqlalchemy import select
+    from app.db import SessionLocal
+    from app.main import _retire_split_outcomes, RETIRED_OUTCOME_KEYS
+    from app import models
+
+    client.get("/api/admin/default-outcomes")  # ensure the library is seeded
+    db = SessionLocal()
+    try:
+        # Simulate a pre-split library: re-insert the retired keys + a coverage row,
+        # plus an operator CUSTOM default outcome that must survive.
+        db.add(models.DefaultOutcome(key="identity-access-core", name="Identity (Core)", sort_order=90))
+        db.add(models.DefaultBundleCoverage(bundle_key="m365-e3", outcome_key="identity-access-core", coverage="Full"))
+        db.add(models.DefaultOutcome(key="collaboration-productivity", name="Collab", sort_order=91))
+        db.add(models.DefaultOutcome(key="my-custom-id-thing", name="Custom", sort_order=92))
+        db.commit()
+
+        _retire_split_outcomes(db)
+
+        keys = {o.key for o in db.execute(select(models.DefaultOutcome)).scalars()}
+        assert {"identity-access-core", "collaboration-productivity"} <= set(RETIRED_OUTCOME_KEYS)
+        assert "identity-access-core" not in keys and "collaboration-productivity" not in keys
+        assert "my-custom-id-thing" in keys                    # operator custom untouched
+        assert "identity-sso" in keys and "identity-mfa" in keys  # replacements remain
+        cov = {(c.bundle_key, c.outcome_key)
+               for c in db.execute(select(models.DefaultBundleCoverage)).scalars()}
+        assert ("m365-e3", "identity-access-core") not in cov  # retired coverage gone
+
+        # Clean up the custom row so the shared test DB isn't left mutated.
+        db.delete(db.execute(select(models.DefaultOutcome).where(
+            models.DefaultOutcome.key == "my-custom-id-thing")).scalar_one())
+        db.commit()
+    finally:
+        db.close()
+
+
 def test_default_coverage_validation_and_crud(client):
     # Operate on a throwaway entry (E7 has empty seed coverage) so no seed row is
     # mutated for other tests.
     created = client.post("/api/admin/default-coverage",
-                          json={"bundle_key": "m365-e7", "outcome_key": "collaboration-productivity"})
+                          json={"bundle_key": "m365-e7", "outcome_key": "chat-meetings"})
     assert created.status_code == 201
     entry = created.json()
     assert entry["coverage"] == "Full"  # coverage is binary — stored as the single marker

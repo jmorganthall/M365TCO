@@ -1,5 +1,5 @@
 {
-  "version": "2026-07-bundles-v1",
+  "version": "2026-07-bundles-v2-o365",
   "bundles": [
     {"key": "m365-business-basic", "name": "Microsoft 365 Business Basic", "kind": "bundle", "base": null, "sort_order": 8},
     {"key": "m365-business-standard", "name": "Microsoft 365 Business Standard", "kind": "bundle", "base": null, "sort_order": 9},
@@ -8,6 +8,9 @@
     {"key": "m365-f3", "name": "Microsoft 365 F3", "kind": "bundle", "base": null, "sort_order": 21},
     {"key": "f5-security", "name": "Microsoft 365 F5 Security", "kind": "addon", "base": "m365-f3", "sort_order": 22},
     {"key": "f5-compliance", "name": "Microsoft 365 F5 Compliance", "kind": "addon", "base": "m365-f3", "sort_order": 23},
+    {"key": "o365-e1", "name": "Office 365 E1", "kind": "bundle", "base": null, "sort_order": 25},
+    {"key": "o365-e3", "name": "Office 365 E3", "kind": "bundle", "base": null, "sort_order": 26},
+    {"key": "o365-e5", "name": "Office 365 E5", "kind": "bundle", "base": null, "sort_order": 27},
     {"key": "m365-e3", "name": "Microsoft 365 E3", "kind": "bundle", "base": null, "sort_order": 30},
     {"key": "e5-security", "name": "Microsoft 365 E5 Security", "kind": "addon", "base": "m365-e3", "sort_order": 31},
     {"key": "e5-compliance", "name": "Microsoft 365 E5 Compliance", "kind": "addon", "base": "m365-e3", "sort_order": 32},

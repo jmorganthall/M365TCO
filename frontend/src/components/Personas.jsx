@@ -1,6 +1,24 @@
 import React, { useEffect, useState } from 'react'
 import { api } from '../api'
 
+// Inline (auto-saving) text field that holds local state and commits on blur or
+// Enter — not per keystroke. The row's update() does a PATCH-and-reload, which
+// would otherwise reset the input mid-typing and garble what you type. Re-syncs
+// from the persisted value when the field isn't focused.
+function TextInput({ value, onCommit, ...rest }) {
+  const [v, setV] = useState(value ?? '')
+  const [focused, setFocused] = useState(false)
+  useEffect(() => { if (!focused) setV(value ?? '') }, [value, focused])
+  const commit = () => { setFocused(false); if (v !== (value ?? '')) onCommit(v) }
+  return (
+    <input {...rest} value={v}
+      onFocus={() => setFocused(true)}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }} />
+  )
+}
+
 export default function Personas({ engagement, meta }) {
   const base = `/api/engagements/${engagement.id}/personas`
   const [items, setItems] = useState([])
@@ -46,7 +64,7 @@ export default function Personas({ engagement, meta }) {
 
       <table>
         <thead><tr>
-          <th></th><th>Name</th><th className="num">Headcount</th><th>Source</th>
+          <th></th><th>Name</th><th className="num">Headcount</th>
           <th className="num">Requires</th><th></th>
         </tr></thead>
         <tbody>
@@ -57,21 +75,26 @@ export default function Personas({ engagement, meta }) {
                 <tr>
                   <td><button className="ghost sm" onClick={() => setOpen({ ...open, [p.id]: !open[p.id] })}>
                     {open[p.id] ? '▾' : '▸'}</button></td>
-                  <td><input value={p.name} onChange={(e) => update(p.id, { name: e.target.value })} /></td>
+                  <td><TextInput value={p.name} onCommit={(v) => update(p.id, { name: v })} /></td>
                   <td className="num"><input type="number" value={p.headcount}
                     onChange={(e) => update(p.id, { headcount: Number(e.target.value) })} style={{ width: 90 }} /></td>
-                  <td>
-                    <select value={p.source_tag} onChange={(e) => update(p.id, { source_tag: e.target.value })}>
-                      {(meta?.source_tags || []).map((s) => <option key={s}>{s}</option>)}
-                    </select>
-                  </td>
                   <td className="num">{reqs.length || <span className="muted">—</span>}</td>
                   <td className="num"><button className="danger sm" onClick={() => remove(p.id)}>Remove</button></td>
                 </tr>
                 {open[p.id] && (
                   <tr>
                     <td></td>
-                    <td colSpan={5} style={{ background: 'var(--panel2)' }}>
+                    <td colSpan={4} style={{ background: 'var(--panel2)' }}>
+                      <div className="grid c4" style={{ padding: '.2rem 0 .5rem' }}>
+                        <div><label>Source</label>
+                          <select value={p.source_tag} onChange={(e) => update(p.id, { source_tag: e.target.value })}>
+                            {(meta?.source_tags || []).map((s) => <option key={s}>{s}</option>)}
+                          </select>
+                          <small className="src">Provenance of the headcount — informational; doesn't affect the math.</small></div>
+                        <div style={{ gridColumn: 'span 3' }}><label>Description</label>
+                          <TextInput value={p.description || ''} placeholder="Optional notes about this population"
+                            onCommit={(v) => update(p.id, { description: v })} /></div>
+                      </div>
                       <label style={{ display: 'block', marginBottom: '.3rem' }}>Required capabilities</label>
                       <div className="pill-list">
                         {outcomes.map((o) => (

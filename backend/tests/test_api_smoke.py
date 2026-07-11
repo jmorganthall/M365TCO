@@ -13,7 +13,7 @@ def test_full_workshop_flow_okta_500_vs_450(client):
     eid = eng["id"]
 
     outcomes = client.get(f"/api/engagements/{eid}/outcomes").json()
-    identity = next(o for o in outcomes if o["seed_key"] == "identity-access-core")
+    identity = next(o for o in outcomes if o["seed_key"] == "identity-sso")
 
     # 2. persona
     kw = client.post(
@@ -78,7 +78,7 @@ def test_unratified_ai_suggestion_does_not_feed_math(client):
     eng = client.post("/api/engagements", json={"customer_name": "Beta"}).json()
     eid = eng["id"]
     outcomes = client.get(f"/api/engagements/{eid}/outcomes").json()
-    identity = next(o for o in outcomes if o["seed_key"] == "identity-access-core")
+    identity = next(o for o in outcomes if o["seed_key"] == "identity-sso")
     kw = client.post(f"/api/engagements/{eid}/personas",
                      json={"name": "KW", "headcount": 100}).json()
     okta = client.post(f"/api/engagements/{eid}/third-party",
@@ -149,7 +149,7 @@ def test_coverage_gaps_scoped_to_scenario(client):
     eng = client.post("/api/engagements", json={"customer_name": "Gap Co"}).json()
     eid = eng["id"]
     outcomes = client.get(f"/api/engagements/{eid}/outcomes").json()
-    identity = next(o for o in outcomes if o["seed_key"] == "identity-access-core")
+    identity = next(o for o in outcomes if o["seed_key"] == "identity-sso")
     kw = client.post(f"/api/engagements/{eid}/personas", json={"name": "KW", "headcount": 100}).json()
 
     # No scenario yet → nothing to validate (not busy work over all outcomes).
@@ -187,7 +187,7 @@ def test_quick_wins_surface_in_readout(client):
     eng = client.post("/api/engagements", json={"customer_name": "QW Co"}).json()
     eid = eng["id"]
     outcomes = client.get(f"/api/engagements/{eid}/outcomes").json()
-    identity = next(o for o in outcomes if o["seed_key"] == "identity-access-core")
+    identity = next(o for o in outcomes if o["seed_key"] == "identity-sso")
     kw = client.post(f"/api/engagements/{eid}/personas", json={"name": "KW", "headcount": 250}).json()
     # Current Microsoft 365 E3 already delivers Identity (seed coverage), 250 seats.
     client.post(f"/api/engagements/{eid}/current-licenses", json={
