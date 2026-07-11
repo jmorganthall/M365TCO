@@ -28,6 +28,8 @@ class EngagementCreate(BaseModel):
     default_term_duration: str = "P1Y"
     default_billing_plan: str = "Annual"
     notes: str = ""
+    # Omitted → the create endpoint defaults it to today.
+    workshop_date: Optional[date] = None
 
 
 class GlobalDefaultsOut(ORMModel):

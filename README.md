@@ -94,26 +94,26 @@ npm run dev                            # http://localhost:5173
 
 The steps run along a chevron **progress stepper** at the top of an engagement:
 
-0. **Customer Info** — the editable engagement/customer name plus basic customer
-   context (workshop date, industry, HQ location, website, employee count, notes),
-   for display and later AI business-narrative grounding.
-1. **Personas & headcounts.**
-2. **Current Microsoft licensing** — model on *assigned*, enter the real price paid.
-   A **pricing basis** (segment / commit term / purchase term) is inherited
-   `Global default → Engagement → line item`, so a picked SKU seeds the right
-   priced variant (e.g. a Nonprofit customer's Business Premium price).
-3. **Third-party products** — cost, term, unit basis, count, renewal, managed flag, tooling split.
-4. **Coverage map** — confirm/extend; AI-assist proposes third-party coverage
+1. **Baseline Data** — one tab, three sequential cards: **Customer Info** (the
+   editable engagement/customer name + basic context — workshop date (defaults to
+   today), industry, HQ location, website, employee count, notes — for display and
+   later AI business-narrative grounding); **Personas & headcounts**; and **Current
+   Microsoft licensing** (model on *assigned*, enter the real price paid — a
+   **pricing basis** of segment / commit term / purchase term is inherited
+   `Global default → Engagement → line item`, so a picked SKU seeds the right priced
+   variant, e.g. a Nonprofit customer's Business Premium price).
+2. **Third-party products** — cost, term, unit basis, count, renewal, managed flag, tooling split.
+3. **Coverage map** — confirm/extend; AI-assist proposes third-party coverage
    (human-ratified). Microsoft bundle coverage (the reference map) is collapsed
    by default so the tab leads with third-party coverage.
-5. **Scenarios** — a base target bundle **+** composable add-ons per persona.
+4. **Scenarios** — a base target bundle **+** composable add-ons per persona.
    Add-ons are constrained to the bases they may layer onto (the composition
    **eligibility** rule — e.g. F5 Security only onto F3), so the picker only
    offers valid add-ons. An engagement-level **"swap eligible users to Business
    Premium to save"** toggle proposes moving every *capability-eligible* persona
    (Business Premium covers everything they require) onto Business Premium, with a
    per-persona opt-out — bounded by the Business seat cap below.
-6. **Coverage Check** — per-persona validation, scoped to the outcomes the
+5. **Coverage Check** — per-persona validation, scoped to the outcomes the
    persona's **proposed target scenario** would deliver (the *new-outcome*
    candidates) that aren't delivered today by their current licensing or a
    mapped third party (tagged or org-wide, so existing coverage-map mappings
@@ -121,7 +121,7 @@ The steps run along a chevron **progress stepper** at the top of an engagement:
    *covered elsewhere / out of scope* (recorded as a $0 sentinel, so it's kept
    out of cost and the new-outcome story), add a third party, or leave it as a
    genuine new outcome the target lights up. Reads existing relationships only.
-7. **Readout & export** — the Net TCO delta, the Quick-wins "save today" story,
+6. **Readout & export** — the Net TCO delta, the Quick-wins "save today" story,
    the spend bridge, per-persona scenarios, third-party dispositions, and rollup;
    plus **License-limit** checks (Microsoft licensing caps evaluated tenant-wide —
    e.g. Microsoft 365 Business Basic/Standard/Premium share a 300-seat maximum,
@@ -130,7 +130,9 @@ The steps run along a chevron **progress stepper** at the top of an engagement:
    narratives**, per-engagement **readout branding** (logo + theme colors), and
    HTML / xlsx export.
 
-The **in/out-of-scope** toggle on a scenario recomputes everything.
+The **in/out-of-scope** toggle on a scenario recomputes everything. A header
+**🔧 Tools** menu holds engagement-specific tools outside the workshop flow — the
+**Data inspector** (the live data-model view) lives there rather than as a step.
 
 **Settings** is a dedicated page (top-bar ⚙ gear) with a left-hand section nav —
 General/defaults, AI assist, Pricing sync, SKU catalog, Staple bundles, Default

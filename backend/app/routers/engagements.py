@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse, Response
@@ -57,6 +58,8 @@ def create_engagement(payload: schemas.EngagementCreate, db: Session = Depends(g
         data["modeling_horizon_years"] = gd.default_modeling_horizon_years
     if data.get("default_segment") is None:
         data["default_segment"] = gd.default_segment
+    if data.get("workshop_date") is None:
+        data["workshop_date"] = date.today()  # default the Customer Info workshop date to today
     eng = models.Engagement(**data)
     db.add(eng)
     db.flush()
