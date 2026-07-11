@@ -1,6 +1,8 @@
 {
   "version": "2026-07-bundles-v1",
   "bundles": [
+    {"key": "m365-business-basic", "name": "Microsoft 365 Business Basic", "kind": "bundle", "base": null, "sort_order": 8},
+    {"key": "m365-business-standard", "name": "Microsoft 365 Business Standard", "kind": "bundle", "base": null, "sort_order": 9},
     {"key": "m365-business-premium", "name": "Microsoft 365 Business Premium", "kind": "bundle", "base": null, "sort_order": 10},
     {"key": "m365-f1", "name": "Microsoft 365 F1", "kind": "bundle", "base": null, "sort_order": 20},
     {"key": "m365-f3", "name": "Microsoft 365 F3", "kind": "bundle", "base": null, "sort_order": 21},

@@ -15,6 +15,21 @@
       {"outcome": "collaboration-productivity", "coverage": "Full"},
       {"outcome": "information-governance", "coverage": "Full"}
     ]},
+    {"bundle": "m365-business-basic", "coverage": [
+      {"outcome": "identity-access", "coverage": "Full"},
+      {"outcome": "email-security", "coverage": "Full"},
+      {"outcome": "cloud-storage-full", "coverage": "Full"},
+      {"outcome": "collaboration-productivity", "coverage": "Full"},
+      {"outcome": "information-governance", "coverage": "Full"}
+    ]},
+    {"bundle": "m365-business-standard", "coverage": [
+      {"outcome": "identity-access", "coverage": "Full"},
+      {"outcome": "email-security", "coverage": "Full"},
+      {"outcome": "cloud-storage-full", "coverage": "Full"},
+      {"outcome": "desktop-software", "coverage": "Full"},
+      {"outcome": "collaboration-productivity", "coverage": "Full"},
+      {"outcome": "information-governance", "coverage": "Full"}
+    ]},
     {"bundle": "m365-business-premium", "coverage": [
       {"outcome": "desktop-software", "coverage": "Full"},
       {"outcome": "cloud-storage-full", "coverage": "Full"},

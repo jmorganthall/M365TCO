@@ -85,6 +85,29 @@ class AddonEligibilityIn(BaseModel):
     base_bundle_ids: list[str] = []
 
 
+class LicenseLimitIn(BaseModel):
+    name: str
+    limit_type: str = "max_total_seats"
+    max_quantity: int = 0
+    unit_basis: str = "Users"
+    scope: str = "tenant"
+    sort_order: int = 0
+    member_bundle_ids: list[str] = []
+
+
+class LicenseLimitUpdate(BaseModel):
+    name: Optional[str] = None
+    limit_type: Optional[str] = None
+    max_quantity: Optional[int] = None
+    unit_basis: Optional[str] = None
+    scope: Optional[str] = None
+    sort_order: Optional[int] = None
+
+
+class LicenseLimitMembersIn(BaseModel):
+    member_bundle_ids: list[str] = []
+
+
 class EngagementUpdate(BaseModel):
     customer_name: Optional[str] = None
     market: Optional[str] = None

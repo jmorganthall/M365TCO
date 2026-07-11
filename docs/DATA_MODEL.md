@@ -260,6 +260,36 @@ FK, UUID PK, cascade-deleted with the engagement.
   `_backfill_addon_eligibility` (`app/main.py`) carries the legacy single
   `base_bundle_id` forward for any add-on with a base but no rows. Idempotent.
 
+### 4.4e LicenseLimit + LicenseLimitMember — Microsoft licensing caps
+- **Identity:** `LicenseLimit` — `uuid` + unique `key`; `LicenseLimitMember` — `uuid`
+  + unique `(license_limit_id, bundle_id)`. **Scope:** **global**, editable, seeded
+  from `seeds/license_limits.json` (`services/limits.seed_license_limits`,
+  populate-if-empty).
+- **Shape:** a `LicenseLimit` is `name`, `limit_type` (today `max_total_seats`),
+  `max_quantity`, `unit_basis`, `scope` (`tenant`), `sort_order`. `LicenseLimitMember`
+  is the **first-class M:N** of the bundles that share one ceiling — Business
+  Basic + Standard + Premium share the 300-seat pool (per §5: a *family* is an
+  association set, not a delimited string of SKU names).
+- **Why it exists:** *Microsoft 365 Business is capped at 300 seats in the tenant*
+  is a real Microsoft constraint that spans a **family** of bundles and must be
+  checked against the **totality** of current + future state — so it is neither a
+  field on one bundle nor a per-line value.
+- **Evaluation (derived, persists nothing):** `services/limits.evaluate` computes a
+  **tenant-wide aggregate** at compute time — current-license seats plus in-scope
+  scenario headcount on member bundles (a scenario counts once whether its base or
+  an add-on is a member), compared to the cap. It is a **pure computation over
+  existing first-class objects** (the correct "don't create second-class data"
+  outcome, like §4.10a); the result rides on the compute/readout response as
+  `license_limits` and is shown on the Readout, so a violation is never hidden.
+- **CRUD:** `GET/POST/PATCH/DELETE /api/admin/license-limits` +
+  `PUT …/{id}/members` (replace the member set), edited in Settings → License
+  limits. `key` is immutable; `limit_type` validated against `LIMIT_TYPES`; members
+  validated against the bundle library.
+- **Lifecycle:** seeded on startup after `seed_bundles` (needs the bundles to
+  resolve `bundles` keys → ids). The two new Business staples (Basic/Standard) added
+  to the spine get default coverage on fresh installs and via the idempotent
+  `_backfill_new_bundle_coverage` on existing DBs.
+
 ### 4.5 CurrentMicrosoftLicense — the customer's existing licensing
 - **Identity:** `uuid`. **Scope:** engagement-scoped.
 - **Relationships:** **soft ref** to a `MicrosoftSku` via `sku_reference` (free
@@ -461,6 +491,10 @@ The global library is never mutated by workshop edits — this is the
 2. Run the pure engine (`tco_engine.compute`).
 3. **Persist back** only engine-output fields (scenario spend cache + disposition
    outputs), preserving operator-owned fields.
+4. The readout routes then append the **license-limit evaluation**
+   (`services/limits.evaluate`, §4.4e) as `license_limits` — a tenant-wide derived
+   aggregate that persists nothing but rides on every readout consumer (compute,
+   HTML/xlsx export, snapshot).
 
 ### 6.3 Snapshot
 `POST …/snapshots` computes, then freezes the serialized result + `catalog_version`

@@ -238,6 +238,55 @@ class AddonEligibility(Base):
     base_bundle_id: Mapped[str] = mapped_column(ForeignKey("bundles.id"), index=True)
 
 
+# Kinds of licensing limit. Today only a tenant-wide seat ceiling; the field keeps
+# the engine general so future caps (per-add-on, per-market) are just new rows.
+LIMIT_TYPES = ("max_total_seats",)
+
+
+class LicenseLimit(Base):
+    """A Microsoft licensing constraint over the global Bundle spine — e.g.
+    "Microsoft 365 Business (Basic/Standard/Premium) is capped at 300 seats in the
+    tenant". A first-class, global, editable, seeded rule; the member bundles it
+    applies to are the M:N `LicenseLimitMember` set. Evaluation is a tenant-wide
+    derived aggregate (services/limits.evaluate) computed at compute time over the
+    engagement's current licenses + in-scope scenarios — it persists nothing, the
+    same "don't create second-class data" outcome as the best-bundle analysis."""
+
+    __tablename__ = "license_limits"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    key: Mapped[str] = mapped_column(String, unique=True)
+    name: Mapped[str] = mapped_column(String)
+    limit_type: Mapped[str] = mapped_column(
+        SAEnum(*LIMIT_TYPES, name="limit_type"), default="max_total_seats"
+    )
+    max_quantity: Mapped[int] = mapped_column(Integer, default=0)
+    unit_basis: Mapped[str] = mapped_column(
+        SAEnum(*UNIT_BASIS, name="limit_unit_basis"), default="Users"
+    )
+    # Aggregation scope of the ceiling. "tenant" = summed across the whole
+    # engagement (all personas/scenarios), which is how the 300-seat cap works.
+    scope: Mapped[str] = mapped_column(String, default="tenant")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class LicenseLimitMember(Base):
+    """Association: a bundle counts toward a LicenseLimit's pool. First-class M:N
+    (per DATA_MODEL §5) so a family of bundles — Business Basic + Standard +
+    Premium — shares one ceiling, rather than a delimited string of SKU names."""
+
+    __tablename__ = "license_limit_members"
+    __table_args__ = (
+        UniqueConstraint("license_limit_id", "bundle_id", name="uq_license_limit_member"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    license_limit_id: Mapped[str] = mapped_column(
+        ForeignKey("license_limits.id"), index=True
+    )
+    bundle_id: Mapped[str] = mapped_column(ForeignKey("bundles.id"), index=True)
+
+
 class CatalogImport(Base):
     """Provenance for each SUCCESSFUL pricing-catalog load — the first-class
     answer to "when was pricing last refreshed, and from where". Both the manual

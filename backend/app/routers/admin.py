@@ -14,7 +14,10 @@ from .. import models, schemas
 from ..db import get_db
 from sqlalchemy import func
 
-from ..services import ai, ai_prompts, bundles as bundles_service, defaults, secrets, seeds
+from ..services import (
+    ai, ai_prompts, bundles as bundles_service, defaults, limits as limits_service,
+    secrets, seeds,
+)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -185,6 +188,103 @@ def delete_default_coverage(entry_id: str, db: Session = Depends(get_db)):
     row = db.get(models.DefaultBundleCoverage, entry_id)
     if row is None:
         raise HTTPException(404, "Default coverage entry not found")
+    db.delete(row)
+    db.commit()
+
+
+# ---- License limits (global rules over the Bundle spine, e.g. Business ≤ 300) ----
+def _limit_payload(db: Session, row: models.LicenseLimit) -> dict:
+    member_ids = limits_service.member_bundle_ids(db, row.id)
+    names = {b.id: b.name for b in bundles_service.list_bundles(db)}
+    return {
+        "id": row.id, "key": row.key, "name": row.name,
+        "limit_type": row.limit_type, "max_quantity": row.max_quantity,
+        "unit_basis": row.unit_basis, "scope": row.scope, "sort_order": row.sort_order,
+        "member_bundle_ids": member_ids,
+        "member_bundle_names": sorted(names[i] for i in member_ids if i in names),
+    }
+
+
+def _validate_limit_members(db: Session, bundle_ids: list[str]):
+    for bid in bundle_ids:
+        if db.get(models.Bundle, bid) is None:
+            raise HTTPException(422, f"Unknown bundle '{bid}'.")
+
+
+@router.get("/license-limits")
+def list_license_limits(db: Session = Depends(get_db)):
+    """The global license-limit library (definitions + members). Evaluation against
+    an engagement is returned by that engagement's compute (`license_limits`)."""
+    limits_service.seed_license_limits(db)
+    rows = db.execute(
+        select(models.LicenseLimit).order_by(models.LicenseLimit.sort_order)
+    ).scalars().all()
+    return {"limit_types": list(models.LIMIT_TYPES),
+            "limits": [_limit_payload(db, r) for r in rows]}
+
+
+@router.post("/license-limits", status_code=201)
+def create_license_limit(payload: schemas.LicenseLimitIn, db: Session = Depends(get_db)):
+    limits_service.seed_license_limits(db)
+    if payload.limit_type not in models.LIMIT_TYPES:
+        raise HTTPException(422, f"Unknown limit_type '{payload.limit_type}'.")
+    if payload.max_quantity < 0:
+        raise HTTPException(422, "max_quantity must be >= 0.")
+    _validate_limit_members(db, payload.member_bundle_ids)
+    # Stable, unique key from the name.
+    base = seeds.slugify(payload.name)
+    key, n = base, 2
+    while db.execute(select(models.LicenseLimit.id).where(models.LicenseLimit.key == key)).first():
+        key, n = f"{base}-{n}", n + 1
+    row = models.LicenseLimit(
+        key=key, name=payload.name, limit_type=payload.limit_type,
+        max_quantity=payload.max_quantity, unit_basis=payload.unit_basis,
+        scope=payload.scope, sort_order=payload.sort_order,
+    )
+    db.add(row)
+    db.flush()
+    for bid in payload.member_bundle_ids:
+        db.add(models.LicenseLimitMember(license_limit_id=row.id, bundle_id=bid))
+    db.commit()
+    return _limit_payload(db, row)
+
+
+@router.patch("/license-limits/{limit_id}")
+def update_license_limit(
+    limit_id: str, payload: schemas.LicenseLimitUpdate, db: Session = Depends(get_db)
+):
+    row = db.get(models.LicenseLimit, limit_id)
+    if row is None:
+        raise HTTPException(404, "License limit not found")
+    data = payload.model_dump(exclude_unset=True)
+    if data.get("limit_type") and data["limit_type"] not in models.LIMIT_TYPES:
+        raise HTTPException(422, f"Unknown limit_type '{data['limit_type']}'.")
+    if data.get("max_quantity") is not None and data["max_quantity"] < 0:
+        raise HTTPException(422, "max_quantity must be >= 0.")
+    for k, v in data.items():  # key is immutable
+        setattr(row, k, v)
+    db.commit()
+    return _limit_payload(db, row)
+
+
+@router.put("/license-limits/{limit_id}/members")
+def set_license_limit_members(
+    limit_id: str, payload: schemas.LicenseLimitMembersIn, db: Session = Depends(get_db)
+):
+    row = db.get(models.LicenseLimit, limit_id)
+    if row is None:
+        raise HTTPException(404, "License limit not found")
+    _validate_limit_members(db, payload.member_bundle_ids)
+    limits_service.set_limit_members(db, limit_id, payload.member_bundle_ids)
+    return _limit_payload(db, row)
+
+
+@router.delete("/license-limits/{limit_id}", status_code=204)
+def delete_license_limit(limit_id: str, db: Session = Depends(get_db)):
+    row = db.get(models.LicenseLimit, limit_id)
+    if row is None:
+        raise HTTPException(404, "License limit not found")
+    limits_service.set_limit_members(db, limit_id, [])  # drop members first
     db.delete(row)
     db.commit()
 
