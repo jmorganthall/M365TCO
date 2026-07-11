@@ -76,6 +76,14 @@ class Engagement(Base):
     modeling_horizon_years: Mapped[int] = mapped_column(Integer, default=3)
     global_tooling_pct: Mapped[float] = mapped_column(Numeric(6, 4), default=0.30)
     notes: Mapped[str] = mapped_column(Text, default="")
+    # Customer-info metadata (Customer Info tab). User-entered context about the
+    # customer — used for display and, later, as grounding for the AI business
+    # narrative research. `customer_name` above is the engagement's display name.
+    workshop_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    industry: Mapped[str] = mapped_column(String, default="")
+    hq_location: Mapped[str] = mapped_column(String, default="")
+    website: Mapped[str] = mapped_column(String, default="")
+    employee_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Pricing basis defaults for this engagement (seeded from GlobalDefaults on
     # creation — "seed, then own"). Each is the middle tier of an inheritance
     # chain: a customer sets these once (e.g. a Nonprofit customer overrides the

@@ -114,9 +114,15 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Relationships:** one-to-many to all eight child sets, all `cascade="all, delete-orphan"`.
 - **Field ownership:** user-entered (`customer_name`, `market`, `currency`,
   `notes`, `global_tooling_pct`, `modeling_horizon_years`, `default_segment`,
-  `default_term_duration`, `default_billing_plan`, `bp_swap_enabled`, and the
-  readout branding `brand_logo_data_url` / `brand_primary_color` /
-  `brand_accent_color`); derived (`created_at`, `updated_at`).
+  `default_term_duration`, `default_billing_plan`, `bp_swap_enabled`, the readout
+  branding `brand_logo_data_url` / `brand_primary_color` / `brand_accent_color`,
+  and the Customer-Info metadata `workshop_date` / `industry` / `hq_location` /
+  `website` / `employee_count`); derived (`created_at`, `updated_at`).
+- **Customer Info:** `customer_name` is the engagement's editable display name;
+  the metadata fields above are basic customer context (the Customer Info tab) used
+  for display and later as grounding for the AI business-narrative research. They
+  are typed fields on the aggregate root, not a separate object, because they are
+  strictly 1:1 with the engagement.
 - **Note:** `bp_swap_enabled` is the engagement-level "swap eligible users to
   Business Premium to save" toggle (§4.8b). Each eligible scenario inherits it
   unless the persona opts out.
