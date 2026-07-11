@@ -181,6 +181,10 @@ class OutcomeOut(ORMModel):
     name: str
     description: str
     is_custom: bool
+    # The stable identifier from the seed library (null for custom outcomes) — the
+    # first-class object's durable key, so consumers reference outcomes by identity
+    # rather than by mutable display name. System-derived, read-only.
+    seed_key: Optional[str] = None
 
 
 # ---- Current Microsoft license ----

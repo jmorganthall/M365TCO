@@ -1,6 +1,13 @@
 """Bundle spine: seeded staples, add-on base links, and SKU → bundle mapping."""
 
 
+def _outcome(client, eid, seed_key):
+    """Resolve an engagement outcome by its STABLE seed_key (not display name), so
+    these tests don't break when the outcome library's wording changes."""
+    return next(o for o in client.get(f"/api/engagements/{eid}/outcomes").json()
+                if o["seed_key"] == seed_key)
+
+
 def test_bundles_seeded_with_addon_base_links(client):
     bundles = client.get("/api/catalog/bundles").json()
     by_key = {b["key"]: b for b in bundles}
@@ -136,16 +143,14 @@ def test_optimizer_respects_addon_eligibility(client):
     eid = eng["id"]
     kw = client.post(f"/api/engagements/{eid}/personas",
                      json={"name": "KW", "headcount": 100}).json()
-    endpoint = next(o for o in client.get(f"/api/engagements/{eid}/outcomes").json()
-                    if "Endpoint Security" in o["name"])
+    edr_oc = _outcome(client, eid, "endpoint-edr")
+    client.patch(f"/api/engagements/{eid}/personas/{kw['id']}",
+                 json={"required_outcome_ids": [edr_oc["id"]]})
     edr = client.post(f"/api/engagements/{eid}/third-party",
                       json={"name": "CrowdStrike", "raw_cost": 20000, "covered_count": 100}).json()
     client.post(f"/api/engagements/{eid}/coverage",
-                json={"outcome_id": endpoint["id"], "product_kind": "ThirdParty",
+                json={"outcome_id": edr_oc["id"], "product_kind": "ThirdParty",
                       "third_party_product_id": edr["id"], "coverage": "Full", "ratified": True})
-    client.post(f"/api/engagements/{eid}/current-licenses", json={
-        "sku_reference": "Microsoft 365 E5", "quantity_assigned": 100,
-        "unit_price_paid_annual": 0, "persona_ids": [kw["id"]]})
 
     by_key = {b["key"]: b for b in client.get("/api/catalog/bundles").json()}
     defender = by_key["defender-endpoint-p2"]["id"]
@@ -157,7 +162,7 @@ def test_optimizer_respects_addon_eligibility(client):
                           json={"prices": {"Microsoft 365 E3": 400,
                                            "Microsoft 365 E5 Security": 100}}).json()
         e3 = {b["sku_reference"]: b for b in res["bundles"]}["Microsoft 365 E3"]
-        assert "Endpoint Security" not in e3["gap_outcomes"]  # still closed…
+        assert edr_oc["name"] not in e3["gap_outcomes"]  # still closed…
         # …but no longer for free — the E5 Security add-on (100) is now chosen.
         assert e3["addon_total_annual"] == 100.0
         assert not any("Defender for Endpoint" in a["name"] for a in e3["addons"])
@@ -198,13 +203,12 @@ def test_scenario_composes_base_plus_addons_with_discount(client):
     prices, apply the discount to the net the engine uses."""
     eng = client.post("/api/engagements", json={"customer_name": "Compose Co"}).json()
     eid = eng["id"]
-    outcomes = client.get(f"/api/engagements/{eid}/outcomes").json()
-    ident = next(o for o in outcomes if "Identity" in o["name"])
-    endpoint = next(o for o in outcomes if "Endpoint Security" in o["name"])
+    ident = _outcome(client, eid, "identity-access-core")   # covered by the E3 base
+    endpoint = _outcome(client, eid, "endpoint-edr")        # covered by the E5 Security add-on
     kw = client.post(f"/api/engagements/{eid}/personas", json={"name": "KW", "headcount": 100}).json()
 
-    # Two third-party tools: one Identity (covered by E3 base), one Endpoint
-    # Security (covered only by the E5 Security add-on).
+    # Two third-party tools: one Identity (covered by E3 base), one EDR
+    # (covered only by the E5 Security add-on).
     idp = client.post(f"/api/engagements/{eid}/third-party",
                       json={"name": "Okta", "raw_cost": 10000, "covered_count": 100}).json()
     edr = client.post(f"/api/engagements/{eid}/third-party",
@@ -242,18 +246,18 @@ def test_default_coverage_seeds_and_editing_affects_new_engagements_only(client)
     the template new engagements inherit — edits never touch existing engagements."""
     lib = client.get("/api/admin/default-coverage").json()
     assert lib, "default coverage library should seed from coverage.json"
-    # E3 covers identity-access by default; it does NOT cover endpoint-security.
+    # E3 covers Identity (Core) by default; it does NOT cover endpoint EPP/EDR.
     e3 = [r for r in lib if r["bundle_key"] == "m365-e3"]
-    assert any(r["outcome_key"] == "identity-access" for r in e3)
-    assert not any(r["outcome_key"] == "endpoint-security" for r in e3)
+    assert any(r["outcome_key"] == "identity-access-core" for r in e3)
+    assert not any(r["outcome_key"] == "endpoint-protection" for r in e3)
 
     # Engagement A, created BEFORE the edit.
     a = client.post("/api/engagements", json={"customer_name": "Before"}).json()
 
-    # Add identity-access to E7 (seeded with EMPTY coverage) in the default library
+    # Add Identity (Core) to E7 (seeded with EMPTY coverage) in the default library
     # — a throwaway pairing so the shared default library isn't left mutated.
     r = client.post("/api/admin/default-coverage",
-                    json={"bundle_key": "m365-e7", "outcome_key": "identity-access", "coverage": "Full"})
+                    json={"bundle_key": "m365-e7", "outcome_key": "identity-access-core", "coverage": "Full"})
     assert r.status_code == 201
     added_id = r.json()["id"]
 
@@ -262,8 +266,7 @@ def test_default_coverage_seeds_and_editing_affects_new_engagements_only(client)
 
     def e7_covers_identity(eid):
         cov = client.get(f"/api/engagements/{eid}/coverage").json()
-        outs = client.get(f"/api/engagements/{eid}/outcomes").json()
-        ident = next(o for o in outs if "Identity" in o["name"])
+        ident = _outcome(client, eid, "identity-access-core")
         return any(c["product_kind"] == "MicrosoftSku"
                    and c["microsoft_sku_reference"] == "Microsoft 365 E7"
                    and c["outcome_id"] == ident["id"] for c in cov)
@@ -525,49 +528,44 @@ def test_edit_bundle_coverage_resolves_bundle_and_feeds_displacement(client):
 
 def test_recommend_path_composes_base_plus_gap_closing_addon(client):
     """Recommend-a-path (bundle-analysis) composes a base bundle with the cheapest
-    add-ons that close the persona's gaps, not just single SKUs. A persona on E5
-    today (which covers Endpoint Security) evaluated against an E3 base leaves an
-    Endpoint-Security gap — the composition must surface the E5 Security add-on."""
+    add-ons that close the persona's gaps. A persona that REQUIRES EDR evaluated
+    against an E3 base (which lacks it) leaves an EDR gap — the composition closes
+    it with the cheapest applicable add-on."""
     eng = client.post("/api/engagements", json={"customer_name": "Path Co"}).json()
     eid = eng["id"]
     kw = client.post(f"/api/engagements/{eid}/personas",
                      json={"name": "KW", "headcount": 100}).json()
 
-    # Third-party EDR delivers Endpoint Security — only a path that covers that
-    # outcome displaces it.
-    endpoint = next(o for o in client.get(f"/api/engagements/{eid}/outcomes").json()
-                    if "Endpoint Security" in o["name"])
+    # The persona REQUIRES EDR — the "required" baseline the recommendation must
+    # cover (independent of any current license). A third-party EDR delivers it.
+    edr_oc = _outcome(client, eid, "endpoint-edr")
+    client.patch(f"/api/engagements/{eid}/personas/{kw['id']}",
+                 json={"required_outcome_ids": [edr_oc["id"]]})
     edr = client.post(f"/api/engagements/{eid}/third-party",
                       json={"name": "CrowdStrike", "raw_cost": 20000, "covered_count": 100}).json()
     client.post(f"/api/engagements/{eid}/coverage",
-                json={"outcome_id": endpoint["id"], "product_kind": "ThirdParty",
+                json={"outcome_id": edr_oc["id"], "product_kind": "ThirdParty",
                       "third_party_product_id": edr["id"], "coverage": "Full", "ratified": True})
-
-    # Persona is on Microsoft 365 E5 today → its seeded coverage (incl. Endpoint
-    # Security) is the "required" baseline the recommendation must not drop.
-    client.post(f"/api/engagements/{eid}/current-licenses", json={
-        "sku_reference": "Microsoft 365 E5", "quantity_assigned": 100,
-        "unit_price_paid_annual": 0, "persona_ids": [kw["id"]]})
 
     # Price E3 at 400 and the E5 Security add-on at 100; other add-ons have no
     # catalog price (0). The composition should pick the cheapest set that closes
-    # the gaps — here Defender for Endpoint P2 (free, covers Endpoint Security) is
-    # cheaper than the E5 Security bundle, so it is chosen.
+    # the gap — Defender for Endpoint P2 (free, covers EDR) beats E5 Security (100).
     res = client.post(f"/api/engagements/{eid}/personas/{kw['id']}/bundle-analysis",
                       json={"prices": {"Microsoft 365 E3": 400, "Microsoft 365 E5 Security": 100}}).json()
     by_ref = {b["sku_reference"]: b for b in res["bundles"]}
     e3 = by_ref["Microsoft 365 E3"]
 
-    # E3 alone leaves an Endpoint-Security gap; the composition adds the cheapest
-    # add-on(s) to close it, so the composed E3 path covers Endpoint Security.
+    edr_name = edr_oc["name"]
+    # E3 alone leaves an EDR gap; the composition adds the cheapest add-on(s) to
+    # close it, so the composed E3 path covers EDR.
     assert e3["addons"], "E3 should compose add-ons to close its gaps"
-    assert "Endpoint Security" not in e3["gap_outcomes"]         # gap closed by an add-on
-    assert any("Endpoint Security" in a["closes"] for a in e3["addons"])
+    assert edr_name not in e3["gap_outcomes"]                    # gap closed by an add-on
+    assert any(edr_name in a["closes"] for a in e3["addons"])
     assert e3["target_unit_price_annual"] == 400.0 + e3["addon_total_annual"]  # base + add-ons
     assert "CrowdStrike" in e3["displaced_products"]             # composed path displaces the EDR
 
-    # Cheapest cover: a free add-on that covers Endpoint Security beats the priced
-    # E5 Security bundle, so no add-on cost is incurred to close that gap.
+    # Cheapest cover: a free add-on that covers EDR beats the priced E5 Security
+    # bundle, so no add-on cost is incurred to close that gap.
     assert e3["addon_total_annual"] == 0.0
 
 
