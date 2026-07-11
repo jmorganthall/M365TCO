@@ -104,6 +104,12 @@ The steps run along a chevron **progress stepper** at the top of an engagement:
    (human-ratified). Microsoft bundle coverage (the reference map) is collapsed
    by default so the tab leads with third-party coverage.
 5. **Scenarios** — a base target bundle **+** composable add-ons per persona.
+   Add-ons are constrained to the bases they may layer onto (the composition
+   **eligibility** rule — e.g. F5 Security only onto F3), so the picker only
+   offers valid add-ons. An engagement-level **"swap eligible users to Business
+   Premium to save"** toggle proposes moving every *capability-eligible* persona
+   (Business Premium covers everything they require) onto Business Premium, with a
+   per-persona opt-out — bounded by the Business seat cap below.
 6. **Coverage Check** — per-persona validation, scoped to the outcomes the
    persona's **proposed target scenario** would deliver (the *new-outcome*
    candidates) that aren't delivered today by their current licensing or a
@@ -114,14 +120,21 @@ The steps run along a chevron **progress stepper** at the top of an engagement:
    genuine new outcome the target lights up. Reads existing relationships only.
 7. **Readout & export** — the Net TCO delta, the Quick-wins "save today" story,
    the spend bridge, per-persona scenarios, third-party dispositions, and rollup;
-   plus advisory **AI sanity check** + **business narratives**, per-engagement
-   **readout branding** (logo + theme colors), and HTML / xlsx export.
+   plus **License-limit** checks (Microsoft licensing caps evaluated tenant-wide —
+   e.g. Microsoft 365 Business Basic/Standard/Premium share a 300-seat maximum,
+   shown as an over/under badge across current + future state), the **Business
+   Premium swap** savings line, advisory **AI sanity check** + **business
+   narratives**, per-engagement **readout branding** (logo + theme colors), and
+   HTML / xlsx export.
 
 The **in/out-of-scope** toggle on a scenario recomputes everything.
 
 **Settings** is a dedicated page (top-bar ⚙ gear) with a left-hand section nav —
 General/defaults, AI assist, Pricing sync, SKU catalog, Staple bundles, Default
-coverage, Default outcomes, and Secrets.
+coverage, License limits, Default outcomes, and Secrets. **Staple bundles** edits
+the SKU → Bundle spine (each add-on's eligible bases, plus a "how catalog SKUs
+bucket into bundles" rollup showing the priced variants that collapse onto each
+staple); **License limits** edits the tenant caps and which bundles share each pool.
 
 ## The engine (the spine)
 
@@ -165,10 +178,21 @@ Key rules:
 
 ## Seed libraries
 
-`backend/app/seeds/outcomes.json` and `coverage.json` are versioned seed files.
-The shipped content is a starter set — the practice's final libraries replace
-these files (bump the `version`). On engagement creation the defaults are copied
-into engagement-scoped rows so edits never mutate the global library.
+`backend/app/seeds/outcomes.json`, `coverage.json`, `bundles.json`, and
+`license_limits.json` are versioned seed files (the starter source for the
+globally-editable `DefaultOutcome`, `DefaultBundleCoverage`, `Bundle` /
+`AddonEligibility`, and `LicenseLimit` tables). The shipped content is a starter
+set — the practice's final libraries replace these files (bump the `version`). On
+engagement creation the outcome + Microsoft-coverage defaults are copied into
+engagement-scoped rows so edits never mutate the global library.
+
+The default **outcomes** are split to the granularity at which Microsoft SKUs and
+third-party tools actually differ — Endpoint = EPP vs EDR, Email = Hygiene vs
+Advanced Threat Protection, Identity = Core vs Governance, plus CASB and two
+telephony layers (Cloud PBX vs PSTN dial-tone, so Phone System vs dial-tone is
+explicit without exploding a bundle into calling/non-calling variants). The
+**bundles** are the staple SKU → Bundle spine the many priced catalog SKUs
+collapse onto; add-ons carry an eligibility set (which bases they layer onto).
 
 ## Security
 
