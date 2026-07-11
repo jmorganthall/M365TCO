@@ -146,7 +146,7 @@ export default function CoverageMap({ engagement, meta }) {
                 <span key={c.id} className={`badge ${c.ratified ? 'pos' : 'warn'}`}>
                   {outcomeName(c.outcome_id)}
                   {c.ai_suggested && !c.ratified && ' · AI'}
-                  {!c.ratified && <button className="sm ghost" style={{ marginLeft: 6 }} onClick={() => ratify(c.id)}>ratify</button>}
+                  {!c.ratified && <button className="sm ghost" style={{ marginLeft: 6 }} onClick={() => ratify(c.id)}>Confirm</button>}
                   <button className="sm danger" style={{ marginLeft: 4 }} onClick={() => removeCoverage(c.id)}>×</button>
                 </span>
               ))}
@@ -179,7 +179,7 @@ export default function CoverageMap({ engagement, meta }) {
                 <span key={c.id} className={`badge ${c.ratified ? 'pos' : 'warn'}`}>
                   {outcomeName(c.outcome_id)}
                   {c.ai_suggested && !c.ratified && ' · AI'}
-                  {!c.ratified && <button className="sm ghost" style={{ marginLeft: 6 }} onClick={() => ratify(c.id)}>ratify</button>}
+                  {!c.ratified && <button className="sm ghost" style={{ marginLeft: 6 }} onClick={() => ratify(c.id)}>Confirm</button>}
                   <button className="sm danger" style={{ marginLeft: 4 }} onClick={() => removeCoverage(c.id)}>×</button>
                 </span>
               ))}
