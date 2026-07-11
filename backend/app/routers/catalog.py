@@ -21,6 +21,11 @@ def _resolved_model(db: Session) -> str:
     """Operator's chosen model (defaults table) or the configured fallback."""
     return defaults.get_defaults(db).openrouter_model or settings.openrouter_model
 
+
+def _main_web_search(db: Session) -> bool:
+    """Whether to attach OpenRouter web search to main-model calls."""
+    return defaults.get_defaults(db).openrouter_web_search
+
 router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 
 
@@ -327,6 +332,7 @@ def suggest_sku_bundles(limit: int = 150, db: Session = Depends(get_db)):
             sku_dicts, bundle_dicts,
             instructions=ai_prompts.get_instructions(db, "sku_bundle_map"),
             model=_resolved_model(db),
+            web_search=_main_web_search(db),
         )
     except Exception as exc:  # network/model errors surface cleanly
         raise HTTPException(502, f"AI bundle mapping failed: {exc}")

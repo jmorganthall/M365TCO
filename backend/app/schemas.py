@@ -37,7 +37,9 @@ class GlobalDefaultsOut(ORMModel):
     default_modeling_horizon_years: int
     default_segment: str
     openrouter_model: str
+    openrouter_web_search: bool
     sanity_check_model: str
+    sanity_check_web_search: bool
 
 
 class GlobalDefaultsUpdate(BaseModel):
@@ -45,7 +47,9 @@ class GlobalDefaultsUpdate(BaseModel):
     default_modeling_horizon_years: Optional[int] = None
     default_segment: Optional[str] = None
     openrouter_model: Optional[str] = None
+    openrouter_web_search: Optional[bool] = None
     sanity_check_model: Optional[str] = None
+    sanity_check_web_search: Optional[bool] = None
 
 
 class DefaultOutcomeIn(BaseModel):

@@ -131,13 +131,20 @@ export default function AdminPanel({ onClose }) {
             entries. {ai.enabled
               ? <>Enabled. Current model: <b>{ai.model || '—'}</b>.</>
               : <b className="warn"> Set the OpenRouter API key below to enable and pick a model.</b>}</p>
-          {ai.enabled && (
+          {ai.enabled && defaults && (
             <div className="toolbar">
               <div style={{ flex: 2 }}>
                 <label>Model — type to filter (e.g. “gem”, “sonnet”)</label>
                 <ModelCombobox models={models} value={ai.model}
                   onChange={(id) => saveDefaults({ openrouter_model: id }).then(() => setAi({ ...ai, model: id }))} />
               </div>
+              <label title="Attach OpenRouter web search so this model can ground answers in live results (extra cost + latency)."
+                style={{ alignSelf: 'flex-end', paddingBottom: '.5rem', whiteSpace: 'nowrap' }}>
+                <input type="checkbox" style={{ width: 'auto', marginRight: 6 }}
+                  checked={!!defaults.openrouter_web_search}
+                  onChange={(e) => saveDefaults({ openrouter_web_search: e.target.checked })} />
+                Include web search
+              </label>
               <span className="muted" style={{ alignSelf: 'flex-end', paddingBottom: '.5rem' }}>
                 {models.length} models available
               </span>
@@ -150,6 +157,13 @@ export default function AdminPanel({ onClose }) {
                 <ModelCombobox models={models} value={defaults.sanity_check_model}
                   onChange={(id) => saveDefaults({ sanity_check_model: id })} />
               </div>
+              <label title="Attach OpenRouter web search to the sanity-check pass. Off by default to keep this frequent check cheap and fast."
+                style={{ alignSelf: 'flex-end', paddingBottom: '.5rem', whiteSpace: 'nowrap' }}>
+                <input type="checkbox" style={{ width: 'auto', marginRight: 6 }}
+                  checked={!!defaults.sanity_check_web_search}
+                  onChange={(e) => saveDefaults({ sanity_check_web_search: e.target.checked })} />
+                Include web search
+              </label>
               <span className="muted" style={{ alignSelf: 'flex-end', paddingBottom: '.5rem' }}>
                 Blank = built-in default
               </span>
