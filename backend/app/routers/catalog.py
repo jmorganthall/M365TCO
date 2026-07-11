@@ -107,19 +107,27 @@ def _bundle_list_price(db: Session, name: str) -> float:
 @router.get("/bundles")
 def list_bundles(db: Session = Depends(get_db)):
     """The staple bundle library (the SKU → Bundle → Outcomes spine), with a
-    best-effort catalog list price so the UI can auto-fill target/add-on prices."""
+    best-effort catalog list price so the UI can auto-fill target/add-on prices.
+    Each add-on also carries its eligibility set — the base bundles it may layer
+    onto (empty `eligible_base_ids` + `alacarte=true` means any base)."""
     rows = bundles_service.list_bundles(db)
     by_id = {b.id: b for b in rows}
-    return [
-        {
+    elig_map = bundles_service.eligibility_map(db)
+    out = []
+    for b in rows:
+        eligible = sorted(elig_map.get(b.id, set()))
+        out.append({
             "id": b.id, "key": b.key, "name": b.name, "kind": b.kind,
             "base_bundle_id": b.base_bundle_id,
             "base_name": by_id[b.base_bundle_id].name if b.base_bundle_id in by_id else None,
             "list_price_annual": _bundle_list_price(db, b.name),
             "sort_order": b.sort_order,
-        }
-        for b in rows
-    ]
+            # Eligibility (only meaningful for add-ons).
+            "eligible_base_ids": eligible,
+            "eligible_base_names": [by_id[i].name for i in eligible if i in by_id],
+            "alacarte": b.kind == "addon" and not eligible,
+        })
+    return out
 
 
 def _validate_bundle_shape(db: Session, kind: str, base_bundle_id: str | None, self_id: str | None = None):
@@ -153,6 +161,11 @@ def create_bundle(payload: schemas.BundleIn, db: Session = Depends(get_db)):
     _validate_bundle_shape(db, payload.kind, payload.base_bundle_id)
     row = models.Bundle(**payload.model_dump())
     db.add(row)
+    db.flush()
+    # An add-on's primary base is always a member of its eligibility set, so a
+    # newly-created add-on is enforced (restricted to its base) from the start.
+    if row.kind == "addon" and row.base_bundle_id:
+        db.add(models.AddonEligibility(addon_bundle_id=row.id, base_bundle_id=row.base_bundle_id))
     db.commit()
     return {"id": row.id, "key": row.key, "name": row.name, "kind": row.kind,
             "base_bundle_id": row.base_bundle_id, "sort_order": row.sort_order}
@@ -170,9 +183,43 @@ def update_bundle(bundle_id: str, payload: schemas.BundleUpdate, db: Session = D
     _validate_bundle_shape(db, kind, base, self_id=row.id)
     for k, v in data.items():
         setattr(row, k, v)
+    db.flush()
+    # Keep the primary base in the eligibility set; if a bundle was switched to an
+    # add-on (or its base changed), ensure the new base is eligible. Eligibility
+    # rows for a bundle-kind are meaningless, so clear them when demoted to base.
+    if row.kind == "addon" and row.base_bundle_id:
+        if row.base_bundle_id not in bundles_service.eligible_base_ids(db, row.id):
+            db.add(models.AddonEligibility(
+                addon_bundle_id=row.id, base_bundle_id=row.base_bundle_id))
+    elif row.kind == "bundle":
+        bundles_service.set_addon_eligibility(db, row.id, [])
     db.commit()
     return {"id": row.id, "key": row.key, "name": row.name, "kind": row.kind,
             "base_bundle_id": row.base_bundle_id, "sort_order": row.sort_order}
+
+
+@router.put("/bundles/{addon_id}/eligibility")
+def set_bundle_eligibility(
+    addon_id: str, payload: schemas.AddonEligibilityIn, db: Session = Depends(get_db)
+):
+    """Replace an add-on's eligible-base set — the composition "logic layer" (which
+    bases it may layer onto). Empty list = à-la-carte (any base). Only valid on an
+    add-on; every id must name an existing base bundle."""
+    row = db.get(models.Bundle, addon_id)
+    if row is None:
+        raise HTTPException(404, "Bundle not found")
+    if row.kind != "addon":
+        raise HTTPException(422, "Eligibility applies to add-ons only.")
+    for bid in payload.base_bundle_ids:
+        base = db.get(models.Bundle, bid)
+        if base is None:
+            raise HTTPException(422, f"Unknown base bundle '{bid}'.")
+        if base.kind != "bundle":
+            raise HTTPException(422, "An eligible base must be a base bundle, not an add-on.")
+        if bid == addon_id:
+            raise HTTPException(422, "An add-on cannot be eligible for itself.")
+    ids = bundles_service.set_addon_eligibility(db, addon_id, payload.base_bundle_ids)
+    return {"addon_bundle_id": addon_id, "eligible_base_ids": ids, "alacarte": not ids}
 
 
 @router.delete("/bundles/{bundle_id}")
@@ -202,9 +249,21 @@ def delete_bundle(bundle_id: str, db: Session = Depends(get_db)):
     children = _count(models.Bundle, models.Bundle.base_bundle_id == bundle_id)
     if children:
         refs.append(f"{children} add-on(s) based on it")
+    # A base that's in some add-on's eligibility set (beyond the primary base link).
+    elig = _count(models.AddonEligibility, models.AddonEligibility.base_bundle_id == bundle_id)
+    if elig:
+        refs.append(f"{elig} add-on eligibility link(s)")
     if refs:
         raise HTTPException(409, "Cannot delete: still referenced by " + ", ".join(refs)
                             + ". Clear those references first.")
+    # An add-on owns its eligibility rows (where it is the addon) — remove them so
+    # the delete doesn't leave orphans.
+    for e in db.execute(
+        select(models.AddonEligibility).where(
+            models.AddonEligibility.addon_bundle_id == bundle_id
+        )
+    ).scalars().all():
+        db.delete(e)
     db.delete(row)
     db.commit()
     return {"deleted": bundle_id}

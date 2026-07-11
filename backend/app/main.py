@@ -99,6 +99,37 @@ def _reconcile_catalog_provenance(db) -> None:
     catalog_provenance.reconcile_missing_provenance(db)
 
 
+def _backfill_addon_eligibility(db) -> None:
+    """One-time migration: seed the M:N add-on eligibility set from the legacy
+    single `Bundle.base_bundle_id` for any add-on that has a primary base but no
+    eligibility rows yet. Carries the old 1:1 base link forward as the enforceable
+    set; à-la-carte add-ons (no base) intentionally stay without rows. Idempotent."""
+    from sqlalchemy import select
+
+    from . import models
+
+    addons = db.execute(
+        select(models.Bundle).where(
+            models.Bundle.kind == "addon",
+            models.Bundle.base_bundle_id.isnot(None),
+        )
+    ).scalars().all()
+    have = {
+        (e.addon_bundle_id, e.base_bundle_id)
+        for e in db.execute(select(models.AddonEligibility)).scalars().all()
+    }
+    changed = False
+    for a in addons:
+        if not any(k[0] == a.id for k in have):  # no eligibility rows for this add-on
+            if (a.id, a.base_bundle_id) not in have:
+                db.add(models.AddonEligibility(
+                    addon_bundle_id=a.id, base_bundle_id=a.base_bundle_id))
+                have.add((a.id, a.base_bundle_id))
+                changed = True
+    if changed:
+        db.commit()
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     import asyncio
@@ -118,6 +149,7 @@ async def lifespan(_app: FastAPI):
         seeds_service.seed_default_coverage(db)
         ai_prompts_service.seed_defaults(db)
         bundles_service.seed_bundles(db)
+        _backfill_addon_eligibility(db)
         _backfill_license_persona_tags(db)
         _backfill_coverage_bundle_ids(db)
         _backfill_binary_coverage(db)

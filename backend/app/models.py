@@ -234,10 +234,35 @@ class Bundle(Base):
     key: Mapped[str] = mapped_column(String, unique=True)
     name: Mapped[str] = mapped_column(String)
     kind: Mapped[str] = mapped_column(String, default="bundle")  # bundle | addon
+    # The PRIMARY/canonical base an add-on is designed for (drives display and the
+    # compact seed form). The FULL set of bases it may layer onto is the M:N
+    # AddonEligibility below — the primary base is always a member of that set.
     base_bundle_id: Mapped[str | None] = mapped_column(
         ForeignKey("bundles.id"), nullable=True
     )
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class AddonEligibility(Base):
+    """Which base bundles an add-on may layer onto — the composition "logic layer"
+    (e.g. F5 Security only onto F3, E5 Security only onto E3). A first-class M:N
+    association (per DATA_MODEL §5: model many-to-many as an association object, not
+    a delimited string or a single FK), global + editable, seeded from the add-on
+    `base`/`bases` in seeds/bundles.json.
+
+    Semantics: an add-on WITH ≥1 eligibility row is restricted to exactly those
+    bases; an add-on with NO rows is à-la-carte — eligible for any base (this
+    preserves the legacy `base_bundle_id = null` behaviour explicitly). The
+    scenario add-on API and the recommend-a-path optimizer both enforce it."""
+
+    __tablename__ = "addon_eligibilities"
+    __table_args__ = (
+        UniqueConstraint("addon_bundle_id", "base_bundle_id", name="uq_addon_eligibility"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    addon_bundle_id: Mapped[str] = mapped_column(ForeignKey("bundles.id"), index=True)
+    base_bundle_id: Mapped[str] = mapped_column(ForeignKey("bundles.id"), index=True)
 
 
 class CatalogImport(Base):

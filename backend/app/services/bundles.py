@@ -25,9 +25,21 @@ def _seed() -> dict:
         return json.load(fh)
 
 
+def _seed_base_keys(entry: dict) -> list[str]:
+    """The base keys an add-on seed entry declares — `bases: [...]` (multi) unioned
+    with the single-`base` sugar. Empty for à-la-carte add-ons and base bundles."""
+    keys = list(entry.get("bases") or [])
+    if entry.get("base"):
+        keys.append(entry["base"])
+    # De-dup, preserve order.
+    seen: set[str] = set()
+    return [k for k in keys if not (k in seen or seen.add(k))]
+
+
 def seed_bundles(db: Session) -> None:
     """Insert any seed bundle whose key isn't present yet, then reconcile the
-    add-on → base links. Never overwrites operator edits to name/kind. Idempotent."""
+    add-on → base primary link and the M:N AddonEligibility set. Never overwrites
+    operator edits to name/kind. Idempotent."""
     by_key = {b.key: b for b in db.execute(select(models.Bundle)).scalars().all()}
     changed = False
     for b in _seed()["bundles"]:
@@ -41,17 +53,83 @@ def seed_bundles(db: Session) -> None:
             changed = True
     if changed:
         db.flush()
-    # Resolve add-on base links now that every bundle row exists.
+    # Resolve the primary add-on → base link now that every bundle row exists.
     for b in _seed()["bundles"]:
-        base_key = b.get("base")
+        base_keys = _seed_base_keys(b)
         row = by_key.get(b["key"])
-        if base_key and row is not None and row.base_bundle_id is None:
-            base = by_key.get(base_key)
+        if base_keys and row is not None and row.base_bundle_id is None:
+            base = by_key.get(base_keys[0])
             if base is not None:
                 row.base_bundle_id = base.id
                 changed = True
     if changed:
+        db.flush()
+    # Reconcile the eligibility set: ensure a row for every declared base of every
+    # seeded add-on. Additive — never removes operator-added eligibilities.
+    have = {
+        (e.addon_bundle_id, e.base_bundle_id)
+        for e in db.execute(select(models.AddonEligibility)).scalars().all()
+    }
+    for b in _seed()["bundles"]:
+        row = by_key.get(b["key"])
+        if row is None:
+            continue
+        for base_key in _seed_base_keys(b):
+            base = by_key.get(base_key)
+            if base is not None and (row.id, base.id) not in have:
+                db.add(models.AddonEligibility(addon_bundle_id=row.id, base_bundle_id=base.id))
+                have.add((row.id, base.id))
+                changed = True
+    if changed:
         db.commit()
+
+
+def eligibility_map(db: Session) -> dict[str, set[str]]:
+    """`{addon_bundle_id: {eligible base_bundle_id, …}}` for every add-on that has
+    at least one eligibility row. An add-on ABSENT from this map is à-la-carte
+    (eligible for any base) — see AddonEligibility."""
+    out: dict[str, set[str]] = {}
+    for e in db.execute(select(models.AddonEligibility)).scalars().all():
+        out.setdefault(e.addon_bundle_id, set()).add(e.base_bundle_id)
+    return out
+
+
+def addon_applies(addon_id: str, base_id: str, elig_map: dict[str, set[str]]) -> bool:
+    """True iff an add-on may layer onto a base: à-la-carte (no eligibility rows) →
+    any base; otherwise the base must be in the add-on's eligibility set."""
+    allowed = elig_map.get(addon_id)
+    return allowed is None or base_id in allowed
+
+
+def eligible_base_ids(db: Session, addon_id: str) -> list[str]:
+    return [
+        e.base_bundle_id
+        for e in db.execute(
+            select(models.AddonEligibility).where(
+                models.AddonEligibility.addon_bundle_id == addon_id
+            )
+        ).scalars().all()
+    ]
+
+
+def set_addon_eligibility(db: Session, addon_id: str, base_ids: list[str]) -> list[str]:
+    """Replace an add-on's eligible-base set (à-la-carte when empty). Returns the
+    resulting base id list. Assumes caller validated the ids."""
+    existing = db.execute(
+        select(models.AddonEligibility).where(
+            models.AddonEligibility.addon_bundle_id == addon_id
+        )
+    ).scalars().all()
+    want = set(base_ids)
+    have = {e.base_bundle_id: e for e in existing}
+    for bid, row in have.items():
+        if bid not in want:
+            db.delete(row)
+    for bid in want:
+        if bid not in have:
+            db.add(models.AddonEligibility(addon_bundle_id=addon_id, base_bundle_id=bid))
+    db.commit()
+    return eligible_base_ids(db, addon_id)
 
 
 def list_bundles(db: Session) -> list[models.Bundle]:

@@ -127,7 +127,9 @@ is a legitimate positive (cost-increase) delta.
 > evaluates *composed* candidates, not raw SKUs. The hydrator builds one candidate
 > per staple base bundle by adding the **cheapest add-ons that close that base's
 > capability gaps** (required outcomes the base does not cover), where an add-on is
-> applicable when it is à-la-carte or its base link matches the base. The candidate's
+> applicable when it is **eligible for the base** — à-la-carte add-ons (no eligibility
+> rows) apply to any base; otherwise the base must be in the add-on's eligibility set
+> (`AddonEligibility`, e.g. E5 Security → E3). The candidate's
 > covered set is the union (base ∪ chosen add-ons) and its price is the sum, so a
 > recommendation reads as "E3 + E5 Security" rather than a single line. The
 > displacement test and linear-by-user offset are unchanged and applied to the

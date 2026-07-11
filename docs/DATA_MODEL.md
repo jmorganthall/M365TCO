@@ -241,14 +241,17 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Identity:** `uuid` plus a unique `key`. **Scope:** **global**, editable,
   seeded from `seeds/bundles.json` (`services/bundles.py`).
 - **Shape:** `name`, `kind` (`bundle` = a full base like *Microsoft 365 E3*;
-  `addon` = a composable add-on like *E5 Security* whose `base_bundle_id` names the
-  base it layers onto), `sort_order`.
+  `addon` = a composable add-on like *E5 Security*), `sort_order`. `base_bundle_id`
+  is the add-on's **primary/canonical** base (for display and the compact seed form);
+  the **full set** of bases an add-on may layer onto is the M:N `AddonEligibility`
+  (§4.4d) — the primary base is always a member of that set.
 - **CRUD (slice E2-bundles):** `GET/POST/PATCH/DELETE …/catalog/bundles`, edited in
   Settings → Staple bundles (inline name/kind/base/sort + add-bundle form). Shape
   rules are enforced (a base has no parent; an add-on must point at an existing base
   bundle). **Delete is blocked (409) while anything references the bundle** —
   `MicrosoftSku.bundle_id`/`suggested_bundle_id`, `CoverageMapEntry.bundle_id`,
-  `ScenarioAddon.bundle_id`, or a child add-on — so a delete never orphans the spine.
+  `ScenarioAddon.bundle_id`, a child add-on, or an `AddonEligibility` link — so a
+  delete never orphans the spine.
   `key` is immutable (the stable id); a deleted *seed* staple is re-created on the
   next startup by `seed_bundles`, so delete is meaningful for operator-added bundles.
 - **Why it exists:** the stable identity between the many priced catalog SKUs and
@@ -280,6 +283,33 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **CRUD:** `GET/POST/PATCH/DELETE …/admin/default-coverage` (keys validated against the
   bundle library + `DefaultOutcome`; the pair is unique; PATCH edits coverage only).
   `seeds/coverage.json` remains the version-controlled seed source.
+
+### 4.4d AddonEligibility — the add-on composition logic layer
+- **Identity:** `uuid` plus a unique `(addon_bundle_id, base_bundle_id)`. **Scope:**
+  **global**, editable, seeded from the add-on `base`/`bases` in `seeds/bundles.json`
+  (`services/bundles.py`). **Association object** — the many-to-many "this add-on may
+  layer onto this base bundle" (per §5: model M:N as a first-class association, not a
+  single FK or a delimited string).
+- **Shape:** `addon_bundle_id` → an `addon`-kind Bundle, `base_bundle_id` → a
+  `bundle`-kind Bundle.
+- **Semantics (the rule):** an add-on **with ≥1 eligibility row** is restricted to
+  exactly those bases; an add-on with **no rows is à-la-carte** — eligible for any
+  base (this makes the legacy `base_bundle_id = null` behaviour explicit). An add-on's
+  primary `base_bundle_id` is always mirrored in as a member, so a based add-on is
+  enforced from creation.
+- **Why it exists:** *F5 Security only onto F3, E5 Security only onto E3* is a real
+  Microsoft composition constraint. It was a single nullable FK (1:1, unenforced);
+  it's now a first-class M:N that both the **scenario add-on API**
+  (`_validate_addon_eligibility` in `routers/entities.py` — a soft-ref-against-source
+  validation rejecting an ineligible add-on 422) and the **recommend-a-path optimizer**
+  (`services/compute.py`, via `bundles.addon_applies`) enforce.
+- **CRUD:** read via `GET /api/catalog/bundles` (each add-on carries `eligible_base_ids`,
+  `eligible_base_names`, `alacarte`); set via `PUT /api/catalog/bundles/{addon_id}/eligibility`
+  (replace-the-set; empty = à-la-carte), edited in Settings → Staple bundles. Keys
+  validated: target must be an add-on, each base must be an existing base bundle.
+- **Lifecycle:** seeded on startup (`seed_bundles`); a one-time
+  `_backfill_addon_eligibility` (`app/main.py`) carries the legacy single
+  `base_bundle_id` forward for any add-on with a base but no rows. Idempotent.
 
 ### 4.5 CurrentMicrosoftLicense — the customer's existing licensing
 - **Identity:** `uuid`. **Scope:** engagement-scoped.
@@ -370,6 +400,10 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Identity:** `uuid`. **Scope:** engagement-scoped (via the scenario).
   **Association object** linking a scenario to an add-on `Bundle` with its own
   `unit_price_annual`. Composing base + add-ons is how "E3 + E5 Security" is modeled.
+- **Eligibility gate:** on create/PATCH, each add-on is validated against the
+  scenario's base bundle via `AddonEligibility` (§4.4d) — an add-on not eligible for
+  the base is rejected (422), so a scenario can never compose an impossible pairing
+  (e.g. F5 Security onto E3). The Scenarios tab only offers eligible add-ons.
 
 ### 4.9 ProductDisposition — split ownership, by design
 This is the canonical example of the field-ownership rule, because one row mixes
