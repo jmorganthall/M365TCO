@@ -437,15 +437,27 @@ market-research enrichment (an external agent) and the Forrester TEI soft-saving
 overlay (§10) attach later as their own first-class overlays, not edits here.
 
 ### 4.10a-quater Coverage check / gap validation (derived, persists nothing)
-`GET …/coverage-gaps` returns, per persona, the engagement outcomes **not**
-delivered today by that persona's current Microsoft licensing (its bundles'
-ratified coverage, tagged-or-org-wide lines) or a third party **tagged to it**.
-It is a pure read over existing coverage relationships — no new state, no new
-field. The Coverage Check step (between Scenarios and Readout) walks each gap and
-the operator resolves it with **existing** actions only: map a third party that
-actually delivers it (a `CoverageMapEntry` third-party row **+** a
-`ThirdPartyPersona` tag so it counts for that persona), add a new third party, or
-leave it as a genuine gap the target scenario lights up as a **new outcome**.
+`GET …/coverage-gaps` returns, per persona, the outcomes the persona's **proposed
+target scenario** (base bundle + add-ons) would deliver that are **not** delivered
+today — the *new-outcome* candidates worth validating (not the whole outcome
+library). "Delivered today" reads existing coverage: the persona's current
+Microsoft licensing (its bundles' ratified coverage, tagged-or-org-wide lines)
+plus third parties whose ratified coverage applies to the persona — **tagged to
+it, or untagged (org-wide, mirroring current licensing)** so established
+coverage-map mappings count even before a product is persona-tagged. It is a pure
+read over existing relationships — no new state, no new field.
+
+The Coverage Check step (between Scenarios and Readout) walks each gap and the
+operator resolves it with **existing** actions only:
+- **map a third party that actually delivers it** — a `CoverageMapEntry`
+  third-party row **+** a `ThirdPartyPersona` tag so it counts for the persona;
+- **covered elsewhere / out of scope** — recorded against a reusable **$0**
+  "Covered elsewhere (out of scope)" `ThirdPartyProduct` (coverage + persona
+  tag), so the outcome is accounted for but its $0 cost keeps it out of the TCO
+  math and the new-outcome story;
+- **add a new third party**, or **leave it** as a genuine gap the target lights
+  up as a **new outcome**.
+
 This validates coverage so a future per-persona "new outcomes" report — an
 outcome is *new* iff the target delivers it and nothing delivered it today — is
 trustworthy, without inventing data.
