@@ -266,3 +266,34 @@ def test_web_search_plugin_attached_only_when_enabled(monkeypatch):
     ai_mod.parse_third_party("some text", "instructions", model="x/y", web_search=True)
     assert captured["body"]["plugins"] == [{"id": "web"}]
     assert captured["body"]["response_format"] == {"type": "json_object"}
+
+    # The web plugin also reaches customer research (the canonical web-search case).
+    ai_mod.research_customer({"customer_name": "Acme"}, "instructions", model="x/y", web_search=True)
+    assert captured["body"]["plugins"] == [{"id": "web"}]
+
+
+def test_normalize_customer_research_pure():
+    """The customer-research normalizer: keeps confident fields, strips a website
+    scheme, coerces employee_count to a positive int, drops blanks — no HTTP."""
+    from app.services import ai
+
+    out = ai.normalize_customer_research({"customer": {
+        "industry": "Manufacturing", "hq_location": "Austin, TX",
+        "website": "https://acme.com/", "employee_count": "1,200 approx",
+        "description": "  Makes widgets.  ", "unknown": "ignored"}})
+    assert out == {"industry": "Manufacturing", "hq_location": "Austin, TX",
+                   "website": "acme.com", "employee_count": 1200,
+                   "description": "Makes widgets."}
+
+    # Blanks / zero / missing are dropped (fill-empty-only relies on this).
+    assert ai.normalize_customer_research({"industry": "", "employee_count": 0}) == {}
+    # Tolerates a flat (no "customer" wrapper) object too.
+    assert ai.normalize_customer_research({"website": "acme.io"}) == {"website": "acme.io"}
+
+
+def test_research_customer_requires_name_and_ai(client):
+    """The endpoint needs AI enabled; with it disabled in tests it 400s (a name
+    check would 422 first if AI were on)."""
+    eng = client.post("/api/engagements", json={"customer_name": "Acme"}).json()
+    r = client.post(f"/api/admin/engagements/{eng['id']}/ai/research-customer", json={})
+    assert r.status_code == 400  # AI disabled in the test env

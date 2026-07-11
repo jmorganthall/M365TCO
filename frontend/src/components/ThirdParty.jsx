@@ -1,26 +1,22 @@
 import React, { useEffect, useState } from 'react'
 import { api, usd, pct } from '../api'
 
-// A persisted-row input that edits freely as a local draft and only commits
-// (persists + reloads) on blur or Enter. Binding a row input straight to server
-// state and PATCHing on every keystroke makes text editing impossible — the
-// per-keystroke reload resets the field and clobbers typing (spinner arrows still
-// work because each is one discrete change). Holding the draft locally lets you
-// clear the field and type a whole new number; `parse` coerces on commit only.
-// Re-syncs from the prop when the field isn't focused (e.g. AI/derived updates).
-function CommitInput({ value, onCommit, parse = (v) => v, ...rest }) {
-  const [draft, setDraft] = useState(value ?? '')
-  const [focused, setFocused] = useState(false)
-  useEffect(() => { if (!focused) setDraft(value ?? '') }, [value, focused])
-  const commit = () => {
-    setFocused(false)
-    const next = parse(draft)
-    if (next !== value) onCommit(next)  // skip no-op writes (and their reload)
+// A number input for an inline (auto-saving) line-item field. Holds local text
+// state so you can clear it and TYPE a new number freely; it commits on blur or
+// Enter — not on every keystroke (which, with the row's save-and-reload, snapped
+// the value back and made the field un-typeable). `allowEmpty` commits null.
+function NumInput({ value, onCommit, style, step, disabled, placeholder, allowEmpty }) {
+  const [v, setV] = useState(value ?? '')
+  useEffect(() => { setV(value ?? '') }, [value])
+  function commit() {
+    if (allowEmpty && String(v).trim() === '') { onCommit(null); return }
+    const n = Number(v)
+    onCommit(Number.isFinite(n) ? n : 0)
   }
   return (
-    <input {...rest} value={draft}
-      onFocus={() => setFocused(true)}
-      onChange={(e) => setDraft(e.target.value)}
+    <input type="number" style={style} step={step} disabled={disabled} placeholder={placeholder}
+      value={v}
+      onChange={(e) => setV(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }} />
   )
@@ -47,17 +43,16 @@ function ProductRow({ t, meta, personas, update, remove }) {
     <>
       <tr>
         <td><button className="ghost sm" title="Details" onClick={() => setOpen(!open)}>{open ? '▾' : '▸'}</button></td>
-        <td><CommitInput value={t.name} style={{ minWidth: 120 }}
-          onCommit={(v) => update(t.id, { name: v })} /></td>
-        <td className="num"><CommitInput type="number" style={{ width: 90 }} value={t.raw_cost}
-          parse={(v) => Number(v) || 0} onCommit={(v) => update(t.id, { raw_cost: v })} /></td>
+        <td><input value={t.name} style={{ minWidth: 120 }} onChange={(e) => update(t.id, { name: e.target.value })} /></td>
+        <td className="num"><NumInput value={t.raw_cost} style={{ width: 90 }}
+          onCommit={(n) => update(t.id, { raw_cost: n })} /></td>
         <td>
           <select value={t.cost_period} onChange={(e) => update(t.id, { cost_period: e.target.value })}>
             {(meta?.cost_periods || []).map((s) => <option key={s}>{s}</option>)}
           </select>
         </td>
-        <td className="num"><CommitInput type="number" style={{ width: 70 }} value={t.covered_count}
-          parse={(v) => Number(v) || 0} onCommit={(v) => update(t.id, { covered_count: v })} /></td>
+        <td className="num"><NumInput value={t.covered_count} style={{ width: 70 }}
+          onCommit={(n) => update(t.id, { covered_count: n })} /></td>
         <td className="num">{usd(t.effective_annual_cost)}</td>
         <td><div className="pill-list">
           {chips.length ? chips : <span className="muted" style={{ fontSize: '.75rem' }}>unmanaged</span>}
@@ -70,7 +65,7 @@ function ProductRow({ t, meta, personas, update, remove }) {
           <td colSpan={7} style={{ background: 'var(--panel2)' }}>
             <div className="grid c4" style={{ padding: '.4rem 0' }}>
               <div><label>Vendor</label>
-                <CommitInput value={t.vendor || ''} onCommit={(v) => update(t.id, { vendor: v })} /></div>
+                <input value={t.vendor || ''} onChange={(e) => update(t.id, { vendor: e.target.value })} /></div>
               <div><label>Managed</label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <input type="checkbox" style={{ width: 'auto' }} checked={t.is_managed}
@@ -78,8 +73,8 @@ function ProductRow({ t, meta, personas, update, remove }) {
                   <span className="muted" style={{ fontSize: '.78rem' }}>tool + management</span>
                 </label></div>
               <div><label>Tooling %</label>
-                <CommitInput type="number" step="0.05" value={t.tooling_pct} disabled={!t.is_managed}
-                  parse={(v) => Number(v) || 0} onCommit={(v) => update(t.id, { tooling_pct: v })} />
+                <NumInput value={t.tooling_pct} step="0.05" disabled={!t.is_managed}
+                  onCommit={(n) => update(t.id, { tooling_pct: n })} />
                 <small className="src">Applies only when managed.</small></div>
               <div><label>Unit basis</label>
                 <select value={t.unit_basis} onChange={(e) => update(t.id, { unit_basis: e.target.value })}>
@@ -89,9 +84,8 @@ function ProductRow({ t, meta, personas, update, remove }) {
                 <input type="date" value={t.renewal_date || ''}
                   onChange={(e) => update(t.id, { renewal_date: e.target.value || null })} /></div>
               <div><label>Commitment (months)</label>
-                <CommitInput type="number" value={t.commitment_term_months} placeholder="—"
-                  parse={(v) => (v === '' || v == null ? null : Number(v))}
-                  onCommit={(v) => update(t.id, { commitment_term_months: v })} /></div>
+                <NumInput value={t.commitment_term_months} placeholder="—" allowEmpty
+                  onCommit={(n) => update(t.id, { commitment_term_months: n })} /></div>
               <div><label>Effective $/yr · $/unit/yr</label>
                 <div className="muted" style={{ paddingTop: '.35rem' }}>{usd(t.effective_annual_cost)} · {usd(t.per_unit_annual_cost)}</div>
                 <small className="src">Derived from cost, managed split, and covers.</small></div>

@@ -10,9 +10,42 @@ export default function CustomerInfo({ engagement, onUpdate }) {
   const eid = engagement.id
   const [f, setF] = useState(fromEngagement(engagement))
   const [err, setErr] = useState('')
+  const [msg, setMsg] = useState('')
   const [savedAt, setSavedAt] = useState('')
+  const [aiEnabled, setAiEnabled] = useState(false)
+  const [busy, setBusy] = useState(false)
 
-  useEffect(() => { setF(fromEngagement(engagement)) }, [eid])
+  useEffect(() => { setF(fromEngagement(engagement)); setMsg('') }, [eid])
+  useEffect(() => { api.get('/api/admin/ai/status').then((s) => setAiEnabled(s.enabled)).catch(() => {}) }, [])
+
+  // AI research: fill the fields the operator hasn't provided from whatever is
+  // known (name + anything entered). Advisory — fills EMPTY fields only, never
+  // overwrites operator input; each filled field is then saved for review.
+  async function research() {
+    setBusy(true); setErr(''); setMsg('')
+    try {
+      const res = await api.post(`/api/admin/engagements/${eid}/ai/research-customer`, {
+        customer_name: f.customer_name, hq_location: f.hq_location, website: f.website,
+        industry: f.industry, employee_count: f.employee_count === '' ? null : Number(f.employee_count),
+      })
+      const s = res.suggestions || {}
+      const proposed = {
+        industry: s.industry, hq_location: s.hq_location, website: s.website,
+        employee_count: s.employee_count, notes: s.description,
+      }
+      const next = { ...f }
+      const filled = []
+      for (const [field, val] of Object.entries(proposed)) {
+        if (val == null || val === '' || (next[field] ?? '') !== '') continue  // fill empty only
+        next[field] = String(val); filled.push(field)
+      }
+      setF(next)
+      for (const field of filled) await commit(field, next[field])
+      setMsg(filled.length
+        ? `AI filled ${filled.length} empty field(s) — please verify before relying on them.`
+        : 'AI had nothing confident to add for the empty fields.')
+    } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
 
   async function commit(field, raw) {
     // Normalize empties: text → "", number/date → null (so "clear" really clears).
@@ -33,11 +66,21 @@ export default function CustomerInfo({ engagement, onUpdate }) {
 
   return (
     <div className="card">
-      <h2>Customer info</h2>
+      <div className="flex-between">
+        <h2 style={{ margin: 0 }}>Customer info</h2>
+        {aiEnabled && (
+          <button className="ghost sm" onClick={research} disabled={busy || !f.customer_name.trim()}
+            title="Use AI to fill the empty fields from the customer name (and anything you've entered)">
+            {busy ? 'Researching…' : '✨ AI research'}
+          </button>
+        )}
+      </div>
       <p className="hint">Basic context about this engagement's customer. The <b>name</b> is the
         engagement's display name (shown in the sidebar and header); the rest is background used for
-        display and, later, to ground the AI business-narrative research. Saved as you go.</p>
+        display and, later, to ground the AI business-narrative research. Saved as you go.
+        {aiEnabled && <> Enter a name, then <b>✨ AI research</b> proposes the rest for you to verify.</>}</p>
       {err && <div className="err">{err}</div>}
+      {msg && <div className="popcheck" style={{ margin: '.4rem 0' }}>{msg}</div>}
 
       <div className="grid c2">
         <div>
