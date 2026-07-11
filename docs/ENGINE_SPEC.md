@@ -105,6 +105,12 @@ current_spend_annual = current_microsoft + offset
 # the scenario discount to yield the net target_unit_price_annual the engine uses:
 #   net = (base_list + Σ addon_list) * (1 - target_discount_pct)
 # target_covered_outcome_ids is the union across base + add-ons.
+# Business Premium swap (data layer): when the engagement's BP swap is active for a
+# scenario (inherited, not opted out, and Business Premium covers every outcome the
+# persona requires), the hydrator substitutes the EFFECTIVE target with Business
+# Premium (its covered outcomes + catalog price × (1 - discount)) before the engine
+# runs. The engine math below is unchanged — it consumes whichever target the data
+# layer resolved.
 target_spend_annual  = persona.headcount * scenario.target_unit_price_annual
 delta_annual         = current_spend_annual - target_spend_annual   # +saving / -cost
 ```
@@ -116,7 +122,9 @@ third-party cost it offsets.
 > evaluates *composed* candidates, not raw SKUs. The hydrator builds one candidate
 > per staple base bundle by adding the **cheapest add-ons that close that base's
 > capability gaps** (required outcomes the base does not cover), where an add-on is
-> applicable when it is à-la-carte or its base link matches the base. The candidate's
+> applicable when it is **eligible for the base** — à-la-carte add-ons (no eligibility
+> rows) apply to any base; otherwise the base must be in the add-on's eligibility set
+> (`AddonEligibility`, e.g. E5 Security → E3). The candidate's
 > covered set is the union (base ∪ chosen add-ons) and its price is the sum, so a
 > recommendation reads as "E3 + E5 Security" rather than a single line. The
 > displacement test and linear-by-user offset are unchanged and applied to the

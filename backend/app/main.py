@@ -89,6 +89,64 @@ def _backfill_coverage_bundle_ids(db) -> None:
         db.commit()
 
 
+def _backfill_addon_eligibility(db) -> None:
+    """One-time migration: seed the M:N add-on eligibility set from the legacy
+    single `Bundle.base_bundle_id` for any add-on that has a primary base but no
+    eligibility rows yet. Carries the old 1:1 base link forward as the enforceable
+    set; à-la-carte add-ons (no base) intentionally stay without rows. Idempotent."""
+    from sqlalchemy import select
+
+    from . import models
+
+    addons = db.execute(
+        select(models.Bundle).where(
+            models.Bundle.kind == "addon",
+            models.Bundle.base_bundle_id.isnot(None),
+        )
+    ).scalars().all()
+    have = {
+        (e.addon_bundle_id, e.base_bundle_id)
+        for e in db.execute(select(models.AddonEligibility)).scalars().all()
+    }
+    changed = False
+    for a in addons:
+        if not any(k[0] == a.id for k in have):  # no eligibility rows for this add-on
+            if (a.id, a.base_bundle_id) not in have:
+                db.add(models.AddonEligibility(
+                    addon_bundle_id=a.id, base_bundle_id=a.base_bundle_id))
+                have.add((a.id, a.base_bundle_id))
+                changed = True
+    if changed:
+        db.commit()
+
+
+def _backfill_new_bundle_coverage(db) -> None:
+    """Additive migration: seed the default coverage for any bundle in coverage.json
+    that has NO DefaultBundleCoverage rows yet (a brand-new staple like Business
+    Basic/Standard). Only touches bundles absent from the table, so operator edits
+    to existing bundles' coverage are preserved. Idempotent."""
+    from sqlalchemy import select
+
+    from . import models
+    from .services import seeds as seeds_service
+
+    existing = db.execute(select(models.DefaultBundleCoverage)).scalars().all()
+    if not existing:
+        return  # fresh DB — normal seeding handles it
+    covered_bundle_keys = {c.bundle_key for c in existing}
+    changed = False
+    for item in seeds_service.load_coverage()["bundles"]:
+        if item["bundle"] in covered_bundle_keys:
+            continue  # this bundle already has coverage rows — leave it alone
+        for entry in item["coverage"]:
+            db.add(models.DefaultBundleCoverage(
+                bundle_key=item["bundle"], outcome_key=entry["outcome"],
+                coverage=entry["coverage"]))
+            changed = True
+    if changed:
+        db.commit()
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     import asyncio
@@ -108,6 +166,10 @@ async def lifespan(_app: FastAPI):
         seeds_service.seed_default_coverage(db)
         ai_prompts_service.seed_defaults(db)
         bundles_service.seed_bundles(db)
+        from .services import limits as limits_service
+        limits_service.seed_license_limits(db)
+        _backfill_addon_eligibility(db)
+        _backfill_new_bundle_coverage(db)
         _backfill_license_persona_tags(db)
         _backfill_coverage_bundle_ids(db)
         _backfill_binary_coverage(db)

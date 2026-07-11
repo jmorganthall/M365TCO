@@ -26,11 +26,19 @@ const netAnnual = (s) => {
 
 // One scenario as an expandable line item: base bundle + net $/seat/mo up top;
 // base price, discount, and add-on bundles (composed) in the expander.
-function ScenarioRow({ p, s, r, bundles, update, remove, onAnalyze }) {
+function ScenarioRow({ p, s, r, bundles, update, remove, onAnalyze, swapEnabled, swapRow }) {
   const [open, setOpen] = useState(false)
   const bundleName = (id) => bundles.find((b) => b.id === id)?.name || id
   const payload = () => (s.addons || []).map((a) => ({ bundle_id: a.bundle_id, unit_price_annual: a.unit_price_annual }))
-  const available = bundles.filter((b) => b.kind === 'addon' && !(s.addons || []).some((a) => a.bundle_id === b.id))
+  // Resolve the scenario's base bundle (by name/key) so only add-ons ELIGIBLE for
+  // that base are offered (the composition logic layer). À-la-carte add-ons layer
+  // onto anything; if the base can't be resolved yet, don't filter.
+  const baseBundle = bundles.find((b) => b.kind === 'bundle'
+    && (b.name === s.target_sku_reference || b.key === s.target_sku_reference))
+  const eligibleForBase = (b) => b.alacarte || !baseBundle
+    || (b.eligible_base_ids || []).includes(baseBundle.id)
+  const available = bundles.filter((b) => b.kind === 'addon'
+    && !(s.addons || []).some((a) => a.bundle_id === b.id) && eligibleForBase(b))
 
   const addAddon = (bid) => {
     const b = bundles.find((x) => x.id === bid)
@@ -53,6 +61,25 @@ function ScenarioRow({ p, s, r, bundles, update, remove, onAnalyze }) {
           {(s.addons || []).length > 0 && (
             <div className="pill-list" style={{ marginTop: 3 }}>
               {s.addons.map((a) => <span key={a.bundle_id} className="badge muted">+ {bundleName(a.bundle_id)}</span>)}
+            </div>
+          )}
+          {swapEnabled && swapRow && (
+            <div style={{ marginTop: 3, fontSize: '.74rem' }}>
+              {swapRow.applied ? (
+                <span className="badge pos">
+                  → Business Premium (swap)
+                  <button className="ghost sm" style={{ marginLeft: 4, padding: '0 .3rem' }}
+                    title="Keep this persona's own target instead"
+                    onClick={() => update(s.id, { bp_swap_optout: true })}>opt out</button>
+                </span>
+              ) : swapRow.eligible ? (
+                <span className="badge muted">swap opted out{' '}
+                  <button className="ghost sm" style={{ marginLeft: 4, padding: '0 .3rem' }}
+                    onClick={() => update(s.id, { bp_swap_optout: false })}>re-include</button>
+                </span>
+              ) : (
+                <span className="muted" title="Business Premium doesn't cover every outcome this persona requires">not BP-eligible</span>
+              )}
             </div>
           )}
         </td>
@@ -120,6 +147,7 @@ export default function Scenarios({ engagement, meta }) {
   const [result, setResult] = useState(null)
   const [err, setErr] = useState('')
   const [analyzePersona, setAnalyzePersona] = useState(null)
+  const [swapEnabled, setSwapEnabled] = useState(!!engagement.bp_swap_enabled)
 
   function load() {
     api.get(`/api/engagements/${eid}/personas`).then(setPersonas)
@@ -128,17 +156,29 @@ export default function Scenarios({ engagement, meta }) {
   useEffect(() => {
     load()
     api.get('/api/catalog/bundles').then(setBundles).catch(() => {})
+    compute()
   }, [eid])
 
   const scenarioFor = (pid) => scenarios.find((s) => s.persona_id === pid)
   const resultFor = (sid) => result?.scenarios.find((r) => r.scenario_id === sid)
+  const swapFor = (sid) => result?.bp_swap?.scenarios?.find((x) => x.scenario_id === sid)
+
+  async function toggleSwap(on) {
+    setSwapEnabled(on)  // optimistic
+    setErr('')
+    try {
+      await api.patch(`/api/engagements/${eid}`, { bp_swap_enabled: on })
+      compute()
+    } catch (e) { setErr(e.message); setSwapEnabled(!on) }
+  }
 
   async function createScenario(pid) {
     try { await api.post(`/api/engagements/${eid}/scenarios`, { persona_id: pid, target_sku_reference: '', target_unit_price_annual: 0 }); load() }
     catch (e) { setErr(e.message) }
   }
   async function update(id, patch) {
-    try { await api.patch(`/api/engagements/${eid}/scenarios/${id}`, patch); load() } catch (e) { setErr(e.message) }
+    try { await api.patch(`/api/engagements/${eid}/scenarios/${id}`, patch); await load(); compute() }
+    catch (e) { setErr(e.message) }
   }
   async function remove(id) {
     try { await api.del(`/api/engagements/${eid}/scenarios/${id}`); load() } catch (e) { setErr(e.message) }
@@ -173,6 +213,20 @@ export default function Scenarios({ engagement, meta }) {
       <p className="hint">One target-state plan per persona. The future state is a base bundle
         plus optional add-ons (E5 Security, etc.) — the engine unions their outcomes and sums
         their prices; a discount applies to the total. Prices are per-seat monthly.</p>
+
+      <div className="popcheck" style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '.4rem', margin: 0 }}>
+          <input type="checkbox" checked={swapEnabled} onChange={(e) => toggleSwap(e.target.checked)} />
+          <b>Swap eligible users to Microsoft 365 Business Premium to save</b>
+        </label>
+        <span className="muted" style={{ fontSize: '.8rem' }}>
+          Every capability-eligible persona inherits the swap; deselect per persona below. Bounded by the Business seat cap.
+          {swapEnabled && result?.bp_swap && (
+            <> · <b>{result.bp_swap.swapped_count}</b> swapped ({result.bp_swap.swapped_users} users),
+              combined delta <b className={result.bp_swap.swap_delta_annual >= 0 ? 'pos' : 'neg'}>{usd(result.bp_swap.swap_delta_annual)}</b>/yr</>
+          )}
+        </span>
+      </div>
       {err && <div className="err">{err}</div>}
 
       <table>
@@ -195,7 +249,8 @@ export default function Scenarios({ engagement, meta }) {
             )
             return (
               <ScenarioRow key={p.id} p={p} s={s} r={resultFor(s.id)} bundles={bundles}
-                update={update} remove={remove} onAnalyze={() => setAnalyzePersona(p)} />
+                update={update} remove={remove} onAnalyze={() => setAnalyzePersona(p)}
+                swapEnabled={swapEnabled} swapRow={swapFor(s.id)} />
             )
           })}
         </tbody>

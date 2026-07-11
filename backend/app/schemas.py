@@ -79,6 +79,35 @@ class BundleUpdate(BaseModel):
     sort_order: Optional[int] = None
 
 
+class AddonEligibilityIn(BaseModel):
+    # The full set of base bundles this add-on may layer onto. Empty = à-la-carte
+    # (eligible for any base).
+    base_bundle_ids: list[str] = []
+
+
+class LicenseLimitIn(BaseModel):
+    name: str
+    limit_type: str = "max_total_seats"
+    max_quantity: int = 0
+    unit_basis: str = "Users"
+    scope: str = "tenant"
+    sort_order: int = 0
+    member_bundle_ids: list[str] = []
+
+
+class LicenseLimitUpdate(BaseModel):
+    name: Optional[str] = None
+    limit_type: Optional[str] = None
+    max_quantity: Optional[int] = None
+    unit_basis: Optional[str] = None
+    scope: Optional[str] = None
+    sort_order: Optional[int] = None
+
+
+class LicenseLimitMembersIn(BaseModel):
+    member_bundle_ids: list[str] = []
+
+
 class EngagementUpdate(BaseModel):
     customer_name: Optional[str] = None
     market: Optional[str] = None
@@ -86,6 +115,7 @@ class EngagementUpdate(BaseModel):
     modeling_horizon_years: Optional[int] = None
     global_tooling_pct: Optional[Decimal] = None
     notes: Optional[str] = None
+    bp_swap_enabled: Optional[bool] = None
 
 
 class EngagementOut(ORMModel):
@@ -96,6 +126,7 @@ class EngagementOut(ORMModel):
     modeling_horizon_years: int
     global_tooling_pct: Decimal
     notes: str
+    bp_swap_enabled: bool
 
 
 # ---- Persona ----
@@ -235,6 +266,7 @@ class ScenarioIn(BaseModel):
     target_unit_price_annual: Decimal = Decimal("0")
     target_discount_pct: Optional[Decimal] = None
     in_scope: bool = True
+    bp_swap_optout: bool = False
     addons: list[ScenarioAddonIn] = []
 
 
@@ -243,6 +275,7 @@ class ScenarioUpdate(BaseModel):
     target_unit_price_annual: Optional[Decimal] = None
     target_discount_pct: Optional[Decimal] = None
     in_scope: Optional[bool] = None
+    bp_swap_optout: Optional[bool] = None
     addons: Optional[list[ScenarioAddonIn]] = None
 
 
@@ -253,6 +286,7 @@ class ScenarioOut(ORMModel):
     target_unit_price_annual: Decimal
     target_discount_pct: Optional[Decimal]
     in_scope: bool
+    bp_swap_optout: bool
     addons: list[ScenarioAddonOut]
     current_spend_annual: Decimal
     target_spend_annual: Decimal

@@ -89,6 +89,8 @@ export default function AdminPanel({ onClose }) {
 
         <DefaultCoverage onMsg={setMsg} onErr={setErr} />
 
+        <LicenseLimits onMsg={setMsg} onErr={setErr} />
+
         <div className="card">
           <h2>AI assist (OpenRouter)</h2>
           <p className="hint">Coverage suggestions are advisory and written as unratified
@@ -499,6 +501,87 @@ function DefaultCoverage({ onMsg, onErr }) {
   )
 }
 
+// License limits — global Microsoft caps over the Bundle spine (e.g. Business
+// Basic/Standard/Premium share a 300-seat tenant cap). Edit the ceiling and which
+// bundles share the pool; the evaluation (over/under) shows on the Readout.
+function LicenseLimits({ onMsg, onErr }) {
+  const [limits, setLimits] = useState([])
+  const [bundles, setBundles] = useState([])
+  const [adding, setAdding] = useState(false)
+  const [f, setF] = useState({ name: '', max_quantity: 300 })
+
+  function load() {
+    api.get('/api/admin/license-limits').then((r) => setLimits(r.limits)).catch((e) => onErr(e.message))
+    api.get('/api/catalog/bundles').then((bs) => setBundles(bs.filter((b) => b.kind === 'bundle'))).catch(() => {})
+  }
+  useEffect(() => { load() }, [])
+
+  async function save(id, patch) {
+    try { await api.patch(`/api/admin/license-limits/${id}`, patch); load() } catch (e) { onErr(e.message) }
+  }
+  async function setMembers(id, ids) {
+    try { await api.put(`/api/admin/license-limits/${id}/members`, { member_bundle_ids: ids }); load() }
+    catch (e) { onErr(e.message) }
+  }
+  async function remove(id) {
+    try { await api.del(`/api/admin/license-limits/${id}`); onMsg('Limit deleted.'); load() } catch (e) { onErr(e.message) }
+  }
+  async function create() {
+    try {
+      await api.post('/api/admin/license-limits', { name: f.name.trim(), max_quantity: Number(f.max_quantity) })
+      setF({ name: '', max_quantity: 300 }); setAdding(false); onMsg('Limit added.'); load()
+    } catch (e) { onErr(e.message) }
+  }
+
+  return (
+    <div className="card">
+      <h2>License limits</h2>
+      <p className="hint">Microsoft licensing caps evaluated tenant-wide across current and future state
+        (e.g. Microsoft 365 Business Basic/Standard/Premium share a 300-seat maximum). The over/under
+        result shows on each engagement's Readout.</p>
+      {limits.map((l) => {
+        const member = new Set(l.member_bundle_ids)
+        return (
+          <div key={l.id} className="card" style={{ background: 'var(--panel2)' }}>
+            <div className="toolbar" style={{ alignItems: 'flex-end' }}>
+              <div style={{ flex: 2 }}><label>Name</label>
+                <input defaultValue={l.name} onBlur={(e) => e.target.value !== l.name && save(l.id, { name: e.target.value })} /></div>
+              <div><label>Max ({l.unit_basis}, {l.scope})</label>
+                <input type="number" min="0" defaultValue={l.max_quantity} style={{ width: 90 }}
+                  onBlur={(e) => Number(e.target.value) !== l.max_quantity && save(l.id, { max_quantity: Number(e.target.value) })} /></div>
+              <button className="danger sm" onClick={() => remove(l.id)}>Delete</button>
+            </div>
+            <label style={{ marginTop: '.4rem' }}>Bundles sharing this cap</label>
+            <div className="pill-list" style={{ gap: '.25rem' }}>
+              {bundles.map((b) => (
+                <button key={b.id} type="button" className={`sm ${member.has(b.id) ? '' : 'ghost'}`}
+                  onClick={() => setMembers(l.id, member.has(b.id)
+                    ? l.member_bundle_ids.filter((x) => x !== b.id)
+                    : [...l.member_bundle_ids, b.id])}>
+                  {b.name.replace('Microsoft 365 ', '')}</button>
+              ))}
+              {l.member_bundle_ids.length === 0 && <span className="muted" style={{ fontSize: '.72rem' }}>No bundles — this limit matches nothing.</span>}
+            </div>
+          </div>
+        )
+      })}
+      {adding ? (
+        <div className="toolbar" style={{ alignItems: 'flex-end' }}>
+          <div style={{ flex: 2 }}><label>Name</label>
+            <input value={f.name} placeholder="e.g. Frontline seat cap" onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
+          <div><label>Max seats</label>
+            <input type="number" min="0" value={f.max_quantity} style={{ width: 90 }}
+              onChange={(e) => setF({ ...f, max_quantity: e.target.value })} /></div>
+          <button className="sm" disabled={!f.name.trim()} onClick={create}>Add</button>
+          <button className="ghost sm" onClick={() => setAdding(false)}>Cancel</button>
+        </div>
+      ) : (
+        <button className="sm" onClick={() => setAdding(true)}>+ Add a limit</button>
+      )}
+    </div>
+  )
+}
+
 function ModelCombobox({ models, value, onChange }) {
   const [query, setQuery] = useState(value || '')
   const [open, setOpen] = useState(false)
@@ -638,6 +721,11 @@ function BundleLibrary({ onMsg, onErr }) {
     try { await api.post('/api/catalog/bundles', payload); onMsg?.('Bundle added.'); load() }
     catch (e) { onErr?.(e.message) }
   }
+  async function setEligibility(id, baseIds) {
+    onErr?.('')
+    try { await api.put(`/api/catalog/bundles/${id}/eligibility`, { base_bundle_ids: baseIds }); load() }
+    catch (e) { onErr?.(e.message) }
+  }
   const baseBundles = bundles.filter((b) => b.kind === 'bundle')
 
   return (
@@ -654,15 +742,20 @@ function BundleLibrary({ onMsg, onErr }) {
         re-creates it on restart — delete is for operator-added bundles.</p>
       <table style={{ marginBottom: '.5rem' }}>
         <thead><tr>
-          <th>Name</th><th>Kind</th><th>Base</th><th className="num">Sort</th><th></th>
+          <th>Name</th><th>Kind</th><th>Base</th><th>Eligible bases (add-ons)</th>
+          <th className="num">Sort</th><th></th>
         </tr></thead>
         <tbody>
           {bundles.map((b) => (
             <BundleEditRow key={b.id} b={b} baseBundles={baseBundles}
-              onSave={(patch) => saveBundle(b.id, patch)} onDelete={() => removeBundle(b.id)} />
+              onSave={(patch) => saveBundle(b.id, patch)} onDelete={() => removeBundle(b.id)}
+              onEligibility={(ids) => setEligibility(b.id, ids)} />
           ))}
         </tbody>
       </table>
+      <p className="hint" style={{ marginTop: '-.2rem' }}>An add-on's <b>eligible bases</b> are the bundles it may
+        layer onto (the composition logic layer — e.g. F5 Security only onto F3). No selection = <b>à-la-carte</b>
+        (any base). Scenarios and recommend-a-path enforce this.</p>
       <NewBundleForm baseBundles={baseBundles} onAdd={addBundle} />
 
       {unmapped.length === 0 ? (
@@ -715,9 +808,17 @@ function BundleLibrary({ onMsg, onErr }) {
 }
 
 // One editable bundle row: name/sort commit on blur; kind + base commit on change.
-// An add-on requires a base; switching to base clears it.
-function BundleEditRow({ b, baseBundles, onSave, onDelete }) {
+// An add-on requires a base; switching to base clears it. For add-ons, the
+// eligible-base cell toggles which bases the add-on may layer onto (the logic
+// layer); no selection = à-la-carte (any base).
+function BundleEditRow({ b, baseBundles, onSave, onDelete, onEligibility }) {
   const bases = baseBundles.filter((x) => x.id !== b.id)
+  const eligible = new Set(b.eligible_base_ids || [])
+  function toggleBase(id) {
+    const next = new Set(eligible)
+    next.has(id) ? next.delete(id) : next.add(id)
+    onEligibility([...next])
+  }
   return (
     <tr>
       <td>
@@ -738,6 +839,19 @@ function BundleEditRow({ b, baseBundles, onSave, onDelete }) {
           <select value={b.base_bundle_id || ''} onChange={(e) => onSave({ base_bundle_id: e.target.value })}>
             {bases.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
           </select>
+        ) : <span className="muted">—</span>}
+      </td>
+      <td>
+        {b.kind === 'addon' ? (
+          <div className="pill-list" style={{ gap: '.25rem', maxWidth: 320 }}>
+            {bases.map((x) => (
+              <button key={x.id} type="button"
+                className={`sm ${eligible.has(x.id) ? '' : 'ghost'}`}
+                title={eligible.has(x.id) ? 'Eligible — click to remove' : 'Click to allow this base'}
+                onClick={() => toggleBase(x.id)}>{x.name.replace('Microsoft 365 ', '')}</button>
+            ))}
+            {eligible.size === 0 && <span className="muted" style={{ fontSize: '.72rem' }}>à-la-carte (any base)</span>}
+          </div>
         ) : <span className="muted">—</span>}
       </td>
       <td className="num">
