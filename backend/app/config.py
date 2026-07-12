@@ -59,5 +59,14 @@ class Settings(BaseSettings):
     # How long to cache the "latest" lookup, in seconds (default 6h).
     update_check_ttl_seconds: int = 21600
 
+    # One-click update. The app runs INSIDE the container it would update, so it
+    # can't pull a new image and recreate itself. Instead a Watchtower sidecar
+    # (docker-compose.yml) watches this container and exposes an authenticated HTTP
+    # API; the "Update now" button POSTs to it. This is that sidecar's base URL
+    # (operational config — the bearer token is a secret in the encrypted store,
+    # secrets.WATCHTOWER_API_TOKEN). Empty disables the action (the banner then just
+    # advises pulling the newest image). Default targets the internal compose name.
+    watchtower_url: str = ""
+
 
 settings = Settings()
