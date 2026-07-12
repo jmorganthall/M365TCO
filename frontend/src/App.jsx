@@ -32,7 +32,11 @@ export default function App() {
   const [tab, setTab] = useState('baseline')
   const [meta, setMeta] = useState(null)
   const [view, setView] = useState('app')  // 'app' | 'settings'
-  const openSettings = () => setView('settings')
+  // Off-canvas sidebar on narrow screens (hidden by default; toggled by the
+  // header hamburger). On desktop the sidebar is always shown and this is inert.
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const closeSidebar = () => setSidebarOpen(false)
+  const openSettings = () => { setView('settings'); closeSidebar() }
   const closeSettings = () => { setView('app'); api.get('/api/meta').then(setMeta).catch(() => {}) }
 
   useEffect(() => { api.get('/api/meta').then(setMeta).catch(() => {}) }, [])
@@ -63,7 +67,13 @@ export default function App() {
   return (
     <div className="app-root">
       <header className="topbar">
-        <div className="topbar-brand">Microsoft 365 TCO</div>
+        <div className="topbar-left">
+          {view !== 'settings' && (
+            <button className="hamburger" title="Menu" aria-label="Toggle menu"
+              onClick={() => setSidebarOpen((v) => !v)}>☰</button>
+          )}
+          <div className="topbar-brand">Microsoft 365 TCO</div>
+        </div>
         <button className={`gear ${view === 'settings' ? 'active' : ''}`} title="Settings"
           onClick={() => setView(view === 'settings' ? 'app' : 'settings')}>⚙</button>
       </header>
@@ -72,11 +82,13 @@ export default function App() {
         <main className="main"><AdminPanel onClose={closeSettings} /></main>
       ) : (
       <div className="app-shell">
+      {sidebarOpen && <div className="sidebar-backdrop" onClick={closeSidebar} />}
       <Sidebar
+        open={sidebarOpen}
         engagements={engagements}
         activeId={active?.id}
-        onNew={() => setActive(null)}
-        onSelect={open}
+        onNew={() => { setActive(null); closeSidebar() }}
+        onSelect={(e) => { open(e); closeSidebar() }}
         onDuplicate={duplicate}
         onDelete={remove}
         onSettings={openSettings}

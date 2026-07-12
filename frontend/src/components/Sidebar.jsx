@@ -3,10 +3,10 @@ import React from 'react'
 // Left nav: brand, a New-engagement action, and the Engagements "Recents"
 // list (Claude-style), with Settings pinned to the bottom.
 export default function Sidebar({
-  engagements, activeId, onNew, onSelect, onDuplicate, onDelete, onSettings,
+  open, engagements, activeId, onNew, onSelect, onDuplicate, onDelete, onSettings,
 }) {
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${open ? 'open' : ''}`}>
       <div className="side-brand">
         <div className="side-title">M365 TCO Tool</div>
         <div className="side-sub">Microsoft Practice</div>
