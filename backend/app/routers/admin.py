@@ -24,6 +24,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 # Keys the operator may set, with friendly labels.
 _ALLOWED_SECRETS = {
     secrets.OPENROUTER_API_KEY: "OpenRouter API key",
+    secrets.WATCHTOWER_API_TOKEN: "Watchtower update API token",
 }
 
 

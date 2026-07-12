@@ -14,6 +14,11 @@ services:
     container_name: m365tco
     restart: unless-stopped
 
+    # Let the Watchtower sidecar below manage (and one-click update) THIS container.
+    # Scoped by label so Watchtower never touches unrelated containers on the host.
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
     ports:
       - "${M365TCO_WEB_PORT:-8080}:8000"
 
@@ -30,6 +35,11 @@ services:
       # --- Operational config (sensible defaults; override via .env) ---
       TCO_CORS_ORIGINS: "${TCO_CORS_ORIGINS:-*}"
       TCO_OPENROUTER_MODEL: "${TCO_OPENROUTER_MODEL:-anthropic/claude-3.5-sonnet}"
+      # Where the app reaches the Watchtower sidecar's HTTP API for the in-app
+      # "Update now" button (internal compose network). Leave the default unless you
+      # run Watchtower elsewhere. The matching API token is entered in the app under
+      # Settings › Secrets (encrypted), NOT here.
+      TCO_WATCHTOWER_URL: "${TCO_WATCHTOWER_URL:-http://watchtower:8080}"
       # Price-sheet sync (Partner Center) is configured entirely in the app UI
       # (Settings > Pricing sync) — no env vars. Credentials are stored encrypted,
       # unlocked by TCO_MASTER_SECRET; sheets land under /data/pricesheets.
@@ -37,3 +47,27 @@ services:
     volumes:
       # Host appdata dir -> /data (SQLite DB + encrypted secrets.enc + pricesheets/).
       - "${M365TCO_DATA_DIR:-/mnt/cache/appdata/m365tco}:/data"
+
+  # Optional one-click / auto updater. Watches only the labeled m365tco container
+  # and recreates it when a newer :latest image is published. The app's "Update
+  # now" button calls this sidecar's HTTP API (no host port is published — the app
+  # reaches it over the internal compose network). Omit this whole service if you
+  # prefer to update by pulling the image yourself.
+  watchtower:
+    image: containrrr/watchtower
+    container_name: m365tco-watchtower
+    restart: unless-stopped
+    volumes:
+      # Read/write the host Docker socket so Watchtower can pull + recreate.
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      # Only manage containers explicitly labeled — never anything else on the host.
+      WATCHTOWER_LABEL_ENABLE: "true"
+      # Enable the on-demand HTTP API used by the app's "Update now" button. The
+      # token here MUST equal the value entered in the app (Settings › Secrets).
+      WATCHTOWER_HTTP_API_UPDATE: "true"
+      WATCHTOWER_HTTP_API_TOKEN: "${WATCHTOWER_HTTP_API_TOKEN}"
+      # Also poll on a schedule (default 24h) and clean up old images. Set the
+      # interval to 0 via .env if you want on-demand-only updates.
+      WATCHTOWER_POLL_INTERVAL: "${WATCHTOWER_POLL_INTERVAL:-86400}"
+      WATCHTOWER_CLEANUP: "true"

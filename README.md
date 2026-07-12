@@ -66,6 +66,24 @@ host `${M365TCO_WEB_PORT:-8080}` → container `8000` and the appdata volume
 `${M365TCO_DATA_DIR:-/mnt/cache/appdata/m365tco}` → `/data`. All tunables are env
 vars with sane defaults (see `.env.example`); only `TCO_MASTER_SECRET` is required.
 
+### One-click updates (optional)
+
+The app can only *detect* a new image from inside its container — it can't recreate
+itself — so the bundled `watchtower` sidecar does the pull + restart. It watches
+only the labeled `m365tco` container. To enable the in-app **Update now** button:
+
+1. Set `WATCHTOWER_HTTP_API_TOKEN` in `.env` to a long random value and `up -d`.
+2. Paste the **same** value into the app under **Settings › Secrets › "Watchtower
+   update API token."** (`TCO_WATCHTOWER_URL` already defaults to the internal
+   `http://watchtower:8080`.)
+
+The button appears on the "update available" banner and in Settings › Version;
+clicking it triggers Watchtower, so the container restarts and the UI reconnects
+after a few seconds. Watchtower also auto-checks on a schedule
+(`WATCHTOWER_POLL_INTERVAL`, default 24h; set `0` for on-demand only). Delete the
+`watchtower` service from `docker-compose.yml` to opt out entirely and update by
+pulling the image yourself.
+
 ### Azure Container Apps (future rehost)
 
 The same image runs unchanged. Set `TCO_DATABASE_URL` to a managed Postgres

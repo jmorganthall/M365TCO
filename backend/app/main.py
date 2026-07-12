@@ -322,6 +322,23 @@ def version(force: bool = False) -> dict:
     return updatecheck.check(force=force)
 
 
+@app.get("/api/update/status")
+def update_status() -> dict:
+    """Whether one-click update is wired up (Watchtower URL + API token present)."""
+    from .services import updater
+
+    return updater.status()
+
+
+@app.post("/api/update")
+def update_now() -> dict:
+    """Trigger the one-click update via the Watchtower sidecar. Returns {ok, detail};
+    on success the container restarts, so the caller should expect a brief outage."""
+    from .services import updater
+
+    return updater.trigger()
+
+
 @app.get("/api/meta")
 def meta(db=Depends(get_db)) -> dict:
     """Metadata the UI needs: enum values, defaults, seed versions."""

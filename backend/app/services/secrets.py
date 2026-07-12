@@ -99,6 +99,11 @@ OPENROUTER_API_KEY = "openrouter_api_key"
 PRICESYNC_CLIENT_SECRET = "pricesync_client_secret"
 PRICESYNC_CLIENT_CERT_PEM = "pricesync_client_cert_pem"
 PRICESYNC_REFRESH_TOKEN = "pricesync_refresh_token"
+# One-click update — the bearer token protecting the Watchtower sidecar's HTTP
+# update API. Set in the GUI (Settings › Secrets); the app presents it when the
+# operator clicks "Update now". The same value is configured on the Watchtower
+# container via WATCHTOWER_HTTP_API_TOKEN (env), since Watchtower is third-party.
+WATCHTOWER_API_TOKEN = "watchtower_api_token"
 
 
 _store: Optional[SecretStore] = None
