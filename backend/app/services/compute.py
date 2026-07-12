@@ -143,7 +143,7 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
         if swap.applies(eng, swap_ctx, s):
             bp = swap_ctx["bp"]
             covered = set(swap_ctx["bp_covered"])
-            list_price = _catalog_annual_erp(db, bp.name)
+            list_price = swap_ctx["bp_price"]
             target_ref = bp.name
         else:
             covered = set(sku_outcomes.get(_cover_key(db, s.target_sku_reference), set()))
@@ -172,18 +172,9 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
 
 
 def _catalog_annual_erp(db: Session, sku_reference: str) -> Decimal:
-    """Best-effort catalog price for a bundle: the annual ERP of a P1Y row whose
-    title contains the reference. 0 if the catalog isn't loaded / no match."""
-    like = f"%{sku_reference}%"
-    row = db.execute(
-        select(models.MicrosoftSku)
-        .where(
-            (models.MicrosoftSku.sku_title.ilike(like))
-            | (models.MicrosoftSku.product_title.ilike(like))
-        )
-        .order_by(models.MicrosoftSku.term_duration.desc())  # prefer P1Y over P1M/P3Y-ish
-    ).scalars().first()
-    return _dec(row.annual_erp_price) if row else Decimal("0")
+    """Best-effort catalog price for a bundle — delegates to the shared bundle-price
+    helper (services/bundles) so the optimizer and the BP swap price identically."""
+    return bundles.catalog_annual_erp(db, sku_reference)
 
 
 def _min_cost_cover(closeable: frozenset[str], options: list[dict]) -> list[dict]:
