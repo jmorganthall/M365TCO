@@ -188,9 +188,6 @@ export default function Scenarios({ engagement, meta }) {
     try { await api.patch(`/api/engagements/${eid}`, { business_cap_enabled: on }); compute() }
     catch (e) { setErr(e.message); setCapEnabled(!on) }
   }
-  // The tenant seat caps (Business ≤ 300) as evaluated by the readout, for the
-  // "how many Business seats are already recommended" indicator next to the toggle.
-  const seatCaps = (result?.license_limits || []).filter((l) => l.limit_type === 'max_total_seats')
   // Engagement pricing-basis default, so a target bundle resolves to the right
   // segment/term variant's list price (same chain as Current Licensing).
   const basis = {
@@ -242,26 +239,12 @@ export default function Scenarios({ engagement, meta }) {
 
       <div className="popcheck" style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: '.4rem', margin: 0 }}>
-          <input type="checkbox" checked={capEnabled} onChange={(e) => toggleCap(e.target.checked)} />
-          <b>Use Microsoft 365 Business plans, capped at the tenant seat limit</b>
-        </label>
-        <span className="muted" style={{ fontSize: '.8rem' }}>
-          Best-bundle recommendations respect the Business seat cap (Basic/Standard/Premium ≤ 300/tenant);
-          a persona that would push the tenant over gets the next-best plan instead.
-          {capEnabled && seatCaps.map((l) => (
-            <span key={l.id}> · Business seats recommended:{' '}
-              <b className={l.target_over_by > 0 ? 'neg' : ''}>{l.target_seats}</b> of {l.max_quantity}</span>
-          ))}
-        </span>
-      </div>
-
-      <div className="popcheck" style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '.4rem', margin: 0 }}>
           <input type="checkbox" checked={swapEnabled} onChange={(e) => toggleSwap(e.target.checked)} />
-          <b>Swap eligible users to Microsoft 365 Business Premium to save</b>
+          <b>Swap eligible personas down to Business Premium to save</b>
         </label>
         <span className="muted" style={{ fontSize: '.8rem' }}>
-          Fills the most-saving eligible personas onto Business Premium up to the 300-seat cap; deselect per persona below.
+          Moves the most-saving eligible personas onto Business Premium up to the 300-seat cap — changes
+          Target &amp; Delta below; deselect per persona in the table.
           {swapEnabled && result?.bp_swap && (
             <> · <b>{result.bp_swap.swapped_count}</b> swapped ({result.bp_swap.swapped_users} users),
               combined delta <b className={result.bp_swap.swap_delta_annual < 0 ? 'pos' : ''}>{usd(result.bp_swap.swap_delta_annual)}</b>/yr
@@ -301,6 +284,7 @@ export default function Scenarios({ engagement, meta }) {
 
       {analyzePersona && (
         <BundleAnalysis engagement={engagement} persona={analyzePersona}
+          capEnabled={capEnabled} onToggleCap={toggleCap}
           onApply={(composed) => applyBundle(analyzePersona, composed)}
           onClose={() => setAnalyzePersona(null)} />
       )}

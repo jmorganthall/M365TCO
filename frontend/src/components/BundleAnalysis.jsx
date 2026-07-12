@@ -8,7 +8,7 @@ const toAnnual = (m) => Math.round(Number(m || 0) * 12 * 100) / 100
 // Recommend-a-path for one persona: each row is a base bundle composed with the
 // cheapest add-ons that close its capability gaps. Prices are per-seat monthly;
 // editing the base price re-ranks. "Use" applies the base + its add-ons.
-export default function BundleAnalysis({ engagement, persona, onApply, onClose }) {
+export default function BundleAnalysis({ engagement, persona, capEnabled, onToggleCap, onApply, onClose }) {
   const url = `/api/engagements/${engagement.id}/personas/${persona.id}/bundle-analysis`
   const [data, setData] = useState(null)
   const [prices, setPrices] = useState(null)   // bundle name -> BASE price (annual)
@@ -43,6 +43,18 @@ export default function BundleAnalysis({ engagement, persona, onApply, onClose }
         capability lost. Rows still showing gaps have an outcome no bundle/add-on covers — use those
         only if you reimagine what the persona truly requires. Base price is editable ($/seat/mo).</p>
       {err && <div className="err">{err}</div>}
+
+      <div className="popcheck" style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap', marginBottom: '.5rem' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '.4rem', margin: 0 }}>
+          <input type="checkbox" checked={!!capEnabled}
+            onChange={async (e) => { await onToggleCap(e.target.checked); run(prices) }} />
+          <b>Respect the 300-seat Business cap in these suggestions</b>
+        </label>
+        <span className="muted" style={{ fontSize: '.8rem' }}>
+          A persona that would push the tenant past 300 Business seats (Basic/Standard/Premium) is
+          recommended the next-best plan instead. Applies to these suggestions only.
+        </span>
+      </div>
 
       {data && (
         <div className="muted" style={{ marginBottom: '.5rem', fontSize: '.8rem' }}>
