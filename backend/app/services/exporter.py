@@ -1,9 +1,12 @@
 """Readout export (PRD Section 11.5): structured HTML + spreadsheet.
 
-The HTML readout leads with the population check (11.2) and includes the
-assumptions and source appendix (11.3): the tooling-split line with per-line
-overrides, every ForceFullElimination reason, current-line price bases, and a
-source legend. Deck/one-pager generation is a later AI-assisted feature.
+The HTML readout is a customer-facing document: it leads with the headline delta
+and (when available) the per-persona business case, then the spend bridge and
+scenarios. Internal/QA data (the population check) is not shown, and sections are
+conditional — the third-party dispositions, the "what this retires" call-outs, and
+the tooling-split / forced-elimination notes appear only when they apply, rather
+than being printed as "None". The xlsx export keeps the full QA detail (including
+the population check). Deck/one-pager generation is a later AI-assisted feature.
 """
 
 from __future__ import annotations
@@ -43,13 +46,21 @@ def _pct(value) -> str:
 
 
 def build_html(engagement: models.Engagement, result: dict) -> str:
+    """Customer-facing HTML readout. Internal/QA data (the population check) is not
+    shown, and sections that don't apply are omitted rather than printed as "None":
+    the tooling-split note only when a managed tool exists, the elimination and
+    forced-elimination call-outs only when there is something to eliminate, and the
+    third-party sections only when third-party tools are in play."""
     rollup = result["rollup"]
-    pop = rollup["population_check"]
     delta = rollup["net_tco_delta_annual"]
     # Cost-change convention: negative = saving (good, green), positive = a cost
     # increase (neutral — spending more isn't an error, just shown honestly).
     delta_label = "Annual savings" if delta < 0 else "Annual cost increase" if delta > 0 else "No net change"
     delta_cls = "pos" if delta < 0 else ""
+
+    dispositions = result["dispositions"]
+    has_third_party = bool(dispositions)
+    managed_any = any(d["is_managed"] for d in dispositions)
 
     rows_scenarios = "".join(
         f"<tr><td>{html.escape(s['persona_name'])}</td>"
@@ -62,16 +73,25 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         for s in result["scenarios"]
     )
 
-    rows_disp = "".join(
-        f"<tr><td>{html.escape(d['third_party_product_name'])}</td>"
-        f"<td>{d['disposition']}</td>"
-        f"<td>{d['displaced_users']} / {d['covered_count']}</td>"
-        f"<td>{d['residual_count']}</td>"
-        f"<td class='num'>{_usd(d['residual_annual_cost'])}</td>"
-        f"<td>{'managed @ ' + _pct(d['tooling_pct']) if d['is_managed'] else 'unmanaged'}</td>"
-        f"<td>{html.escape(d['override_reason']) if d['override'] != 'None' else ''}</td></tr>"
-        for d in result["dispositions"]
-    )
+    # Third-party dispositions — only when there are third-party tools to speak to.
+    disp_section = ""
+    if has_third_party:
+        rows_disp = "".join(
+            f"<tr><td>{html.escape(d['third_party_product_name'])}</td>"
+            f"<td>{d['disposition']}</td>"
+            f"<td>{d['displaced_users']} / {d['covered_count']}</td>"
+            f"<td>{d['residual_count']}</td>"
+            f"<td class='num'>{_usd(d['residual_annual_cost'])}</td>"
+            f"<td>{'managed @ ' + _pct(d['tooling_pct']) if d['is_managed'] else 'unmanaged'}</td>"
+            f"<td>{html.escape(d['override_reason']) if d['override'] != 'None' else ''}</td></tr>"
+            for d in dispositions
+        )
+        disp_section = (
+            "<section><h2>Third-party dispositions</h2>"
+            "<table><thead><tr><th>Product</th><th>Disposition</th><th>Displaced/Covered</th>"
+            "<th>Residual</th><th>Residual cost</th><th>Basis</th><th>Override reason</th></tr></thead>"
+            f"<tbody>{rows_disp}</tbody></table></section>"
+        )
 
     # Quick wins: third-party duplicates the CURRENT licensing already covers.
     outcome_name = {o.id: o.name for o in engagement.outcomes}
@@ -133,43 +153,87 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         f"<td class='num {delta_cls}'><b>{_usd(delta)}</b></td></tr>"
     )
 
-    eliminated = "".join(
-        f"<li>{html.escape(t)}</li>" for t in rollup["fully_eliminated_tools"]
-    ) or "<li>None</li>"
+    # Eliminations section — build only the parts that have content, and omit the
+    # whole section if nothing was eliminated (don't print "None" to a customer).
+    elim_parts = []
+    fully_elim = rollup["fully_eliminated_tools"]
+    if fully_elim:
+        items = "".join(f"<li>{html.escape(t)}</li>" for t in fully_elim)
+        elim_parts.append(f"<p><b>Tools fully eliminated:</b></p><ul>{items}</ul>")
+    renewal_cycles = rollup["eliminated_renewal_cycles"]
+    if renewal_cycles:
+        items = "".join(
+            f"<li>{html.escape(r['third_party_product_name'])}"
+            + (f" — renews {r['renewal_date']}" if r["renewal_date"] else "")
+            + "</li>"
+            for r in renewal_cycles
+        )
+        elim_parts.append(f"<p><b>Renewal cycles eliminated:</b></p><ul>{items}</ul>")
+    if has_third_party:
+        elim_parts.append(
+            f"<p><b>Residual third-party cost:</b> {_usd(rollup['residual_third_party_cost_annual'])}</p>"
+        )
+    elim_section = (
+        f"<section><h2>What this retires</h2>{''.join(elim_parts)}</section>"
+        if elim_parts else ""
+    )
 
-    renewals = "".join(
-        f"<li>{html.escape(r['third_party_product_name'])}"
-        + (f" — renews {r['renewal_date']}" if r["renewal_date"] else "")
-        + "</li>"
-        for r in rollup["eliminated_renewal_cycles"]
-    ) or "<li>None</li>"
+    # The business case (per-persona narrative). Advisory, generated elsewhere and
+    # attached to the result when available; the section is omitted when it isn't.
+    narratives = result.get("narratives") or []
+    narrative_section = ""
+    if narratives:
+        blocks = "".join(
+            f"<div class='narrative'><h3>{html.escape(n.get('persona', ''))}</h3>"
+            + (f"<p><b>Today:</b> {html.escape(n.get('today', ''))}</p>" if n.get("today") else "")
+            + (f"<p><b>What's new:</b> {html.escape(n.get('whats_new', ''))}</p>" if n.get("whats_new") else "")
+            + (f"<p><b>Value:</b> {html.escape(n.get('value', ''))}</p>" if n.get("value") else "")
+            + "</div>"
+            for n in narratives
+        )
+        narrative_section = f"<section><h2>The business case</h2>{blocks}</section>"
 
-    # Assumptions / source appendix
-    overrides = [
-        d for d in result["dispositions"] if d["override"] == "ForceFullElimination"
-    ]
-    override_lines = "".join(
-        f"<li><b>{html.escape(d['third_party_product_name'])}</b>: "
-        f"{html.escape(d['override_reason'])}</li>"
-        for d in overrides
-    ) or "<li>None</li>"
-
-    tooling_overrides = [
-        d
-        for d in result["dispositions"]
-        if d["is_managed"] and abs(d["tooling_pct"] - float(engagement.global_tooling_pct)) > 1e-9
-    ]
-    tooling_override_lines = "".join(
-        f"<li>{html.escape(d['third_party_product_name'])}: {_pct(d['tooling_pct'])}</li>"
-        for d in tooling_overrides
-    ) or "<li>None</li>"
-
-    price_basis_lines = "".join(
-        f"<li>{html.escape(lic.sku_reference)}: {lic.price_basis}"
-        + (f", {_pct(lic.discount_pct)} discount" if lic.discount_pct else "")
-        + "</li>"
-        for lic in engagement.current_licenses
-    ) or "<li>None entered</li>"
+    # Assumptions & sources — only the notes that apply to this engagement.
+    appendix_parts = []
+    if managed_any:
+        tooling_overrides = [
+            d for d in dispositions
+            if d["is_managed"] and abs(d["tooling_pct"] - float(engagement.global_tooling_pct)) > 1e-9
+        ]
+        override_html = ""
+        if tooling_overrides:
+            items = "".join(
+                f"<li>{html.escape(d['third_party_product_name'])}: {_pct(d['tooling_pct'])}</li>"
+                for d in tooling_overrides
+            )
+            override_html = f"<p>Per-line overrides:</p><ul>{items}</ul>"
+        appendix_parts.append(
+            "<p><b>Tooling split.</b> Managed third-party products count at their tooling "
+            "percentage only; management of M365 is presumed neutral or better. Engagement "
+            f"default: {_pct(engagement.global_tooling_pct)}.</p>{override_html}"
+        )
+    overrides = [d for d in dispositions if d["override"] == "ForceFullElimination"]
+    if overrides:
+        items = "".join(
+            f"<li><b>{html.escape(d['third_party_product_name'])}</b>: {html.escape(d['override_reason'])}</li>"
+            for d in overrides
+        )
+        appendix_parts.append(
+            "<p><b>Assumed full elimination</b> (savings asserted on users the target does "
+            f"not automatically displace):</p><ul>{items}</ul>"
+        )
+    if engagement.current_licenses:
+        items = "".join(
+            f"<li>{html.escape(lic.sku_reference)}: {lic.price_basis}"
+            + (f", {_pct(lic.discount_pct)} discount" if lic.discount_pct else "")
+            + "</li>"
+            for lic in engagement.current_licenses
+        )
+        appendix_parts.append(f"<p><b>Current Microsoft line price bases:</b></p><ul>{items}</ul>")
+    appendix_section = (
+        f"<section><h2>Assumptions &amp; sources</h2>{''.join(appendix_parts)}</section>"
+        if appendix_parts else ""
+    )
 
     # Readout branding (user-entered). Sanitize hard: colors must match a strict
     # CSS-color pattern and the logo must be a base64 image data URL, so neither
@@ -190,7 +254,8 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
  h1{{margin-bottom:0;color:{primary}}} .sub{{color:#555}}
  .headline{{font-size:2.2rem;font-weight:700;margin:.5rem 0}}
  .pos{{color:#127436}} .neg{{color:#b00020}}
- .popcheck{{background:#f3f6ff;border:1px solid {accent};padding:.75rem 1rem;border-radius:8px;margin:1rem 0}}
+ .narrative{{background:#f3f6ff;border-left:3px solid {accent};padding:.5rem 1rem;border-radius:6px;margin:.75rem 0}}
+ .narrative h3{{margin:.2rem 0;color:{primary}}}
  h2{{color:{primary}}}
  table{{border-collapse:collapse;width:100%;margin:1rem 0}}
  th,td{{border:1px solid #ddd;padding:.45rem .6rem;text-align:left;font-size:.92rem}}
@@ -206,13 +271,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 <div class="sub">{html.escape(engagement.customer_name)} · {engagement.market}/{engagement.currency} · annualized USD</div>
 
 <div class="headline {delta_cls}">{_usd(delta)} <span style="font-size:1rem;font-weight:400">{delta_label}{' if you move to the target scenarios' if delta != 0 else ''}</span></div>
-
-<div class="popcheck"><b>Population check.</b>
- In-scope persona headcount: <b>{pop['in_scope_persona_headcount']}</b> ·
- Third-party tool-seats: <b>{pop['third_party_covered_population']}</b>
- <span style="color:#666">(summed across tools; people may hold several, so this isn't a distinct-people count)</span>.
- Per-tool coverage vs. displacement is in the dispositions below.</div>
-
+{narrative_section}
 {quick_win_section}
 
 <section><h2>How we get to the number</h2>
@@ -225,30 +284,9 @@ building to the net TCO delta.</p>
 <table><thead><tr><th>Persona</th><th>Target SKU</th><th>Headcount</th>
 <th>Current</th><th>Target</th><th>Delta</th><th>Scope</th></tr></thead>
 <tbody>{rows_scenarios}</tbody></table></section>
-
-<section><h2>Third-party dispositions</h2>
-<table><thead><tr><th>Product</th><th>Disposition</th><th>Displaced/Covered</th>
-<th>Residual</th><th>Residual cost</th><th>Basis</th><th>Override reason</th></tr></thead>
-<tbody>{rows_disp}</tbody></table></section>
-
-<section><h2>Rollup</h2>
-<p><b>Fully eliminated tools:</b></p><ul>{eliminated}</ul>
-<p><b>Eliminated renewal cycles</b> (gated on full elimination):</p><ul>{renewals}</ul>
-<p><b>Residual third-party cost:</b> {_usd(rollup['residual_third_party_cost_annual'])}</p>
-</section>
-
-<section><h2>Assumptions and source appendix</h2>
-<p><b>Tooling split.</b> Managed third-party products count at their tooling
-percentage only; management of M365 is presumed neutral or better. Engagement
-default: {_pct(engagement.global_tooling_pct)}. Per-line overrides:</p>
-<ul>{tooling_override_lines}</ul>
-<p><b>ForceFullElimination overrides</b> (assert savings on undisplaced users):</p>
-<ul>{override_lines}</ul>
-<p><b>Current Microsoft line price bases:</b></p><ul>{price_basis_lines}</ul>
-<p><b>Source legend.</b> Invoice / CustomerStated / ListPrice / Estimate /
-AISuggestedUnconfirmed. Hard inputs (Invoice) are separable from soft ones.</p>
-</section>
-
+{disp_section}
+{elim_section}
+{appendix_section}
 <footer>v1 pure licensing TCO. Excludes managed-services, migration/PS, Microsoft
 funding, Azure consumption, and soft savings (deferred). Generated by the M365 TCO Tool.</footer>
 </body></html>"""
