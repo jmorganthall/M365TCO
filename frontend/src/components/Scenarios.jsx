@@ -73,6 +73,17 @@ function ScenarioRow({ p, s, r, bundles, basis, update, remove, onAnalyze, swapE
                     title="Keep this persona's own target instead"
                     onClick={() => update(s.id, { bp_swap_optout: true })}>opt out</button>
                 </span>
+              ) : swapRow.reason === 'capped' ? (
+                <span className="badge neg" title="Eligible, but the 300-seat Business Premium cap is already full — free room by opting a larger group out">
+                  eligible · over 300 cap</span>
+              ) : swapRow.reason === 'no_savings' ? (
+                <span className="badge muted" title="Business Premium costs the same or more than this persona's own target, so the swap wouldn't save">
+                  eligible · no BP saving</span>
+              ) : swapRow.reason === 'opted_out' ? (
+                <span className="badge muted">swap opted out{' '}
+                  <button className="ghost sm" style={{ marginLeft: 4, padding: '0 .3rem' }}
+                    onClick={() => update(s.id, { bp_swap_optout: false })}>re-include</button>
+                </span>
               ) : swapRow.eligible ? (
                 <span className="badge muted">swap opted out{' '}
                   <button className="ghost sm" style={{ marginLeft: 4, padding: '0 .3rem' }}
@@ -250,10 +261,12 @@ export default function Scenarios({ engagement, meta }) {
           <b>Swap eligible users to Microsoft 365 Business Premium to save</b>
         </label>
         <span className="muted" style={{ fontSize: '.8rem' }}>
-          Every capability-eligible persona inherits the swap; deselect per persona below. Bounded by the Business seat cap.
+          Fills the most-saving eligible personas onto Business Premium up to the 300-seat cap; deselect per persona below.
           {swapEnabled && result?.bp_swap && (
             <> · <b>{result.bp_swap.swapped_count}</b> swapped ({result.bp_swap.swapped_users} users),
-              combined delta <b className={result.bp_swap.swap_delta_annual < 0 ? 'pos' : ''}>{usd(result.bp_swap.swap_delta_annual)}</b>/yr</>
+              combined delta <b className={result.bp_swap.swap_delta_annual < 0 ? 'pos' : ''}>{usd(result.bp_swap.swap_delta_annual)}</b>/yr
+              {result.bp_swap.cap && <> · {result.bp_swap.cap.committed_seats} of {result.bp_swap.cap.max} BP seats</>}
+              {result.bp_swap.capped_count > 0 && <> · <b className="neg">{result.bp_swap.capped_count}</b> eligible over cap</>}</>
           )}
         </span>
       </div>

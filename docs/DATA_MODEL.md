@@ -480,6 +480,14 @@ a pure computation over existing first-class data (`services/swap.py`):
   persona requires today (the outcomes its current Microsoft licenses deliver ∪ its
   declared `PersonaRequirement`s). Swapping therefore never drops a capability. It
   is *not* keyed to the persona's current SKU.
+- **Fills up to the limit:** Business Premium is capped at 300 seats/tenant (the
+  `m365-business-seat-cap` LicenseLimit, §4.4e). The swap does not blindly move every
+  eligible persona — it greedily fills the cap's **future-state headroom** with the
+  most-saving eligible personas first (whole personas, biggest per-seat saving first),
+  and leaves the overflow on their own target (reported `capped`). A candidate whose
+  Business Premium price wouldn't beat its own target is skipped (`no_savings`), and if
+  Business Premium can't be priced the swap is inert (`price_unknown`). The result is
+  always a buyable plan — the swap never proposes more than 300 Business Premium seats.
 - **Effect:** when the swap applies, the engine hydrator substitutes the scenario's
   **effective target** with Business Premium (its covered outcomes + catalog price ×
   `(1 − discount)`) — the persona's own `target_sku_reference` is left intact, so
@@ -488,10 +496,14 @@ a pure computation over existing first-class data (`services/swap.py`):
 - **Cap coupling:** a swapped scenario's effective target is Business Premium, so it
   counts against the §4.4e Business cap — `services/limits` and the hydrator share
   the same `swap.applies` decision, so the guardrail and the action never disagree.
+  Because the swap fills *up to* the cap, the future plan can no longer breach it via
+  the swap; the guardrail still flags a breach from current licenses or non-swap
+  targets that independently exceed 300.
 - **Surface:** the compute/readout response carries `bp_swap` (per-scenario
-  eligible/opted-out/applied + aggregate swapped-user count and combined delta). The
-  Scenarios tab shows the engagement toggle, a per-persona opt-out, and an
-  ineligible marker; the Readout shows the aggregate savings line. No hidden data.
+  eligible/opted-out/applied + a `reason`, aggregate swapped-user and `capped_count`,
+  combined delta, and the `cap` committed-seats/headroom). The Scenarios tab shows the
+  engagement toggle, per-persona opt-out, and per-row markers (over-cap / no-saving /
+  ineligible); the Readout shows the aggregate savings line. No hidden data.
 
 ### 4.9 ProductDisposition — split ownership, by design
 This is the canonical example of the field-ownership rule, because one row mixes

@@ -10,6 +10,7 @@ from __future__ import annotations
 import functools
 import json
 import os
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -181,3 +182,20 @@ def resolve_bundle(db: Session, ref: str) -> str | None:
         )
     ).scalars().first()
     return row.bundle_id if row else None
+
+
+def catalog_annual_erp(db: Session, sku_reference: str) -> Decimal:
+    """Best-effort catalog price for a bundle: the annual ERP of a P1Y row whose
+    title contains the reference. 0 if the catalog isn't loaded / no match. Shared
+    by the recommend-a-path optimizer (services/compute) and the Business Premium
+    swap (services/swap) so both price a bundle identically."""
+    like = f"%{sku_reference}%"
+    row = db.execute(
+        select(models.MicrosoftSku)
+        .where(
+            (models.MicrosoftSku.sku_title.ilike(like))
+            | (models.MicrosoftSku.product_title.ilike(like))
+        )
+        .order_by(models.MicrosoftSku.term_duration.desc())  # prefer P1Y over P1M/P3Y-ish
+    ).scalars().first()
+    return Decimal(str(row.annual_erp_price)) if row else Decimal("0")

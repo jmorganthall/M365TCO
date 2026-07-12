@@ -83,9 +83,11 @@ def test_swap_eligibility_requires_capability_match(client):
     assert row["eligible"] is False and row["applied"] is False
 
 
-def test_swap_counts_toward_cap_and_can_breach_it(client):
-    """Two personas totaling 340 seats swapped to Business Premium breach the 300
-    cap — the guardrail (license_limits) flags it; opting one out clears it."""
+def test_swap_fills_up_to_cap_and_never_breaches(client):
+    """Two personas totaling 340 seats can't both fit under the 300 Business Premium
+    cap. The swap fills up to the limit — the larger group (200) swaps, the 140 that
+    won't fit stays on its own target (reported `capped`) — so the future plan never
+    proposes an unbuyable 340-seat state."""
     client.post("/api/catalog/import-csv", files={"file": ("p.csv", _CSV, "text/csv")})
     eng = client.post("/api/engagements", json={"customer_name": "Cap+Swap"}).json()
     eid = eng["id"]
@@ -102,12 +104,33 @@ def test_swap_counts_toward_cap_and_can_breach_it(client):
 
     r = client.post(f"/api/engagements/{eid}/compute").json()
     biz = next(l for l in r["license_limits"] if l["key"] == "m365-business-seat-cap")
-    assert biz["target_seats"] == 340 and biz["violated"] is True
+    # Filled to 200, not 340 — the cap is respected, not merely flagged.
+    assert biz["target_seats"] == 200 and biz["violated"] is False
+    sw = r["bp_swap"]
+    assert sw["swapped_count"] == 1 and sw["swapped_users"] == 200 and sw["capped_count"] == 1
+    capped = next(x for x in sw["scenarios"] if x["persona_id"] == p2["id"])
+    assert capped["eligible"] is True and capped["applied"] is False and capped["reason"] == "capped"
 
-    # Opt the smaller persona out → 200 seats, within the cap.
+    # Free the room instead: opt the larger group out → the 140 now fits and swaps.
     sid = next(s["id"] for s in client.get(f"/api/engagements/{eid}/scenarios").json()
-               if s["persona_id"] == p2["id"])
+               if s["persona_id"] == p1["id"])
     client.patch(f"/api/engagements/{eid}/scenarios/{sid}", json={"bp_swap_optout": True})
     r = client.post(f"/api/engagements/{eid}/compute").json()
     biz = next(l for l in r["license_limits"] if l["key"] == "m365-business-seat-cap")
-    assert biz["target_seats"] == 200 and biz["violated"] is False
+    assert biz["target_seats"] == 140 and biz["violated"] is False
+    assert r["bp_swap"]["swapped_users"] == 140 and r["bp_swap"]["capped_count"] == 0
+
+
+def test_swap_skips_when_no_saving(client):
+    """An eligible persona whose own target already costs less than Business Premium
+    is not swapped — the swap only moves seats that actually save (`no_savings`)."""
+    eid, p = _setup(client)
+    sid = client.get(f"/api/engagements/{eid}/scenarios").json()[0]["id"]
+    # Own target priced BELOW Business Premium's $264 → swapping would cost more.
+    client.patch(f"/api/engagements/{eid}/scenarios/{sid}",
+                 json={"target_unit_price_annual": 200})
+    client.patch(f"/api/engagements/{eid}", json={"bp_swap_enabled": True})
+    r = client.post(f"/api/engagements/{eid}/compute").json()
+    assert r["scenarios"][0]["target_sku_reference"] == "Microsoft 365 E3"  # not swapped
+    row = r["bp_swap"]["scenarios"][0]
+    assert row["eligible"] is True and row["applied"] is False and row["reason"] == "no_savings"

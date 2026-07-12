@@ -337,10 +337,13 @@ export default function Readout({ engagement }) {
       {result.bp_swap?.enabled && result.bp_swap.swapped_count > 0 && (
         <div className="card" style={{ background: 'var(--panel2)' }}>
           <h2>Microsoft 365 Business Premium swap</h2>
-          <p className="hint">Eligible personas moved to Business Premium (Business Premium covers every
-            outcome they require). {result.bp_swap.eligible_count} eligible · {result.bp_swap.swapped_count} applied.</p>
+          <p className="hint">A licensing move, not a change of role: eligible users are moved onto
+            Microsoft 365 Business Premium (which covers every outcome they require), filled up to the
+            300-seat tenant cap. {result.bp_swap.eligible_count} eligible · {result.bp_swap.swapped_count} applied
+            {result.bp_swap.capped_count > 0 && <> · {result.bp_swap.capped_count} eligible left on their plan (300-seat cap full)</>}.</p>
           <div className="popcheck">
-            <b>{result.bp_swap.swapped_users}</b> users swapped to Business Premium ·
+            <b>{result.bp_swap.swapped_users}</b> users → Business Premium
+            {result.bp_swap.cap && <> ({result.bp_swap.cap.committed_seats} of {result.bp_swap.cap.max} seats)</>} ·
             combined annual delta{' '}
             <b className={result.bp_swap.swap_delta_annual < 0 ? 'pos' : ''}>{usd(result.bp_swap.swap_delta_annual)}</b>
             {result.bp_swap.swap_delta_annual < 0 ? ' (saving)' : result.bp_swap.swap_delta_annual > 0 ? ' (cost increase)' : ''}.
