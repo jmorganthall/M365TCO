@@ -51,8 +51,6 @@ function ProductRow({ t, meta, personas, update, remove }) {
             {(meta?.cost_periods || []).map((s) => <option key={s}>{s}</option>)}
           </select>
         </td>
-        <td className="num"><NumInput value={t.covered_count} style={{ width: 70 }}
-          onCommit={(n) => update(t.id, { covered_count: n })} /></td>
         <td className="num">{usd(t.effective_annual_cost)}</td>
         <td><div className="pill-list">
           {chips.length ? chips : <span className="muted" style={{ fontSize: '.75rem' }}>unmanaged</span>}
@@ -62,7 +60,7 @@ function ProductRow({ t, meta, personas, update, remove }) {
       {open && (
         <tr>
           <td></td>
-          <td colSpan={7} style={{ background: 'var(--panel2)' }}>
+          <td colSpan={6} style={{ background: 'var(--panel2)' }}>
             <div className="grid c4" style={{ padding: '.4rem 0' }}>
               <div><label>Vendor</label>
                 <input value={t.vendor || ''} onChange={(e) => update(t.id, { vendor: e.target.value })} /></div>
@@ -86,9 +84,6 @@ function ProductRow({ t, meta, personas, update, remove }) {
               <div><label>Commitment (months)</label>
                 <NumInput value={t.commitment_term_months} placeholder="—" allowEmpty
                   onCommit={(n) => update(t.id, { commitment_term_months: n })} /></div>
-              <div><label>Effective $/yr · $/unit/yr</label>
-                <div className="muted" style={{ paddingTop: '.35rem' }}>{usd(t.effective_annual_cost)} · {usd(t.per_unit_annual_cost)}</div>
-                <small className="src">Derived from cost, managed split, and covers.</small></div>
               <div><label>Applies to (personas)</label>
                 <div className="pill-list">
                   {personas.map((p) => (
@@ -98,6 +93,17 @@ function ProductRow({ t, meta, personas, update, remove }) {
                   ))}
                   {personas.length === 0 && <span className="muted">No personas yet.</span>}
                 </div></div>
+              <div><label>Covers — derived</label>
+                <div className="muted" style={{ paddingTop: '.35rem' }}>{t.persona_covered_count}</div>
+                <small className="src">Sum of the selected personas' headcounts.</small></div>
+              <div><label>Covers override</label>
+                <NumInput value={t.covered_count_override} allowEmpty
+                  placeholder={String(t.persona_covered_count ?? 0)}
+                  onCommit={(n) => update(t.id, { covered_count_override: n })} />
+                <small className="src">Optional — wins over the derived value (e.g. the product covers more users than the personas). Blank = derived.</small></div>
+              <div><label>Covers · Effective $/yr · $/unit/yr</label>
+                <div className="muted" style={{ paddingTop: '.35rem' }}>{t.covered_count} · {usd(t.effective_annual_cost)} · {usd(t.per_unit_annual_cost)}</div>
+                <small className="src">Derived from personas/override, cost, and managed split.</small></div>
             </div>
           </td>
         </tr>
@@ -112,7 +118,7 @@ export default function ThirdParty({ engagement, meta }) {
   const [err, setErr] = useState('')
   const blank = {
     name: '', vendor: '', raw_cost: 0, cost_period: 'Annual', unit_basis: 'Users',
-    covered_count: 0, renewal_date: '', is_managed: false, tooling_pct: '', source_tag: 'CustomerStated',
+    covered_count_override: '', renewal_date: '', is_managed: false, tooling_pct: '', source_tag: 'CustomerStated',
   }
   const [form, setForm] = useState(blank)
   const [personas, setPersonas] = useState([])
@@ -147,7 +153,7 @@ export default function ThirdParty({ engagement, meta }) {
         await api.post(base, {
           name: r.name, vendor: r.vendor || '', raw_cost: Number(r.raw_cost) || 0,
           cost_period: r.cost_period, unit_basis: 'Users',
-          covered_count: Number(r.covered_count) || 0, renewal_date: null,
+          covered_count_override: Number(r.covered_count) || null, renewal_date: null,
           is_managed: !!r.is_managed, tooling_pct: null, source_tag: 'CustomerStated',
         })
       }
@@ -161,7 +167,7 @@ export default function ThirdParty({ engagement, meta }) {
       await api.post(base, {
         ...form,
         raw_cost: Number(form.raw_cost),
-        covered_count: Number(form.covered_count),
+        covered_count_override: form.covered_count_override === '' ? null : Number(form.covered_count_override),
         renewal_date: form.renewal_date || null,
         tooling_pct: form.tooling_pct === '' ? null : Number(form.tooling_pct),
       })
@@ -246,7 +252,7 @@ export default function ThirdParty({ engagement, meta }) {
       <table>
         <thead><tr>
           <th></th><th>Product</th><th className="num">Cost</th><th>Period</th>
-          <th className="num">Covers</th><th className="num">Effective $/yr</th><th>Details</th><th></th>
+          <th className="num">Effective $/yr</th><th>Details</th><th></th>
         </tr></thead>
         <tbody>
           {items.map((t) => (
@@ -266,9 +272,9 @@ export default function ThirdParty({ engagement, meta }) {
           <select value={form.cost_period} onChange={(e) => setForm({ ...form, cost_period: e.target.value })}>
             {(meta?.cost_periods || []).map((s) => <option key={s}>{s}</option>)}
           </select></div>
-        <div><label>Covered count</label>
-          <input type="number" value={form.covered_count}
-            onChange={(e) => setForm({ ...form, covered_count: e.target.value })} /></div>
+        <div><label>Covers override (optional)</label>
+          <input type="number" value={form.covered_count_override} placeholder="from personas"
+            onChange={(e) => setForm({ ...form, covered_count_override: e.target.value })} /></div>
         <div><label><input type="checkbox" style={{ width: 'auto', marginRight: 6 }}
           checked={form.is_managed} onChange={(e) => setForm({ ...form, is_managed: e.target.checked })} />Managed (tool + management)</label></div>
         <div><label>Tooling % override</label>

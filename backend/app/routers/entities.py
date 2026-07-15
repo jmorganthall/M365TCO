@@ -32,8 +32,23 @@ def _require_engagement(db: Session, engagement_id: str) -> models.Engagement:
     return eng
 
 
-def _normalize_third_party(eng: models.Engagement, tp: models.ThirdPartyProduct) -> None:
-    """Derive annual_cost, per-unit, effective cost on input (PRD 5.6)."""
+def _derived_covers(db: Session, tp: models.ThirdPartyProduct) -> int:
+    """Combined headcount of the personas this product is tagged to. Queried by
+    the link's persona_id (not the relationship) so it is correct for links that
+    are still pending flush."""
+    persona_ids = [pl.persona_id for pl in tp.persona_links]
+    if not persona_ids:
+        return 0
+    return sum(
+        p.headcount or 0
+        for p in db.execute(
+            select(models.Persona).where(models.Persona.id.in_(persona_ids))
+        ).scalars()
+    )
+
+
+def _normalize_third_party(db: Session, eng: models.Engagement, tp: models.ThirdPartyProduct) -> None:
+    """Derive annual_cost, covers, per-unit, effective cost on input (PRD 5.6)."""
     raw = Decimal(str(tp.raw_cost or 0))
     annual = raw * 12 if tp.cost_period == "Monthly" else raw
     tp.annual_cost = annual
@@ -41,10 +56,34 @@ def _normalize_third_party(eng: models.Engagement, tp: models.ThirdPartyProduct)
     tooling = Decimal(str(tp.tooling_pct if tp.tooling_pct is not None else eng.global_tooling_pct))
     tp.tooling_pct = tooling
     tp.effective_annual_cost = (annual * tooling) if tp.is_managed else annual
+    # Covers is derived from the tagged personas' combined headcount; an explicit
+    # operator override always wins (e.g. it covers more users than the tags).
+    tp.covered_count = (
+        tp.covered_count_override
+        if tp.covered_count_override is not None
+        else _derived_covers(db, tp)
+    )
     if tp.covered_count and tp.covered_count > 0:
         tp.per_unit_annual_cost = Decimal(str(tp.effective_annual_cost)) / Decimal(tp.covered_count)
     else:
         tp.per_unit_annual_cost = Decimal("0")
+
+
+def _renormalize_third_party_covers(db: Session, engagement_id: str) -> None:
+    """Re-derive covers (and the per-unit cost that hangs off it) for every
+    third-party product in the engagement — called when a persona's headcount
+    changes or a persona is deleted, so derived covers never go stale."""
+    db.flush()  # session runs autoflush=False; make the pending persona change visible
+    eng = db.get(models.Engagement, engagement_id)
+    if eng is None:
+        return
+    rows = db.execute(
+        select(models.ThirdPartyProduct).where(
+            models.ThirdPartyProduct.engagement_id == engagement_id
+        )
+    ).scalars().all()
+    for tp in rows:
+        _normalize_third_party(db, eng, tp)
 
 
 # ---------- Personas ----------
@@ -100,8 +139,12 @@ def update_persona(engagement_id: str, persona_id: str, payload: schemas.Persona
     data = payload.model_dump(exclude_unset=True)
     if "required_outcome_ids" in data:
         _set_persona_requirements(db, row, data.pop("required_outcome_ids") or [])
+    headcount_changed = "headcount" in data and data["headcount"] != row.headcount
     for k, v in data.items():
         setattr(row, k, v)
+    if headcount_changed:
+        # Third-party covers derive from persona headcounts — keep them in sync.
+        _renormalize_third_party_covers(db, engagement_id)
     db.commit()
     db.refresh(row)
     return row
@@ -113,6 +156,8 @@ def delete_persona(engagement_id: str, persona_id: str, db: Session = Depends(ge
     if row is None or row.engagement_id != engagement_id:
         raise HTTPException(404, "Persona not found")
     db.delete(row)
+    # Derived third-party covers no longer count this persona's headcount.
+    _renormalize_third_party_covers(db, engagement_id)
     db.commit()
 
 
@@ -269,7 +314,7 @@ def create_third_party(engagement_id: str, payload: schemas.ThirdPartyIn, db: Se
     persona_ids = data.pop("persona_ids", [])
     row = models.ThirdPartyProduct(engagement_id=engagement_id, **data)
     _set_tp_persona_tags(row, persona_ids)
-    _normalize_third_party(eng, row)
+    _normalize_third_party(db, eng, row)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -287,7 +332,7 @@ def update_third_party(engagement_id: str, tp_id: str, payload: schemas.ThirdPar
         _set_tp_persona_tags(row, data.pop("persona_ids"))
     for k, v in data.items():
         setattr(row, k, v)
-    _normalize_third_party(eng, row)
+    _normalize_third_party(db, eng, row)
     db.commit()
     db.refresh(row)
     return row

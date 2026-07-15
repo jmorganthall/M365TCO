@@ -399,13 +399,24 @@ FK, UUID PK, cascade-deleted with the engagement.
 ### 4.6 ThirdPartyProduct — non-Microsoft spend
 - **Identity:** `uuid`. **Scope:** engagement-scoped.
 - **Field ownership:** user-entered (`name`, `raw_cost`, `cost_period`,
-  `covered_count`, `is_managed`, `tooling_pct`, `renewal_date`); **derived-on-write**
-  (`annual_cost`, `effective_annual_cost`, `per_unit_annual_cost`); provenance.
+  `covered_count_override`, `is_managed`, `tooling_pct`, `renewal_date`);
+  **derived-on-write** (`annual_cost`, `covered_count`, `effective_annual_cost`,
+  `per_unit_annual_cost`); provenance.
+- **Covers is derived:** `covered_count` = the combined headcount of the tagged
+  personas (§4.6a), unless the operator sets `covered_count_override`, which
+  always wins (e.g. the product covers more users than the tagged personas;
+  blank/NULL = derived). The GUI shows the derived sum read-only in the line-item
+  expander with the override next to it; the persisted `covered_count` stays the
+  single effective value the engine and exports read.
 - **Write-normalization:** `_normalize_third_party()` in `routers/entities.py` —
   the single place that: annualizes (`×12` if monthly), applies the managed split
-  (`effective = annual × tooling_pct` when managed, else `annual`), and computes
+  (`effective = annual × tooling_pct` when managed, else `annual`), derives
+  `covered_count` (override else persona sum), and computes
   `per_unit = effective / covered_count`. Every create/update calls it; nothing
-  else computes these.
+  else computes these. Persona headcount edits and persona deletes re-run it for
+  the engagement's products (`_renormalize_third_party_covers`) so derived covers
+  never go stale. A startup backfill preserved pre-existing manual covers values
+  that disagree with the persona sum as explicit overrides.
 - **CRUD:** `GET/POST/PATCH/DELETE …/third-party`; `persona_ids` on the body
   reconciles the tag set.
 - **Relationships:** target of `CoverageMapEntry` (third-party) and of exactly one

@@ -246,7 +246,9 @@ class ThirdPartyIn(BaseModel):
     raw_cost: Decimal = Decimal("0")
     cost_period: str = "Annual"
     unit_basis: str = "Users"
-    covered_count: int = 0
+    # Covers is derived from the tagged personas' headcounts; this optional
+    # override wins when set (e.g. the product covers more users than the tags).
+    covered_count_override: Optional[int] = None
     renewal_date: Optional[date] = None
     commitment_term_months: Optional[int] = None
     is_managed: bool = False
@@ -264,7 +266,9 @@ class ThirdPartyOut(ORMModel):
     cost_period: str
     annual_cost: Decimal
     unit_basis: str
-    covered_count: int
+    covered_count: int  # effective covers: override if set, else the persona sum
+    covered_count_override: Optional[int]
+    persona_covered_count: int  # derived: combined headcount of tagged personas
     per_unit_annual_cost: Decimal
     renewal_date: Optional[date]
     commitment_term_months: Optional[int]

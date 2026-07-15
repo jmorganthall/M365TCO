@@ -48,7 +48,7 @@ def test_readout_conditionals_show_when_managed_and_eliminated(client):
     identity = _outcome(client, eid, "identity-sso")
     # A MANAGED IdP tool with a non-default tooling split (0.5 vs the 0.30 default).
     tool = client.post(f"/api/engagements/{eid}/third-party", json={
-        "name": "Okta", "raw_cost": 50000, "covered_count": 100,
+        "name": "Okta", "raw_cost": 50000, "covered_count_override": 100,
         "is_managed": True, "tooling_pct": 0.5}).json()
     client.post(f"/api/engagements/{eid}/coverage", json={
         "outcome_id": identity["id"], "product_kind": "ThirdParty",

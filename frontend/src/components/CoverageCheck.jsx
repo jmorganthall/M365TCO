@@ -52,7 +52,7 @@ export default function CoverageCheck({ engagement, onNavigate }) {
       let sentinel = data.third_parties.find((t) => t.name === OOS_NAME)
       if (!sentinel) {
         const c = await api.post(`${base}/third-party`, {
-          name: OOS_NAME, raw_cost: 0, cost_period: 'Annual', covered_count: 0,
+          name: OOS_NAME, raw_cost: 0, cost_period: 'Annual',
         })
         sentinel = { id: c.id, name: c.name, persona_ids: c.persona_ids || [] }
       }

@@ -147,7 +147,8 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
         ntp = models.ThirdPartyProduct(
             engagement_id=dst.id, name=tp.name, vendor=tp.vendor, raw_cost=tp.raw_cost,
             cost_period=tp.cost_period, annual_cost=tp.annual_cost, unit_basis=tp.unit_basis,
-            covered_count=tp.covered_count, per_unit_annual_cost=tp.per_unit_annual_cost,
+            covered_count=tp.covered_count, covered_count_override=tp.covered_count_override,
+            per_unit_annual_cost=tp.per_unit_annual_cost,
             renewal_date=tp.renewal_date, commitment_term_months=tp.commitment_term_months,
             is_managed=tp.is_managed, tooling_pct=tp.tooling_pct,
             effective_annual_cost=tp.effective_annual_cost, source_tag=tp.source_tag,
