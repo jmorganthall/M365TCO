@@ -8,23 +8,33 @@ import { api } from '../api'
 // here, so option lists, labels, and the segments fetch can never drift apart
 // again.
 
+// Pretty labels over the RAW sheet values. Unknown values still render — a
+// generated label for P<n>Y/P<n>M terms, or the raw value itself — so a new
+// value in a future price sheet needs no code change to be usable.
 export const TERM_LABELS = { P1M: 'Month-to-month', P1Y: '1-year commit', P3Y: '3-year commit' }
 export const BILLING_LABELS = { Monthly: 'Pay monthly', Annual: 'Pay yearly', Triennial: 'Pay every 3 years' }
-export const termLabel = (v) => TERM_LABELS[v] || v
+export const termLabel = (v) => {
+  if (TERM_LABELS[v]) return TERM_LABELS[v]
+  const m = /^P(\d+)([MY])$/.exec(v || '')
+  if (m) return m[2] === 'Y' ? `${m[1]}-year commit` : `${m[1]}-month commit`
+  return v
+}
 export const billingLabel = (v) => BILLING_LABELS[v] || v
 
-// Module-level cache: every picker shares one segments fetch per page load.
-let _segmentsPromise = null
-export function useSegments() {
-  const [segments, setSegments] = useState([])
+// The picker value lists come from the DATA — distinct values in the loaded
+// price sheet (∪ known defaults), via /api/catalog/basis-options. Module-level
+// cache: every picker shares one fetch per page load.
+let _optionsPromise = null
+export function useBasisOptions() {
+  const [options, setOptions] = useState({ segments: [], terms: [], billing_plans: [] })
   useEffect(() => {
-    if (!_segmentsPromise) {
-      _segmentsPromise = api.get('/api/catalog/segments')
-        .then((r) => r.segments || []).catch(() => [])
+    if (!_optionsPromise) {
+      _optionsPromise = api.get('/api/catalog/basis-options')
+        .catch(() => ({ segments: [], terms: [], billing_plans: [] }))
     }
-    _segmentsPromise.then(setSegments)
+    _optionsPromise.then(setOptions)
   }, [])
-  return segments
+  return options
 }
 
 // The effective basis for a line-level object (license line / scenario):
@@ -39,12 +49,19 @@ export const effectiveBasis = (line, eng) => ({
 // Pass `inheritFrom` (the parent's effective value) for line-level use: it
 // renders a leading "Default (…)" option and commits null to mean "inherit".
 export function BasisSelect({ kind, value, onChange, meta, inheritFrom, style }) {
-  const segments = useSegments()
-  const options = kind === 'segment'
-    ? (segments.length ? segments : [inheritFrom || value].filter(Boolean))
+  const data = useBasisOptions()
+  // Data-driven lists first; static fallbacks only cover the moment before the
+  // options fetch resolves (or an offline failure).
+  const fallback = kind === 'segment'
+    ? [inheritFrom || value].filter(Boolean)
     : kind === 'term'
       ? (meta?.term_durations || Object.keys(TERM_LABELS))
       : (meta?.billing_plans || Object.keys(BILLING_LABELS))
+  const fetched = kind === 'segment' ? data.segments
+    : kind === 'term' ? data.terms : data.billing_plans
+  let options = fetched.length ? fetched : fallback
+  // A stored value outside the list (e.g. from an older sheet) stays selectable.
+  if (value && !options.includes(value)) options = [...options, value]
   const label = kind === 'term' ? termLabel : kind === 'billing' ? billingLabel : (s) => s
   const inherit = inheritFrom !== undefined
   return (

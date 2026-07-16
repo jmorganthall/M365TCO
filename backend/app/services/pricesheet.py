@@ -44,7 +44,17 @@ _COLUMNS = {
     "last_updated": "LastUpdatedDate",
 }
 
-_TERM_MONTHS = {"P1M": 1, "P1Y": 12, "P3Y": 36}
+def _term_months(term: str) -> int:
+    """Months in a TermDuration. Parsed generically (P1M, P1Y, P3Y, P5Y, P18M, …)
+    so a term Microsoft adds to a future sheet annualizes correctly without a
+    code change; an unparseable value falls back to 1 month (the listed price is
+    then treated as-is, the least-surprising degradation)."""
+    import re
+
+    m = re.fullmatch(r"P(\d+)([MY])", (term or "").strip().upper())
+    if m:
+        return int(m.group(1)) * (12 if m.group(2) == "Y" else 1)
+    return 1
 
 
 class PriceSheetError(ValueError):
@@ -109,7 +119,7 @@ def _annualize(monthly: Decimal, term: str) -> tuple[Decimal, Decimal]:
     the listed figure is the annual per-seat price; for P1M multiply by 12. We
     normalize the listed price to a per-month figure and a per-year figure.
     """
-    months = _TERM_MONTHS.get(term.upper(), 1)
+    months = _term_months(term)
     # Listed price is for the whole term. Per-month = listed / months.
     per_month = (monthly / Decimal(months)).quantize(Decimal("0.0001"))
     per_year = (per_month * Decimal(12)).quantize(Decimal("0.0001"))

@@ -213,3 +213,37 @@ def test_scenario_basis_change_requotes_target_and_addons(client, db):
     assert float(s["target_unit_price_annual"]) == 491.4
     assert float(s["addons"][0]["unit_price_annual"]) == 144.0
     client.delete(f"/api/engagements/{eid}")
+
+
+def test_basis_options_are_data_driven(client, db):
+    """The Segment/Term/Payment picker lists come from the loaded sheet: novel
+    values appear without code changes (known defaults first, sheet extras
+    appended), trial billing 'None' is excluded, and a novel term annualizes
+    correctly via the generic P<n>Y/P<n>M parser."""
+    csv_text = (
+        "ProductTitle,ProductId,SkuId,SkuTitle,TermDuration,BillingPlan,Market,"
+        "Currency,UnitPrice,EffectiveStartDate,EffectiveEndDate,ERP Price,Segment\n"
+        "Future Suite,CFQ7FUTURE01,0001,Future Suite,P5Y,Biennial,US,USD,"
+        "5000.00,2026-01-01,2026-12-31,6000.00,Special Bid\n"
+        "Future Suite,CFQ7FUTURE01,0002,Future Suite Trial,P1M,None,US,USD,"
+        "0,2026-01-01,2026-12-31,0,Special Bid\n"
+    )
+    resp = client.post("/api/catalog/import-csv",
+                       files={"file": ("future.csv", csv_text, "text/csv")},
+                       data={"catalog_version": _VERSION})
+    assert resp.status_code == 200
+
+    opts = client.get("/api/catalog/basis-options").json()
+    assert "Special Bid" in opts["segments"]      # novel segment from the sheet
+    assert "P5Y" in opts["terms"]                 # novel term from the sheet
+    assert "Biennial" in opts["billing_plans"]    # novel billing plan
+    assert "None" not in opts["billing_plans"]    # trial rows aren't purchasable
+    # Known defaults still lead the lists.
+    assert opts["segments"][0] == "Commercial"
+    assert opts["terms"][:3] == ["P1M", "P1Y", "P3Y"]
+    assert opts["billing_plans"][:3] == ["Monthly", "Annual", "Triennial"]
+
+    # P5Y = 60 months: the listed whole-term ERP annualizes generically.
+    sku = next(s for s in client.get("/api/catalog/skus").json()
+               if s["product_id"] == "CFQ7FUTURE01" and s["term_duration"] == "P5Y")
+    assert sku["annual_erp_price"] == 1200.0  # 6000 / 60 months × 12
