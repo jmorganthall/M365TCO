@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { api } from '../api'
+import { EngagementBasisEditor } from './basis.jsx'
 
 // Engagement metadata — the editable engagement/customer name plus basic customer
 // context (workshop date, industry, HQ, website, size). Fields live on the
 // Engagement (§4.1) and are user-entered; they display here and later ground the
 // AI business-narrative research. Committed incrementally on blur, like the rest
 // of the workshop tool.
-const TERM_LABELS = { P1M: 'Month-to-month', P1Y: '1-year commit', P3Y: '3-year commit' }
-
 export default function CustomerInfo({ engagement, meta, onUpdate }) {
   const eid = engagement.id
   const [f, setF] = useState(fromEngagement(engagement))
@@ -16,12 +15,10 @@ export default function CustomerInfo({ engagement, meta, onUpdate }) {
   const [savedAt, setSavedAt] = useState('')
   const [aiEnabled, setAiEnabled] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [segments, setSegments] = useState([])
 
   useEffect(() => { setF(fromEngagement(engagement)); setMsg('') }, [eid])
   useEffect(() => {
     api.get('/api/admin/ai/status').then((s) => setAiEnabled(s.enabled)).catch(() => {})
-    api.get('/api/catalog/segments').then(setSegments).catch(() => {})
   }, [])
 
   // AI research: fill the fields the operator hasn't provided from whatever is
@@ -133,32 +130,7 @@ export default function CustomerInfo({ engagement, meta, onUpdate }) {
           engagement's bundles and SKUs — inherited from the global defaults at creation; current-license
           lines and scenarios can override per line. Changing these affects future quotes, not prices
           already entered.</p>
-        <div className="grid c3">
-          <div>
-            <label>Segment {savedTag('default_segment')}</label>
-            <select value={engagement.default_segment}
-              onChange={(e) => commit('default_segment', e.target.value)}>
-              {(segments.length ? segments : [engagement.default_segment]).map((s) => (
-                <option key={s} value={s}>{s}</option>))}
-            </select>
-          </div>
-          <div>
-            <label>Term {savedTag('default_term_duration')}</label>
-            <select value={engagement.default_term_duration}
-              onChange={(e) => commit('default_term_duration', e.target.value)}>
-              {(meta?.term_durations || ['P1M', 'P1Y', 'P3Y']).map((t) => (
-                <option key={t} value={t}>{TERM_LABELS[t] || t}</option>))}
-            </select>
-          </div>
-          <div>
-            <label>Payment {savedTag('default_billing_plan')}</label>
-            <select value={engagement.default_billing_plan}
-              onChange={(e) => commit('default_billing_plan', e.target.value)}>
-              {(meta?.billing_plans || ['Monthly', 'Annual', 'Triennial']).map((b) => (
-                <option key={b} value={b}>{b}</option>))}
-            </select>
-          </div>
-        </div>
+        <EngagementBasisEditor engagement={engagement} meta={meta} onUpdate={onUpdate} onError={setErr} />
       </div>
     </div>
   )

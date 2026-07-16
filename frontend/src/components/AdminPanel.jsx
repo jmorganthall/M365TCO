@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { api, pct, usd } from '../api'
 import { VersionInfo } from './UpdateBanner.jsx'
+import { BasisSelect } from './basis.jsx'
 
 export default function AdminPanel({ onClose }) {
   const [secrets, setSecrets] = useState(null)
@@ -8,7 +9,6 @@ export default function AdminPanel({ onClose }) {
   const [defaults, setDefaults] = useState(null)
   const [ai, setAi] = useState({ enabled: false, model: '' })
   const [models, setModels] = useState([])
-  const [segments, setSegments] = useState([])
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
   const fileRef = useRef()
@@ -31,7 +31,6 @@ export default function AdminPanel({ onClose }) {
     api.get('/api/admin/secrets').then(setSecrets).catch((e) => setErr(e.message))
     api.get('/api/catalog/version').then(setCatalog).catch(() => {})
     api.get('/api/admin/defaults').then(setDefaults).catch(() => {})
-    api.get('/api/catalog/segments').then((r) => setSegments(r.segments || [])).catch(() => {})
     api.get('/api/admin/ai/status').then((s) => {
       setAi(s)
       if (s.enabled) api.get('/api/admin/ai/models').then((r) => setModels(r.models)).catch(() => {})
@@ -105,28 +104,18 @@ export default function AdminPanel({ onClose }) {
               </div>
               <div>
                 <label>Default pricing segment</label>
-                <select value={defaults.default_segment}
-                  onChange={(e) => saveDefaults({ default_segment: e.target.value })}>
-                  {(segments.length ? segments : [defaults.default_segment]).map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
+                <BasisSelect kind="segment" value={defaults.default_segment}
+                  onChange={(v) => saveDefaults({ default_segment: v })} />
               </div>
               <div>
                 <label>Default term</label>
-                <select value={defaults.default_term_duration}
-                  onChange={(e) => saveDefaults({ default_term_duration: e.target.value })}>
-                  <option value="P1M">Month-to-month</option>
-                  <option value="P1Y">1-year commit</option>
-                  <option value="P3Y">3-year commit</option>
-                </select>
+                <BasisSelect kind="term" value={defaults.default_term_duration}
+                  onChange={(v) => saveDefaults({ default_term_duration: v })} />
               </div>
               <div>
                 <label>Default payment</label>
-                <select value={defaults.default_billing_plan}
-                  onChange={(e) => saveDefaults({ default_billing_plan: e.target.value })}>
-                  <option value="Monthly">Monthly</option>
-                  <option value="Annual">Annual</option>
-                  <option value="Triennial">Triennial</option>
-                </select>
+                <BasisSelect kind="billing" value={defaults.default_billing_plan}
+                  onChange={(v) => saveDefaults({ default_billing_plan: v })} />
               </div>
               <span className="muted" style={{ alignSelf: 'flex-end', paddingBottom: '.5rem' }}>
                 Current tooling split: {pct(defaults.default_tooling_pct)}
