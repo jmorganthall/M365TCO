@@ -22,11 +22,11 @@ class EngagementCreate(BaseModel):
     # When omitted, these inherit from GlobalDefaults at creation time.
     modeling_horizon_years: Optional[int] = None
     global_tooling_pct: Optional[Decimal] = None
-    # Pricing-basis defaults. `default_segment` omitted inherits GlobalDefaults;
-    # term/billing default to yearly commit / yearly purchase.
+    # Pricing-basis defaults. Omitted values inherit GlobalDefaults at creation
+    # (the global → engagement → line hierarchy).
     default_segment: Optional[str] = None
-    default_term_duration: str = "P1Y"
-    default_billing_plan: str = "Annual"
+    default_term_duration: Optional[str] = None
+    default_billing_plan: Optional[str] = None
     notes: str = ""
     # Omitted → the create endpoint defaults it to today.
     workshop_date: Optional[date] = None
@@ -36,6 +36,8 @@ class GlobalDefaultsOut(ORMModel):
     default_tooling_pct: Decimal
     default_modeling_horizon_years: int
     default_segment: str
+    default_term_duration: str
+    default_billing_plan: str
     openrouter_model: str
     openrouter_web_search: bool
     sanity_check_model: str
@@ -46,6 +48,8 @@ class GlobalDefaultsUpdate(BaseModel):
     default_tooling_pct: Optional[Decimal] = None
     default_modeling_horizon_years: Optional[int] = None
     default_segment: Optional[str] = None
+    default_term_duration: Optional[str] = None
+    default_billing_plan: Optional[str] = None
     openrouter_model: Optional[str] = None
     openrouter_web_search: Optional[bool] = None
     sanity_check_model: Optional[str] = None
@@ -322,6 +326,9 @@ class ScenarioIn(BaseModel):
     target_discount_pct: Optional[Decimal] = None
     in_scope: bool = True
     bp_swap_optout: bool = False
+    # Line-level quoting basis; None inherits the engagement default.
+    term_duration: Optional[str] = None
+    billing_plan: Optional[str] = None
     addons: list[ScenarioAddonIn] = []
 
 
@@ -331,6 +338,9 @@ class ScenarioUpdate(BaseModel):
     target_discount_pct: Optional[Decimal] = None
     in_scope: Optional[bool] = None
     bp_swap_optout: Optional[bool] = None
+    # Changing either requotes the composed target from the catalog.
+    term_duration: Optional[str] = None
+    billing_plan: Optional[str] = None
     addons: Optional[list[ScenarioAddonIn]] = None
 
 
@@ -342,6 +352,8 @@ class ScenarioOut(ORMModel):
     target_discount_pct: Optional[Decimal]
     in_scope: bool
     bp_swap_optout: bool
+    term_duration: Optional[str]
+    billing_plan: Optional[str]
     addons: list[ScenarioAddonOut]
     current_spend_annual: Decimal
     target_spend_annual: Decimal

@@ -171,10 +171,12 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
     )
 
 
-def _catalog_annual_erp(db: Session, sku_reference: str) -> Decimal:
-    """Best-effort catalog price for a bundle — delegates to the shared bundle-price
-    helper (services/bundles) so the optimizer and the BP swap price identically."""
-    return bundles.catalog_annual_erp(db, sku_reference)
+def _catalog_annual_erp(db: Session, bundle, basis: dict) -> Decimal:
+    """Catalog annual ERP for a bundle — delegates to the shared deterministic
+    price helper (services/bundles) so the optimizer and the BP swap price
+    identically: ratified SKU→Bundle rows first, then title match, ranked to
+    the engagement's quoting basis (segment × term × billing plan)."""
+    return bundles.catalog_annual_erp(db, bundle.name, bundle_id=bundle.id, **basis)
 
 
 def _min_cost_cover(closeable: frozenset[str], options: list[dict]) -> list[dict]:
@@ -266,10 +268,11 @@ def analyze_persona_bundles(
     tp_names = {tp.id: tp.name for tp in eng.third_party_products}
 
     prices = prices or {}
+    basis = bundles.engagement_price_basis(eng)
 
     def _price(bundle) -> Decimal:
         override = prices.get(bundle.name)
-        return Decimal(str(override)) if override is not None else _catalog_annual_erp(db, bundle.name)
+        return Decimal(str(override)) if override is not None else _catalog_annual_erp(db, bundle, basis)
 
     # Compose each base bundle with the cheapest add-ons that close its gaps. An
     # add-on is applicable to a base when it is eligible for it — à-la-carte add-ons

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api } from './api'
+import { api, loadMoneyUnit, saveMoneyUnit } from './api'
 import Sidebar from './components/Sidebar.jsx'
 import PricingBanner from './components/PricingBanner.jsx'
 import UpdateBanner from './components/UpdateBanner.jsx'
@@ -35,6 +35,9 @@ export default function App() {
   // Off-canvas sidebar on narrow screens (hidden by default; toggled by the
   // header hamburger). On desktop the sidebar is always shown and this is inert.
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // Money display unit ($/mo default — humans gut-check monthly; data stays annualized).
+  const [moneyUnit, setMoneyUnit] = useState(loadMoneyUnit())
+  const switchMoneyUnit = (u) => { setMoneyUnit(u); saveMoneyUnit(u) }
   const closeSidebar = () => setSidebarOpen(false)
   const openSettings = () => { setView('settings'); closeSidebar() }
   const closeSettings = () => { setView('app'); api.get('/api/meta').then(setMeta).catch(() => {}) }
@@ -121,7 +124,13 @@ export default function App() {
                   tooling split {Math.round(active.global_tooling_pct * 100)}%
                 </span>
               </div>
-              <EngagementTools active={tab === 'data'} onData={() => setTab('data')} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}>
+                <div className="unit-toggle" title="Money display unit — data stays annualized underneath">
+                  <button className={moneyUnit === 'mo' ? 'on' : ''} onClick={() => switchMoneyUnit('mo')}>$/mo</button>
+                  <button className={moneyUnit === 'yr' ? 'on' : ''} onClick={() => switchMoneyUnit('yr')}>$/yr</button>
+                </div>
+                <EngagementTools active={tab === 'data'} onData={() => setTab('data')} />
+              </div>
             </div>
 
             <div className="stepper">
@@ -138,14 +147,14 @@ export default function App() {
 
             {tab === 'baseline' && (
               <>
-                <CustomerInfo engagement={active} onUpdate={(u) => { setActive(u); reload() }} />
+                <CustomerInfo engagement={active} meta={meta} onUpdate={(u) => { setActive(u); reload() }} />
                 <Personas engagement={active} meta={meta} />
                 <CurrentLicensing engagement={active} meta={meta} />
               </>
             )}
-            {tab === 'thirdparty' && <ThirdParty engagement={active} meta={meta} />}
+            {tab === 'thirdparty' && <ThirdParty engagement={active} meta={meta} moneyUnit={moneyUnit} />}
             {tab === 'coverage' && <CoverageMap engagement={active} meta={meta} />}
-            {tab === 'scenarios' && <Scenarios engagement={active} meta={meta} />}
+            {tab === 'scenarios' && <Scenarios engagement={active} meta={meta} moneyUnit={moneyUnit} />}
             {tab === 'gaps' && <CoverageCheck engagement={active} onNavigate={setTab} />}
             {tab === 'readout' && <Readout engagement={active} />}
             {tab === 'data' && <DataInspector engagement={active} meta={meta} />}

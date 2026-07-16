@@ -110,6 +110,24 @@ export default function AdminPanel({ onClose }) {
                   {(segments.length ? segments : [defaults.default_segment]).map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
+              <div>
+                <label>Default term</label>
+                <select value={defaults.default_term_duration}
+                  onChange={(e) => saveDefaults({ default_term_duration: e.target.value })}>
+                  <option value="P1M">Month-to-month</option>
+                  <option value="P1Y">1-year commit</option>
+                  <option value="P3Y">3-year commit</option>
+                </select>
+              </div>
+              <div>
+                <label>Default payment</label>
+                <select value={defaults.default_billing_plan}
+                  onChange={(e) => saveDefaults({ default_billing_plan: e.target.value })}>
+                  <option value="Monthly">Monthly</option>
+                  <option value="Annual">Annual</option>
+                  <option value="Triennial">Triennial</option>
+                </select>
+              </div>
               <span className="muted" style={{ alignSelf: 'flex-end', paddingBottom: '.5rem' }}>
                 Current tooling split: {pct(defaults.default_tooling_pct)}
               </span>

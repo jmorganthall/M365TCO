@@ -38,7 +38,7 @@ DISPOSITIONS = ("FullyEliminated", "PartiallyReduced", "Unchanged")
 OVERRIDES = ("None", "ForceFullElimination")
 RESIDUAL_INTENTS = ("None", "IntendedOutOfScope")
 TERM_DURATIONS = ("P1M", "P1Y", "P3Y")
-BILLING_PLANS = ("Monthly", "Annual")
+BILLING_PLANS = ("Monthly", "Annual", "Triennial")
 # Customer segments as they appear in the Microsoft price sheet's `Segment`
 # column. This is the KNOWN default set (used to seed the global-default dropdown
 # when the catalog is empty); the live segment pickers are data-driven from the
@@ -535,6 +535,11 @@ class PersonaScenario(Base):
     # override). False = inherit the engagement default; True = keep this persona's
     # own target even when the engagement swap is on. User-entered.
     bp_swap_optout: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Line-level quoting basis (term × billing plan): NULL inherits the
+    # engagement's defaults. Changing either requotes the composed target from
+    # the catalog at the new basis (prices stay hand-editable afterward).
+    term_duration: Mapped[str | None] = mapped_column(String, nullable=True)
+    billing_plan: Mapped[str | None] = mapped_column(String, nullable=True)
     # Derived fields cached for snapshotting; recomputed by the engine on demand.
     current_spend_annual: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
     target_spend_annual: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
@@ -620,6 +625,12 @@ class GlobalDefaults(Base):
     # own `default_segment` on creation; changing it here retargets only NEW
     # engagements. "Commercial" out of the box.
     default_segment: Mapped[str] = mapped_column(String, default="Commercial")
+    # Ground-floor quoting-basis defaults: which priced catalog variant (term ×
+    # billing plan) prices a bundle. New engagements copy these on creation and
+    # scenarios may vary per line — the global → engagement → line hierarchy.
+    # P1Y + Monthly = 1-year commit paid monthly, the typical customer-facing case.
+    default_term_duration: Mapped[str] = mapped_column(String, default="P1Y")
+    default_billing_plan: Mapped[str] = mapped_column(String, default="Monthly")
     # Operator-selected OpenRouter model for AI assist. Empty = use the env
     # default (settings.openrouter_model). Operational config, runtime-editable.
     openrouter_model: Mapped[str] = mapped_column(String, default="")

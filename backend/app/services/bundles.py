@@ -184,18 +184,125 @@ def resolve_bundle(db: Session, ref: str) -> str | None:
     return row.bundle_id if row else None
 
 
-def catalog_annual_erp(db: Session, sku_reference: str) -> Decimal:
-    """Best-effort catalog price for a bundle: the annual ERP of a P1Y row whose
-    title contains the reference. 0 if the catalog isn't loaded / no match. Shared
-    by the recommend-a-path optimizer (services/compute) and the Business Premium
-    swap (services/swap) so both price a bundle identically."""
-    like = f"%{sku_reference}%"
-    row = db.execute(
-        select(models.MicrosoftSku)
-        .where(
-            (models.MicrosoftSku.sku_title.ilike(like))
-            | (models.MicrosoftSku.product_title.ilike(like))
+# Deterministic price-row ranking (see catalog_price_row). The requested quoting
+# basis (term × billing plan, from the global → engagement → line hierarchy)
+# wins outright; when that exact variant isn't in the sheet these fallback
+# orders pick the closest one. Sheet ERPs are whole-term prices and variants
+# carry billing premiums (~+5% monthly-billed, ~+20% month-to-month).
+_TERM_FALLBACK = {"P1Y": 0, "P3Y": 1, "P1M": 2}
+_BILLING_FALLBACK = {"Monthly": 0, "Annual": 1, "Triennial": 2}
+
+
+def _pref_rank(value: str, preferred: str, fallback: dict[str, int]) -> int:
+    if value == preferred:
+        return 0
+    return 1 + fallback.get(value, len(fallback))
+
+
+def _title_candidates(rows, reference: str):
+    """Catalog rows whose title matches the reference, tiered so broader matching
+    never shadows a direct hit:
+    1. reference contained in a title (classic), or the reference being exactly
+       'Microsoft ' + a title (the sheet drops the prefix on some products —
+       sheet 'Power BI Pro' vs bundle 'Microsoft Power BI Pro'; exact-with-prefix
+       only, because loose containment let 'Microsoft 365 E5' rows answer for
+       'Microsoft 365 E5 Security');
+    2. only if tier 1 is empty: a title STARTING WITH the reference minus its
+       'Microsoft ' prefix (e.g. 'Defender for Office 365 P2 Add On'). Starts-with,
+       not contains, because stripped references get loose ('Microsoft 365 E3' →
+       '365 e3' must not match Office 365 E3 titles)."""
+    ref = _norm(reference)
+    if not ref:
+        return []
+
+    def titles(r):
+        return [t for t in (_norm(r.sku_title or ""), _norm(r.product_title or "")) if t]
+
+    direct = [
+        r for r in rows
+        if any(ref in t or f"microsoft {t}" == ref for t in titles(r))
+    ]
+    if direct:
+        return direct
+    stripped = ref.removeprefix("microsoft ")
+    if stripped == ref:
+        return []
+    return [r for r in rows if any(t.startswith(stripped) for t in titles(r))]
+
+
+def engagement_price_basis(eng) -> dict:
+    """The engagement's effective quoting basis — kwargs for catalog_annual_erp /
+    catalog_price_row. Level 2 of the global → engagement → line hierarchy (an
+    engagement copies the global defaults on creation; a scenario line may
+    override term/billing on top of this)."""
+    return {
+        "segment": eng.default_segment or "Commercial",
+        "term": eng.default_term_duration or "P1Y",
+        "billing": eng.default_billing_plan or "Monthly",
+    }
+
+
+def catalog_price_row(
+    db: Session, sku_reference: str, *,
+    bundle_id: str | None = None, segment: str = "Commercial",
+    term: str = "P1Y", billing: str = "Monthly",
+) -> models.MicrosoftSku | None:
+    """The catalog row that prices a bundle/SKU reference, chosen deterministically
+    for a quoting basis (segment × term × billing plan — callers pass the
+    engagement/scenario's effective basis; the out-of-box default is the typical
+    customer case, a 1-year commit paid monthly).
+
+    Selection: rows RATIFIED onto the bundle (MicrosoftSku.bundle_id — the
+    first-class SKU → Bundle mapping) when any exist; otherwise tolerant title
+    matching (_title_candidates). The winner is then ranked: priced rows beat
+    $0/trial rows, the requested segment beats other segments (the sheet ships
+    Commercial/Education/Charity variants of the same title), the requested
+    term and billing plan beat the fallback orders, an EXACT title match beats
+    everything else at the same basis (an add-on can carry its parent family as
+    its ProductTitle — 'Entra P2 Add On' under product 'Microsoft 365 E3'), and
+    the shortest title wins remaining ties (the plain variant over '(no Teams)' /
+    'Unattended' superstrings). Returns None when nothing matches."""
+    rows: list[models.MicrosoftSku] = []
+    if bundle_id is not None:
+        rows = db.execute(
+            select(models.MicrosoftSku).where(models.MicrosoftSku.bundle_id == bundle_id)
+        ).scalars().all()
+    if not rows:
+        rows = _title_candidates(
+            db.execute(select(models.MicrosoftSku)).scalars().all(), sku_reference
         )
-        .order_by(models.MicrosoftSku.term_duration.desc())  # prefer P1Y over P1M/P3Y-ish
-    ).scalars().first()
+    if not rows:
+        return None
+
+    ref = _norm(sku_reference)
+
+    def rank(r: models.MicrosoftSku):
+        return (
+            0 if Decimal(str(r.annual_erp_price or 0)) > 0 else 1,
+            0 if (r.segment or "") == segment else 1,
+            _pref_rank(r.term_duration or "", term, _TERM_FALLBACK),
+            _pref_rank(r.billing_plan or "", billing, _BILLING_FALLBACK),
+            0 if _norm(r.sku_title or "") == ref else 1,
+            0 if _norm(r.product_title or "") == ref else 1,
+            len(r.sku_title or r.product_title or ""),
+        )
+
+    return min(rows, key=rank)
+
+
+def catalog_annual_erp(
+    db: Session, sku_reference: str, *,
+    bundle_id: str | None = None, segment: str = "Commercial",
+    term: str = "P1Y", billing: str = "Monthly",
+) -> Decimal:
+    """Catalog price for a bundle: the annual ERP (the customer-facing retail
+    baseline; sheet prices are annualized on import, so ÷12 is the monthly
+    payment) of the deterministically-selected row — see catalog_price_row.
+    0 if the catalog isn't loaded / no match. Shared by the recommend-a-path
+    optimizer (services/compute), the Business Premium swap (services/swap),
+    the scenario requote (routers/entities), and the bundle-list autofill
+    (routers/catalog) so all price identically."""
+    row = catalog_price_row(
+        db, sku_reference, bundle_id=bundle_id, segment=segment, term=term, billing=billing,
+    )
     return Decimal(str(row.annual_erp_price)) if row else Decimal("0")

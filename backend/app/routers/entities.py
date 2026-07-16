@@ -452,6 +452,32 @@ def _set_scenario_addons(db: Session, row: models.PersonaScenario, addons: list,
                 bundle_id=bid, unit_price_annual=a["unit_price_annual"]))
 
 
+def _requote_scenario(db: Session, eng: models.Engagement, s: models.PersonaScenario) -> None:
+    """Re-price the scenario's composed target (base + add-ons) from the catalog
+    at its effective quoting basis — the scenario's term/billing when set, else
+    the engagement defaults (the global → engagement → line hierarchy). Called
+    when the operator changes the scenario's term/payment model; prices remain
+    hand-editable afterward. Only prices a fresh quote can actually find (> 0)
+    are written, so a hand-entered price on an uncatalogued bundle survives."""
+    basis = bundles.engagement_price_basis(eng)
+    if s.term_duration:
+        basis["term"] = s.term_duration
+    if s.billing_plan:
+        basis["billing"] = s.billing_plan
+    if s.target_sku_reference:
+        base_id = bundles.resolve_bundle(db, s.target_sku_reference)
+        price = bundles.catalog_annual_erp(db, s.target_sku_reference, bundle_id=base_id, **basis)
+        if price > 0:
+            s.target_unit_price_annual = price
+    for ad in s.addons:
+        b = db.get(models.Bundle, ad.bundle_id)
+        if b is None:
+            continue
+        price = bundles.catalog_annual_erp(db, b.name, bundle_id=b.id, **basis)
+        if price > 0:
+            ad.unit_price_annual = price
+
+
 @router.post("/scenarios", response_model=schemas.ScenarioOut, status_code=201)
 def create_scenario(engagement_id: str, payload: schemas.ScenarioIn, db: Session = Depends(get_db)):
     _require_engagement(db, engagement_id)
@@ -467,6 +493,7 @@ def create_scenario(engagement_id: str, payload: schemas.ScenarioIn, db: Session
 
 @router.patch("/scenarios/{scenario_id}", response_model=schemas.ScenarioOut)
 def update_scenario(engagement_id: str, scenario_id: str, payload: schemas.ScenarioUpdate, db: Session = Depends(get_db)):
+    eng = _require_engagement(db, engagement_id)
     row = db.get(models.PersonaScenario, scenario_id)
     if row is None or row.engagement_id != engagement_id:
         raise HTTPException(404, "Scenario not found")
@@ -476,8 +503,13 @@ def update_scenario(engagement_id: str, scenario_id: str, payload: schemas.Scena
         # the scenario's existing base.
         base_ref = data.get("target_sku_reference", row.target_sku_reference)
         _set_scenario_addons(db, row, data.pop("addons") or [], base_ref)
+    basis_changed = any(
+        k in data and data[k] != getattr(row, k) for k in ("term_duration", "billing_plan")
+    )
     for k, v in data.items():
         setattr(row, k, v)
+    if basis_changed:
+        _requote_scenario(db, eng, row)
     db.commit()
     db.refresh(row)
     return row
