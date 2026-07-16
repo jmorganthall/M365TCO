@@ -29,9 +29,19 @@ function ProductRow({ t, meta, personas, update, remove }) {
   const [open, setOpen] = useState(false)
   const tagIds = t.persona_ids || []
   const tagNames = tagIds.map((id) => personas.find((p) => p.id === id)?.name).filter(Boolean)
+  // An override replaces the persona-derived covers, so the Details chips show
+  // OVERRIDE (opens the expander) instead of the persona tags — one glance tells
+  // apart a typical persona-driven row from an overridden one.
+  const overridden = t.covered_count_override != null
   const chips = []
   if (t.is_managed) chips.push(<span key="m" className="badge muted">managed {pct(t.tooling_pct)}</span>)
-  tagNames.forEach((n, i) => chips.push(<span key={`p${i}`} className="badge muted">{n}</span>))
+  if (overridden) {
+    chips.push(<button key="ov" type="button" className="badge warn chip-btn"
+      title="Covers is manually overridden — personas do not drive it. Click for details."
+      onClick={() => setOpen(true)}>OVERRIDE: {t.covered_count_override}</button>)
+  } else {
+    tagNames.forEach((n, i) => chips.push(<span key={`p${i}`} className="badge muted">{n}</span>))
+  }
   if (t.source_tag && t.source_tag !== 'CustomerStated') chips.push(<span key="s" className="badge muted">{t.source_tag}</span>)
 
   const togglePersona = (pid) => {
@@ -88,14 +98,16 @@ function ProductRow({ t, meta, personas, update, remove }) {
                 <div className="pill-list">
                   {personas.map((p) => (
                     <button key={p.id} type="button"
-                      className={`tag-toggle ${tagIds.includes(p.id) ? 'on' : ''}`}
+                      className={`tag-toggle ${tagIds.includes(p.id) ? 'on' : ''} ${overridden ? 'inactive' : ''}`}
+                      title={overridden ? 'Inactive for covers while the override is set (still tags the product for coverage analysis).' : undefined}
                       onClick={() => togglePersona(p.id)}>{p.name}</button>
                   ))}
                   {personas.length === 0 && <span className="muted">No personas yet.</span>}
-                </div></div>
-              <div><label>Covers — derived</label>
-                <div className="muted" style={{ paddingTop: '.35rem' }}>{t.persona_covered_count}</div>
-                <small className="src">Sum of the selected personas' headcounts.</small></div>
+                </div>
+                {overridden && <small className="src">Inactive for covers — override in effect.</small>}</div>
+              <div style={overridden ? { opacity: 0.5 } : undefined}><label>Covers — derived</label>
+                <div className="muted" style={{ paddingTop: '.35rem', textDecoration: overridden ? 'line-through' : 'none' }}>{t.persona_covered_count}</div>
+                <small className="src">{overridden ? 'Not in effect — the override below wins.' : "Sum of the selected personas' headcounts."}</small></div>
               <div><label>Covers override</label>
                 <NumInput value={t.covered_count_override} allowEmpty
                   placeholder={String(t.persona_covered_count ?? 0)}
