@@ -120,7 +120,9 @@ def compute_context(db: Session, eng: models.Engagement) -> dict:
     ctx = {
         "bp": bp,
         "bp_covered": bp_covered,
-        "bp_price": bundles_service.catalog_annual_erp(db, bp.name) if bp is not None else Decimal("0"),
+        "bp_price": bundles_service.catalog_annual_erp(
+            db, bp.name, bundle_id=bp.id, **bundles_service.engagement_price_basis(eng),
+        ) if bp is not None else Decimal("0"),
         "required": required_by_persona(db, eng, sku_outcomes),
     }
     ctx["swapped_ids"], ctx["reasons"], ctx["cap"] = _fill_to_cap(db, eng, ctx)

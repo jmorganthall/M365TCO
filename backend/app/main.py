@@ -389,6 +389,7 @@ def meta(db=Depends(get_db)) -> dict:
         "unit_basis": list(m.UNIT_BASIS),
         "coverage": list(m.COVERAGE),
         "term_durations": list(m.TERM_DURATIONS),
+        "billing_plans": list(m.BILLING_PLANS),
         "default_tooling_pct": float(gd.default_tooling_pct),
         "default_market": settings.default_market,
         "default_currency": settings.default_currency,

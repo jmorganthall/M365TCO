@@ -24,11 +24,21 @@ const netAnnual = (s) => {
   return (base + addons) * (1 - (Number(s.target_discount_pct) || 0))
 }
 
+const TERM_LABELS = { P1M: 'Month-to-month', P1Y: '1-year commit', P3Y: '3-year commit' }
+
 // One scenario as an expandable line item: base bundle + net $/seat/mo up top;
-// base price, discount, and add-on bundles (composed) in the expander.
-function ScenarioRow({ p, s, r, bundles, basis, update, remove, onAnalyze, swapEnabled, swapRow }) {
+// base price, discount, term/payment model, and add-on bundles (composed) in
+// the expander. Term/billing default to the engagement's pricing basis; a
+// line-level selection requotes the composed target from the catalog.
+function ScenarioRow({ p, s, r, bundles, basis, meta, update, remove, onAnalyze, swapEnabled, swapRow }) {
   const [open, setOpen] = useState(false)
   const bundleName = (id) => bundles.find((b) => b.id === id)?.name || id
+  // Effective quoting basis for this line: scenario override else engagement default.
+  const effBasis = {
+    ...basis,
+    term: s.term_duration || basis.term,
+    billing: s.billing_plan || basis.billing,
+  }
   const payload = () => (s.addons || []).map((a) => ({ bundle_id: a.bundle_id, unit_price_annual: a.unit_price_annual }))
   // Resolve the scenario's base bundle (by name/key) so only add-ons ELIGIBLE for
   // that base are offered (the composition logic layer). À-la-carte add-ons layer
@@ -56,9 +66,9 @@ function ScenarioRow({ p, s, r, bundles, basis, update, remove, onAnalyze, swapE
         <td className="num">{p.headcount}</td>
         <td>
           <SkuCombobox value={s.target_sku_reference} style={{ minWidth: 130 }}
-            segment={basis.segment} term={basis.term} billing={basis.billing}
+            segment={effBasis.segment} term={effBasis.term} billing={effBasis.billing}
             onChange={(v) => update(s.id, { target_sku_reference: v })}
-            onSelectSku={(sku) => sku && update(s.id, { target_unit_price_annual: sku.annual_unit_price })} />
+            onSelectSku={(sku) => sku && update(s.id, { target_unit_price_annual: sku.annual_erp_price })} />
           {(s.addons || []).length > 0 && (
             <div className="pill-list" style={{ marginTop: 3 }}>
               {s.addons.map((a) => <span key={a.bundle_id} className="badge muted">+ {bundleName(a.bundle_id)}</span>)}
@@ -114,14 +124,34 @@ function ScenarioRow({ p, s, r, bundles, basis, update, remove, onAnalyze, swapE
               <div><label>Base $/seat/mo</label>
                 <MonthlyInput annual={s.target_unit_price_annual}
                   onCommit={(annual) => update(s.id, { target_unit_price_annual: annual })} />
-                <small className="src">Auto-filled from the selected SKU's list price.</small></div>
+                <small className="src">Auto-filled from the catalog ERP · {usd(s.target_unit_price_annual)}/yr.</small></div>
               <div><label>Discount</label>
                 <input type="number" step="0.05" value={s.target_discount_pct ?? ''} placeholder="e.g. 0.15"
                   onChange={(e) => update(s.id, { target_discount_pct: e.target.value === '' ? null : Number(e.target.value) })} />
                 <small className="src">Fraction off the composed list (0.15 = 15%).</small></div>
               <div><label>Net $/seat/mo</label>
                 <div className="muted" style={{ paddingTop: '.35rem', fontSize: '.95rem' }}>{usd(netAnnual(s) / 12)}</div>
-                <small className="src">(base + add-ons) × (1 − discount).</small></div>
+                <small className="src">(base + add-ons) × (1 − discount) · {usd(netAnnual(s))}/yr.</small></div>
+              <div><label>Term</label>
+                <select value={s.term_duration || ''}
+                  onChange={(e) => update(s.id, { term_duration: e.target.value || null })}>
+                  <option value="">Default ({TERM_LABELS[basis.term] || basis.term})</option>
+                  {(meta?.term_durations || []).filter((t) => t !== basis.term)
+                    .map((t) => <option key={t} value={t}>{TERM_LABELS[t] || t}</option>)}
+                </select>
+                <small className="src">Commitment length; changing it requotes from the catalog.</small></div>
+              <div><label>Payment</label>
+                <select value={s.billing_plan || ''}
+                  onChange={(e) => update(s.id, { billing_plan: e.target.value || null })}>
+                  <option value="">Default ({basis.billing})</option>
+                  {(meta?.billing_plans || []).filter((b) => b !== basis.billing)
+                    .map((b) => <option key={b} value={b}>{b}</option>)}
+                </select>
+                <small className="src">Billing plan; changing it requotes from the catalog.</small></div>
+              <div><label>Quoting basis</label>
+                <div className="muted" style={{ paddingTop: '.35rem' }}>
+                  {effBasis.segment} · {TERM_LABELS[effBasis.term] || effBasis.term} · {effBasis.billing}</div>
+                <small className="src">Which priced catalog variant quotes this line.</small></div>
             </div>
             <div style={{ marginTop: '.3rem' }}>
               <label>Add-ons (layer onto the base — outcomes union, prices sum)</label>
@@ -168,7 +198,8 @@ export default function Scenarios({ engagement, meta }) {
   }
   useEffect(() => {
     load()
-    api.get('/api/catalog/bundles').then(setBundles).catch(() => {})
+    // Quote autofill prices at THIS engagement's pricing basis.
+    api.get(`/api/catalog/bundles?engagement_id=${eid}`).then(setBundles).catch(() => {})
     compute()
   }, [eid])
 
@@ -275,7 +306,7 @@ export default function Scenarios({ engagement, meta }) {
             )
             return (
               <ScenarioRow key={p.id} p={p} s={s} r={resultFor(s.id)} bundles={bundles} basis={basis}
-                update={update} remove={remove} onAnalyze={() => setAnalyzePersona(p)}
+                meta={meta} update={update} remove={remove} onAnalyze={() => setAnalyzePersona(p)}
                 swapEnabled={swapEnabled} swapRow={swapFor(s.id)} />
             )
           })}

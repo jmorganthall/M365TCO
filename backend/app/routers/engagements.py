@@ -58,6 +58,10 @@ def create_engagement(payload: schemas.EngagementCreate, db: Session = Depends(g
         data["modeling_horizon_years"] = gd.default_modeling_horizon_years
     if data.get("default_segment") is None:
         data["default_segment"] = gd.default_segment
+    if data.get("default_term_duration") is None:
+        data["default_term_duration"] = gd.default_term_duration
+    if data.get("default_billing_plan") is None:
+        data["default_billing_plan"] = gd.default_billing_plan
     if data.get("workshop_date") is None:
         data["workshop_date"] = date.today()  # default the Customer Info workshop date to today
     eng = models.Engagement(**data)
@@ -192,6 +196,8 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
             target_sku_reference=s.target_sku_reference,
             target_unit_price_annual=s.target_unit_price_annual,
             target_discount_pct=s.target_discount_pct, in_scope=s.in_scope,
+            bp_swap_optout=s.bp_swap_optout,
+            term_duration=s.term_duration, billing_plan=s.billing_plan,
         )
         # Bundle ids are global, so add-ons carry across unchanged.
         for ad in s.addons:

@@ -143,11 +143,17 @@ FK, UUID PK, cascade-deleted with the engagement.
   `<style>`/`<img>` context. Editable on the Readout tab. A future reusable
   `BrandTheme` library (global presets seeding these fields) would follow §2.
 - **Pricing-basis inheritance:** `default_segment` / `default_term_duration`
-  (P1Y) / `default_billing_plan` (Annual) are the middle tier of a three-level
-  chain — **GlobalDefaults → Engagement → line item** — that selects which priced
-  catalog variant a picked SKU resolves to. A Nonprofit customer sets
-  `default_segment = Nonprofit` once; a `CurrentMicrosoftLicense` can still
-  override any of the three per line (§4.5). Because the tuple `(segment, term,
+  (P1Y) / `default_billing_plan` (Monthly — the typical customer case, a 1-year
+  commit paid monthly) are the middle tier of a three-level chain —
+  **GlobalDefaults → Engagement → line item** — that selects which priced
+  catalog variant a picked SKU or quoted bundle resolves to. All three are
+  copied from GlobalDefaults on creation and editable on the Customer Info tab.
+  The same basis drives recommend-a-path, the BP swap, and price autofill
+  (`services/bundles.catalog_price_row` — deterministic: ratified SKU→Bundle
+  rows first, then tolerant title match, ranked segment → term → billing plan →
+  plainest title, $0/trial rows last). A Nonprofit customer sets
+  `default_segment = Nonprofit` once; a `CurrentMicrosoftLicense` (§4.5) or a
+  `PersonaScenario` (§4.8) can still override per line. Because the tuple `(segment, term,
   billing)` resolves to exactly one priced `MicrosoftSku` row, the list price
   seeded on a SKU pick is the correct variant's — no silent same-title collapse.
   All three are GUI-surfaced: the global default in Settings → Defaults, the
@@ -460,8 +466,15 @@ FK, UUID PK, cascade-deleted with the engagement.
   via `target_sku_reference`; **add-on bundles** via `ScenarioAddon` (§4.8a).
 - **Field ownership:** user-entered (`target_sku_reference` + `target_unit_price_annual`
   = the base bundle & its list price, `target_discount_pct`, `in_scope`,
-  `bp_swap_optout`); **engine-output cache** (`current_spend_annual`,
-  `target_spend_annual`, `delta_annual`).
+  `bp_swap_optout`, `term_duration`/`billing_plan`); **engine-output cache**
+  (`current_spend_annual`, `target_spend_annual`, `delta_annual`).
+- **Line-level quoting basis:** `term_duration` / `billing_plan` (NULL = inherit
+  the engagement defaults — the bottom tier of the §4.1 hierarchy). Changing
+  either on a PATCH **requotes** the base bundle and every add-on from the
+  catalog at the new basis (`_requote_scenario`); prices stay hand-editable
+  afterward, and a quote that finds nothing (price 0) never clobbers a manual
+  price. Prices are stored annualized (the engine's canonical unit); the GUI
+  edits and displays per-seat **monthly** ($/yr ÷ 12) as the human-facing unit.
 - **`bp_swap_optout`** is the per-persona override of the engagement's Business
   Premium swap (§4.8b): `false` = inherit the engagement default, `true` = keep this
   persona's own target even when the swap is on.
@@ -552,7 +565,9 @@ existing first-class objects** — it stores no new state, which is the correct
   join following §2 — do not stash them in a blob.*
 - **Added outcomes**: bundle coverage minus everything the persona has today
   (MS + third-party) — the upside story.
-- **Prices**: catalog annual ERP by best-effort match, overridable per request.
+- **Prices**: catalog annual ERP (the customer-facing retail baseline), resolved
+  deterministically at the engagement's pricing basis (§4.1) — ratified
+  SKU→Bundle rows first, then tolerant title match — overridable per request.
 The chosen bundle is applied by writing a normal `PersonaScenario` (§4.8); the
 analysis itself is transient.
 

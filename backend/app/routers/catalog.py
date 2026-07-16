@@ -95,26 +95,24 @@ def list_segments(db: Session = Depends(get_db)):
     return {"segments": ordered}
 
 
-def _bundle_list_price(db: Session, name: str) -> float:
-    """Best-effort catalog list price for a bundle name (annual, prefer P1Y)."""
-    like = f"%{name}%"
-    row = db.execute(
-        select(models.MicrosoftSku)
-        .where(
-            (models.MicrosoftSku.sku_title.ilike(like))
-            | (models.MicrosoftSku.product_title.ilike(like))
-        )
-        .order_by(models.MicrosoftSku.term_duration.desc())
-    ).scalars().first()
-    return float(row.annual_unit_price) if row else 0.0
+def _bundle_list_price(db: Session, bundle, basis: dict) -> float:
+    """Catalog price for a bundle: the annual ERP (the customer-facing retail
+    baseline) via the shared deterministic resolver, so the UI autofill and the
+    recommend-a-path optimizer quote the same number for the same bundle."""
+    return float(bundles_service.catalog_annual_erp(db, bundle.name, bundle_id=bundle.id, **basis))
 
 
 @router.get("/bundles")
-def list_bundles(db: Session = Depends(get_db)):
-    """The staple bundle library (the SKU → Bundle → Outcomes spine), with a
-    best-effort catalog list price so the UI can auto-fill target/add-on prices.
-    Each add-on also carries its eligibility set — the base bundles it may layer
-    onto (empty `eligible_base_ids` + `alacarte=true` means any base)."""
+def list_bundles(engagement_id: str | None = None, db: Session = Depends(get_db)):
+    """The staple bundle library (the SKU → Bundle → Outcomes spine), with the
+    catalog ERP so the UI can auto-fill target/add-on prices. Quoted at the
+    engagement's pricing basis when `engagement_id` is given, else the global
+    defaults. Each add-on also carries its eligibility set — the base bundles it
+    may layer onto (empty `eligible_base_ids` + `alacarte=true` means any base)."""
+    from ..services import defaults as defaults_service
+
+    eng = db.get(models.Engagement, engagement_id) if engagement_id else None
+    basis = bundles_service.engagement_price_basis(eng or defaults_service.get_defaults(db))
     rows = bundles_service.list_bundles(db)
     by_id = {b.id: b for b in rows}
     elig_map = bundles_service.eligibility_map(db)
@@ -125,7 +123,7 @@ def list_bundles(db: Session = Depends(get_db)):
             "id": b.id, "key": b.key, "name": b.name, "kind": b.kind,
             "base_bundle_id": b.base_bundle_id,
             "base_name": by_id[b.base_bundle_id].name if b.base_bundle_id in by_id else None,
-            "list_price_annual": _bundle_list_price(db, b.name),
+            "list_price_annual": _bundle_list_price(db, b, basis),
             "sort_order": b.sort_order,
             # Eligibility (only meaningful for add-ons).
             "eligible_base_ids": eligible,

@@ -138,7 +138,7 @@ export default function App() {
 
             {tab === 'baseline' && (
               <>
-                <CustomerInfo engagement={active} onUpdate={(u) => { setActive(u); reload() }} />
+                <CustomerInfo engagement={active} meta={meta} onUpdate={(u) => { setActive(u); reload() }} />
                 <Personas engagement={active} meta={meta} />
                 <CurrentLicensing engagement={active} meta={meta} />
               </>
