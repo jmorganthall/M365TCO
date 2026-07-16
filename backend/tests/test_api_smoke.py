@@ -25,7 +25,7 @@ def test_full_workshop_flow_okta_500_vs_450(client):
     okta = client.post(
         f"/api/engagements/{eid}/third-party",
         json={"name": "Okta", "raw_cost": 50000, "cost_period": "Annual",
-              "covered_count": 500, "renewal_date": "2026-09-01"},
+              "covered_count_override": 500, "renewal_date": "2026-09-01"},
     ).json()
     assert float(okta["per_unit_annual_cost"]) == 100.0
 
@@ -82,7 +82,7 @@ def test_unratified_ai_suggestion_does_not_feed_math(client):
     kw = client.post(f"/api/engagements/{eid}/personas",
                      json={"name": "KW", "headcount": 100}).json()
     okta = client.post(f"/api/engagements/{eid}/third-party",
-                       json={"name": "Okta", "raw_cost": 10000, "covered_count": 100}).json()
+                       json={"name": "Okta", "raw_cost": 10000, "covered_count_override": 100}).json()
     # UNRATIFIED coverage entry
     client.post(f"/api/engagements/{eid}/coverage",
                 json={"outcome_id": identity["id"], "product_kind": "ThirdParty",
@@ -172,7 +172,7 @@ def test_coverage_gaps_scoped_to_scenario(client):
     # Map a third party (untagged) to Identity via the coverage map → it's now
     # delivered today, so it drops off the gap list even though it's not tagged.
     okta = client.post(f"/api/engagements/{eid}/third-party", json={
-        "name": "Okta", "raw_cost": 45000, "cost_period": "Annual", "covered_count": 100}).json()
+        "name": "Okta", "raw_cost": 45000, "cost_period": "Annual", "covered_count_override": 100}).json()
     client.post(f"/api/engagements/{eid}/coverage", json={
         "outcome_id": identity["id"], "product_kind": "ThirdParty",
         "third_party_product_id": okta["id"], "coverage": "Full", "ratified": True})
@@ -195,7 +195,7 @@ def test_quick_wins_surface_in_readout(client):
         "quantity_assigned": 250, "unit_price_paid_annual": 300, "persona_ids": [kw["id"]]})
     # Okta covers Identity for 250 → duplicates the current E3 coverage.
     okta = client.post(f"/api/engagements/{eid}/third-party", json={
-        "name": "Okta", "raw_cost": 45000, "cost_period": "Annual", "covered_count": 250}).json()
+        "name": "Okta", "raw_cost": 45000, "cost_period": "Annual", "covered_count_override": 250}).json()
     client.post(f"/api/engagements/{eid}/coverage", json={
         "outcome_id": identity["id"], "product_kind": "ThirdParty",
         "third_party_product_id": okta["id"], "coverage": "Full", "ratified": True})
@@ -427,10 +427,14 @@ def test_third_party_persona_tags_roundtrip(client):
     kw = client.post(f"/api/engagements/{eid}/personas", json={"name": "KW", "headcount": 500}).json()
     fl = client.post(f"/api/engagements/{eid}/personas", json={"name": "FL", "headcount": 200}).json()
     tp = client.post(f"/api/engagements/{eid}/third-party", json={
-        "name": "Okta", "raw_cost": 50000, "covered_count": 700,
+        "name": "Okta", "raw_cost": 50000,
         "persona_ids": [kw["id"], fl["id"]],
     }).json()
     assert set(tp["persona_ids"]) == {kw["id"], fl["id"]}
+    # Covers derives from the tagged personas' combined headcount (500 + 200).
+    assert tp["covered_count"] == 700
+    assert tp["covered_count_override"] is None
+    assert tp["persona_covered_count"] == 700
     # Patch that omits persona_ids leaves tags intact but recomputes derived cost.
     upd = client.patch(f"/api/engagements/{eid}/third-party/{tp['id']}",
                        json={"is_managed": True, "tooling_pct": 0.3}).json()

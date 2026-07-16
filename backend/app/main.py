@@ -65,6 +65,41 @@ def _backfill_license_persona_tags(db) -> None:
         db.commit()
 
 
+def _backfill_third_party_covers_override(db) -> None:
+    """One-time migration: third-party covers used to be a manual field; it is now
+    DERIVED from the tagged personas' combined headcount, with an optional operator
+    override that always wins. Preserve every pre-existing manual value that
+    disagrees with the derived sum as an explicit override — so no existing
+    engagement's math changes — and re-derive rows whose covers was 0 (an unfilled
+    zero deriving from personas is exactly the behavior change). Idempotent: the
+    new write path keeps `override IS NULL ⇒ covers == persona sum`, so on later
+    startups nothing matches."""
+    from decimal import Decimal
+
+    from sqlalchemy import select
+
+    from . import models
+
+    changed = False
+    for tp in db.execute(select(models.ThirdPartyProduct)).scalars().all():
+        if tp.covered_count_override is not None:
+            continue
+        derived = tp.persona_covered_count
+        if tp.covered_count == derived:
+            continue
+        if tp.covered_count and tp.covered_count > 0:
+            tp.covered_count_override = tp.covered_count  # preserve the manual value
+        else:
+            tp.covered_count = derived
+            tp.per_unit_annual_cost = (
+                Decimal(str(tp.effective_annual_cost)) / Decimal(derived)
+                if derived > 0 else Decimal("0")
+            )
+        changed = True
+    if changed:
+        db.commit()
+
+
 def _backfill_coverage_bundle_ids(db) -> None:
     """One-time migration: resolve existing Microsoft SKU coverage rows onto a
     Bundle id from their (shortcode) microsoft_sku_reference. Idempotent."""
@@ -215,6 +250,7 @@ async def lifespan(_app: FastAPI):
         _backfill_addon_eligibility(db)
         _backfill_new_bundle_coverage(db)
         _backfill_license_persona_tags(db)
+        _backfill_third_party_covers_override(db)
         _backfill_coverage_bundle_ids(db)
         _backfill_binary_coverage(db)
         _backfill_new_default_outcomes(db)

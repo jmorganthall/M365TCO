@@ -147,7 +147,7 @@ def test_optimizer_respects_addon_eligibility(client):
     client.patch(f"/api/engagements/{eid}/personas/{kw['id']}",
                  json={"required_outcome_ids": [edr_oc["id"]]})
     edr = client.post(f"/api/engagements/{eid}/third-party",
-                      json={"name": "CrowdStrike", "raw_cost": 20000, "covered_count": 100}).json()
+                      json={"name": "CrowdStrike", "raw_cost": 20000, "covered_count_override": 100}).json()
     client.post(f"/api/engagements/{eid}/coverage",
                 json={"outcome_id": edr_oc["id"], "product_kind": "ThirdParty",
                       "third_party_product_id": edr["id"], "coverage": "Full", "ratified": True})
@@ -180,7 +180,7 @@ def test_scenario_targeting_bundle_name_resolves_and_displaces(client):
     kw = client.post(f"/api/engagements/{eid}/personas",
                      json={"name": "KW", "headcount": 100}).json()
     okta = client.post(f"/api/engagements/{eid}/third-party",
-                       json={"name": "Okta", "raw_cost": 10000, "covered_count": 100}).json()
+                       json={"name": "Okta", "raw_cost": 10000, "covered_count_override": 100}).json()
     client.post(f"/api/engagements/{eid}/coverage",
                 json={"outcome_id": identity["id"], "product_kind": "ThirdParty",
                       "third_party_product_id": okta["id"], "coverage": "Full", "ratified": True})
@@ -210,9 +210,9 @@ def test_scenario_composes_base_plus_addons_with_discount(client):
     # Two third-party tools: one Identity (covered by E3 base), one EDR
     # (covered only by the E5 Security add-on).
     idp = client.post(f"/api/engagements/{eid}/third-party",
-                      json={"name": "Okta", "raw_cost": 10000, "covered_count": 100}).json()
+                      json={"name": "Okta", "raw_cost": 10000, "covered_count_override": 100}).json()
     edr = client.post(f"/api/engagements/{eid}/third-party",
-                      json={"name": "CrowdStrike", "raw_cost": 20000, "covered_count": 100}).json()
+                      json={"name": "CrowdStrike", "raw_cost": 20000, "covered_count_override": 100}).json()
     for tp, oc in [(idp, ident), (edr, endpoint)]:
         client.post(f"/api/engagements/{eid}/coverage",
                     json={"outcome_id": oc["id"], "product_kind": "ThirdParty",
@@ -641,7 +641,7 @@ def test_edit_bundle_coverage_resolves_bundle_and_feeds_displacement(client):
     oc = client.post(f"/api/engagements/{eid}/outcomes",
                      json={"name": "Bespoke Capability", "is_custom": True}).json()
     tool = client.post(f"/api/engagements/{eid}/third-party",
-                       json={"name": "NicheTool", "raw_cost": 5000, "covered_count": 50}).json()
+                       json={"name": "NicheTool", "raw_cost": 5000, "covered_count_override": 50}).json()
     client.post(f"/api/engagements/{eid}/coverage",
                 json={"outcome_id": oc["id"], "product_kind": "ThirdParty",
                       "third_party_product_id": tool["id"], "coverage": "Full", "ratified": True})
@@ -685,7 +685,7 @@ def test_recommend_path_composes_base_plus_gap_closing_addon(client):
     client.patch(f"/api/engagements/{eid}/personas/{kw['id']}",
                  json={"required_outcome_ids": [edr_oc["id"]]})
     edr = client.post(f"/api/engagements/{eid}/third-party",
-                      json={"name": "CrowdStrike", "raw_cost": 20000, "covered_count": 100}).json()
+                      json={"name": "CrowdStrike", "raw_cost": 20000, "covered_count_override": 100}).json()
     client.post(f"/api/engagements/{eid}/coverage",
                 json={"outcome_id": edr_oc["id"], "product_kind": "ThirdParty",
                       "third_party_product_id": edr["id"], "coverage": "Full", "ratified": True})

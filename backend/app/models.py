@@ -434,7 +434,14 @@ class ThirdPartyProduct(Base):
     unit_basis: Mapped[str] = mapped_column(
         SAEnum(*UNIT_BASIS, name="unit_basis"), default="Users"
     )
+    # DERIVED effective coverage: the sum of the tagged personas' headcounts,
+    # unless the operator sets covered_count_override (which always wins). Kept
+    # persisted so the engine/exports read one canonical value; recomputed by
+    # _normalize_third_party() on every product write and on persona changes.
     covered_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Operator override for covers (e.g. the product covers more users than the
+    # tagged personas). NULL = derive from personas.
+    covered_count_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
     per_unit_annual_cost: Mapped[float] = mapped_column(Numeric(14, 6), default=0)
     renewal_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     commitment_term_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -452,6 +459,16 @@ class ThirdPartyProduct(Base):
     def persona_ids(self) -> list[str]:
         """The personas this product applies to (many-to-many tags)."""
         return [pl.persona_id for pl in self.persona_links]
+
+    @property
+    def persona_covered_count(self) -> int:
+        """Derived covers: combined headcount of the tagged personas. Tolerates a
+        dangling link (persona deleted) by counting it as 0."""
+        return sum(
+            pl.persona.headcount or 0
+            for pl in self.persona_links
+            if pl.persona is not None
+        )
 
 
 class ThirdPartyPersona(Base):
@@ -471,6 +488,7 @@ class ThirdPartyPersona(Base):
     persona_id: Mapped[str] = mapped_column(ForeignKey("personas.id"), index=True)
 
     product: Mapped[ThirdPartyProduct] = relationship(back_populates="persona_links")
+    persona: Mapped[Persona] = relationship()
 
 
 class CoverageMapEntry(Base):

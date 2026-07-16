@@ -24,6 +24,7 @@ _SKIP = {"engagement_id", ("current_microsoft_licenses", "persona_id")}
 _PROVENANCE = {"source_tag", "ai_suggested", "ratified", "seed_key", "catalog_version"}
 _DERIVED = {
     "annual_cost", "effective_annual_cost", "per_unit_annual_cost",
+    "covered_count",  # persona-headcount sum unless covered_count_override is set
     "current_spend_annual", "target_spend_annual", "delta_annual",
     "displaced_users", "disposition", "residual_count", "residual_annual_cost",
 }
@@ -34,7 +35,8 @@ _LABELS = {
     "quantity_assigned": "Assigned", "quantity_purchased": "Purchased",
     "discount_pct": "Discount", "price_basis": "Price basis", "persona_ids": "Applies to",
     "raw_cost": "Cost (as entered)", "cost_period": "Period", "annual_cost": "Annual cost",
-    "covered_count": "Covers", "per_unit_annual_cost": "$/unit/yr", "is_managed": "Managed",
+    "covered_count": "Covers", "covered_count_override": "Covers override",
+    "per_unit_annual_cost": "$/unit/yr", "is_managed": "Managed",
     "tooling_pct": "Tooling %", "effective_annual_cost": "Effective $/yr",
     "commitment_term_months": "Commitment (months)", "unit_basis": "Unit basis",
     "renewal_date": "Renewal", "source_tag": "Source", "outcome_id": "Outcome",
