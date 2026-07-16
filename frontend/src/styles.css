@@ -228,6 +228,14 @@ small.src { color: var(--muted); font-size: .72rem; }
 }
 .tag-toggle:hover { border-color: var(--accent); color: var(--ink); }
 .tag-toggle.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* A covers override is in effect: persona tags no longer drive covers, so they
+   render greyed/dashed (still clickable — tagging also feeds coverage analysis). */
+.tag-toggle.inactive { opacity: .45; border-style: dashed; }
+.tag-toggle.on.inactive { background: var(--panel2); border-color: var(--border); color: var(--muted); }
+.tag-toggle.inactive:hover { opacity: .8; }
+/* A badge that acts as a button (e.g. the OVERRIDE chip opening row details). */
+button.chip-btn { cursor: pointer; background: transparent; font-weight: 600; }
+button.chip-btn:hover { filter: brightness(1.25); }
 
 /* ---- Mobile: the sidebar becomes an off-canvas drawer ----
    On narrow screens the fixed 264px sidebar squeezed the main content, so below
