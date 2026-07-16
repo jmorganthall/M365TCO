@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api, usd } from '../api'
+import { api, usd, money } from '../api'
 import BundleAnalysis from './BundleAnalysis.jsx'
 import SkuCombobox from './SkuCombobox.jsx'
 
@@ -30,7 +30,7 @@ const TERM_LABELS = { P1M: 'Month-to-month', P1Y: '1-year commit', P3Y: '3-year 
 // base price, discount, term/payment model, and add-on bundles (composed) in
 // the expander. Term/billing default to the engagement's pricing basis; a
 // line-level selection requotes the composed target from the catalog.
-function ScenarioRow({ p, s, r, bundles, basis, meta, update, remove, onAnalyze, swapEnabled, swapRow }) {
+function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove, onAnalyze, swapEnabled, swapRow }) {
   const [open, setOpen] = useState(false)
   const bundleName = (id) => bundles.find((b) => b.id === id)?.name || id
   // Effective quoting basis for this line: scenario override else engagement default.
@@ -108,9 +108,9 @@ function ScenarioRow({ p, s, r, bundles, basis, meta, update, remove, onAnalyze,
         <td className="num">{usd(netAnnual(s) / 12)}</td>
         <td><input type="checkbox" style={{ width: 'auto' }} checked={s.in_scope}
           onChange={(e) => update(s.id, { in_scope: e.target.checked })} /></td>
-        <td className="num">{r ? usd(r.current_spend_annual) : '—'}</td>
-        <td className="num">{r ? usd(r.target_spend_annual) : '—'}</td>
-        <td className={`num ${r && r.delta_annual < 0 ? 'pos' : ''}`}>{r ? usd(r.delta_annual) : '—'}</td>
+        <td className="num">{r ? money(r.current_spend_annual, moneyUnit) : '—'}</td>
+        <td className="num">{r ? money(r.target_spend_annual, moneyUnit) : '—'}</td>
+        <td className={`num ${r && r.delta_annual < 0 ? 'pos' : ''}`}>{r ? money(r.delta_annual, moneyUnit) : '—'}</td>
         <td className="num">
           <button className="ghost sm" onClick={onAnalyze}>⚡</button>{' '}
           <button className="danger sm" onClick={() => remove(s.id)}>Remove</button>
@@ -181,7 +181,7 @@ function ScenarioRow({ p, s, r, bundles, basis, meta, update, remove, onAnalyze,
   )
 }
 
-export default function Scenarios({ engagement, meta }) {
+export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
   const eid = engagement.id
   const [personas, setPersonas] = useState([])
   const [scenarios, setScenarios] = useState([])
@@ -278,7 +278,7 @@ export default function Scenarios({ engagement, meta }) {
           Target &amp; Delta below; deselect per persona in the table.
           {swapEnabled && result?.bp_swap && (
             <> · <b>{result.bp_swap.swapped_count}</b> swapped ({result.bp_swap.swapped_users} users),
-              combined delta <b className={result.bp_swap.swap_delta_annual < 0 ? 'pos' : ''}>{usd(result.bp_swap.swap_delta_annual)}</b>/yr
+              combined delta <b className={result.bp_swap.swap_delta_annual < 0 ? 'pos' : ''}>{money(result.bp_swap.swap_delta_annual, moneyUnit)}</b>
               {result.bp_swap.cap && <> · {result.bp_swap.cap.committed_seats} of {result.bp_swap.cap.max} BP seats</>}
               {result.bp_swap.capped_count > 0 && <> · <b className="neg">{result.bp_swap.capped_count}</b> eligible over cap</>}</>
           )}
@@ -306,7 +306,8 @@ export default function Scenarios({ engagement, meta }) {
             )
             return (
               <ScenarioRow key={p.id} p={p} s={s} r={resultFor(s.id)} bundles={bundles} basis={basis}
-                meta={meta} update={update} remove={remove} onAnalyze={() => setAnalyzePersona(p)}
+                meta={meta} moneyUnit={moneyUnit} update={update} remove={remove}
+                onAnalyze={() => setAnalyzePersona(p)}
                 swapEnabled={swapEnabled} swapRow={swapFor(s.id)} />
             )
           })}
@@ -323,7 +324,7 @@ export default function Scenarios({ engagement, meta }) {
         <div className="popcheck" style={{ marginTop: '1rem' }}>
           <b>Net TCO delta (in-scope):</b>{' '}
           <span className={result.rollup.net_tco_delta_annual < 0 ? 'pos' : ''}>
-            {usd(result.rollup.net_tco_delta_annual)}
+            {money(result.rollup.net_tco_delta_annual, moneyUnit)}
           </span>{' '}
           <small className="muted">{result.rollup.net_tco_delta_annual < 0 ? '(saving)' : result.rollup.net_tco_delta_annual > 0 ? '(cost increase)' : ''}</small>
           {' · '}In-scope headcount {result.rollup.population_check.in_scope_persona_headcount}
@@ -337,7 +338,7 @@ export default function Scenarios({ engagement, meta }) {
           {result.scenarios.filter((s) => s.offsets?.length).map((s) => (
             <div key={s.scenario_id} className="muted" style={{ fontSize: '.82rem' }}>
               <b style={{ color: 'var(--ink)' }}>{s.persona_name}</b> displaces:{' '}
-              {s.offsets.map((o) => `${o.third_party_product_name} (${o.credited_units} × ${usd(o.per_unit_annual_cost)} = ${usd(o.credited_offset_annual)})`).join(', ')}
+              {s.offsets.map((o) => `${o.third_party_product_name} (${o.credited_units} × ${money(o.per_unit_annual_cost, moneyUnit)} = ${money(o.credited_offset_annual, moneyUnit)})`).join(', ')}
             </div>
           ))}
         </div>

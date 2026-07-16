@@ -42,4 +42,14 @@ export const api = {
 export const usd = (n) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(n || 0))
 
+// Money display unit: values are stored/computed ANNUALIZED (the engine's
+// canonical unit); humans gut-check monthly, so views default to $/mo and a
+// header toggle switches to $/yr. A per-browser view preference — not domain
+// data — so it lives in localStorage.
+export const money = (annual, unit) =>
+  unit === 'yr' ? `${usd(annual)}/yr` : `${usd(Number(annual || 0) / 12)}/mo`
+
+export const loadMoneyUnit = () => localStorage.getItem('tco-money-unit') || 'mo'
+export const saveMoneyUnit = (u) => localStorage.setItem('tco-money-unit', u)
+
 export const pct = (n) => `${(Number(n || 0) * 100).toFixed(0)}%`

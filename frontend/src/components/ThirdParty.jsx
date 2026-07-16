@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api, usd, pct } from '../api'
+import { api, money, pct } from '../api'
 
 // A number input for an inline (auto-saving) line-item field. Holds local text
 // state so you can clear it and TYPE a new number freely; it commits on blur or
@@ -25,7 +25,7 @@ function NumInput({ value, onCommit, style, step, disabled, placeholder, allowEm
 // One third-party product as an expandable line item (same form as Current
 // Licensing): core fields up top, an expander for the details — vendor, managed
 // split, renewal/commitment, provenance, and the persona tags it applies to.
-function ProductRow({ t, meta, personas, update, remove }) {
+function ProductRow({ t, meta, personas, moneyUnit, update, remove }) {
   const [open, setOpen] = useState(false)
   const tagIds = t.persona_ids || []
   const tagNames = tagIds.map((id) => personas.find((p) => p.id === id)?.name).filter(Boolean)
@@ -61,7 +61,7 @@ function ProductRow({ t, meta, personas, update, remove }) {
             {(meta?.cost_periods || []).map((s) => <option key={s}>{s}</option>)}
           </select>
         </td>
-        <td className="num">{usd(t.effective_annual_cost)}</td>
+        <td className="num">{money(t.effective_annual_cost, moneyUnit)}</td>
         <td><div className="pill-list">
           {chips.length ? chips : <span className="muted" style={{ fontSize: '.75rem' }}>unmanaged</span>}
         </div></td>
@@ -113,8 +113,8 @@ function ProductRow({ t, meta, personas, update, remove }) {
                   placeholder={String(t.persona_covered_count ?? 0)}
                   onCommit={(n) => update(t.id, { covered_count_override: n })} />
                 <small className="src">Optional — wins over the derived value (e.g. the product covers more users than the personas). Blank = derived.</small></div>
-              <div><label>Covers · Effective $/yr · $/unit/yr</label>
-                <div className="muted" style={{ paddingTop: '.35rem' }}>{t.covered_count} · {usd(t.effective_annual_cost)} · {usd(t.per_unit_annual_cost)}</div>
+              <div><label>Covers · Effective cost · per unit</label>
+                <div className="muted" style={{ paddingTop: '.35rem' }}>{t.covered_count} · {money(t.effective_annual_cost, moneyUnit)} · {money(t.per_unit_annual_cost, moneyUnit)}</div>
                 <small className="src">Derived from personas/override, cost, and managed split.</small></div>
             </div>
           </td>
@@ -124,7 +124,7 @@ function ProductRow({ t, meta, personas, update, remove }) {
   )
 }
 
-export default function ThirdParty({ engagement, meta }) {
+export default function ThirdParty({ engagement, meta, moneyUnit = 'mo' }) {
   const base = `/api/engagements/${engagement.id}/third-party`
   const [items, setItems] = useState([])
   const [err, setErr] = useState('')
@@ -264,11 +264,12 @@ export default function ThirdParty({ engagement, meta }) {
       <table>
         <thead><tr>
           <th></th><th>Product</th><th className="num">Cost</th><th>Period</th>
-          <th className="num">Effective $/yr</th><th>Details</th><th></th>
+          <th className="num">Effective cost</th><th>Details</th><th></th>
         </tr></thead>
         <tbody>
           {items.map((t) => (
-            <ProductRow key={t.id} t={t} meta={meta} personas={personas} update={update} remove={remove} />
+            <ProductRow key={t.id} t={t} meta={meta} personas={personas} moneyUnit={moneyUnit}
+              update={update} remove={remove} />
           ))}
         </tbody>
       </table>
