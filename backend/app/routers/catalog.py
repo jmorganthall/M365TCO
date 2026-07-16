@@ -95,6 +95,34 @@ def list_segments(db: Session = Depends(get_db)):
     return {"segments": ordered}
 
 
+@router.get("/basis-options")
+def list_basis_options(db: Session = Depends(get_db)):
+    """The value lists for every pricing-basis picker (segment × term × billing
+    plan), pulled from the LOADED PRICE SHEET — distinct values present in the
+    catalog, with the known defaults unioned in so pickers work before any
+    import. Data-driven on purpose: a new segment/term/billing value in a future
+    sheet shows up in every picker without code changes (the UI pretty-labels
+    the values it knows and shows new ones raw). Billing 'None' (trial rows,
+    not purchasable) is excluded."""
+    def _distinct(col, known: tuple, exclude: tuple = ()) -> list[str]:
+        present = {
+            v for v in db.execute(select(col).distinct()).scalars()
+            if v and v not in exclude
+        }
+        present.update(known)
+        ordered = [v for v in known if v in present]
+        ordered += sorted(v for v in present if v not in known)
+        return ordered
+
+    return {
+        "segments": _distinct(models.MicrosoftSku.segment, models.SEGMENTS),
+        "terms": _distinct(models.MicrosoftSku.term_duration, models.TERM_DURATIONS),
+        "billing_plans": _distinct(
+            models.MicrosoftSku.billing_plan, models.BILLING_PLANS, exclude=("None",)
+        ),
+    }
+
+
 def _bundle_list_price(db: Session, bundle, basis: dict) -> float:
     """Catalog price for a bundle: the annual ERP (the customer-facing retail
     baseline) via the shared deterministic resolver, so the UI autofill and the

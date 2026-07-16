@@ -149,7 +149,8 @@ export default function App() {
               <>
                 <CustomerInfo engagement={active} meta={meta} onUpdate={(u) => { setActive(u); reload() }} />
                 <Personas engagement={active} meta={meta} />
-                <CurrentLicensing engagement={active} meta={meta} />
+                <CurrentLicensing engagement={active} meta={meta}
+                  onUpdate={(u) => { setActive(u); reload() }} />
               </>
             )}
             {tab === 'thirdparty' && <ThirdParty engagement={active} meta={meta} moneyUnit={moneyUnit} />}

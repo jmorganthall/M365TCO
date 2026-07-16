@@ -1,16 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { api, usd, pct } from '../api'
 import SkuCombobox, { loadSkus, matchSku } from './SkuCombobox.jsx'
-
-// Term/billing choices, phrased the way an SA thinks about them on a call.
-const TERM_OPTS = [['P1Y', 'Yearly commit'], ['P1M', 'Monthly commit'], ['P3Y', '3-year commit']]
-const BILLING_OPTS = [['Annual', 'Yearly purchase'], ['Monthly', 'Monthly purchase']]
-// The effective pricing basis for a line = its override, else the engagement default.
-const effBasis = (l, eng) => ({
-  segment: l.segment || eng.default_segment,
-  term: l.term_duration || eng.default_term_duration,
-  billing: l.billing_plan || eng.default_billing_plan,
-})
+import { BasisSelect, EngagementBasisEditor, effectiveBasis } from './basis.jsx'
 
 // Prices are stored annualized (the engine works in annual USD); the UI edits
 // per-seat MONTHLY. Convert at the boundary only.
@@ -33,12 +24,12 @@ function MonthlyPriceInput({ annual, onCommit, style }) {
 // One license line. The row shows the common case (fully assigned); the ▸
 // expander reveals the non-standard modifiers — shelfware (assigned below
 // purchased), discount, price basis, persona — so they don't clutter the row.
-function LicenseRow({ l, eng, meta, personas, segments, catalog, update, remove }) {
+function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
   const [open, setOpen] = useState(false)
   const fullyAssigned = l.quantity_assigned === l.quantity_purchased
   const tagIds = l.persona_ids || []
   const tagNames = tagIds.map((id) => personas.find((p) => p.id === id)?.name).filter(Boolean)
-  const basis = effBasis(l, eng)
+  const basis = effectiveBasis(l, eng)
   // Flag a SKU that doesn't correspond to any official catalog SKU (only when a
   // price list is loaded to validate against). Resolve within the line's basis.
   const notInCatalog = catalog.length && (l.sku_reference || '').trim() && !matchSku(catalog, l.sku_reference, basis)
@@ -124,21 +115,17 @@ function LicenseRow({ l, eng, meta, personas, segments, catalog, update, remove 
             </div>
             <div className="grid c4" style={{ padding: '.4rem 0' }}>
               <div><label>Segment</label>
-                <select value={l.segment || ''} onChange={(e) => update(l.id, { segment: e.target.value || null })}>
-                  <option value="">Default ({eng.default_segment})</option>
-                  {segments.filter((s) => s !== eng.default_segment).map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
+                <BasisSelect kind="segment" value={l.segment} inheritFrom={eng.default_segment}
+                  onChange={(v) => update(l.id, { segment: v })} />
                 <small className="src">Overrides the engagement segment for this line only.</small></div>
-              <div><label>Commit term</label>
-                <select value={l.term_duration || ''} onChange={(e) => update(l.id, { term_duration: e.target.value || null })}>
-                  <option value="">Default ({eng.default_term_duration})</option>
-                  {TERM_OPTS.filter(([v]) => v !== eng.default_term_duration).map(([v, lbl]) => <option key={v} value={v}>{lbl}</option>)}
-                </select></div>
-              <div><label>Purchase</label>
-                <select value={l.billing_plan || ''} onChange={(e) => update(l.id, { billing_plan: e.target.value || null })}>
-                  <option value="">Default ({eng.default_billing_plan})</option>
-                  {BILLING_OPTS.filter(([v]) => v !== eng.default_billing_plan).map(([v, lbl]) => <option key={v} value={v}>{lbl}</option>)}
-                </select>
+              <div><label>Term</label>
+                <BasisSelect kind="term" value={l.term_duration} meta={meta}
+                  inheritFrom={eng.default_term_duration}
+                  onChange={(v) => update(l.id, { term_duration: v })} /></div>
+              <div><label>Payment</label>
+                <BasisSelect kind="billing" value={l.billing_plan} meta={meta}
+                  inheritFrom={eng.default_billing_plan}
+                  onChange={(v) => update(l.id, { billing_plan: v })} />
                 <small className="src">Re-pick the SKU after changing basis to reseed its list price.</small></div>
               <div></div>
             </div>
@@ -149,20 +136,14 @@ function LicenseRow({ l, eng, meta, personas, segments, catalog, update, remove 
   )
 }
 
-export default function CurrentLicensing({ engagement, meta }) {
+export default function CurrentLicensing({ engagement, meta, onUpdate }) {
   const base = `/api/engagements/${engagement.id}/current-licenses`
   const [items, setItems] = useState([])
   const [personas, setPersonas] = useState([])
   const [err, setErr] = useState('')
-  // Local copy of the engagement so its pricing-basis defaults edit live here.
-  const [eng, setEng] = useState(engagement)
-  const [segments, setSegments] = useState([])
-  useEffect(() => { setEng(engagement) }, [engagement.id])
-  async function patchEng(patch) {
-    setEng((e) => ({ ...e, ...patch }))
-    try { await api.patch(`/api/engagements/${engagement.id}`, patch) } catch (e) { setErr(e.message) }
-  }
-  const engBasis = { segment: eng.default_segment, term: eng.default_term_duration, billing: eng.default_billing_plan }
+  // The engagement comes from App state and basis edits flow back via onUpdate,
+  // so every tab's SKU lookups follow the same object (no stale local copy).
+  const engBasis = effectiveBasis(null, engagement)
   const blank = {
     sku_reference: '', quantity: 0,
     unit_price_paid_annual: 0, price_basis: 'Unknown', source_tag: 'CustomerStated',
@@ -182,7 +163,6 @@ export default function CurrentLicensing({ engagement, meta }) {
   useEffect(() => {
     load()
     api.get('/api/admin/ai/status').then((s) => setAiEnabled(s.enabled)).catch(() => {})
-    api.get('/api/catalog/segments').then((r) => setSegments(r.segments || [])).catch(() => setSegments([]))
     loadSkus().then(setCatalog)
   }, [engagement.id])
 
@@ -263,20 +243,8 @@ export default function CurrentLicensing({ engagement, meta }) {
           <b>Pricing basis (engagement default)</b>
           <small className="src">The default segment/term/purchase for this customer — inherited from the global default, overridable per line. Sets which catalog price a picked SKU seeds.</small>
         </div>
-        <div className="grid c4" style={{ marginTop: '.4rem' }}>
-          <div><label>Segment</label>
-            <select value={eng.default_segment} onChange={(e) => patchEng({ default_segment: e.target.value })}>
-              {(segments.length ? segments : [eng.default_segment]).map((s) => <option key={s} value={s}>{s}</option>)}
-            </select></div>
-          <div><label>Commit term</label>
-            <select value={eng.default_term_duration} onChange={(e) => patchEng({ default_term_duration: e.target.value })}>
-              {TERM_OPTS.map(([v, lbl]) => <option key={v} value={v}>{lbl}</option>)}
-            </select></div>
-          <div><label>Purchase</label>
-            <select value={eng.default_billing_plan} onChange={(e) => patchEng({ default_billing_plan: e.target.value })}>
-              {BILLING_OPTS.map(([v, lbl]) => <option key={v} value={v}>{lbl}</option>)}
-            </select></div>
-          <div></div>
+        <div style={{ marginTop: '.4rem' }}>
+          <EngagementBasisEditor engagement={engagement} meta={meta} onUpdate={onUpdate} onError={setErr} />
         </div>
       </div>
 
@@ -371,7 +339,7 @@ export default function CurrentLicensing({ engagement, meta }) {
         </tr></thead>
         <tbody>
           {items.map((l) => (
-            <LicenseRow key={l.id} l={l} eng={eng} meta={meta} personas={personas} segments={segments} catalog={catalog} update={update} remove={remove} />
+            <LicenseRow key={l.id} l={l} eng={engagement} meta={meta} personas={personas} catalog={catalog} update={update} remove={remove} />
           ))}
         </tbody>
       </table>

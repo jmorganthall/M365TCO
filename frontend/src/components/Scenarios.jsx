@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { api, usd, money } from '../api'
 import BundleAnalysis from './BundleAnalysis.jsx'
 import SkuCombobox from './SkuCombobox.jsx'
+import { BasisSelect, effectiveBasis, termLabel, billingLabel } from './basis.jsx'
 
 // Target prices are stored annualized; the UI edits per-seat MONTHLY.
 const annualToMonthly = (a) => (a ? Math.round((Number(a) / 12) * 100) / 100 : 0)
@@ -23,8 +24,6 @@ const netAnnual = (s) => {
   const addons = (s.addons || []).reduce((sum, a) => sum + (Number(a.unit_price_annual) || 0), 0)
   return (base + addons) * (1 - (Number(s.target_discount_pct) || 0))
 }
-
-const TERM_LABELS = { P1M: 'Month-to-month', P1Y: '1-year commit', P3Y: '3-year commit' }
 
 // One scenario as an expandable line item: base bundle + net $/seat/mo up top;
 // base price, discount, term/payment model, and add-on bundles (composed) in
@@ -133,24 +132,16 @@ function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove,
                 <div className="muted" style={{ paddingTop: '.35rem', fontSize: '.95rem' }}>{usd(netAnnual(s) / 12)}</div>
                 <small className="src">(base + add-ons) × (1 − discount) · {usd(netAnnual(s))}/yr.</small></div>
               <div><label>Term</label>
-                <select value={s.term_duration || ''}
-                  onChange={(e) => update(s.id, { term_duration: e.target.value || null })}>
-                  <option value="">Default ({TERM_LABELS[basis.term] || basis.term})</option>
-                  {(meta?.term_durations || []).filter((t) => t !== basis.term)
-                    .map((t) => <option key={t} value={t}>{TERM_LABELS[t] || t}</option>)}
-                </select>
+                <BasisSelect kind="term" value={s.term_duration} meta={meta} inheritFrom={basis.term}
+                  onChange={(v) => update(s.id, { term_duration: v })} />
                 <small className="src">Commitment length; changing it requotes from the catalog.</small></div>
               <div><label>Payment</label>
-                <select value={s.billing_plan || ''}
-                  onChange={(e) => update(s.id, { billing_plan: e.target.value || null })}>
-                  <option value="">Default ({basis.billing})</option>
-                  {(meta?.billing_plans || []).filter((b) => b !== basis.billing)
-                    .map((b) => <option key={b} value={b}>{b}</option>)}
-                </select>
+                <BasisSelect kind="billing" value={s.billing_plan} meta={meta} inheritFrom={basis.billing}
+                  onChange={(v) => update(s.id, { billing_plan: v })} />
                 <small className="src">Billing plan; changing it requotes from the catalog.</small></div>
               <div><label>Quoting basis</label>
                 <div className="muted" style={{ paddingTop: '.35rem' }}>
-                  {effBasis.segment} · {TERM_LABELS[effBasis.term] || effBasis.term} · {effBasis.billing}</div>
+                  {effBasis.segment} · {termLabel(effBasis.term)} · {billingLabel(effBasis.billing)}</div>
                 <small className="src">Which priced catalog variant quotes this line.</small></div>
             </div>
             <div style={{ marginTop: '.3rem' }}>
@@ -198,10 +189,14 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
   }
   useEffect(() => {
     load()
-    // Quote autofill prices at THIS engagement's pricing basis.
-    api.get(`/api/catalog/bundles?engagement_id=${eid}`).then(setBundles).catch(() => {})
     compute()
   }, [eid])
+  // Quote autofill prices at THIS engagement's pricing basis — refetched when
+  // the basis changes (edited on Customer Info) so add-on autofill never quotes
+  // at a stale basis.
+  useEffect(() => {
+    api.get(`/api/catalog/bundles?engagement_id=${eid}`).then(setBundles).catch(() => {})
+  }, [eid, engagement.default_segment, engagement.default_term_duration, engagement.default_billing_plan])
 
   const scenarioFor = (pid) => scenarios.find((s) => s.persona_id === pid)
   const resultFor = (sid) => result?.scenarios.find((r) => r.scenario_id === sid)
@@ -221,10 +216,7 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
   }
   // Engagement pricing-basis default, so a target bundle resolves to the right
   // segment/term variant's list price (same chain as Current Licensing).
-  const basis = {
-    segment: engagement.default_segment, term: engagement.default_term_duration,
-    billing: engagement.default_billing_plan,
-  }
+  const basis = effectiveBasis(null, engagement)
 
   async function createScenario(pid) {
     try { await api.post(`/api/engagements/${eid}/scenarios`, { persona_id: pid, target_sku_reference: '', target_unit_price_annual: 0 }); load() }

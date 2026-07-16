@@ -137,7 +137,7 @@ export default function SkuCombobox({
     seen.add(key)
     catalogOpts.push({
       title: sku.sku_title, sub: sku.product_title, sku,
-      meta: `${_money(sku.annual_unit_price)} · ${sku.segment} · ${sku.term_duration}`,
+      meta: `${_money(sku.annual_unit_price)} · ${sku.segment} · ${sku.term_duration} · ${sku.billing_plan}`,
     })
   }
   const seedOpts = (q
