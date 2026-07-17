@@ -125,9 +125,11 @@ def test_best_bundle_respects_business_cap_when_enabled(client):
     eid = eng["id"]
     p = client.post(f"/api/engagements/{eid}/personas",
                     json={"name": "KW", "headcount": 400}).json()
-    # On E3 today → required = E3 outcomes, all covered by Business Premium (gapless).
+    # On Office 365 E3 today → required ⊆ Business Premium coverage (gapless).
+    # (M365 E3 would no longer qualify: it now carries Endpoint Privilege
+    # Management, which Business Premium lacks — a genuine capability gap.)
     client.post(f"/api/engagements/{eid}/current-licenses", json={
-        "sku_reference": "Microsoft 365 E3", "quantity_assigned": 400,
+        "sku_reference": "Office 365 E3", "quantity_assigned": 400,
         "unit_price_paid_annual": 432, "persona_ids": [p["id"]]})
     url = f"/api/engagements/{eid}/personas/{p['id']}/bundle-analysis"
 
@@ -167,7 +169,7 @@ def test_best_bundle_cap_counts_seats_recommended_for_other_personas(client):
         "target_unit_price_annual": 264, "in_scope": True})
     # Small is on E3 today so Business Premium is gapless for it.
     client.post(f"/api/engagements/{eid}/current-licenses", json={
-        "sku_reference": "Microsoft 365 E3", "quantity_assigned": 40,
+        "sku_reference": "Office 365 E3", "quantity_assigned": 40,
         "unit_price_paid_annual": 432, "persona_ids": [small["id"]]})
 
     # Analyzing Small (40): 250 already recommended, 50 left → 40 fits, BP still recommended.

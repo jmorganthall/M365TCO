@@ -16,7 +16,7 @@ def _setup(client, headcount=100):
                     json={"name": "KW", "headcount": headcount}).json()
     # Currently on E3 → required outcomes = E3 coverage (all covered by BP).
     client.post(f"/api/engagements/{eid}/current-licenses", json={
-        "sku_reference": "Microsoft 365 E3", "quantity_assigned": headcount,
+        "sku_reference": "Office 365 E3", "quantity_assigned": headcount,
         "unit_price_paid_annual": 432, "persona_ids": [p["id"]]})
     client.post(f"/api/engagements/{eid}/scenarios", json={
         "persona_id": p["id"], "target_sku_reference": "Microsoft 365 E3",
@@ -95,7 +95,7 @@ def test_swap_fills_up_to_cap_and_never_breaches(client):
     p2 = client.post(f"/api/engagements/{eid}/personas", json={"name": "B", "headcount": 140}).json()
     for p in (p1, p2):
         client.post(f"/api/engagements/{eid}/current-licenses", json={
-            "sku_reference": "Microsoft 365 E3", "quantity_assigned": p["headcount"],
+            "sku_reference": "Office 365 E3", "quantity_assigned": p["headcount"],
             "unit_price_paid_annual": 432, "persona_ids": [p["id"]]})
         client.post(f"/api/engagements/{eid}/scenarios", json={
             "persona_id": p["id"], "target_sku_reference": "Microsoft 365 E3",

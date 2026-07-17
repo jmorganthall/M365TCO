@@ -1,28 +1,121 @@
 {
-  "version": "2026-07-seed-v5-identity-split-chat",
+  "version": "2026-07-seed-v6-endpoint-privilege-mgmt",
   "note": "Default outcome library — the initial seed for the globally-editable DefaultOutcome table. Editing the global library (Settings > Outcomes) changes the template for NEW engagements only; existing engagements keep their own copy. outcome keys are stable identifiers referenced by coverage.json. Security outcomes are split to the granularity at which Microsoft SKUs and third-party tools actually differ: Endpoint = EPP vs EDR; Email = Hygiene vs Advanced Threat Protection; Identity is split three ways — SSO/IdP (directory + single sign-on, on any tenant) vs MFA & Conditional Access (Entra P1: dynamic/adaptive auth) vs Governance (Entra P2: PIM/access reviews); plus CASB and the two telephony layers (PBX vs PSTN). Collaboration is Team Chat & Meetings (Teams vs Slack/Zoom); desktop apps and cloud storage are their own outcomes.",
   "outcomes": [
-    { "key": "endpoint-protection", "name": "Endpoint Protection (EPP)", "description": "Anti-malware, next-gen antivirus, and attack surface reduction on endpoints." },
-    { "key": "endpoint-edr", "name": "Endpoint Detection & Response (EDR)", "description": "Behavioral threat detection, investigation, and automated response on endpoints." },
-    { "key": "email-hygiene", "name": "Email Hygiene / Anti-Spam", "description": "Baseline spam, malware, and connection filtering for email." },
-    { "key": "email-atp", "name": "Advanced Email Threat Protection", "description": "Safe links, safe attachments, and anti-phishing / impersonation protection." },
-    { "key": "device-management", "name": "Mobile Device & App Management (MDM/MAM)", "description": "Device enrollment, configuration, compliance, and mobile application management." },
-    { "key": "identity-sso", "name": "Identity Provider & SSO", "description": "Cloud identity provider / directory and single sign-on (SSO) — the IdP that federates application access (e.g. Entra ID / Azure AD). Present on any Microsoft cloud suite; displaces a standalone IdP directory (Okta, Ping)." },
-    { "key": "identity-mfa", "name": "MFA & Conditional Access", "description": "Multi-factor authentication with Conditional Access — dynamic, risk/context-based access policies (Entra ID P1 or higher). Stronger than the basic security-defaults MFA included with any tenant." },
-    { "key": "identity-governance", "name": "Identity Governance & Privileged Access", "description": "Privileged Identity Management, Identity Protection, access reviews, and entitlement management." },
-    { "key": "information-protection", "name": "Information Protection & Compliance", "description": "Data classification, sensitivity labeling, and data loss prevention (DLP)." },
-    { "key": "drive-encryption", "name": "Endpoint Drive Encryption", "description": "Full-disk encryption management (e.g. BitLocker/FileVault) across endpoints." },
-    { "key": "security-awareness", "name": "Security Awareness / Phishing Simulation", "description": "User security training and simulated phishing campaigns." },
-    { "key": "cloud-app-security", "name": "Cloud App Security / SaaS Visibility (CASB)", "description": "Shadow-IT discovery, SaaS session control, and OAuth app governance." },
-    { "key": "chat-meetings", "name": "Team Chat & Meetings", "description": "Team messaging / channels and online meetings — the collaboration hub (Microsoft Teams vs. Slack, Zoom, Google Meet). Desktop apps and cloud storage are separate outcomes." },
-    { "key": "telephony-pbx", "name": "Cloud PBX / Call Control", "description": "Cloud phone system (Teams Phone / Phone System): call control, auto-attendant, call queues — the PBX layer, independent of PSTN dial-tone." },
-    { "key": "telephony-pstn", "name": "PSTN Dial-Tone", "description": "Outbound/inbound PSTN calling (Calling Plan, Operator Connect, or Direct Routing) — the dial-tone layer that rides on the Cloud PBX." },
-    { "key": "siem", "name": "Security Information & Event Management (SIEM)", "description": "Log aggregation, correlation, detection, and automated response (SOAR)." },
-    { "key": "analytics-bi", "name": "Analytics & Business Intelligence", "description": "Self-service BI, dashboards, and enterprise reporting." },
-    { "key": "process-automation", "name": "Process Automation / Workflow Automation", "description": "Low-code workflow automation, approvals, and robotic process automation." },
-    { "key": "threat-vuln-management", "name": "Threat Exposure & Vulnerability Management", "description": "Continuous vulnerability assessment, exposure scoring, and remediation guidance." },
-    { "key": "information-governance", "name": "Information Governance / eDiscovery / Records Management", "description": "Retention, legal hold, content search, eDiscovery, and records management." },
-    { "key": "desktop-software", "name": "Desktop Software", "description": "The installed desktop Office apps (Word, Excel, PowerPoint, Outlook, etc.) — distinguishes mainline bundles from web/mobile-only Frontline bundles." },
-    { "key": "cloud-storage-full", "name": "Full-Size Cloud Storage", "description": "Full per-user cloud storage / large mailbox (e.g. 1TB+ OneDrive, 50GB+ mailbox) — distinguishes mainline bundles from the limited storage in Frontline bundles." }
+    {
+      "key": "endpoint-protection",
+      "name": "Endpoint Protection (EPP)",
+      "description": "Anti-malware, next-gen antivirus, and attack surface reduction on endpoints."
+    },
+    {
+      "key": "endpoint-edr",
+      "name": "Endpoint Detection & Response (EDR)",
+      "description": "Behavioral threat detection, investigation, and automated response on endpoints."
+    },
+    {
+      "key": "email-hygiene",
+      "name": "Email Hygiene / Anti-Spam",
+      "description": "Baseline spam, malware, and connection filtering for email."
+    },
+    {
+      "key": "email-atp",
+      "name": "Advanced Email Threat Protection",
+      "description": "Safe links, safe attachments, and anti-phishing / impersonation protection."
+    },
+    {
+      "key": "device-management",
+      "name": "Mobile Device & App Management (MDM/MAM)",
+      "description": "Device enrollment, configuration, compliance, and mobile application management."
+    },
+    {
+      "key": "identity-sso",
+      "name": "Identity Provider & SSO",
+      "description": "Cloud identity provider / directory and single sign-on (SSO) — the IdP that federates application access (e.g. Entra ID / Azure AD). Present on any Microsoft cloud suite; displaces a standalone IdP directory (Okta, Ping)."
+    },
+    {
+      "key": "identity-mfa",
+      "name": "MFA & Conditional Access",
+      "description": "Multi-factor authentication with Conditional Access — dynamic, risk/context-based access policies (Entra ID P1 or higher). Stronger than the basic security-defaults MFA included with any tenant."
+    },
+    {
+      "key": "identity-governance",
+      "name": "Identity Governance & Privileged Access",
+      "description": "Privileged Identity Management, Identity Protection, access reviews, and entitlement management."
+    },
+    {
+      "key": "information-protection",
+      "name": "Information Protection & Compliance",
+      "description": "Data classification, sensitivity labeling, and data loss prevention (DLP)."
+    },
+    {
+      "key": "drive-encryption",
+      "name": "Endpoint Drive Encryption",
+      "description": "Full-disk encryption management (e.g. BitLocker/FileVault) across endpoints."
+    },
+    {
+      "key": "security-awareness",
+      "name": "Security Awareness / Phishing Simulation",
+      "description": "User security training and simulated phishing campaigns."
+    },
+    {
+      "key": "cloud-app-security",
+      "name": "Cloud App Security / SaaS Visibility (CASB)",
+      "description": "Shadow-IT discovery, SaaS session control, and OAuth app governance."
+    },
+    {
+      "key": "chat-meetings",
+      "name": "Team Chat & Meetings",
+      "description": "Team messaging / channels and online meetings — the collaboration hub (Microsoft Teams vs. Slack, Zoom, Google Meet). Desktop apps and cloud storage are separate outcomes."
+    },
+    {
+      "key": "telephony-pbx",
+      "name": "Cloud PBX / Call Control",
+      "description": "Cloud phone system (Teams Phone / Phone System): call control, auto-attendant, call queues — the PBX layer, independent of PSTN dial-tone."
+    },
+    {
+      "key": "telephony-pstn",
+      "name": "PSTN Dial-Tone",
+      "description": "Outbound/inbound PSTN calling (Calling Plan, Operator Connect, or Direct Routing) — the dial-tone layer that rides on the Cloud PBX."
+    },
+    {
+      "key": "siem",
+      "name": "Security Information & Event Management (SIEM)",
+      "description": "Log aggregation, correlation, detection, and automated response (SOAR)."
+    },
+    {
+      "key": "analytics-bi",
+      "name": "Analytics & Business Intelligence",
+      "description": "Self-service BI, dashboards, and enterprise reporting."
+    },
+    {
+      "key": "process-automation",
+      "name": "Process Automation / Workflow Automation",
+      "description": "Low-code workflow automation, approvals, and robotic process automation."
+    },
+    {
+      "key": "threat-vuln-management",
+      "name": "Threat Exposure & Vulnerability Management",
+      "description": "Continuous vulnerability assessment, exposure scoring, and remediation guidance."
+    },
+    {
+      "key": "information-governance",
+      "name": "Information Governance / eDiscovery / Records Management",
+      "description": "Retention, legal hold, content search, eDiscovery, and records management."
+    },
+    {
+      "key": "desktop-software",
+      "name": "Desktop Software",
+      "description": "The installed desktop Office apps (Word, Excel, PowerPoint, Outlook, etc.) — distinguishes mainline bundles from web/mobile-only Frontline bundles."
+    },
+    {
+      "key": "cloud-storage-full",
+      "name": "Full-Size Cloud Storage",
+      "description": "Full per-user cloud storage / large mailbox (e.g. 1TB+ OneDrive, 50GB+ mailbox) — distinguishes mainline bundles from the limited storage in Frontline bundles."
+    },
+    {
+      "key": "endpoint-privilege-management",
+      "name": "Endpoint Privilege Management",
+      "description": "Just-in-time elevation and admin-rights removal on endpoints — standard users run approved elevated tasks without holding local admin."
+    }
   ]
 }

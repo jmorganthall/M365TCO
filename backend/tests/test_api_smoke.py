@@ -450,3 +450,57 @@ def test_third_party_persona_tags_roundtrip(client):
     tpo = [o for o in data["objects"] if o["type"] == "ThirdPartyProduct"][0]
     assert "persona_ids" in {f["key"] for f in tpo["fields"]}
     assert tpo["records"][0]["cells"]["persona_ids"]["ref"]["label"] == "KW"
+
+
+def test_stale_classification_cleared_when_naturally_fully_eliminated(client):
+    """A residual classification answers for a residual; when displacement grows
+    to cover the whole product, compute auto-clears the stale classification —
+    in the persisted row AND the same compute's response."""
+    eng = client.post("/api/engagements", json={"customer_name": "AutoClear Co"}).json()
+    eid = eng["id"]
+    outcomes = client.get(f"/api/engagements/{eid}/outcomes").json()
+    identity = next(o for o in outcomes if o["seed_key"] == "identity-sso")
+    kw = client.post(f"/api/engagements/{eid}/personas",
+                     json={"name": "KW", "headcount": 450}).json()
+    okta = client.post(f"/api/engagements/{eid}/third-party",
+                       json={"name": "Okta", "raw_cost": 50000, "covered_count_override": 500}).json()
+    client.post(f"/api/engagements/{eid}/coverage",
+                json={"outcome_id": identity["id"], "product_kind": "ThirdParty",
+                      "third_party_product_id": okta["id"], "ratified": True})
+    client.post(f"/api/engagements/{eid}/scenarios",
+                json={"persona_id": kw["id"], "target_sku_reference": "E3",
+                      "target_unit_price_annual": 0})
+
+    # Partial displacement (450/500) → classify the 50-user residual as intended.
+    client.post(f"/api/engagements/{eid}/compute")
+    client.put(f"/api/engagements/{eid}/dispositions/{okta['id']}/override",
+               json={"override": "None", "residual_intent": "IntendedOutOfScope"})
+    d = client.post(f"/api/engagements/{eid}/compute").json()["dispositions"][0]
+    assert d["residual_intent"] == "IntendedOutOfScope"
+
+    # Headcount grows past covers → naturally FullyEliminated → auto-cleared.
+    client.patch(f"/api/engagements/{eid}/personas/{kw['id']}", json={"headcount": 550})
+    d = client.post(f"/api/engagements/{eid}/compute").json()["dispositions"][0]
+    assert d["disposition"] == "FullyEliminated"
+    assert d["residual_intent"] == "None"
+    assert d["override"] == "None"
+    # And it stays cleared on the next compute (persisted, not just reported).
+    d = client.post(f"/api/engagements/{eid}/compute").json()["dispositions"][0]
+    assert d["residual_intent"] == "None"
+
+
+def test_endpoint_privilege_management_seeded_and_covered(client):
+    """The Endpoint Privilege Management outcome ships in the seed library and
+    maps to Microsoft 365 E3 and E5 in the seeded coverage spine."""
+    eng = client.post("/api/engagements", json={"customer_name": "EPM Co"}).json()
+    eid = eng["id"]
+    outcomes = client.get(f"/api/engagements/{eid}/outcomes").json()
+    epm = next(o for o in outcomes if o["seed_key"] == "endpoint-privilege-management")
+    assert epm["name"] == "Endpoint Privilege Management"
+
+    coverage = client.get(f"/api/engagements/{eid}/coverage").json()
+    ms_rows = [c for c in coverage
+               if c["product_kind"] == "MicrosoftSku" and c["outcome_id"] == epm["id"]]
+    bundles = {b["id"]: b["key"] for b in client.get("/api/catalog/bundles").json()}
+    covered_by = sorted(bundles.get(c["bundle_id"], c["microsoft_sku_reference"]) for c in ms_rows)
+    assert covered_by == ["m365-e3", "m365-e5"]
