@@ -136,6 +136,9 @@ class Engagement(Base):
     snapshots: Mapped[list["EngagementSnapshot"]] = relationship(
         back_populates="engagement", cascade="all, delete-orphan"
     )
+    narratives: Mapped[list["ScenarioNarrative"]] = relationship(
+        back_populates="engagement", cascade="all, delete-orphan"
+    )
 
 
 class Persona(Base):
@@ -551,6 +554,31 @@ class PersonaScenario(Base):
     )
 
 
+class ScenarioNarrative(Base):
+    """AI-drafted per-persona business narrative (today / what's new / value) —
+    ENGAGEMENT-LEVEL data: generated on demand from the Readout, stored so it
+    survives navigation, and replaced wholesale when the operator regenerates.
+    Advisory — never feeds the math. persona_name is snapshotted so the text
+    stays displayable even if the persona is later renamed or removed."""
+
+    __tablename__ = "scenario_narratives"
+    __table_args__ = (
+        UniqueConstraint("engagement_id", "persona_id", name="uq_narrative_persona"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    engagement_id: Mapped[str] = mapped_column(ForeignKey("engagements.id"))
+    persona_id: Mapped[str | None] = mapped_column(ForeignKey("personas.id"), nullable=True)
+    persona_name: Mapped[str] = mapped_column(String, default="")
+    today: Mapped[str] = mapped_column(Text, default="")
+    whats_new: Mapped[str] = mapped_column(Text, default="")
+    value: Mapped[str] = mapped_column(Text, default="")
+    generated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    source_tag: Mapped[str] = _source_tag_col(default="AISuggestedUnconfirmed")
+
+    engagement: Mapped[Engagement] = relationship(back_populates="narratives")
+
+
 class ScenarioAddon(Base):
     """An add-on bundle layered onto a scenario's base target. The engine composes
     the future state = base + add-ons (union outcomes, sum prices). Each carries its
@@ -628,7 +656,10 @@ class GlobalDefaults(Base):
     # Ground-floor quoting-basis defaults: which priced catalog variant (term ×
     # billing plan) prices a bundle. New engagements copy these on creation and
     # scenarios may vary per line — the global → engagement → line hierarchy.
-    # P1Y + Monthly = 1-year commit paid monthly, the typical customer-facing case.
+    # P1Y + Monthly = 1-year commit paid monthly, the typical customer-facing
+    # case. NOTE: the sheet prices this variant ~5% above the published list
+    # (which is the P1Y/Annual ERP) — that premium is NCE's real charge for
+    # monthly billing on an annual commit, not a data error.
     default_term_duration: Mapped[str] = mapped_column(String, default="P1Y")
     default_billing_plan: Mapped[str] = mapped_column(String, default="Monthly")
     # Operator-selected OpenRouter model for AI assist. Empty = use the env

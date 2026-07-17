@@ -213,6 +213,14 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
             residual_intent=d.residual_intent,
         ))
 
+    for n in src.narratives:
+        db.add(models.ScenarioNarrative(
+            engagement_id=dst.id,
+            persona_id=persona_map.get(n.persona_id) if n.persona_id else None,
+            persona_name=n.persona_name, today=n.today, whats_new=n.whats_new,
+            value=n.value, generated_at=n.generated_at,
+        ))
+
     db.commit()
     db.refresh(dst)
     return dst
@@ -249,18 +257,40 @@ def sanity_check(engagement_id: str, db: Session = Depends(get_db)):
     return {"model": model, "findings": findings}
 
 
+def _narratives_response(eng: models.Engagement) -> dict:
+    rows = sorted(eng.narratives, key=lambda n: n.persona_name)
+    return {
+        "narratives": [
+            {"persona": n.persona_name, "today": n.today,
+             "whats_new": n.whats_new, "value": n.value}
+            for n in rows
+        ],
+        "generated_at": rows[0].generated_at.isoformat() if rows else None,
+    }
+
+
+@router.get("/{engagement_id}/narrative")
+def get_scenario_narrative(engagement_id: str, db: Session = Depends(get_db)):
+    """The STORED per-persona business narratives (engagement-level data — they
+    survive navigation; empty until first generated)."""
+    return _narratives_response(_get_engagement(db, engagement_id))
+
+
 @router.post("/{engagement_id}/narrative")
 def scenario_narrative(engagement_id: str, db: Session = Depends(get_db)):
-    """Advisory per-scenario business narrative (today / what's new / value) for
-    the in-scope personas. Grounded in the computed scenarios; drafts the story
-    for the SA to tell, then review. Never edits data or the math (PRD 9)."""
+    """(Re)generate the per-scenario business narrative (today / what's new /
+    value) for the in-scope personas, grounded in the computed scenarios AND the
+    Customer Info context (who the customer is — the prompt weaves in market
+    direction / recent headlines when web search is enabled). The result is
+    STORED on the engagement (replacing the previous set) so it survives
+    navigation; it remains advisory and never feeds the math (PRD 9)."""
     eng = _get_engagement(db, engagement_id)
     if not ai.is_enabled():
         raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
     result = result_to_dict(compute.compute_and_persist(db, engagement_id))
     scenarios = narrative.build_narrative_payload(eng, result)
     if not scenarios:
-        return {"narratives": []}  # nothing in scope to narrate
+        return {"narratives": [], "generated_at": None}  # nothing in scope to narrate
     row = defaults.get_defaults(db)
     model = row.openrouter_model or settings.openrouter_model
     try:
@@ -269,10 +299,27 @@ def scenario_narrative(engagement_id: str, db: Session = Depends(get_db)):
             instructions=ai_prompts.get_instructions(db, "scenario_narrative"),
             model=model,
             web_search=row.openrouter_web_search,
+            customer=narrative.build_customer_context(eng),
         )
     except Exception as exc:  # network/model errors surface cleanly
         raise HTTPException(502, f"Narrative generation failed: {exc}")
-    return {"narratives": narratives}
+
+    # Replace the stored set wholesale — regeneration is the update path.
+    persona_by_name = {p.name: p.id for p in eng.personas}
+    for old in list(eng.narratives):
+        db.delete(old)
+    db.flush()
+    for n in narratives:
+        db.add(models.ScenarioNarrative(
+            engagement_id=engagement_id,
+            persona_id=persona_by_name.get(n.get("persona")),
+            persona_name=n.get("persona") or "",
+            today=n.get("today") or "", whats_new=n.get("whats_new") or "",
+            value=n.get("value") or "",
+        ))
+    db.commit()
+    db.refresh(eng)
+    return _narratives_response(eng)
 
 
 @router.get("/{engagement_id}/coverage-gaps")

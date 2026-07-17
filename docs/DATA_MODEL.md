@@ -144,7 +144,9 @@ FK, UUID PK, cascade-deleted with the engagement.
   `BrandTheme` library (global presets seeding these fields) would follow §2.
 - **Pricing-basis inheritance:** `default_segment` / `default_term_duration`
   (P1Y) / `default_billing_plan` (Monthly — the typical customer case, a 1-year
-  commit paid monthly) are the middle tier of a three-level chain —
+  commit paid monthly; note the sheet prices this variant ~5% above the
+  published list, NCE's real pay-monthly premium — the familiar published
+  number is the P1Y/Annual ERP ÷ 12) are the middle tier of a three-level chain —
   **GlobalDefaults → Engagement → line item** — that selects which priced
   catalog variant a picked SKU or quoted bundle resolves to. All three are
   copied from GlobalDefaults on creation and editable on the Customer Info tab.
@@ -534,7 +536,10 @@ This is the canonical example of the field-ownership rule, because one row mixes
 operator-owned and engine-owned fields.
 - **Identity:** `uuid`. **Scope:** engagement-scoped. One per third-party product.
 - **Operator-owned (survive recompute):** `override`, `override_reason`,
-  `residual_intent`.
+  `residual_intent`. One deliberate exception: when natural displacement alone
+  fully eliminates the product (no residual left to classify), compute clears a
+  stored classification automatically — an override with nothing to override is
+  stale; if a residual later reappears, the classification gate asks again.
 - **Engine-output (overwritten every compute):** `displaced_users`,
   `disposition`, `residual_count`, `residual_annual_cost`.
 - **Module rule:** `services/compute.py` reads the operator-owned fields **into**
@@ -584,15 +589,22 @@ read over existing first-class objects, the correct "don't create second-class
 data" outcome. `services/sanity.normalize_findings` is the pure validator (kept
 separate from the HTTP call for unit testing).
 
-### 4.10a-ter Scenario business narrative (derived, persists nothing)
+### 4.10a-ter Scenario business narrative (stored, regenerated on demand)
 `POST …/narrative` drafts the sales story for each in-scope persona scenario —
 today / what's new / value — grounded in the computed scenarios
 (`services/narrative.build_narrative_payload` — pure: persona, headcount, current
 SKUs, target bundle + add-ons, displaced third-party tools, and the annual
 delta), via the editable `scenario_narrative` AiPrompt on the resolved main
-model. Returns `[{persona, today, whats_new, value}]` on the Readout view. Like
-§4.10a it **stores no state and never feeds the math** — an advisory draft the SA
-reviews. It is the buildable-today part of the "business narrative" goal; the
+model. Returns `[{persona, today, whats_new, value}]` on the Readout view. The result
+is **stored on the engagement** as `ScenarioNarrative` rows (persona_id +
+snapshotted persona_name, today/whats_new/value, generated_at, provenance
+`AISuggestedUnconfirmed`) so it survives navigation — `GET …/narrative` returns
+the stored set; `POST …/narrative` regenerates and replaces it wholesale. The
+payload now also carries the **Customer Info context**
+(`build_customer_context`: name, industry, HQ, website, size, notes) so the
+prompt can weave supportable market-direction / headline / M&A observations in
+(grounded by web search when the operator enabled it). Advisory — it **never
+feeds the math**; a draft the SA reviews. It is the buildable-today part of the "business narrative" goal; the
 market-research enrichment (an external agent) and the Forrester TEI soft-savings
 overlay (§10) attach later as their own first-class overlays, not edits here.
 

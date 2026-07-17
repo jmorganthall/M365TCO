@@ -445,6 +445,24 @@ def compute_and_persist(db: Session, engagement_id: str) -> EngineResult:
         row.disposition = dr.disposition.value
         row.residual_count = dr.residual_count
         row.residual_annual_cost = dr.residual_annual_cost
+        # A classification (intended residual / forced elimination) exists to
+        # answer for a RESIDUAL. When natural displacement alone fully
+        # eliminates the product, there is no residual left to classify — any
+        # stored classification is stale, so clear it automatically rather than
+        # showing an override on a row with nothing to override. (If coverage
+        # later shrinks and a residual reappears, the classification gate asks
+        # again.) This is the one deliberate exception to "operator fields
+        # survive recompute".
+        naturally_full = dr.displaced_users > 0 and dr.displaced_users >= dr.covered_count
+        if naturally_full and (row.override != "None" or row.residual_intent != "None"):
+            row.override = "None"
+            row.override_reason = ""
+            row.residual_intent = "None"
+            # Mirror the clear onto this run's result so the response (and the
+            # readout rendered from it) never shows the just-cleared override.
+            dr.override = Override.NONE
+            dr.override_reason = ""
+            dr.residual_intent = ResidualIntent.NONE
 
     db.commit()
     return result

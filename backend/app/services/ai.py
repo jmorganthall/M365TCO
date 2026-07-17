@@ -328,16 +328,19 @@ def sanity_check(
 
 def scenario_narratives(
     scenarios: list[dict], instructions: str, model: str | None = None,
-    web_search: bool = False,
+    web_search: bool = False, customer: dict | None = None,
 ) -> list[dict]:
     """Draft a per-scenario business narrative (today / what's new / value) from
-    the grounded inputs built by services/narrative.build_narrative_payload.
-    `instructions` is the editable system prompt (an AiPrompt). Returns
-    [{persona, today, whats_new, value}] for the operator to review — nothing is
-    persisted or fed to the math."""
+    the grounded inputs built by services/narrative.build_narrative_payload,
+    plus the customer-identity context (services/narrative.build_customer_context)
+    so the story can reflect who the customer is. `instructions` is the editable
+    system prompt (an AiPrompt). Returns [{persona, today, whats_new, value}]
+    for the operator to review; the caller persists them on the engagement."""
     from .narrative import normalize_narratives
 
-    user = json.dumps({"scenarios": scenarios}, default=str, indent=2)
+    user = json.dumps(
+        {"customer": customer or {}, "scenarios": scenarios}, default=str, indent=2
+    )
     data = _chat_json(instructions, user, model, web_search)
     return normalize_narratives(data, [s.get("persona") for s in scenarios])
 

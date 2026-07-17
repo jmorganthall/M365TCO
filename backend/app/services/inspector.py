@@ -28,13 +28,14 @@ _DERIVED = {
     "current_spend_annual", "target_spend_annual", "delta_annual",
     "displaced_users", "disposition", "residual_count", "residual_annual_cost",
 }
-_SYSTEM = {"created_at", "updated_at"}
+_SYSTEM = {"created_at", "updated_at", "generated_at"}
 
 _LABELS = {
     "sku_reference": "SKU reference", "unit_price_paid_annual": "Price paid ($/seat/yr)",
     "quantity_assigned": "Assigned", "quantity_purchased": "Purchased",
     "discount_pct": "Discount", "price_basis": "Price basis", "persona_ids": "Applies to",
     "raw_cost": "Cost (as entered)", "cost_period": "Period", "annual_cost": "Annual cost",
+    "persona_name": "Persona", "whats_new": "What's new", "generated_at": "Generated",
     "covered_count": "Covers", "covered_count_override": "Covers override",
     "per_unit_annual_cost": "$/unit/yr", "is_managed": "Managed",
     "tooling_pct": "Tooling %", "effective_annual_cost": "Effective $/yr",
@@ -111,6 +112,10 @@ def _registry():
          "desc": "Per-product outcome of the reconciliation (mostly engine-derived).",
          "primary": ["third_party_product_id", "disposition", "residual_annual_cost"],
          "extra": []},
+        {"cls": models.ScenarioNarrative, "type": "ScenarioNarrative",
+         "label": "Business narratives",
+         "desc": "AI-drafted per-persona sales narrative (advisory; stored on the engagement, replaced on regeneration).",
+         "primary": ["persona_name", "generated_at"], "extra": []},
     ]
 
 
