@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { api, usd, pct } from '../api'
 import SkuCombobox, { loadSkus, matchSku } from './SkuCombobox.jsx'
 import { BasisSelect, EngagementBasisEditor, effectiveBasis } from './basis.jsx'
@@ -26,6 +26,9 @@ function MonthlyPriceInput({ annual, onCommit, style }) {
 // purchased), discount, price basis, persona — so they don't clutter the row.
 function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
   const [open, setOpen] = useState(false)
+  // The last SETTLED SKU pick (not the live typed text, which patches per
+  // keystroke) — so "changed SKU" means a genuinely different product.
+  const settledSku = useRef(l.sku_reference)
   const fullyAssigned = l.quantity_assigned === l.quantity_purchased
   const tagIds = l.persona_ids || []
   const tagNames = tagIds.map((id) => personas.find((p) => p.id === id)?.name).filter(Boolean)
@@ -51,6 +54,19 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
     update(l.id, { persona_ids: next })
   }
 
+  // A line-level basis change (segment/term/payment) re-resolves the SKU
+  // against the catalog at the NEW effective basis and re-seeds the $/seat from
+  // that variant in the same patch — changing the purchase model is an explicit
+  // request to requote (mirrors the scenario requote). No catalog match → the
+  // basis still changes, the price is left alone.
+  const rebasedPatch = (patch) => {
+    if (!catalog.length || !(l.sku_reference || '').trim()) return patch
+    const m = matchSku(catalog, l.sku_reference, effectiveBasis({ ...l, ...patch }, eng))
+    return m
+      ? { ...patch, unit_price_paid_annual: m.annual_unit_price, source_tag: 'ListPrice' }
+      : patch
+  }
+
   // Editing quantity keeps a fully-assigned line fully assigned; once shelfware
   // is set (assigned ≠ purchased), the two move independently.
   const setQty = (v) => {
@@ -68,11 +84,16 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
           segment={basis.segment} term={basis.term} billing={basis.billing}
           onChange={(v) => update(l.id, { sku_reference: v })}
           onSelectSku={(sku) => {
-            // Only seed list price when the line has NO price yet — never clobber
-            // a captured customer/discounted rate when re-pointing the SKU. The
-            // picked row is already resolved to the line's basis, so the seeded
-            // price is the right variant's (fixes same-title mispricing).
-            if (sku && !Number(l.unit_price_paid_annual)) {
+            if (!sku) return  // seeded shortcode / free text: leave the price alone
+            // Re-seed the $/seat when the pick is a DIFFERENT SKU than the line
+            // held (switching products means the old price no longer applies),
+            // or when the line has no price yet. Re-picking the SAME SKU never
+            // clobbers a captured customer/discounted rate. The picked row is
+            // already resolved to the line's basis, so the seeded price is the
+            // right variant's.
+            const changed = sku.sku_title !== settledSku.current
+            settledSku.current = sku.sku_title
+            if (changed || !Number(l.unit_price_paid_annual)) {
               update(l.id, { unit_price_paid_annual: sku.annual_unit_price, source_tag: 'ListPrice' })
             }
           }} /></td>
@@ -116,17 +137,17 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
             <div className="grid c4" style={{ padding: '.4rem 0' }}>
               <div><label>Segment</label>
                 <BasisSelect kind="segment" value={l.segment} inheritFrom={eng.default_segment}
-                  onChange={(v) => update(l.id, { segment: v })} />
+                  onChange={(v) => update(l.id, rebasedPatch({ segment: v }))} />
                 <small className="src">Overrides the engagement segment for this line only.</small></div>
               <div><label>Term</label>
                 <BasisSelect kind="term" value={l.term_duration} meta={meta}
                   inheritFrom={eng.default_term_duration}
-                  onChange={(v) => update(l.id, { term_duration: v })} /></div>
+                  onChange={(v) => update(l.id, rebasedPatch({ term_duration: v }))} /></div>
               <div><label>Payment</label>
                 <BasisSelect kind="billing" value={l.billing_plan} meta={meta}
                   inheritFrom={eng.default_billing_plan}
-                  onChange={(v) => update(l.id, { billing_plan: v })} />
-                <small className="src">Re-pick the SKU after changing basis to reseed its list price.</small></div>
+                  onChange={(v) => update(l.id, rebasedPatch({ billing_plan: v }))} />
+                <small className="src">Changing the basis re-seeds this line's $/seat from the matching catalog variant.</small></div>
               <div></div>
             </div>
           </td>

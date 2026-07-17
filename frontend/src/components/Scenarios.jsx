@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { api, usd, money } from '../api'
 import BundleAnalysis from './BundleAnalysis.jsx'
 import SkuCombobox from './SkuCombobox.jsx'
@@ -31,6 +31,9 @@ const netAnnual = (s) => {
 // line-level selection requotes the composed target from the catalog.
 function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove, onAnalyze, swapEnabled, swapRow }) {
   const [open, setOpen] = useState(false)
+  // The last SETTLED target pick (not the live typed text) — "changed SKU"
+  // means a genuinely different product, which re-seeds the $/seat/mo.
+  const settledSku = useRef(s.target_sku_reference)
   const bundleName = (id) => bundles.find((b) => b.id === id)?.name || id
   // Effective quoting basis for this line: scenario override else engagement default.
   const effBasis = {
@@ -67,7 +70,16 @@ function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove,
           <SkuCombobox value={s.target_sku_reference} style={{ minWidth: 130 }}
             segment={effBasis.segment} term={effBasis.term} billing={effBasis.billing}
             onChange={(v) => update(s.id, { target_sku_reference: v })}
-            onSelectSku={(sku) => sku && update(s.id, { target_unit_price_annual: sku.annual_erp_price })} />
+            onSelectSku={(sku) => {
+              if (!sku) return  // seeded shortcode / free text: leave the price alone
+              // Switching to a DIFFERENT SKU re-seeds the base $/seat/mo from the
+              // catalog ERP; re-picking the same one keeps a hand-tuned price.
+              const changed = sku.sku_title !== settledSku.current
+              settledSku.current = sku.sku_title
+              if (changed || !Number(s.target_unit_price_annual)) {
+                update(s.id, { target_unit_price_annual: sku.annual_erp_price })
+              }
+            }} />
           {(s.addons || []).length > 0 && (
             <div className="pill-list" style={{ marginTop: 3 }}>
               {s.addons.map((a) => <span key={a.bundle_id} className="badge muted">+ {bundleName(a.bundle_id)}</span>)}
