@@ -203,6 +203,17 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Lifecycle:** copied from `seeds/outcomes.json` on engagement creation; freely
   extended at runtime.
 
+- **`Update outcomes` (domain action):** `POST …/outcomes/sync-defaults` is a
+  **full overwrite** of the engagement's outcome list to the CURRENT global
+  library, invoked explicitly from the Coverage Map (with a destructive-action
+  confirm). Library outcomes already present (matched by `seed_key`) keep their
+  row id — coverage and persona requirements survive — with name/description
+  reset; missing library outcomes are added with default Microsoft coverage;
+  custom outcomes and retired keys are deleted with their coverage entries and
+  persona-requirement links. This is an explicit operator action — the
+  "seeding never mutates existing engagements" rule still holds for
+  migrations/startup.
+
 ### 4.4 MicrosoftSku — the global catalog
 - **Identity:** `uuid` PK **plus a natural key** for upsert:
   `product_id + sku_id + term_duration + billing_plan + market`.

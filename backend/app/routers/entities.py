@@ -197,6 +197,20 @@ def create_outcome(engagement_id: str, payload: schemas.OutcomeIn, db: Session =
     return row
 
 
+@router.post("/outcomes/sync-defaults")
+def sync_outcomes_to_defaults(engagement_id: str, db: Session = Depends(get_db)):
+    """FULL OVERWRITE of this engagement's outcome list to the CURRENT global
+    default library (the 'Update outcomes' button). Destructive: custom
+    outcomes are deleted with their coverage and persona requirements; seeded
+    outcomes reset to library names (their coverage survives); new library
+    outcomes arrive with default Microsoft coverage. The GUI confirms first.
+    Returns a summary of what changed."""
+    eng = _require_engagement(db, engagement_id)
+    from ..services import seeds as seeds_service
+
+    return seeds_service.sync_engagement_outcomes(db, eng)
+
+
 @router.patch("/outcomes/{outcome_id}", response_model=schemas.OutcomeOut)
 def update_outcome(engagement_id: str, outcome_id: str, payload: schemas.OutcomeIn, db: Session = Depends(get_db)):
     row = db.get(models.Outcome, outcome_id)
