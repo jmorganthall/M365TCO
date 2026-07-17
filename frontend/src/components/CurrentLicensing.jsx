@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { api, usd, pct } from '../api'
 import SkuCombobox, { loadSkus, matchSku } from './SkuCombobox.jsx'
-import { BasisSelect, EngagementBasisEditor, effectiveBasis } from './basis.jsx'
+import { BasisSelect, billingLabel, effectiveBasis, termLabel } from './basis.jsx'
 
 // Prices are stored annualized (the engine works in annual USD); the UI edits
 // per-seat MONTHLY. Convert at the boundary only.
@@ -266,18 +266,10 @@ export default function CurrentLicensing({ engagement, meta, onUpdate }) {
       <h2>Current Microsoft licensing</h2>
       <p className="hint">Model on <b>assigned</b>, not purchased — shelfware is a savings
         source. Enter the actual price paid per seat (absolute, EA, CSP, or negotiated);
-        don't assume ERP.</p>
+        don't assume ERP. Pricing basis default:{' '}
+        <b>{engBasis.segment} · {termLabel(engBasis.term)} · {billingLabel(engBasis.billing)}</b>{' '}
+        (edited under <b>Customer info</b> above; overridable per line in a line's expander).</p>
       {err && <div className="err">{err}</div>}
-
-      <div className="card" style={{ background: 'var(--panel2)', marginBottom: '.8rem' }}>
-        <div className="flex-between">
-          <b>Pricing basis (engagement default)</b>
-          <small className="src">The default segment/term/purchase for this customer — inherited from the global default, overridable per line. Sets which catalog price a picked SKU seeds.</small>
-        </div>
-        <div style={{ marginTop: '.4rem' }}>
-          <EngagementBasisEditor engagement={engagement} meta={meta} onUpdate={onUpdate} onError={setErr} />
-        </div>
-      </div>
 
       {aiEnabled && (
         <div className="card" style={{ background: 'var(--panel2)', marginBottom: '.8rem' }}>
