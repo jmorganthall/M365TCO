@@ -188,9 +188,10 @@ def resolve_bundle(db: Session, ref: str) -> str | None:
 # basis (term × billing plan, from the global → engagement → line hierarchy)
 # wins outright; when that exact variant isn't in the sheet these fallback
 # orders pick the closest one. Sheet ERPs are whole-term prices and variants
-# carry billing premiums (~+5% monthly-billed, ~+20% month-to-month).
+# carry billing premiums (~+5% monthly-billed, ~+20% month-to-month) — the
+# P1Y/Annual row is the familiar published list price.
 _TERM_FALLBACK = {"P1Y": 0, "P3Y": 1, "P1M": 2}
-_BILLING_FALLBACK = {"Monthly": 0, "Annual": 1, "Triennial": 2}
+_BILLING_FALLBACK = {"Annual": 0, "Monthly": 1, "Triennial": 2}
 
 
 def _pref_rank(value: str, preferred: str, fallback: dict[str, int]) -> int:
@@ -238,19 +239,19 @@ def engagement_price_basis(eng) -> dict:
     return {
         "segment": eng.default_segment or "Commercial",
         "term": eng.default_term_duration or "P1Y",
-        "billing": eng.default_billing_plan or "Monthly",
+        "billing": eng.default_billing_plan or "Annual",
     }
 
 
 def catalog_price_row(
     db: Session, sku_reference: str, *,
     bundle_id: str | None = None, segment: str = "Commercial",
-    term: str = "P1Y", billing: str = "Monthly",
+    term: str = "P1Y", billing: str = "Annual",
 ) -> models.MicrosoftSku | None:
     """The catalog row that prices a bundle/SKU reference, chosen deterministically
     for a quoting basis (segment × term × billing plan — callers pass the
-    engagement/scenario's effective basis; the out-of-box default is the typical
-    customer case, a 1-year commit paid monthly).
+    engagement/scenario's effective basis; the out-of-box default is the familiar
+    published list: a 1-year commit billed annually).
 
     Selection: rows RATIFIED onto the bundle (MicrosoftSku.bundle_id — the
     first-class SKU → Bundle mapping) when any exist; otherwise tolerant title
@@ -293,7 +294,7 @@ def catalog_price_row(
 def catalog_annual_erp(
     db: Session, sku_reference: str, *,
     bundle_id: str | None = None, segment: str = "Commercial",
-    term: str = "P1Y", billing: str = "Monthly",
+    term: str = "P1Y", billing: str = "Annual",
 ) -> Decimal:
     """Catalog price for a bundle: the annual ERP (the customer-facing retail
     baseline; sheet prices are annualized on import, so ÷12 is the monthly

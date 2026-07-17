@@ -54,15 +54,16 @@ def db(client):  # client fixture boots the app (tables + seeded bundles)
         session.close()
 
 
-def test_prefers_commercial_p1y_monthly_plain_variant(db):
-    """Among the full real-sheet variant spread, the plain Commercial 1-year-commit
-    pay-monthly row (the typical customer case) prices the bundle by default —
-    not Charity, P3Y, month-to-month, '(no Teams)', or trial rows (which the old
-    first-ILIKE-match could return). An explicit basis picks that variant."""
+def test_prefers_commercial_p1y_annual_plain_variant(db):
+    """Among the full real-sheet variant spread, the plain Commercial P1Y
+    Annual-billed row — the familiar PUBLISHED list price — prices the bundle by
+    default; not Charity, P3Y, monthly-premium, '(no Teams)', or trial rows
+    (which the old first-ILIKE-match could return). An explicit basis picks the
+    premium variants deliberately."""
     from app.services import bundles as bsvc
     db.add_all([
-        _sku("Microsoft 365 E3", 491.4, billing="Monthly"),               # the default basis
-        _sku("Microsoft 365 E3", 468),                                    # annual-billed
+        _sku("Microsoft 365 E3", 468),                                    # the default basis
+        _sku("Microsoft 365 E3", 491.4, billing="Monthly"),               # +5% monthly-billed
         _sku("Microsoft 365 E3", 561.6, term="P1M", billing="Monthly"),   # +20% month-to-month
         _sku("Microsoft 365 E3", 468, term="P3Y", billing="Triennial"),
         _sku("Microsoft 365 E3 (Non-Profit Pricing)", 117, segment="Charity"),
@@ -74,10 +75,10 @@ def test_prefers_commercial_p1y_monthly_plain_variant(db):
 
     row = bsvc.catalog_price_row(db, "Microsoft 365 E3")
     assert (row.sku_title, row.term_duration, row.billing_plan, row.segment) == \
-        ("Microsoft 365 E3", "P1Y", "Monthly", "Commercial")
-    assert bsvc.catalog_annual_erp(db, "Microsoft 365 E3") == Decimal("491.4")
+        ("Microsoft 365 E3", "P1Y", "Annual", "Commercial")
+    assert bsvc.catalog_annual_erp(db, "Microsoft 365 E3") == Decimal("468")
     # An explicit basis (the engagement/scenario hierarchy) picks that variant.
-    assert bsvc.catalog_annual_erp(db, "Microsoft 365 E3", billing="Annual") == Decimal("468")
+    assert bsvc.catalog_annual_erp(db, "Microsoft 365 E3", billing="Monthly") == Decimal("491.4")
     assert bsvc.catalog_annual_erp(db, "Microsoft 365 E3", term="P1M") == Decimal("561.6")
     assert bsvc.catalog_annual_erp(db, "Microsoft 365 E3", segment="Charity") == Decimal("117")
 
@@ -126,8 +127,8 @@ def test_ratified_bundle_mapping_outranks_title_match(db):
 def test_recommend_a_path_prices_at_engagement_basis(client, db):
     """End-to-end: with a catalog loaded and no per-request overrides, the
     persona bundle analysis quotes the ERP at the engagement's pricing basis
-    (default: Commercial, 1-year commit, pay monthly) — through the API, not
-    just the service helper."""
+    (default: Commercial, 1-year commit, billed annually — the familiar
+    published list) — through the API, not just the service helper."""
     db.add_all([
         _sku("Microsoft 365 Business Premium", 277.2, billing="Monthly"),
         _sku("Microsoft 365 Business Premium", 264),
@@ -137,19 +138,19 @@ def test_recommend_a_path_prices_at_engagement_basis(client, db):
 
     eng = client.post("/api/engagements", json={"customer_name": "Pricing Co"}).json()
     eid = eng["id"]
-    assert (eng["default_term_duration"], eng["default_billing_plan"]) == ("P1Y", "Monthly")
+    assert (eng["default_term_duration"], eng["default_billing_plan"]) == ("P1Y", "Annual")
     kw = client.post(f"/api/engagements/{eid}/personas",
                      json={"name": "KW", "headcount": 100}).json()
     res = client.post(f"/api/engagements/{eid}/personas/{kw['id']}/bundle-analysis").json()
     bp = next(b for b in res["bundles"] if b["sku_reference"] == "Microsoft 365 Business Premium")
-    assert bp["base_price_annual"] == 277.2
+    assert bp["base_price_annual"] == 264.0
 
-    # Flip the engagement's payment default to Annual → the same analysis
-    # requotes at the annual-billed variant (engagement level of the hierarchy).
-    client.patch(f"/api/engagements/{eid}", json={"default_billing_plan": "Annual"})
+    # Flip the engagement's payment default to Monthly → the same analysis
+    # requotes at the +5% monthly-billed variant (engagement level of the hierarchy).
+    client.patch(f"/api/engagements/{eid}", json={"default_billing_plan": "Monthly"})
     res = client.post(f"/api/engagements/{eid}/personas/{kw['id']}/bundle-analysis").json()
     bp = next(b for b in res["bundles"] if b["sku_reference"] == "Microsoft 365 Business Premium")
-    assert bp["base_price_annual"] == 264.0
+    assert bp["base_price_annual"] == 277.2
     client.delete(f"/api/engagements/{eid}")
 
 
@@ -191,27 +192,27 @@ def test_scenario_basis_change_requotes_target_and_addons(client, db):
                      json={"name": "KW", "headcount": 100}).json()
     s = client.post(f"/api/engagements/{eid}/scenarios", json={
         "persona_id": kw["id"], "target_sku_reference": "Microsoft 365 E3",
-        "target_unit_price_annual": 491.4,
-        "addons": [{"bundle_id": e5sec.id, "unit_price_annual": 144}],
+        "target_unit_price_annual": 468,
+        "addons": [{"bundle_id": e5sec.id, "unit_price_annual": 137}],
     }).json()
     assert s["term_duration"] is None  # inherits the engagement default
 
-    # Pick annual billing on the line → base and add-on requote to the Annual rows.
+    # Pick monthly billing on the line → base and add-on requote to the +5% rows.
     s = client.patch(f"/api/engagements/{eid}/scenarios/{s['id']}",
-                     json={"billing_plan": "Annual"}).json()
-    assert float(s["target_unit_price_annual"]) == 468.0
-    assert float(s["addons"][0]["unit_price_annual"]) == 137.0
+                     json={"billing_plan": "Monthly"}).json()
+    assert float(s["target_unit_price_annual"]) == 491.4
+    assert float(s["addons"][0]["unit_price_annual"]) == 144.0
 
     # A hand edit afterward sticks (no silent requote on unrelated patches).
     s = client.patch(f"/api/engagements/{eid}/scenarios/{s['id']}",
                      json={"target_unit_price_annual": 400}).json()
     assert float(s["target_unit_price_annual"]) == 400.0
 
-    # Clearing the line override requotes back at the engagement default (Monthly).
+    # Clearing the line override requotes back at the engagement default (Annual).
     s = client.patch(f"/api/engagements/{eid}/scenarios/{s['id']}",
                      json={"billing_plan": None}).json()
-    assert float(s["target_unit_price_annual"]) == 491.4
-    assert float(s["addons"][0]["unit_price_annual"]) == 144.0
+    assert float(s["target_unit_price_annual"]) == 468.0
+    assert float(s["addons"][0]["unit_price_annual"]) == 137.0
     client.delete(f"/api/engagements/{eid}")
 
 
@@ -241,7 +242,7 @@ def test_basis_options_are_data_driven(client, db):
     # Known defaults still lead the lists.
     assert opts["segments"][0] == "Commercial"
     assert opts["terms"][:3] == ["P1M", "P1Y", "P3Y"]
-    assert opts["billing_plans"][:3] == ["Monthly", "Annual", "Triennial"]
+    assert opts["billing_plans"][:3] == ["Annual", "Monthly", "Triennial"]
 
     # P5Y = 60 months: the listed whole-term ERP annualizes generically.
     sku = next(s for s in client.get("/api/catalog/skus").json()

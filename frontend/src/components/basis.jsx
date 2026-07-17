@@ -12,7 +12,7 @@ import { api } from '../api'
 // generated label for P<n>Y/P<n>M terms, or the raw value itself — so a new
 // value in a future price sheet needs no code change to be usable.
 export const TERM_LABELS = { P1M: 'Month-to-month', P1Y: '1-year commit', P3Y: '3-year commit' }
-export const BILLING_LABELS = { Monthly: 'Pay monthly', Annual: 'Pay yearly', Triennial: 'Pay every 3 years' }
+export const BILLING_LABELS = { Annual: 'Pay yearly', Monthly: 'Pay monthly', Triennial: 'Pay every 3 years' }
 export const termLabel = (v) => {
   if (TERM_LABELS[v]) return TERM_LABELS[v]
   const m = /^P(\d+)([MY])$/.exec(v || '')

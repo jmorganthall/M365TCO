@@ -296,8 +296,8 @@ def test_segment_inheritance_and_line_overrides(client):
     eid = eng["id"]
     assert eng["default_segment"] == "Commercial"
     assert eng["default_term_duration"] == "P1Y"
-    # The out-of-box quoting basis is the typical customer case: pay monthly.
-    assert eng["default_billing_plan"] == "Monthly"
+    # The out-of-box quoting basis is the familiar published list: P1Y billed annually.
+    assert eng["default_billing_plan"] == "Annual"
 
     # The customer sets its own segment default (a Nonprofit) without touching global.
     eng = client.patch(f"/api/engagements/{eid}", json={"default_segment": "Nonprofit"}).json()
