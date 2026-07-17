@@ -387,17 +387,7 @@ export default function Readout({ engagement }) {
                 <td className="num">{d.displaced_users} / {d.covered_count}</td>
                 <td className="num">{d.residual_count}</td>
                 <td className="num">{usd(d.residual_annual_cost)}</td>
-                <td>
-                  {d.override === 'ForceFullElimination'
-                    ? <span className="badge neg" title={d.override_reason}>Forced · {d.override_reason.slice(0, 30)}</span>
-                    : d.residual_intent === 'IntendedOutOfScope'
-                      ? <span className="badge muted">Intended residual</span>
-                      : d.requires_residual_classification
-                        // Only when unclassified residual users remain is there
-                        // anything to override. FullyEliminated (0 residual) has none.
-                        ? <ResidualClassifier inline d={d} onSet={setOverride} />
-                        : <span className="muted">—</span>}
-                </td>
+                <td><OverrideCell d={d} onSet={setOverride} /></td>
               </tr>
             ))}
           </tbody>
@@ -434,12 +424,23 @@ export default function Readout({ engagement }) {
   )
 }
 
-function ResidualClassifier({ d, onSet, inline }) {
-  const [reason, setReason] = useState('')
-  const [mode, setMode] = useState('')
-  const apply = () => {
-    if (mode === 'residual') onSet(d.third_party_product_id, { override: 'None', residual_intent: 'IntendedOutOfScope' })
-    else if (mode === 'force' && reason.trim()) onSet(d.third_party_product_id, { override: 'ForceFullElimination', override_reason: reason })
+// The current classification of a disposition row ('' = unclassified).
+const classificationOf = (d) =>
+  d.override === 'ForceFullElimination' ? 'force'
+    : d.residual_intent === 'IntendedOutOfScope' ? 'residual' : ''
+
+function ResidualClassifier({ d, onSet, inline, onDone }) {
+  // Overrides are never locked in: the classifier opens ON the current choice
+  // and offers "Clear classification" to return the row to unclassified.
+  const current = classificationOf(d)
+  const [reason, setReason] = useState(d.override_reason || '')
+  const [mode, setMode] = useState(current)
+  const apply = async () => {
+    if (mode === 'residual') await onSet(d.third_party_product_id, { override: 'None', residual_intent: 'IntendedOutOfScope' })
+    else if (mode === 'force' && reason.trim()) await onSet(d.third_party_product_id, { override: 'ForceFullElimination', override_reason: reason })
+    else if (mode === 'clear') await onSet(d.third_party_product_id, { override: 'None', residual_intent: 'None' })
+    else return
+    onDone?.()
   }
   // A real dropdown (never a browser prompt) in both the inline table cell and
   // the expanded card. Picking a mode reveals the reason field for force-elim.
@@ -451,6 +452,7 @@ function ResidualClassifier({ d, onSet, inline }) {
           <option value="">Classify…</option>
           <option value="residual">Intended out-of-scope residual</option>
           <option value="force">Force full elimination</option>
+          {current && <option value="clear">Clear classification</option>}
         </select>
       </div>
       {mode === 'force' && (
@@ -460,9 +462,10 @@ function ResidualClassifier({ d, onSet, inline }) {
             onChange={(e) => setReason(e.target.value)} />
         </div>
       )}
-      {mode && (
+      {(mode !== current || mode === 'force') && mode && (
         <button className="sm" disabled={mode === 'force' && !reason.trim()} onClick={apply}>Apply</button>
       )}
+      {onDone && <button className="ghost sm" onClick={onDone}>Cancel</button>}
     </div>
   )
   if (inline) return controls
@@ -472,4 +475,36 @@ function ResidualClassifier({ d, onSet, inline }) {
       {controls}
     </div>
   )
+}
+
+// The Override cell of the dispositions table. A classified row shows its badge
+// with a ✎ control that reopens the classifier (change or clear) — a recorded
+// override is operator data, editable like any other, never locked in.
+function OverrideCell({ d, onSet }) {
+  const [editing, setEditing] = useState(false)
+  const current = classificationOf(d)
+  if (editing || (!current && d.requires_residual_classification)) {
+    return <ResidualClassifier inline d={d} onSet={onSet}
+      onDone={editing ? () => setEditing(false) : undefined} />
+  }
+  if (current === 'force') {
+    return (
+      <span className="badge neg" title={d.override_reason}>
+        Forced · {d.override_reason.slice(0, 30)}
+        <button className="ghost sm" style={{ marginLeft: 4, padding: '0 .3rem' }}
+          title="Change or clear this override" onClick={() => setEditing(true)}>✎</button>
+      </span>
+    )
+  }
+  if (current === 'residual') {
+    return (
+      <span className="badge muted">
+        Intended residual
+        <button className="ghost sm" style={{ marginLeft: 4, padding: '0 .3rem' }}
+          title="Change or clear this classification" onClick={() => setEditing(true)}>✎</button>
+      </span>
+    )
+  }
+  // No residual and no classification — nothing to override.
+  return <span className="muted">—</span>
 }
