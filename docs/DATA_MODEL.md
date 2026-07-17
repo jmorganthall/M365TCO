@@ -143,10 +143,10 @@ FK, UUID PK, cascade-deleted with the engagement.
   `<style>`/`<img>` context. Editable on the Readout tab. A future reusable
   `BrandTheme` library (global presets seeding these fields) would follow §2.
 - **Pricing-basis inheritance:** `default_segment` / `default_term_duration`
-  (P1Y) / `default_billing_plan` (Annual — the familiar PUBLISHED list price;
-  ERP ÷ 12 is the per-user-per-month number everyone recognizes. Choosing
-  Monthly billing models NCE's ~5% pay-monthly premium explicitly) are the
-  middle tier of a three-level chain —
+  (P1Y) / `default_billing_plan` (Monthly — the typical customer case, a 1-year
+  commit paid monthly; note the sheet prices this variant ~5% above the
+  published list, NCE's real pay-monthly premium — the familiar published
+  number is the P1Y/Annual ERP ÷ 12) are the middle tier of a three-level chain —
   **GlobalDefaults → Engagement → line item** — that selects which priced
   catalog variant a picked SKU or quoted bundle resolves to. All three are
   copied from GlobalDefaults on creation and editable on the Customer Info tab.

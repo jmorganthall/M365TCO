@@ -38,7 +38,7 @@ DISPOSITIONS = ("FullyEliminated", "PartiallyReduced", "Unchanged")
 OVERRIDES = ("None", "ForceFullElimination")
 RESIDUAL_INTENTS = ("None", "IntendedOutOfScope")
 TERM_DURATIONS = ("P1M", "P1Y", "P3Y")
-BILLING_PLANS = ("Annual", "Monthly", "Triennial")
+BILLING_PLANS = ("Monthly", "Annual", "Triennial")
 # Customer segments as they appear in the Microsoft price sheet's `Segment`
 # column. This is the KNOWN default set (used to seed the global-default dropdown
 # when the catalog is empty); the live segment pickers are data-driven from the
@@ -628,11 +628,12 @@ class GlobalDefaults(Base):
     # Ground-floor quoting-basis defaults: which priced catalog variant (term ×
     # billing plan) prices a bundle. New engagements copy these on creation and
     # scenarios may vary per line — the global → engagement → line hierarchy.
-    # P1Y + Annual = the familiar PUBLISHED list price (ERP ÷ 12 is the
-    # per-user-per-month number everyone recognizes). Selecting Monthly billing
-    # models NCE's ~5% pay-monthly premium explicitly.
+    # P1Y + Monthly = 1-year commit paid monthly, the typical customer-facing
+    # case. NOTE: the sheet prices this variant ~5% above the published list
+    # (which is the P1Y/Annual ERP) — that premium is NCE's real charge for
+    # monthly billing on an annual commit, not a data error.
     default_term_duration: Mapped[str] = mapped_column(String, default="P1Y")
-    default_billing_plan: Mapped[str] = mapped_column(String, default="Annual")
+    default_billing_plan: Mapped[str] = mapped_column(String, default="Monthly")
     # Operator-selected OpenRouter model for AI assist. Empty = use the env
     # default (settings.openrouter_model). Operational config, runtime-editable.
     openrouter_model: Mapped[str] = mapped_column(String, default="")
