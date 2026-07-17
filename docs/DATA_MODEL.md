@@ -536,7 +536,10 @@ This is the canonical example of the field-ownership rule, because one row mixes
 operator-owned and engine-owned fields.
 - **Identity:** `uuid`. **Scope:** engagement-scoped. One per third-party product.
 - **Operator-owned (survive recompute):** `override`, `override_reason`,
-  `residual_intent`.
+  `residual_intent`. One deliberate exception: when natural displacement alone
+  fully eliminates the product (no residual left to classify), compute clears a
+  stored classification automatically — an override with nothing to override is
+  stale; if a residual later reappears, the classification gate asks again.
 - **Engine-output (overwritten every compute):** `displaced_users`,
   `disposition`, `residual_count`, `residual_annual_cost`.
 - **Module rule:** `services/compute.py` reads the operator-owned fields **into**
