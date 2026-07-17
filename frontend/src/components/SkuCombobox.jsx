@@ -92,7 +92,7 @@ export function rankSkus(skus, text, basis = {}) {
   const scored = inBasis
     .map((s) => ({ sku: s, score: scoreSku(s, qNorm, qTokens) }))
     .filter((r) => (qNorm ? r.score > 0 : true))
-    .sort((a, b) => b.score - a.score || Number(a.sku.annual_unit_price) - Number(b.sku.annual_unit_price))
+    .sort((a, b) => b.score - a.score || Number(a.sku.annual_erp_price) - Number(b.sku.annual_erp_price))
   return scored
 }
 
@@ -132,12 +132,14 @@ export default function SkuCombobox({
   const seen = new Set()
   const catalogOpts = []
   for (const { sku } of ranked) {
-    const key = `${_norm(sku.sku_title)}|${sku.annual_unit_price}|${sku.segment}`
+    // Show the ERP — the customer-facing list price — never UnitPrice, which
+    // is the partner net (ERP × ~0.80) and matches no published retail number.
+    const key = `${_norm(sku.sku_title)}|${sku.annual_erp_price}|${sku.segment}`
     if (!sku.sku_title || seen.has(key)) continue
     seen.add(key)
     catalogOpts.push({
       title: sku.sku_title, sub: sku.product_title, sku,
-      meta: `${_money(sku.annual_unit_price)} · ${sku.segment} · ${sku.term_duration} · ${sku.billing_plan}`,
+      meta: `${_money(sku.annual_erp_price)} · ${sku.segment} · ${sku.term_duration} · ${sku.billing_plan}`,
     })
   }
   const seedOpts = (q
