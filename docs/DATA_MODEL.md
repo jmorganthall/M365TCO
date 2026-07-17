@@ -589,15 +589,22 @@ read over existing first-class objects, the correct "don't create second-class
 data" outcome. `services/sanity.normalize_findings` is the pure validator (kept
 separate from the HTTP call for unit testing).
 
-### 4.10a-ter Scenario business narrative (derived, persists nothing)
+### 4.10a-ter Scenario business narrative (stored, regenerated on demand)
 `POST …/narrative` drafts the sales story for each in-scope persona scenario —
 today / what's new / value — grounded in the computed scenarios
 (`services/narrative.build_narrative_payload` — pure: persona, headcount, current
 SKUs, target bundle + add-ons, displaced third-party tools, and the annual
 delta), via the editable `scenario_narrative` AiPrompt on the resolved main
-model. Returns `[{persona, today, whats_new, value}]` on the Readout view. Like
-§4.10a it **stores no state and never feeds the math** — an advisory draft the SA
-reviews. It is the buildable-today part of the "business narrative" goal; the
+model. Returns `[{persona, today, whats_new, value}]` on the Readout view. The result
+is **stored on the engagement** as `ScenarioNarrative` rows (persona_id +
+snapshotted persona_name, today/whats_new/value, generated_at, provenance
+`AISuggestedUnconfirmed`) so it survives navigation — `GET …/narrative` returns
+the stored set; `POST …/narrative` regenerates and replaces it wholesale. The
+payload now also carries the **Customer Info context**
+(`build_customer_context`: name, industry, HQ, website, size, notes) so the
+prompt can weave supportable market-direction / headline / M&A observations in
+(grounded by web search when the operator enabled it). Advisory — it **never
+feeds the math**; a draft the SA reviews. It is the buildable-today part of the "business narrative" goal; the
 market-research enrichment (an external agent) and the Forrester TEI soft-savings
 overlay (§10) attach later as their own first-class overlays, not edits here.
 

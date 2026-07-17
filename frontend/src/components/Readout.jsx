@@ -27,6 +27,7 @@ export default function Readout({ engagement }) {
   const [sanity, setSanity] = useState(null)
   const [narrating, setNarrating] = useState(false)
   const [narratives, setNarratives] = useState(null)
+  const [narrativesAt, setNarrativesAt] = useState(null)
   const [outcomes, setOutcomes] = useState([])
   const outcomeName = (id) => outcomes.find((o) => o.id === id)?.name || id
 
@@ -38,7 +39,13 @@ export default function Readout({ engagement }) {
   useEffect(() => {
     compute()
     // Restore any prior sanity result for this engagement (survives navigation).
-    setSanity(_sanityCache[eid] || null); setNarratives(null)
+    setSanity(_sanityCache[eid] || null)
+    // Narratives are ENGAGEMENT-LEVEL data — load the stored set (survives
+    // navigation); the Business narratives button regenerates and replaces it.
+    setNarratives(null); setNarrativesAt(null)
+    api.get(`/api/engagements/${eid}/narrative`).then((r) => {
+      if (r.narratives?.length) { setNarratives(r.narratives); setNarrativesAt(r.generated_at) }
+    }).catch(() => {})
     api.get('/api/admin/ai/status').then((s) => setAiEnabled(s.enabled)).catch(() => {})
     api.get(`/api/engagements/${eid}/outcomes`).then(setOutcomes).catch(() => setOutcomes([]))
   }, [eid])
@@ -54,8 +61,10 @@ export default function Readout({ engagement }) {
   }
   async function runNarrative() {
     setNarrating(true); setErr('')
-    try { setNarratives((await api.post(`/api/engagements/${eid}/narrative`)).narratives) }
-    catch (e) { setErr(e.message) } finally { setNarrating(false) }
+    try {
+      const r = await api.post(`/api/engagements/${eid}/narrative`)
+      setNarratives(r.narratives); setNarrativesAt(r.generated_at)
+    } catch (e) { setErr(e.message) } finally { setNarrating(false) }
   }
 
   // Readout branding (logo + theme colors). Local so edits reflect immediately;
@@ -227,7 +236,9 @@ export default function Readout({ engagement }) {
         <div className="card">
           <div className="flex-between">
             <h2>Business narratives</h2>
-            <small className="src">AI draft per in-scope persona — review before you present. Advisory only.</small>
+            <small className="src">AI draft per in-scope persona — review before you present. Advisory only.
+              Stored on the engagement{narrativesAt ? ` · generated ${new Date(narrativesAt + 'Z').toLocaleString()}` : ''} —
+              ✨ Business narratives regenerates.</small>
           </div>
           {narratives.length === 0
             ? <p className="muted">No in-scope scenarios to narrate yet — set target bundles on the Scenarios tab.</p>

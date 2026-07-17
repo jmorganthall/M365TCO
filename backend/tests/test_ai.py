@@ -297,3 +297,55 @@ def test_research_customer_requires_name_and_ai(client):
     eng = client.post("/api/engagements", json={"customer_name": "Acme"}).json()
     r = client.post(f"/api/admin/engagements/{eng['id']}/ai/research-customer", json={})
     assert r.status_code == 400  # AI disabled in the test env
+
+
+def test_business_narratives_stored_on_engagement(client, monkeypatch):
+    """Narratives are ENGAGEMENT-LEVEL data: generation stores them (they
+    survive navigation via GET), regeneration replaces them, and the customer
+    context from Customer Info reaches the model."""
+    from app.routers import engagements as eng_router
+
+    seen = {}
+
+    def fake_narratives(scenarios, instructions, model=None, web_search=False, customer=None):
+        seen["customer"] = customer
+        return [{"persona": s["persona"], "today": "On Okta today.",
+                 "whats_new": seen.get("tag", "Gains EPM."), "value": "Saves money."}
+                for s in scenarios]
+
+    monkeypatch.setattr(eng_router.ai, "is_enabled", lambda: True)
+    monkeypatch.setattr(eng_router.ai, "scenario_narratives", fake_narratives)
+
+    eng = client.post("/api/engagements", json={
+        "customer_name": "Narrative Co", "notes": "mid-merger"}).json()
+    eid = eng["id"]
+    client.patch(f"/api/engagements/{eid}", json={"industry": "Healthcare"})
+    kw = client.post(f"/api/engagements/{eid}/personas",
+                     json={"name": "KW", "headcount": 100}).json()
+    client.post(f"/api/engagements/{eid}/scenarios",
+                json={"persona_id": kw["id"], "target_sku_reference": "E3",
+                      "target_unit_price_annual": 0, "in_scope": True})
+
+    # Nothing stored yet.
+    empty = client.get(f"/api/engagements/{eid}/narrative").json()
+    assert empty == {"narratives": [], "generated_at": None}
+
+    # Generate → stored, and the model saw the Customer Info context.
+    res = client.post(f"/api/engagements/{eid}/narrative").json()
+    assert res["narratives"][0]["persona"] == "KW"
+    assert res["generated_at"] is not None
+    assert seen["customer"]["name"] == "Narrative Co"
+    assert seen["customer"]["industry"] == "Healthcare"
+    assert seen["customer"]["notes"] == "mid-merger"
+
+    # Survives navigation: GET returns the stored set.
+    stored = client.get(f"/api/engagements/{eid}/narrative").json()
+    assert stored["narratives"] == res["narratives"]
+
+    # Regeneration REPLACES the stored set.
+    seen["tag"] = "Now with Copilot."
+    res2 = client.post(f"/api/engagements/{eid}/narrative").json()
+    assert res2["narratives"][0]["whats_new"] == "Now with Copilot."
+    stored2 = client.get(f"/api/engagements/{eid}/narrative").json()
+    assert stored2["narratives"][0]["whats_new"] == "Now with Copilot."
+    assert len(stored2["narratives"]) == 1

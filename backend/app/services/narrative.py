@@ -13,6 +13,24 @@ the HTTP call lives in `services/ai.scenario_narratives`.
 from __future__ import annotations
 
 
+def build_customer_context(eng) -> dict:
+    """Customer-identity grounding for the narrative prompt — the Customer Info
+    fields (who they are, industry, HQ, size, operator notes). The prompt uses
+    this (plus live web search when the operator enabled it) to consider the
+    customer's market direction, recent headlines, and M&A activity, and weave
+    supportable context into the narrative. Pure; empty fields are omitted."""
+    return {
+        k: v for k, v in {
+            "name": eng.customer_name,
+            "industry": eng.industry,
+            "hq_location": eng.hq_location,
+            "website": eng.website,
+            "employee_count": eng.employee_count,
+            "notes": eng.notes,
+        }.items() if v
+    }
+
+
 def build_narrative_payload(eng, result: dict) -> list[dict]:
     """One grounded narrative-input dict per in-scope scenario: the persona and
     headcount, the SKUs they hold today, the target bundle + add-ons, the
