@@ -63,7 +63,7 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
     if (!catalog.length || !(l.sku_reference || '').trim()) return patch
     const m = matchSku(catalog, l.sku_reference, effectiveBasis({ ...l, ...patch }, eng))
     return m
-      ? { ...patch, unit_price_paid_annual: m.annual_unit_price, source_tag: 'ListPrice' }
+      ? { ...patch, unit_price_paid_annual: m.annual_erp_price, source_tag: 'ListPrice' }
       : patch
   }
 
@@ -94,7 +94,9 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
             const changed = sku.sku_title !== settledSku.current
             settledSku.current = sku.sku_title
             if (changed || !Number(l.unit_price_paid_annual)) {
-              update(l.id, { unit_price_paid_annual: sku.annual_unit_price, source_tag: 'ListPrice' })
+              // ERP = the customer-facing list price. UnitPrice is the partner
+              // net (~ERP × 0.80) and must never seed what a CUSTOMER pays.
+              update(l.id, { unit_price_paid_annual: sku.annual_erp_price, source_tag: 'ListPrice' })
             }
           }} /></td>
         <td className="num"><input type="number" style={{ width: 80 }} value={l.quantity_purchased}
@@ -148,7 +150,15 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
                   inheritFrom={eng.default_billing_plan}
                   onChange={(v) => update(l.id, rebasedPatch({ billing_plan: v }))} />
                 <small className="src">Changing the basis re-seeds this line's $/seat from the matching catalog variant.</small></div>
-              <div></div>
+              <div><label>List price</label>
+                <button className="ghost sm" style={{ marginTop: '.15rem' }}
+                  disabled={!catalog.length || !(l.sku_reference || '').trim()}
+                  title="Replace this line's $/seat with the catalog ERP (customer-facing list) for the SKU at this line's basis"
+                  onClick={() => {
+                    const m = matchSku(catalog, l.sku_reference, basis)
+                    if (m) update(l.id, { unit_price_paid_annual: m.annual_erp_price, source_tag: 'ListPrice' })
+                  }}>↺ Reseed from list</button>
+                <small className="src">Overwrites the entered price with the catalog list (ERP).</small></div>
             </div>
           </td>
         </tr>
@@ -371,10 +381,11 @@ export default function CurrentLicensing({ engagement, meta, onUpdate }) {
             segment={engBasis.segment} term={engBasis.term} billing={engBasis.billing}
             onChange={(v) => setForm((f) => ({ ...f, sku_reference: v }))}
             onSelectSku={(sku) => sku && setForm((f) => (
-              // Keep a price the user already entered; only seed list when empty.
+              // Keep a price the user already entered; only seed list when
+              // empty — and list = ERP, the customer-facing price.
               Number(f.unit_price_paid_annual)
                 ? f
-                : { ...f, unit_price_paid_annual: sku.annual_unit_price, source_tag: 'ListPrice' }
+                : { ...f, unit_price_paid_annual: sku.annual_erp_price, source_tag: 'ListPrice' }
             ))} /></div>
         <div><label>Quantity</label>
           <input type="number" value={form.quantity}
