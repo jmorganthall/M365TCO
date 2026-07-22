@@ -74,6 +74,46 @@ def test_readout_conditionals_show_when_managed_and_eliminated(client):
     assert usd in html
 
 
+def test_readout_breaks_bridge_down_per_persona(client):
+    """Two in-scope personas: the headline subtext tells the move story per persona
+    ("we save you $X by moving Sales to E5 and Engineering to E3"), and the spend
+    bridge gains one column per persona plus a Total — every line, including the
+    per-tool freed-up sub-rows, split by persona from the per-scenario numbers."""
+    eng = client.post("/api/engagements", json={"customer_name": "Split Co"}).json()
+    eid = eng["id"]
+    a = client.post(f"/api/engagements/{eid}/personas",
+                    json={"name": "Sales", "headcount": 100}).json()
+    b = client.post(f"/api/engagements/{eid}/personas",
+                    json={"name": "Engineering", "headcount": 50}).json()
+    identity = _outcome(client, eid, "identity-sso")
+    tool = client.post(f"/api/engagements/{eid}/third-party", json={
+        "name": "Okta", "raw_cost": 30000, "covered_count_override": 150}).json()
+    client.post(f"/api/engagements/{eid}/coverage", json={
+        "outcome_id": identity["id"], "product_kind": "ThirdParty",
+        "third_party_product_id": tool["id"], "coverage": "Full", "ratified": True})
+    client.post(f"/api/engagements/{eid}/scenarios", json={
+        "persona_id": a["id"], "target_sku_reference": "Microsoft 365 E5",
+        "target_unit_price_annual": 600, "in_scope": True})
+    client.post(f"/api/engagements/{eid}/scenarios", json={
+        "persona_id": b["id"], "target_sku_reference": "Microsoft 365 E3",
+        "target_unit_price_annual": 400, "in_scope": True})
+
+    html = client.get(f"/api/engagements/{eid}/readout.html").text
+
+    # The headline subtext is the per-persona move story, not the generic phrase.
+    assert "if you move to the target scenarios" not in html
+    assert "moving" in html
+    assert "<b>Sales</b> (100) to <b>Microsoft 365 E5</b>" in html
+    assert "<b>Engineering</b> (50) to <b>Microsoft 365 E3</b>" in html
+    # The bridge is a matrix: a column head per persona (→ its target) + Total.
+    assert "Sales <small>→ Microsoft 365 E5</small>" in html
+    assert "Engineering <small>→ Microsoft 365 E3</small>" in html
+    assert "<th class='num'>Total</th>" in html
+    # The freed-up tool sub-row splits per persona: Okta's per-unit cost is
+    # 30000/150 = $200, credited 100 and 50 seats → −$20k + −$10k = −$30k total.
+    assert "−$20,000.00" in html and "−$10,000.00" in html and "−$30,000.00" in html
+
+
 def test_readout_renders_business_narrative_when_present(client, monkeypatch):
     """When per-persona narratives are attached to the result, the readout renders
     'The business case' section (advisory; generation is wired separately)."""
