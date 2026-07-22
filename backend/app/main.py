@@ -384,7 +384,6 @@ def meta(db=Depends(get_db)) -> dict:
     gd = defaults_service.get_defaults(db)
     return {
         "source_tags": list(m.SOURCE_TAGS),
-        "price_basis": list(m.PRICE_BASIS),
         "cost_periods": list(m.COST_PERIODS),
         "unit_basis": list(m.UNIT_BASIS),
         "coverage": list(m.COVERAGE),

@@ -27,7 +27,6 @@ from .db import Base
 
 # ---- Enumerations (PRD 5.x / 5.11) ----
 SOURCE_TAGS = ("Invoice", "CustomerStated", "ListPrice", "Estimate", "AISuggestedUnconfirmed")
-PRICE_BASIS = ("ERP", "EA", "MCA-E", "CSP", "Negotiated", "Unknown")
 COST_PERIODS = ("Monthly", "Annual")
 UNIT_BASIS = ("Users", "Devices", "Units")
 PRODUCT_KINDS = ("MicrosoftSku", "ThirdParty")
@@ -372,9 +371,6 @@ class CurrentMicrosoftLicense(Base):
     quantity_purchased: Mapped[int] = mapped_column(Integer, default=0)
     quantity_assigned: Mapped[int] = mapped_column(Integer, default=0)
     unit_price_paid_annual: Mapped[float] = mapped_column(Numeric(14, 4), default=0)
-    price_basis: Mapped[str] = mapped_column(
-        SAEnum(*PRICE_BASIS, name="price_basis"), default="Unknown"
-    )
     discount_pct: Mapped[float | None] = mapped_column(Numeric(6, 4), nullable=True)
     # Pricing basis for THIS line. NULL = inherit the engagement default (which
     # itself inherits the global default). Set = this line overrides it. These

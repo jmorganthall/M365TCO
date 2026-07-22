@@ -288,14 +288,15 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
             "<p><b>Assumed full elimination</b> (savings asserted on users the target does "
             f"not automatically displace):</p><ul>{items}</ul>"
         )
-    if engagement.current_licenses:
+    # Only lines with a recorded discount are disclosed — an appendix line must
+    # say something real, never print a placeholder to the customer.
+    discounted = [lic for lic in engagement.current_licenses if lic.discount_pct]
+    if discounted:
         items = "".join(
-            f"<li>{html.escape(lic.sku_reference)}: {lic.price_basis}"
-            + (f", {_pct(lic.discount_pct)} discount" if lic.discount_pct else "")
-            + "</li>"
-            for lic in engagement.current_licenses
+            f"<li>{html.escape(lic.sku_reference)}: {_pct(lic.discount_pct)} discount</li>"
+            for lic in discounted
         )
-        appendix_parts.append(f"<p><b>Current Microsoft line price bases:</b></p><ul>{items}</ul>")
+        appendix_parts.append(f"<p><b>Current Microsoft line discounts:</b></p><ul>{items}</ul>")
     appendix_section = (
         f"<section><h2>Assumptions &amp; sources</h2>{''.join(appendix_parts)}</section>"
         if appendix_parts else ""

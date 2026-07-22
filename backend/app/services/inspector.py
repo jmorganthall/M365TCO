@@ -33,7 +33,7 @@ _SYSTEM = {"created_at", "updated_at", "generated_at"}
 _LABELS = {
     "sku_reference": "SKU reference", "unit_price_paid_annual": "Price paid ($/seat/yr)",
     "quantity_assigned": "Assigned", "quantity_purchased": "Purchased",
-    "discount_pct": "Discount", "price_basis": "Price basis", "persona_ids": "Applies to",
+    "discount_pct": "Discount", "persona_ids": "Applies to",
     "raw_cost": "Cost (as entered)", "cost_period": "Period", "annual_cost": "Annual cost",
     "persona_name": "Persona", "whats_new": "What's new", "generated_at": "Generated",
     "covered_count": "Covers", "covered_count_override": "Covers override",

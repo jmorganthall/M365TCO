@@ -43,3 +43,35 @@ def test_reconcile_is_noop_on_current_schema(tmp_path):
     _auto_add_missing_columns(eng)
     cols = {c["name"] for c in inspect(eng).get_columns("price_sync_settings")}
     assert "signed_in_user" in cols
+
+
+def test_drops_retired_price_basis_column(tmp_path):
+    """A legacy DB carries current_microsoft_licenses.price_basis as NOT NULL with
+    no server default — after retirement the ORM never writes it, so it must be
+    physically dropped or every new row would violate the constraint."""
+    from app.db import Base, _drop_retired_columns
+
+    eng = create_engine(f"sqlite:///{tmp_path}/legacy.db")
+    Base.metadata.create_all(eng)
+    with eng.begin() as c:
+        c.execute(text(
+            'ALTER TABLE "current_microsoft_licenses" '
+            'ADD COLUMN "price_basis" VARCHAR(9) NOT NULL DEFAULT \'Unknown\''
+        ))
+
+    _drop_retired_columns(eng)
+
+    cols = {c["name"] for c in inspect(eng).get_columns("current_microsoft_licenses")}
+    assert "price_basis" not in cols
+    # Idempotent: a second run is a no-op.
+    _drop_retired_columns(eng)
+
+
+def test_drop_retired_is_noop_without_the_column(tmp_path):
+    from app.db import Base, _drop_retired_columns
+
+    eng = create_engine(f"sqlite:///{tmp_path}/fresh.db")
+    Base.metadata.create_all(eng)
+    _drop_retired_columns(eng)  # nothing to drop; must not raise
+    cols = {c["name"] for c in inspect(eng).get_columns("current_microsoft_licenses")}
+    assert "price_basis" not in cols

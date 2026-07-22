@@ -42,7 +42,6 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
   if (notInCatalog) chips.push(<span key="c" className="badge warn" title="No matching SKU in the imported price list">⚠ not in catalog</span>)
   if (!fullyAssigned) chips.push(<span key="a" className="badge warn">{l.quantity_assigned}/{l.quantity_purchased} assigned</span>)
   if (l.discount_pct) chips.push(<span key="d" className="badge muted">−{pct(l.discount_pct)}</span>)
-  if (l.price_basis && l.price_basis !== 'Unknown') chips.push(<span key="b" className="badge muted">{l.price_basis}</span>)
   if (overridden) chips.push(<span key="basis" className="badge muted" title="Pricing basis overrides the engagement default">{basis.segment} · {basis.term}</span>)
   tagNames.forEach((n, i) => chips.push(<span key={`p${i}`} className="badge muted">{n}</span>))
   // No persona tag → the engine treats the line as an org-wide pool (spread
@@ -121,10 +120,6 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
                 <input type="number" step="0.05" value={l.discount_pct ?? ''} placeholder="e.g. 0.15"
                   onChange={(e) => update(l.id, { discount_pct: e.target.value === '' ? null : Number(e.target.value) })} />
                 <small className="src">Fraction off list (0.15 = 15%). Recorded on the readout.</small></div>
-              <div><label>Price basis</label>
-                <select value={l.price_basis} onChange={(e) => update(l.id, { price_basis: e.target.value })}>
-                  {(meta?.price_basis || []).map((s) => <option key={s}>{s}</option>)}
-                </select></div>
               <div><label>Applies to (personas)</label>
                 <div className="pill-list">
                   {personas.map((p) => (
@@ -177,7 +172,7 @@ export default function CurrentLicensing({ engagement, meta, onUpdate }) {
   const engBasis = effectiveBasis(null, engagement)
   const blank = {
     sku_reference: '', quantity: 0,
-    unit_price_paid_annual: 0, price_basis: 'Unknown', source_tag: 'CustomerStated',
+    unit_price_paid_annual: 0, source_tag: 'CustomerStated',
   }
   const [form, setForm] = useState(blank)
   // AI paste-to-parse state.
@@ -232,7 +227,7 @@ export default function CurrentLicensing({ engagement, meta, onUpdate }) {
         const qty = Number(r.license_quantity) || 0
         await api.post(base, {
           sku_reference: r.product_description, quantity_purchased: qty, quantity_assigned: qty,
-          unit_price_paid_annual: annualPerSeat(r), price_basis: 'Unknown',
+          unit_price_paid_annual: annualPerSeat(r),
           source_tag: 'CustomerStated',
         })
       }
@@ -249,7 +244,7 @@ export default function CurrentLicensing({ engagement, meta, onUpdate }) {
         // Default fully assigned; expand a line to model shelfware.
         quantity_purchased: qty, quantity_assigned: qty,
         unit_price_paid_annual: Number(form.unit_price_paid_annual),
-        price_basis: form.price_basis, source_tag: form.source_tag,
+        source_tag: form.source_tag,
       })
       setForm(blank); load()
     } catch (e) { setErr(e.message) }

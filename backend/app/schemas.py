@@ -216,7 +216,6 @@ class CurrentLicenseIn(BaseModel):
     quantity_purchased: int = 0
     quantity_assigned: int = 0
     unit_price_paid_annual: Decimal = Decimal("0")
-    price_basis: str = "Unknown"
     discount_pct: Optional[Decimal] = None
     # Per-line pricing-basis overrides. None = inherit the engagement default.
     segment: Optional[str] = None
@@ -233,7 +232,6 @@ class CurrentLicenseOut(ORMModel):
     quantity_purchased: int
     quantity_assigned: int
     unit_price_paid_annual: Decimal
-    price_basis: str
     discount_pct: Optional[Decimal]
     segment: Optional[str]
     term_duration: Optional[str]

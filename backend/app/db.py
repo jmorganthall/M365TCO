@@ -81,9 +81,39 @@ def _auto_add_missing_columns(target_engine=None) -> None:
                 conn.execute(text(ddl))
 
 
+# Columns retired from the model, by explicit (table, column) — the mirror of
+# additive reconciliation. A retired column must be physically dropped: the ORM
+# no longer writes it, so a legacy NOT NULL (client-side default only) column
+# would reject every new row, and a value the GUI can no longer surface would
+# violate the no-hidden-data rule.
+_RETIRED_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("current_microsoft_licenses", "price_basis"),
+)
+
+
+def _drop_retired_columns(target_engine=None) -> None:
+    from sqlalchemy import inspect, text
+
+    eng = target_engine or engine
+    inspector = inspect(eng)
+    with eng.begin() as conn:
+        for table_name, column_name in _RETIRED_COLUMNS:
+            if not inspector.has_table(table_name):
+                continue
+            existing = {c["name"] for c in inspector.get_columns(table_name)}
+            model_table = Base.metadata.tables.get(table_name)
+            # Defensive: never drop a column the current model still maps.
+            if column_name not in existing or (
+                model_table is not None and column_name in model_table.columns
+            ):
+                continue
+            conn.execute(text(f'ALTER TABLE "{table_name}" DROP COLUMN "{column_name}"'))
+
+
 def init_db() -> None:
     # Import models so they register on Base.metadata, then create tables.
     from . import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     _auto_add_missing_columns()
+    _drop_retired_columns()

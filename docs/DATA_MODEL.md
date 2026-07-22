@@ -397,10 +397,18 @@ FK, UUID PK, cascade-deleted with the engagement.
   via `CurrentLicensePersona` (§4.5a). The legacy single `persona_id` column is
   deprecated (kept only for the one-time backfill).
 - **Field ownership:** user-entered (`quantity_assigned` ← model on this not
-  purchased, `unit_price_paid_annual`, `price_basis`, `discount_pct`, and the
+  purchased, `unit_price_paid_annual`, `discount_pct`, and the
   per-line basis overrides `segment` / `term_duration` / `billing_plan` where
   NULL = inherit the engagement default per §4.1); provenance.
   API exposes `persona_ids` (the tags), not `persona_id`.
+- **Retired:** a per-line `price_basis` enum (EA/CSP/MCA-E/… contract-vehicle
+  disclosure) was removed — never collected in practice, never used in any
+  calculation, and its only output was an "Unknown" placeholder on the readout
+  appendix. A field that is meaningless in data collection must not exist in the
+  model. (Existing DBs may carry the orphaned physical column; schema
+  reconciliation is additive-only and the ORM no longer maps it.) Not to be
+  confused with `engagement_price_basis()` — the segment/term/billing quoting
+  basis, which is load-bearing and unchanged.
 - **CRUD:** `GET/POST/PATCH/DELETE …/current-licenses`; `persona_ids` on the body
   replaces the tag set.
 - **Engine role:** the Microsoft side of a persona's current spend. A line's

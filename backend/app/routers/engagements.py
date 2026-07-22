@@ -169,7 +169,7 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
         nlic = models.CurrentMicrosoftLicense(
             engagement_id=dst.id, sku_reference=lic.sku_reference,
             quantity_purchased=lic.quantity_purchased, quantity_assigned=lic.quantity_assigned,
-            unit_price_paid_annual=lic.unit_price_paid_annual, price_basis=lic.price_basis,
+            unit_price_paid_annual=lic.unit_price_paid_annual,
             discount_pct=lic.discount_pct, source_tag=lic.source_tag,
             segment=lic.segment, term_duration=lic.term_duration,
             billing_plan=lic.billing_plan,
