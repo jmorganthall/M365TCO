@@ -128,7 +128,7 @@ export default function Readout({ engagement }) {
       <div className="card">
         <div className="flex-between">
           <div>
-            <div className="muted">Net TCO delta · annualized USD · <small>negative = saving</small> <PricingBadge /></div>
+            <div className="muted">Net TCO delta · annualized {engagement.currency} · <small>negative = saving</small> <PricingBadge /></div>
             <div className={`headline ${saving ? 'pos' : ''}`} style={{ fontSize: '2.6rem' }}>{usd(r.net_tco_delta_annual)}</div>
             <div className="muted" style={{ maxWidth: '46rem' }}>
               <MoveSummary scenarios={inScope} delta={r.net_tco_delta_annual} />

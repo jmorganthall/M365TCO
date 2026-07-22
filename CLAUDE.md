@@ -43,6 +43,15 @@ and obey `docs/DATA_ARCHITECTURE.md` and `docs/DATA_MODEL.md`:
 - Relationships are explicit and referential: model many-to-many as a first-class
   association object (not a delimited string or a duplicated row), and validate
   soft references (e.g. a SKU string) against their source in the UI.
+- **No write-only fields.** A new persisted field ships in the same change with
+  its writer, at least one real reader (an engine input, a readout/export
+  output, or an AI-prompt input), and its GUI surface. A field that loses its
+  readers is retired, not left behind: remove it from the model and add its
+  `(table, column)` to `_RETIRED_COLUMNS` in `backend/app/db.py` — the
+  subtractive mirror of the additive column reconciliation, which physically
+  drops it from existing DBs at startup. `test_no_write_only_columns` in
+  `backend/tests/test_migrations.py` is the tripwire: it fails any column with
+  no reference outside the model/schema definitions.
 
 ## Engine
 

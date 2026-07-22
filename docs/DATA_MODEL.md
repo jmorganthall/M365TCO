@@ -31,7 +31,9 @@ Read this alongside:
    _user-entered_, _seeded_, _derived-on-write_, or _engine-output_. Modules that
    recompute must preserve fields they do not own.
 5. **Provenance is universal.** Every value-bearing, user-entered record carries a
-   `source_tag` so hard inputs are separable from soft ones on the readout.
+   `source_tag`; the readout's Assumptions & sources discloses every input tagged
+   as an assumption (ListPrice / Estimate / AISuggestedUnconfirmed), so hard
+   inputs are separable from soft ones on the customer document.
 6. **The ratify gate is the only door to the math.** Unratified coverage (AI
    suggestions) is real data but is invisible to the engine until a human
    ratifies it.
@@ -113,11 +115,20 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Identity:** `uuid`. **Scope:** root (owns everything else).
 - **Relationships:** one-to-many to all eight child sets, all `cascade="all, delete-orphan"`.
 - **Field ownership:** user-entered (`customer_name`, `market`, `currency`,
-  `notes`, `global_tooling_pct`, `modeling_horizon_years`, `default_segment`,
+  `notes`, `global_tooling_pct`, `default_segment`,
   `default_term_duration`, `default_billing_plan`, `bp_swap_enabled`, the readout
   branding `brand_logo_data_url` / `brand_primary_color` / `brand_accent_color`,
   and the Customer-Info metadata `workshop_date` / `industry` / `hq_location` /
   `website` / `employee_count`); derived (`created_at`, `updated_at`).
+- **Validated soft refs:** `market` / `currency` are checked on create/patch
+  against the loaded price catalog (or the configured defaults when none is
+  loaded) — the engine never converts currency, so a mismatch would print a
+  readout header that contradicts its own numbers. Editable on Customer Info.
+- **Retired:** `modeling_horizon_years` (and `GlobalDefaults.
+  default_modeling_horizon_years`) — no multi-year math exists in v1, and the
+  engagement copy had no GUI surface. `ThirdPartyProduct.commitment_term_months`
+  and `PriceSyncSettings.redirect_uri` were retired in the same sweep (collected
+  but never read; never referenced at all). All dropped via `_RETIRED_COLUMNS`.
 - **Customer Info:** `customer_name` is the engagement's editable display name;
   the metadata fields above are basic customer context (the Customer Info tab) used
   for display and later as grounding for the AI business-narrative research. They
@@ -397,10 +408,18 @@ FK, UUID PK, cascade-deleted with the engagement.
   via `CurrentLicensePersona` (§4.5a). The legacy single `persona_id` column is
   deprecated (kept only for the one-time backfill).
 - **Field ownership:** user-entered (`quantity_assigned` ← model on this not
-  purchased, `unit_price_paid_annual`, `price_basis`, `discount_pct`, and the
+  purchased, `unit_price_paid_annual`, `discount_pct`, and the
   per-line basis overrides `segment` / `term_duration` / `billing_plan` where
   NULL = inherit the engagement default per §4.1); provenance.
   API exposes `persona_ids` (the tags), not `persona_id`.
+- **Retired:** a per-line `price_basis` enum (EA/CSP/MCA-E/… contract-vehicle
+  disclosure) was removed — never collected in practice, never used in any
+  calculation, and its only output was an "Unknown" placeholder on the readout
+  appendix. A field that is meaningless in data collection must not exist in the
+  model. (Existing DBs may carry the orphaned physical column; schema
+  reconciliation is additive-only and the ORM no longer maps it.) Not to be
+  confused with `engagement_price_basis()` — the segment/term/billing quoting
+  basis, which is load-bearing and unchanged.
 - **CRUD:** `GET/POST/PATCH/DELETE …/current-licenses`; `persona_ids` on the body
   replaces the tag set.
 - **Engine role:** the Microsoft side of a persona's current spend. A line's
@@ -664,7 +683,7 @@ trustworthy, without inventing data.
 ### 4.11 Out-of-band data sets
 - **GlobalDefaults / Settings (PRD 5.10):** the single-row `GlobalDefaults` table
   holds operator-editable, engagement-seeded defaults — `default_tooling_pct`,
-  `default_modeling_horizon_years`, `default_segment` (the ground floor of the
+  `default_segment` (the ground floor of the
   pricing-basis chain, §4.1), and the operational `openrouter_model` /
   `sanity_check_model` (the latter an inexpensive model for the advisory
   pre-readout sanity check; blank falls back to `settings.sanity_check_model`).
@@ -786,8 +805,11 @@ If a field's owner is ambiguous, that is a design smell — pick one before ship
 ## 9. Provenance & confidence
 
 - `source_tag ∈ {Invoice, CustomerStated, ListPrice, Estimate,
-  AISuggestedUnconfirmed}` on every value-bearing user record. The readout can
-  filter/annotate by it so hard inputs are separable from soft ones.
+  AISuggestedUnconfirmed}` on every value-bearing user record. The HTML
+  readout's Assumptions & sources section discloses every persona, current
+  license, and third-party product tagged ListPrice / Estimate /
+  AISuggestedUnconfirmed ("inputs carried as assumptions"); the section is
+  omitted when every input is Invoice/CustomerStated.
 - `ai_suggested` + `ratified` on coverage entries gate AI proposals out of the
   math until a human confirms.
 - Together these mean **every number on the readout is traceable** to who asserted

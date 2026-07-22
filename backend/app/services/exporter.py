@@ -288,14 +288,41 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
             "<p><b>Assumed full elimination</b> (savings asserted on users the target does "
             f"not automatically displace):</p><ul>{items}</ul>"
         )
-    if engagement.current_licenses:
+    # Only lines with a recorded discount are disclosed — an appendix line must
+    # say something real, never print a placeholder to the customer.
+    discounted = [lic for lic in engagement.current_licenses if lic.discount_pct]
+    if discounted:
         items = "".join(
-            f"<li>{html.escape(lic.sku_reference)}: {lic.price_basis}"
-            + (f", {_pct(lic.discount_pct)} discount" if lic.discount_pct else "")
-            + "</li>"
-            for lic in engagement.current_licenses
+            f"<li>{html.escape(lic.sku_reference)}: {_pct(lic.discount_pct)} discount</li>"
+            for lic in discounted
         )
-        appendix_parts.append(f"<p><b>Current Microsoft line price bases:</b></p><ul>{items}</ul>")
+        appendix_parts.append(f"<p><b>Current Microsoft line discounts:</b></p><ul>{items}</ul>")
+    # Input provenance (DATA_MODEL §9): separate hard inputs from soft ones.
+    # Disclose every input whose source_tag marks it as an assumption rather than
+    # a customer-stated/invoiced fact; omitted entirely when there are none.
+    soft_label = {
+        "ListPrice": "list price assumed",
+        "Estimate": "estimate",
+        "AISuggestedUnconfirmed": "AI-suggested, unconfirmed",
+    }
+    soft_inputs = (
+        [(p.name, "persona", p.source_tag) for p in engagement.personas
+         if p.source_tag in soft_label]
+        + [(lic.sku_reference, "current license", lic.source_tag)
+           for lic in engagement.current_licenses if lic.source_tag in soft_label]
+        + [(tp.name, "third-party product", tp.source_tag)
+           for tp in engagement.third_party_products if tp.source_tag in soft_label]
+    )
+    if soft_inputs:
+        items = "".join(
+            f"<li>{html.escape(name)} <span style='color:#666'>({kind})</span>: "
+            f"{soft_label[tag]}</li>"
+            for name, kind, tag in soft_inputs
+        )
+        appendix_parts.append(
+            "<p><b>Inputs carried as assumptions</b> (tagged, not customer-stated "
+            f"or invoiced):</p><ul>{items}</ul>"
+        )
     appendix_section = (
         f"<section><h2>Assumptions &amp; sources</h2>{''.join(appendix_parts)}</section>"
         if appendix_parts else ""
@@ -335,7 +362,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 </style></head><body>
 {logo_html}
 <h1>M365 TCO Readout</h1>
-<div class="sub">{html.escape(engagement.customer_name)} · {engagement.market}/{engagement.currency} · annualized USD</div>
+<div class="sub">{html.escape(engagement.customer_name)} · {html.escape(engagement.market or "")}/{html.escape(engagement.currency or "USD")} · annualized {html.escape(engagement.currency or "USD")}</div>
 
 <div class="headline {delta_cls}">{_usd(delta)} <span style="font-size:1rem;font-weight:400">{delta_label}</span></div>
 {move_summary}

@@ -97,12 +97,6 @@ export default function AdminPanel({ onClose }) {
                   onBlur={(e) => saveDefaults({ default_tooling_pct: Number(e.target.value) })} />
               </div>
               <div>
-                <label>Default modeling horizon (years)</label>
-                <input type="number" step="1" min="1"
-                  defaultValue={defaults.default_modeling_horizon_years}
-                  onBlur={(e) => saveDefaults({ default_modeling_horizon_years: Number(e.target.value) })} />
-              </div>
-              <div>
                 <label>Default pricing segment</label>
                 <BasisSelect kind="segment" value={defaults.default_segment}
                   onChange={(v) => saveDefaults({ default_segment: v })} />

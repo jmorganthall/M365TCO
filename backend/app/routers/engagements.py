@@ -46,16 +46,59 @@ def list_engagements(db: Session = Depends(get_db)):
     ).scalars().all()
 
 
+def _catalog_market_currency(db: Session) -> tuple[str, str]:
+    """The market/currency the numbers actually are: the loaded price catalog's
+    (single-market by design), or the configured defaults when none is loaded."""
+    row = db.execute(select(models.MicrosoftSku).limit(1)).scalars().first()
+    if row:
+        return row.market, row.currency
+    return settings.default_market, settings.default_currency
+
+
+def _validate_market_currency(db: Session, market: str | None, currency: str | None) -> None:
+    """The engine does no currency conversion — every price is used exactly as
+    entered and quoted from the loaded catalog. Market/currency are therefore
+    validated soft references (pass None for a value that wasn't explicitly
+    provided); accepting a mismatch would produce a readout whose header
+    contradicts its own numbers."""
+    if market is None and currency is None:
+        return
+    want_market, want_currency = _catalog_market_currency(db)
+    if market is not None and market != want_market:
+        raise HTTPException(
+            422,
+            f"Market must be '{want_market}': the loaded price catalog is "
+            f"{want_market}/{want_currency} and prices are never converted.",
+        )
+    if currency is not None and currency != want_currency:
+        raise HTTPException(
+            422,
+            f"Currency must be '{want_currency}': the loaded price catalog is "
+            f"{want_market}/{want_currency} and prices are never converted.",
+        )
+
+
 @router.post("", response_model=schemas.EngagementOut, status_code=201)
 def create_engagement(payload: schemas.EngagementCreate, db: Session = Depends(get_db)):
     data = payload.model_dump()
+    # Market/currency: inherit the catalog's values when not explicitly given;
+    # an explicit value must agree with the catalog (no conversion exists).
+    provided = payload.model_fields_set
+    want_market, want_currency = _catalog_market_currency(db)
+    if "market" not in provided:
+        data["market"] = want_market
+    if "currency" not in provided:
+        data["currency"] = want_currency
+    _validate_market_currency(
+        db,
+        data["market"] if "market" in provided else None,
+        data["currency"] if "currency" in provided else None,
+    )
     # Inherit engagement-level defaults from the global defaults when omitted
     # (the New-engagement form no longer asks for the tooling split).
     gd = defaults.get_defaults(db)
     if data.get("global_tooling_pct") is None:
         data["global_tooling_pct"] = gd.default_tooling_pct
-    if data.get("modeling_horizon_years") is None:
-        data["modeling_horizon_years"] = gd.default_modeling_horizon_years
     if data.get("default_segment") is None:
         data["default_segment"] = gd.default_segment
     if data.get("default_term_duration") is None:
@@ -83,7 +126,9 @@ def update_engagement(
     engagement_id: str, payload: schemas.EngagementUpdate, db: Session = Depends(get_db)
 ):
     eng = _get_engagement(db, engagement_id)
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    _validate_market_currency(db, data.get("market"), data.get("currency"))
+    for k, v in data.items():
         setattr(eng, k, v)
     db.commit()
     db.refresh(eng)
@@ -105,7 +150,6 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
         customer_name=f"{src.customer_name} (copy)",
         market=src.market,
         currency=src.currency,
-        modeling_horizon_years=src.modeling_horizon_years,
         global_tooling_pct=src.global_tooling_pct,
         default_segment=src.default_segment,
         default_term_duration=src.default_term_duration,
@@ -153,7 +197,7 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
             cost_period=tp.cost_period, annual_cost=tp.annual_cost, unit_basis=tp.unit_basis,
             covered_count=tp.covered_count, covered_count_override=tp.covered_count_override,
             per_unit_annual_cost=tp.per_unit_annual_cost,
-            renewal_date=tp.renewal_date, commitment_term_months=tp.commitment_term_months,
+            renewal_date=tp.renewal_date,
             is_managed=tp.is_managed, tooling_pct=tp.tooling_pct,
             effective_annual_cost=tp.effective_annual_cost, source_tag=tp.source_tag,
         )
@@ -169,7 +213,7 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
         nlic = models.CurrentMicrosoftLicense(
             engagement_id=dst.id, sku_reference=lic.sku_reference,
             quantity_purchased=lic.quantity_purchased, quantity_assigned=lic.quantity_assigned,
-            unit_price_paid_annual=lic.unit_price_paid_annual, price_basis=lic.price_basis,
+            unit_price_paid_annual=lic.unit_price_paid_annual,
             discount_pct=lic.discount_pct, source_tag=lic.source_tag,
             segment=lic.segment, term_duration=lic.term_duration,
             billing_plan=lic.billing_plan,
