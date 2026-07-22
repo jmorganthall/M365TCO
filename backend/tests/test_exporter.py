@@ -143,3 +143,58 @@ def test_readout_renders_business_narrative_when_present(client, monkeypatch):
     assert "The business case" in html
     assert "Knowledge Worker" in html and "Saves $45k/yr." in html
     assert "Population check" not in html
+
+
+def test_readout_disclosures_soft_inputs_and_honest_currency(client):
+    """Provenance (§9) reaches the customer document: inputs tagged as
+    assumptions are listed in Assumptions & sources, hard inputs are not, and
+    the header states the engagement's actual currency instead of a hard-coded
+    'USD'. An all-hard engagement omits the assumptions block entirely."""
+    eng = client.post("/api/engagements", json={"customer_name": "Prov Co"}).json()
+    eid = eng["id"]
+    p = client.post(f"/api/engagements/{eid}/personas",
+                    json={"name": "KW", "headcount": 10, "source_tag": "Estimate"}).json()
+    client.post(f"/api/engagements/{eid}/third-party", json={
+        "name": "Okta", "raw_cost": 1000, "source_tag": "CustomerStated"})
+    client.post(f"/api/engagements/{eid}/scenarios", json={
+        "persona_id": p["id"], "target_sku_reference": "Microsoft 365 E3",
+        "target_unit_price_annual": 400, "in_scope": True})
+
+    html = client.get(f"/api/engagements/{eid}/readout.html").text
+    assert "Inputs carried as assumptions" in html
+    assert "KW <span style='color:#666'>(persona)</span>: estimate" in html
+    assert "Okta <span" not in html          # hard-tagged input is not disclosed
+    assert "annualized USD" in html          # engagement currency, printed live
+
+    # All-hard engagement: the assumptions block is omitted, never a placeholder.
+    eng2 = client.post("/api/engagements", json={"customer_name": "Hard Co"}).json()
+    p2 = client.post(f"/api/engagements/{eng2['id']}/personas",
+                     json={"name": "KW", "headcount": 5}).json()
+    client.post(f"/api/engagements/{eng2['id']}/scenarios", json={
+        "persona_id": p2["id"], "target_sku_reference": "Microsoft 365 E3",
+        "target_unit_price_annual": 400, "in_scope": True})
+    html2 = client.get(f"/api/engagements/{eng2['id']}/readout.html").text
+    assert "Inputs carried as assumptions" not in html2
+
+
+def test_engagement_currency_and_market_are_validated(client):
+    """The engine never converts currency, so market/currency are validated soft
+    refs against the loaded catalog (or the configured defaults with no
+    catalog): unset values inherit the accepted pair, an explicit mismatch is
+    rejected with a clear error instead of silently printing a readout header
+    that contradicts its own numbers."""
+    # An engagement created without market/currency inherits the accepted pair.
+    eng = client.post("/api/engagements", json={"customer_name": "Ok Co"}).json()
+    ok_market, ok_currency = eng["market"], eng["currency"]
+
+    r = client.post("/api/engagements",
+                    json={"customer_name": "Euro Co", "currency": ok_currency + "X"})
+    assert r.status_code == 422
+    assert "never converted" in r.json()["detail"]
+
+    r = client.patch(f"/api/engagements/{eng['id']}", json={"market": ok_market + "X"})
+    assert r.status_code == 422
+    # Matching values round-trip.
+    r = client.patch(f"/api/engagements/{eng['id']}",
+                     json={"market": ok_market, "currency": ok_currency})
+    assert r.status_code == 200

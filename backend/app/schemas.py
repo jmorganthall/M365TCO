@@ -20,7 +20,6 @@ class EngagementCreate(BaseModel):
     market: str = "US"
     currency: str = "USD"
     # When omitted, these inherit from GlobalDefaults at creation time.
-    modeling_horizon_years: Optional[int] = None
     global_tooling_pct: Optional[Decimal] = None
     # Pricing-basis defaults. Omitted values inherit GlobalDefaults at creation
     # (the global → engagement → line hierarchy).
@@ -34,7 +33,6 @@ class EngagementCreate(BaseModel):
 
 class GlobalDefaultsOut(ORMModel):
     default_tooling_pct: Decimal
-    default_modeling_horizon_years: int
     default_segment: str
     default_term_duration: str
     default_billing_plan: str
@@ -46,7 +44,6 @@ class GlobalDefaultsOut(ORMModel):
 
 class GlobalDefaultsUpdate(BaseModel):
     default_tooling_pct: Optional[Decimal] = None
-    default_modeling_horizon_years: Optional[int] = None
     default_segment: Optional[str] = None
     default_term_duration: Optional[str] = None
     default_billing_plan: Optional[str] = None
@@ -131,7 +128,6 @@ class EngagementUpdate(BaseModel):
     customer_name: Optional[str] = None
     market: Optional[str] = None
     currency: Optional[str] = None
-    modeling_horizon_years: Optional[int] = None
     global_tooling_pct: Optional[Decimal] = None
     default_segment: Optional[str] = None
     default_term_duration: Optional[str] = None
@@ -155,7 +151,6 @@ class EngagementOut(ORMModel):
     customer_name: str
     market: str
     currency: str
-    modeling_horizon_years: int
     global_tooling_pct: Decimal
     default_segment: str
     default_term_duration: str
@@ -252,7 +247,6 @@ class ThirdPartyIn(BaseModel):
     # override wins when set (e.g. the product covers more users than the tags).
     covered_count_override: Optional[int] = None
     renewal_date: Optional[date] = None
-    commitment_term_months: Optional[int] = None
     is_managed: bool = False
     tooling_pct: Optional[Decimal] = None
     source_tag: str = "CustomerStated"
@@ -273,7 +267,6 @@ class ThirdPartyOut(ORMModel):
     persona_covered_count: int  # derived: combined headcount of tagged personas
     per_unit_annual_cost: Decimal
     renewal_date: Optional[date]
-    commitment_term_months: Optional[int]
     is_managed: bool
     tooling_pct: Decimal
     effective_annual_cost: Decimal

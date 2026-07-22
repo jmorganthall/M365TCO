@@ -116,6 +116,16 @@ export default function CustomerInfo({ engagement, meta, onUpdate }) {
           <input type="number" min="0" value={f.employee_count} placeholder="e.g. 1200"
             onChange={set('employee_count')} onBlur={(e) => commit('employee_count', e.target.value)} />
         </div>
+        <div>
+          <label>Market {savedTag('market')}</label>
+          <input value={f.market} onChange={set('market')} onBlur={(e) => commit('market', e.target.value)} />
+          <small className="src">Must match the loaded price catalog — prices are never converted.</small>
+        </div>
+        <div>
+          <label>Currency {savedTag('currency')}</label>
+          <input value={f.currency} onChange={set('currency')} onBlur={(e) => commit('currency', e.target.value)} />
+          <small className="src">Validated against the catalog; a mismatch is rejected.</small>
+        </div>
       </div>
 
       <div style={{ marginTop: '.6rem' }}>
@@ -145,5 +155,7 @@ function fromEngagement(e) {
     website: e.website || '',
     employee_count: e.employee_count ?? '',
     notes: e.notes || '',
+    market: e.market || '',
+    currency: e.currency || '',
   }
 }

@@ -88,6 +88,10 @@ def _auto_add_missing_columns(target_engine=None) -> None:
 # violate the no-hidden-data rule.
 _RETIRED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("current_microsoft_licenses", "price_basis"),
+    ("engagements", "modeling_horizon_years"),          # no multi-year math in v1
+    ("global_defaults", "default_modeling_horizon_years"),
+    ("third_party_products", "commitment_term_months"),  # collected, never read
+    ("price_sync_settings", "redirect_uri"),             # never referenced at all
 )
 
 

@@ -72,7 +72,6 @@ class Engagement(Base):
     )
     market: Mapped[str] = mapped_column(String, default="US")
     currency: Mapped[str] = mapped_column(String, default="USD")
-    modeling_horizon_years: Mapped[int] = mapped_column(Integer, default=3)
     global_tooling_pct: Mapped[float] = mapped_column(Numeric(6, 4), default=0.30)
     notes: Mapped[str] = mapped_column(Text, default="")
     # Customer-info metadata (Customer Info tab). User-entered context about the
@@ -443,7 +442,6 @@ class ThirdPartyProduct(Base):
     covered_count_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
     per_unit_annual_cost: Mapped[float] = mapped_column(Numeric(14, 6), default=0)
     renewal_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    commitment_term_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_managed: Mapped[bool] = mapped_column(Boolean, default=False)
     tooling_pct: Mapped[float] = mapped_column(Numeric(6, 4), default=0.30)
     effective_annual_cost: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
@@ -644,7 +642,6 @@ class GlobalDefaults(Base):
     # Single well-known row.
     id: Mapped[str] = mapped_column(String, primary_key=True, default="singleton")
     default_tooling_pct: Mapped[float] = mapped_column(Numeric(6, 4), default=0.30)
-    default_modeling_horizon_years: Mapped[int] = mapped_column(Integer, default=3)
     # Ground-floor pricing-segment default. New engagements copy this into their
     # own `default_segment` on creation; changing it here retargets only NEW
     # engagements. "Commercial" out of the box.
@@ -685,8 +682,6 @@ class PriceSyncSettings(Base):
     # Auto-discovered from the token (tid) on first sign-in; not asked upfront.
     tenant_id: Mapped[str] = mapped_column(String, default="")
     client_id: Mapped[str] = mapped_column(String, default="")
-    # Blank = auto-derive from the app's request origin at sign-in time.
-    redirect_uri: Mapped[str] = mapped_column(String, default="")
     pricesheet_view: Mapped[str] = mapped_column(String, default="updatedlicensebased")
     market: Mapped[str] = mapped_column(String, default="US")
     # Captured from the token claims after a successful sign-in (display only).

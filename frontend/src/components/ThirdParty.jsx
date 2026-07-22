@@ -91,9 +91,6 @@ function ProductRow({ t, meta, personas, moneyUnit, update, remove }) {
               <div><label>Renewal date</label>
                 <input type="date" value={t.renewal_date || ''}
                   onChange={(e) => update(t.id, { renewal_date: e.target.value || null })} /></div>
-              <div><label>Commitment (months)</label>
-                <NumInput value={t.commitment_term_months} placeholder="—" allowEmpty
-                  onCommit={(n) => update(t.id, { commitment_term_months: n })} /></div>
               <div><label>Applies to (personas)</label>
                 <div className="pill-list">
                   {personas.map((p) => (
