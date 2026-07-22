@@ -120,12 +120,45 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     # Spend bridge (cost-change framing): the new target Microsoft cost, minus the
     # existing spend it retires (current Microsoft + freed-up third-party), builds
     # to the net change. The freed third-party splits into "already covered by
-    # current licensing (quick win)" and "additionally freed by the move".
+    # current licensing (quick win)" and "additionally freed by the move". Every
+    # line is broken down per persona: one column per in-scope scenario plus a
+    # Total, sourced from the same per-scenario numbers the rollup totals sum
+    # (target/current spend and per-product offsets), so columns add up exactly.
+    # With a single in-scope persona the total IS that persona — no extra columns.
     existing_ms = rollup["existing_microsoft_annual"]
     target_ms = rollup["target_microsoft_annual"]
     freed = rollup["freed_third_party"]
+    already = [f for f in freed if f.get("already_covered")]
+    newly = [f for f in freed if not f.get("already_covered")]
+    already_ids = {f["third_party_product_id"] for f in already}
+    in_scope = [s for s in result["scenarios"] if s["in_scope"]]
+    cols = in_scope if len(in_scope) > 1 else []
 
-    def _freed_block(label, sub, items):
+    def _offset_of(s, product_id):
+        return next((o["credited_offset_annual"] for o in s.get("offsets", [])
+                     if o["third_party_product_id"] == product_id), 0)
+
+    def _offset_sum(s, in_already):
+        return sum(o["credited_offset_annual"] for o in s.get("offsets", [])
+                   if (o["third_party_product_id"] in already_ids) == in_already)
+
+    def _fmt(value, negate):
+        return (f"−{_usd(value)}" if value else _usd(0)) if negate else _usd(value)
+
+    def _cells(values, total, negate=False, cls=""):
+        tds = "".join(f"<td class='num {cls}'>{_fmt(v, negate)}</td>" for v in values)
+        return tds + f"<td class='num {cls}'>{_fmt(total, negate)}</td>"
+
+    bridge_head = ""
+    if cols:
+        ths = "".join(
+            f"<th class='num'>{html.escape(s['persona_name'])} "
+            f"<small>→ {html.escape(s['target_sku_reference'])}</small></th>"
+            for s in cols
+        )
+        bridge_head = f"<thead><tr><th></th>{ths}<th class='num'>Total</th></tr></thead>"
+
+    def _freed_block(label, sub, items, in_already):
         if not items:
             return ""
         total = sum(f["credited_annual"] for f in items)
@@ -133,25 +166,58 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
             f"<tr class='sub'><td>↳ {html.escape(f['third_party_product_name'])}"
             + (" — $0 credited (set its covered population to free up spend)"
                if f["credited_annual"] == 0 else " freed up")
-            + f"</td><td class='num pos'>{('−' + _usd(f['credited_annual'])) if f['credited_annual'] else _usd(0)}</td></tr>"
+            + "</td>"
+            + _cells([_offset_of(s, f["third_party_product_id"]) for s in cols],
+                     f["credited_annual"], negate=True, cls="pos")
+            + "</tr>"
             for f in items
         )
         return (f"<tr><td>Less: {label} <span style='color:#666'>{sub}</span></td>"
-                f"<td class='num pos'>−{_usd(total)}</td></tr>{rows}")
+                + _cells([_offset_sum(s, in_already) for s in cols], total,
+                         negate=True, cls="pos")
+                + f"</tr>{rows}")
 
-    already = [f for f in freed if f.get("already_covered")]
-    newly = [f for f in freed if not f.get("already_covered")]
+    delta_cells = "".join(
+        f"<td class='num {'pos' if s['delta_annual'] < 0 else ''}'><b>{_usd(s['delta_annual'])}</b></td>"
+        for s in cols
+    )
     bridge_rows = (
         f"<tr><td>Target Microsoft licensing (new per-persona bundles)</td>"
-        f"<td class='num'>{_usd(target_ms)}</td></tr>"
+        + _cells([s["target_spend_annual"] for s in cols], target_ms)
+        + "</tr>"
         f"<tr><td>Less: existing Microsoft licensing retired (current assigned)</td>"
-        f"<td class='num pos'>−{_usd(existing_ms)}</td></tr>"
-        + _freed_block("third-party already covered by current licensing", "(quick win — free today)", already)
-        + _freed_block("third-party additionally freed by the move", "(new displacement from the target)", newly)
+        + _cells([s["current_microsoft_annual"] for s in cols], existing_ms,
+                 negate=True, cls="pos")
+        + "</tr>"
+        + _freed_block("third-party already covered by current licensing", "(quick win — free today)", already, True)
+        + _freed_block("third-party additionally freed by the move", "(new displacement from the target)", newly, False)
         + f"<tr class='total'><td><b>Net TCO delta</b> "
         f"({'annual savings' if delta < 0 else 'annual cost increase' if delta > 0 else 'no net change'})</td>"
-        f"<td class='num {delta_cls}'><b>{_usd(delta)}</b></td></tr>"
+        f"{delta_cells}<td class='num {delta_cls}'><b>{_usd(delta)}</b></td></tr>"
     )
+
+    # Headline move summary: the up-front story — "we save you $X/yr by moving
+    # Sales to E5 and Engineering to E3" — one clause per in-scope persona with
+    # its own delta. Everything below the headline is supporting detail for this
+    # sentence. Omitted when there are no in-scope scenarios to summarize.
+    def _move_clause(s):
+        d = s["delta_annual"]
+        tag = f"saves {_usd(-d)}/yr" if d < 0 else f"adds {_usd(d)}/yr" if d > 0 else "cost-neutral"
+        cls = " class='pos'" if d < 0 else ""
+        return (f"<b>{html.escape(s['persona_name'])}</b> ({s['headcount']}) to "
+                f"<b>{html.escape(s['target_sku_reference'])}</b> <span{cls}>({tag})</span>")
+
+    move_summary = ""
+    if in_scope:
+        clauses = [_move_clause(s) for s in in_scope]
+        moves = clauses[0] if len(clauses) == 1 else ", ".join(clauses[:-1]) + " and " + clauses[-1]
+        if delta < 0:
+            lead = f"We save you <b class='pos'>{_usd(-delta)}</b>/yr by moving "
+        elif delta > 0:
+            lead = f"An added {_usd(delta)}/yr — shown honestly, for the added capabilities — moving "
+        else:
+            lead = "Cost-neutral: moving "
+        move_summary = f"<p class='sub' style='max-width:52rem'>{lead}{moves}.</p>"
 
     # Eliminations section — build only the parts that have content, and omit the
     # whole section if nothing was eliminated (don't print "None" to a customer).
@@ -261,6 +327,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
  th,td{{border:1px solid #ddd;padding:.45rem .6rem;text-align:left;font-size:.92rem}}
  th{{background:#fafafa}} td.num{{text-align:right;font-variant-numeric:tabular-nums}}
  table.bridge td{{border:none;padding:.3rem .6rem}}
+ table.bridge th{{border:none;background:none;color:#666;font-size:.85rem;padding:.3rem .6rem}}
  table.bridge tr.sub td{{color:#666;padding-left:1.8rem;font-size:.85rem}}
  table.bridge tr.total td{{border-top:1px solid #ccc}}
  section{{margin:1.5rem 0}} ul{{margin:.3rem 0}}
@@ -270,15 +337,16 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 <h1>M365 TCO Readout</h1>
 <div class="sub">{html.escape(engagement.customer_name)} · {engagement.market}/{engagement.currency} · annualized USD</div>
 
-<div class="headline {delta_cls}">{_usd(delta)} <span style="font-size:1rem;font-weight:400">{delta_label}{' if you move to the target scenarios' if delta != 0 else ''}</span></div>
+<div class="headline {delta_cls}">{_usd(delta)} <span style="font-size:1rem;font-weight:400">{delta_label}</span></div>
+{move_summary}
 {narrative_section}
 {quick_win_section}
 
 <section><h2>How we get to the number</h2>
 <p class="sub">Existing annualized spend for the in-scope population, the third-party
 tooling those users free up when they move, and the target Microsoft licensing —
-building to the net TCO delta.</p>
-<table class="bridge"><tbody>{bridge_rows}</tbody></table></section>
+building to the net TCO delta, with each line broken down per persona.</p>
+<table class="bridge">{bridge_head}<tbody>{bridge_rows}</tbody></table></section>
 
 <section><h2>Per-persona scenarios</h2>
 <table><thead><tr><th>Persona</th><th>Target SKU</th><th>Headcount</th>

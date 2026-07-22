@@ -729,6 +729,12 @@ The global library is never mutated by workshop edits — this is the
    Premium swap summary** (`services/swap.summarize`, §4.8b) as `bp_swap` — both
    derived, persisting nothing, riding on every readout consumer (compute, HTML/xlsx
    export, snapshot). The swap also shapes step 1's hydration (effective target).
+5. The readout surfaces (Readout tab, HTML export) render the spend bridge and
+   the headline move summary **per persona** purely from the serialized
+   per-scenario fields (`target_spend_annual`, `current_microsoft_annual`,
+   `offsets`, `delta_annual`) — the pre-aggregation form of the same numbers the
+   rollup sums, so persona columns add to the totals by construction. No extra
+   persisted field or shadow structure exists for this view.
 
 ### 6.3 Snapshot
 `POST …/snapshots` computes, then freezes the serialized result + `catalog_version`

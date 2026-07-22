@@ -118,6 +118,10 @@ export default function Readout({ engagement }) {
   const saving = r.net_tco_delta_annual < 0
   const quickWin = Number(r.quick_win_savings_annual) || 0
   const needsClassify = result.dispositions.filter((d) => d.requires_residual_classification)
+  // The in-scope scenarios drive the headline move summary and the per-persona
+  // columns of the spend bridge — their per-scenario numbers sum exactly to the
+  // rollup totals (the engine builds the rollup from these same values).
+  const inScope = result.scenarios.filter((s) => s.in_scope)
 
   return (
     <>
@@ -126,7 +130,9 @@ export default function Readout({ engagement }) {
           <div>
             <div className="muted">Net TCO delta · annualized USD · <small>negative = saving</small> <PricingBadge /></div>
             <div className={`headline ${saving ? 'pos' : ''}`} style={{ fontSize: '2.6rem' }}>{usd(r.net_tco_delta_annual)}</div>
-            <div className="muted">{saving ? 'Hard-dollar annual savings if you move to the target scenarios' : r.net_tco_delta_annual > 0 ? 'Annual cost increase — shown honestly (for the added capabilities below)' : 'No net change'}</div>
+            <div className="muted" style={{ maxWidth: '46rem' }}>
+              <MoveSummary scenarios={inScope} delta={r.net_tco_delta_annual} />
+            </div>
           </div>
           <div className="row" style={{ gap: '.4rem' }}>
             {aiEnabled && (
@@ -257,53 +263,91 @@ export default function Readout({ engagement }) {
         <h2>How we get to the number</h2>
         <p className="hint">The new target Microsoft licensing, less the existing spend it
           retires (current Microsoft plus the third-party tooling those users free up),
-          building to the net change above. Negative = saving.</p>
-        <table className="bridge">
-          <tbody>
-            <tr>
-              <td>Target Microsoft licensing <small className="muted">(new per-persona bundles)</small></td>
-              <td className="num">{usd(r.target_microsoft_annual)}</td>
-            </tr>
-            <tr>
-              <td>Less: existing Microsoft licensing retired <small className="muted">(current assigned)</small></td>
-              <td className="num pos">−{usd(r.existing_microsoft_annual)}</td>
-            </tr>
-            {(() => {
-              const freed = r.freed_third_party || []
-              const already = freed.filter((f) => f.already_covered)
-              const newly = freed.filter((f) => !f.already_covered)
-              const sum = (arr) => arr.reduce((s, f) => s + Number(f.credited_annual || 0), 0)
-              const subRows = (arr) => arr.map((f) => (
+          building to the net change above — each line broken down per persona.
+          Negative = saving.</p>
+        {(() => {
+          const freed = r.freed_third_party || []
+          const already = freed.filter((f) => f.already_covered)
+          const newly = freed.filter((f) => !f.already_covered)
+          const alreadyIds = new Set(already.map((f) => f.third_party_product_id))
+          // One column per in-scope persona plus Total. With a single persona the
+          // total IS that persona, so columns only appear at two or more.
+          const cols = inScope.length > 1 ? inScope : []
+          const offsetOf = (s, pid) =>
+            Number(s.offsets.find((o) => o.third_party_product_id === pid)?.credited_offset_annual || 0)
+          const offsetSum = (s, inAlready) => s.offsets.reduce((t, o) =>
+            t + (alreadyIds.has(o.third_party_product_id) === inAlready ? Number(o.credited_offset_annual || 0) : 0), 0)
+          const fmt = (v, negate) => (negate ? (v ? `−${usd(v)}` : usd(0)) : usd(v))
+          const cells = (values, total, { negate = false, cls = '' } = {}) => (
+            <>
+              {cols.map((s, i) => (
+                <td key={s.scenario_id} className={`num ${cls}`}>{fmt(values[i], negate)}</td>
+              ))}
+              <td className={`num ${cls}`}>{fmt(total, negate)}</td>
+            </>
+          )
+          const sum = (arr) => arr.reduce((t, f) => t + Number(f.credited_annual || 0), 0)
+          const block = (label, sub, arr, inAlready) => (
+            <React.Fragment key={label}>
+              <tr>
+                <td>Less: {label} <small className="muted">{sub}</small></td>
+                {cells(cols.map((s) => offsetSum(s, inAlready)), sum(arr), { negate: true, cls: 'pos' })}
+              </tr>
+              {arr.map((f) => (
                 <tr key={f.third_party_product_id} className="bridge-sub">
                   <td>↳ {f.third_party_product_name}{f.credited_annual === 0
                     ? <span className="muted"> — $0 credited (set its covered population to free up spend)</span>
                     : ' freed up'}</td>
-                  <td className="num pos">{f.credited_annual ? `−${usd(f.credited_annual)}` : usd(0)}</td>
+                  {cells(cols.map((s) => offsetOf(s, f.third_party_product_id)), f.credited_annual, { negate: true, cls: 'pos' })}
                 </tr>
-              ))
-              const block = (label, sub, arr) => (
-                <React.Fragment key={label}>
+              ))}
+            </React.Fragment>
+          )
+          return (
+            <table className="bridge">
+              {cols.length > 0 && (
+                <thead>
                   <tr>
-                    <td>Less: {label} <small className="muted">{sub}</small></td>
-                    <td className="num pos">−{usd(sum(arr))}</td>
+                    <th></th>
+                    {cols.map((s) => (
+                      <th key={s.scenario_id} className="num">{s.persona_name}{' '}
+                        <small className="muted">→ {s.target_sku_reference}</small></th>
+                    ))}
+                    <th className="num">Total</th>
                   </tr>
-                  {subRows(arr)}
-                </React.Fragment>
-              )
-              if (freed.length === 0) return (
-                <tr><td>Less: existing third-party tooling freed up <small className="muted">(none)</small></td><td className="num pos">−{usd(0)}</td></tr>
-              )
-              return <>
-                {already.length > 0 && block('third-party already covered by current licensing', '(quick win — free today)', already)}
-                {newly.length > 0 && block('third-party additionally freed by the move', '(new displacement from the target)', newly)}
-              </>
-            })()}
-            <tr className="bridge-total">
-              <td><b>Net TCO delta</b> <small className="muted">{saving ? '(annual savings)' : r.net_tco_delta_annual > 0 ? '(annual cost increase)' : '(no net change)'}</small></td>
-              <td className={`num ${saving ? 'pos' : ''}`}><b>{usd(r.net_tco_delta_annual)}</b></td>
-            </tr>
-          </tbody>
-        </table>
+                </thead>
+              )}
+              <tbody>
+                <tr>
+                  <td>Target Microsoft licensing <small className="muted">(new per-persona bundles)</small></td>
+                  {cells(cols.map((s) => s.target_spend_annual), r.target_microsoft_annual)}
+                </tr>
+                <tr>
+                  <td>Less: existing Microsoft licensing retired <small className="muted">(current assigned)</small></td>
+                  {cells(cols.map((s) => s.current_microsoft_annual), r.existing_microsoft_annual, { negate: true, cls: 'pos' })}
+                </tr>
+                {freed.length === 0
+                  ? (
+                    <tr>
+                      <td>Less: existing third-party tooling freed up <small className="muted">(none)</small></td>
+                      {cells(cols.map(() => 0), 0, { negate: true, cls: 'pos' })}
+                    </tr>
+                  )
+                  : <>
+                    {already.length > 0 && block('third-party already covered by current licensing', '(quick win — free today)', already, true)}
+                    {newly.length > 0 && block('third-party additionally freed by the move', '(new displacement from the target)', newly, false)}
+                  </>}
+                <tr className="bridge-total">
+                  <td><b>Net TCO delta</b> <small className="muted">{saving ? '(annual savings)' : r.net_tco_delta_annual > 0 ? '(annual cost increase)' : '(no net change)'}</small></td>
+                  {cols.map((s) => (
+                    <td key={s.scenario_id} className={`num ${s.delta_annual < 0 ? 'pos' : ''}`}><b>{usd(s.delta_annual)}</b></td>
+                  ))}
+                  <td className={`num ${saving ? 'pos' : ''}`}><b>{usd(r.net_tco_delta_annual)}</b></td>
+                </tr>
+              </tbody>
+            </table>
+          )
+        })()}
       </div>
 
       {needsClassify.length > 0 && (
@@ -433,6 +477,29 @@ export default function Readout({ engagement }) {
       )}
     </>
   )
+}
+
+// The headline sub-line: not a generic "if you move to the target scenarios"
+// but the actual story, up front — "we save you $X/yr by moving Sales to E5 and
+// Engineering to E3", one clause per in-scope persona with its own delta.
+// Everything below the headline is supporting detail for this sentence.
+function MoveSummary({ scenarios, delta }) {
+  if (!scenarios.length) {
+    return <>No in-scope scenarios yet — set a target bundle per persona on the Scenarios tab.</>
+  }
+  const moves = scenarios.map((s, i) => (
+    <React.Fragment key={s.scenario_id}>
+      {i > 0 && (i === scenarios.length - 1 ? ' and ' : ', ')}
+      <b>{s.persona_name}</b> ({s.headcount}) to <b>{s.target_sku_reference}</b>{' '}
+      <span className={s.delta_annual < 0 ? 'pos' : ''}>
+        ({s.delta_annual < 0 ? `saves ${usd(-s.delta_annual)}/yr`
+          : s.delta_annual > 0 ? `adds ${usd(s.delta_annual)}/yr` : 'cost-neutral'})
+      </span>
+    </React.Fragment>
+  ))
+  if (delta < 0) return <>We save you <b className="pos">{usd(-delta)}</b>/yr by moving {moves}.</>
+  if (delta > 0) return <>An added {usd(delta)}/yr — shown honestly, for the added capabilities — moving {moves}.</>
+  return <>Cost-neutral: moving {moves}.</>
 }
 
 // The current classification of a disposition row ('' = unclassified).
