@@ -225,6 +225,14 @@ headline. In the spend bridge, each freed third-party product is tagged
 splits into *already covered by current licensing* vs *additionally freed by the
 move* — the two sum to the same total, so the bridge still builds to the net delta.
 
+> Presentation note (no engine math): the readout surfaces render the bridge
+> **per persona** — one column per in-scope scenario plus a Total — by regrouping
+> the same per-scenario values the rollup already sums (`target_spend_annual`,
+> `current_microsoft_annual`, the per-product `offsets`, `delta_annual`). The
+> bridge identity therefore holds per column as well as in total; the engine
+> emits no separate per-persona bridge structure, so there is nothing to keep
+> in sync.
+
 ## Recompute is total, not incremental (6.7)
 
 Toggling a scenario in/out of scope recomputes **all** dispositions from scratch.
