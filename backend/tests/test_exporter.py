@@ -123,10 +123,17 @@ def test_readout_breaks_bridge_down_per_persona(client):
     assert "<h2>New outcomes</h2>" in html
     assert "<h3>Sales <span class='muted'>(100) → Microsoft 365 E5</span></h3>" in html
     assert "<h3>Engineering <span class='muted'>(50) → Microsoft 365 E3</span></h3>" in html
-    # Tiles carry the outcome DESCRIPTION (what the capability actually is),
-    # not just the label, each tagged NEW.
-    assert "<span class='new-tag'>NEW</span>" in html
-    assert "class='outcome-desc'" in html
+    # Each capability is a chip (the GUI's pill treatment, not a text run),
+    # with the outcome's description as hover text.
+    assert "class='chip'" in html
+    # The engagement OWNS its outcome copy: editing a description in the GUI
+    # (PATCH /outcomes) flows straight into the chip tooltip.
+    edr = next(o for o in client.get(f"/api/engagements/{eid}/outcomes").json()
+               if o["seed_key"] == "endpoint-edr")
+    client.patch(f"/api/engagements/{eid}/outcomes/{edr['id']}",
+                 json={"description": "Custom EDR wording for this customer"})
+    html2 = client.get(f"/api/engagements/{eid}/readout.html").text
+    assert 'title="Custom EDR wording for this customer"' in html2
     # Okta's outcome is delivered today, so it is NOT listed as new.
     outcomes = {o["seed_key"]: o["name"]
                 for o in client.get(f"/api/engagements/{eid}/outcomes").json()}

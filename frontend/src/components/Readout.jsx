@@ -277,14 +277,11 @@ export default function Readout({ engagement }) {
           {result.new_outcomes.map((n) => {
             const target = inScope.find((s) => s.persona_id === n.persona_id)?.target_sku_reference
             return (
-              <div key={n.persona_id} style={{ marginTop: '.6rem' }}>
+              <div key={n.persona_id} className="popcheck">
                 <b>{n.persona_name}</b> <span className="muted">({n.headcount}){target ? <> → {target}</> : null}</span>
-                <div className="outcome-grid">
+                <div className="pill-list" style={{ marginTop: '.35rem' }}>
                   {n.outcomes.map((o) => (
-                    <div key={o.id} className="outcome">
-                      <div className="outcome-name"><span className="new-tag">NEW</span>{o.name}</div>
-                      {o.description && <div className="outcome-desc">{o.description}</div>}
-                    </div>
+                    <span key={o.id} className="badge pos" title={o.description || ''}>{o.name}</span>
                   ))}
                 </div>
               </div>
@@ -303,13 +300,10 @@ export default function Readout({ engagement }) {
           </div>
           {narratives.length === 0
             ? <p className="muted">No in-scope scenarios to narrate yet — set target bundles on the Scenarios tab.</p>
-            : narratives.map((n, i) => (
-              <div key={i} className="popcheck" style={{ marginTop: '.5rem' }}>
-                <b>{n.persona}</b>
-                {n.today && <p style={{ margin: '.3rem 0' }}><b>Today: </b>{n.today}</p>}
-                {n.whats_new && <p style={{ margin: '.3rem 0' }}><b>What's new: </b>{n.whats_new}</p>}
-                {n.value && <p style={{ margin: '.3rem 0' }}><b>Value: </b>{n.value}</p>}
-              </div>
+            : narratives.map((n) => (
+              <NarrativeBlock key={n.id || n.persona} n={n} eid={eid}
+                onSaved={(r) => { setNarratives(r.narratives); setNarrativesAt(r.generated_at) }}
+                onError={setErr} />
             ))}
         </div>
       )}
@@ -512,6 +506,56 @@ export default function Readout({ engagement }) {
         </div>
       )}
     </>
+  )
+}
+
+// A stored narrative block: read view with a ✎ control that opens the three
+// fields (today / what's new / value) for hand-editing. The AI output is a
+// draft; the SA's reviewed wording is the record — saving re-tags the row
+// Estimate (human-asserted), shown as an "edited" badge instead of "AI draft".
+function NarrativeBlock({ n, eid, onSaved, onError }) {
+  const [editing, setEditing] = useState(false)
+  const [f, setF] = useState({ today: n.today, whats_new: n.whats_new, value: n.value })
+  useEffect(() => setF({ today: n.today, whats_new: n.whats_new, value: n.value }), [n.id, n.today, n.whats_new, n.value])
+  const aiDraft = n.source_tag === 'AISuggestedUnconfirmed'
+  async function save() {
+    try {
+      const r = await api.patch(`/api/engagements/${eid}/narrative/${n.id}`, f)
+      setEditing(false)
+      onSaved(r)
+    } catch (e) { onError(e.message) }
+  }
+  return (
+    <div className="popcheck" style={{ marginTop: '.5rem' }}>
+      <div className="flex-between">
+        <span><b>{n.persona}</b>{' '}
+          <span className={`badge ${aiDraft ? 'muted' : 'pos'}`}>{aiDraft ? 'AI draft' : 'edited'}</span></span>
+        {!editing && n.id && (
+          <button className="ghost sm" title="Edit this narrative by hand"
+            onClick={() => setEditing(true)}>✎ Edit</button>
+        )}
+      </div>
+      {!editing ? (
+        <>
+          {n.today && <p style={{ margin: '.3rem 0' }}><b>Today: </b>{n.today}</p>}
+          {n.whats_new && <p style={{ margin: '.3rem 0' }}><b>What's new: </b>{n.whats_new}</p>}
+          {n.value && <p style={{ margin: '.3rem 0' }}><b>Value: </b>{n.value}</p>}
+        </>
+      ) : (
+        <div style={{ marginTop: '.4rem' }}>
+          <label>Today</label>
+          <textarea rows={2} value={f.today} onChange={(e) => setF({ ...f, today: e.target.value })} />
+          <label>What's new</label>
+          <textarea rows={2} value={f.whats_new} onChange={(e) => setF({ ...f, whats_new: e.target.value })} />
+          <label>Value</label>
+          <textarea rows={2} value={f.value} onChange={(e) => setF({ ...f, value: e.target.value })} />
+          <div className="toolbar" style={{ marginTop: '.4rem' }}>
+            <button className="sm" onClick={save}>Save</button>
+            <button className="ghost sm" onClick={() => { setEditing(false); setF({ today: n.today, whats_new: n.whats_new, value: n.value }) }}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 

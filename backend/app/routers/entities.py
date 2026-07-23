@@ -190,6 +190,8 @@ def list_outcomes(engagement_id: str, db: Session = Depends(get_db)):
 @router.post("/outcomes", response_model=schemas.OutcomeOut, status_code=201)
 def create_outcome(engagement_id: str, payload: schemas.OutcomeIn, db: Session = Depends(get_db)):
     _require_engagement(db, engagement_id)
+    if not payload.name.strip():
+        raise HTTPException(422, "Outcome name is required.")
     row = models.Outcome(engagement_id=engagement_id, **payload.model_dump())
     db.add(row)
     db.commit()

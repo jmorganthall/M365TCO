@@ -308,8 +308,9 @@ def _narratives_response(eng: models.Engagement) -> dict:
     rows = sorted(eng.narratives, key=lambda n: n.persona_name)
     return {
         "narratives": [
-            {"persona": n.persona_name, "today": n.today,
-             "whats_new": n.whats_new, "value": n.value}
+            {"id": n.id, "persona": n.persona_name, "today": n.today,
+             "whats_new": n.whats_new, "value": n.value,
+             "source_tag": n.source_tag}
             for n in rows
         ],
         "generated_at": rows[0].generated_at.isoformat() if rows else None,
@@ -365,6 +366,26 @@ def scenario_narrative(engagement_id: str, db: Session = Depends(get_db)):
             today=n.get("today") or "", whats_new=n.get("whats_new") or "",
             value=n.get("value") or "",
         ))
+    db.commit()
+    db.refresh(eng)
+    return _narratives_response(eng)
+
+
+@router.patch("/{engagement_id}/narrative/{narrative_id}")
+def update_scenario_narrative(
+    engagement_id: str, narrative_id: str,
+    payload: schemas.NarrativeUpdate, db: Session = Depends(get_db),
+):
+    """Operator edit of a stored narrative — the AI output is a draft; the SA's
+    reviewed wording is the record. An edit re-tags the row `Estimate`
+    (human-asserted) so it no longer reads as an unreviewed AI draft."""
+    eng = _get_engagement(db, engagement_id)
+    row = db.get(models.ScenarioNarrative, narrative_id)
+    if row is None or row.engagement_id != engagement_id:
+        raise HTTPException(404, "Narrative not found")
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(row, k, (v or "").strip())
+    row.source_tag = "Estimate"
     db.commit()
     db.refresh(eng)
     return _narratives_response(eng)

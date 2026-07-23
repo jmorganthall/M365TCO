@@ -141,20 +141,18 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         for s in result.get("scenarios", []) if s.get("in_scope")
     }
 
-    def _outcome_tile(o):
+    def _outcome_chip(o):
+        # One outlined chip per capability — scannable, like the GUI's pills;
+        # the description rides as hover text (and stays editable data).
         desc = (o.get("description") or "").strip()
-        return (
-            "<div class='outcome'><div class='outcome-name'>"
-            f"<span class='new-tag'>NEW</span>{html.escape(o['name'])}</div>"
-            + (f"<div class='outcome-desc'>{html.escape(desc)}</div>" if desc else "")
-            + "</div>"
-        )
+        title = f" title=\"{html.escape(desc, quote=True)}\"" if desc else ""
+        return f"<span class='chip'{title}>{html.escape(o['name'])}</span>"
 
     new_outcome_blocks = "".join(
         f"<div class='persona-outcomes'><h3>{html.escape(n['persona_name'])} "
         f"<span class='muted'>({n['headcount']}) → "
         f"{html.escape(target_by_pid.get(n['persona_id'], ''))}</span></h3>"
-        f"<div class='outcome-grid'>{''.join(_outcome_tile(o) for o in n['outcomes'])}</div></div>"
+        f"<div class='chip-row'>{''.join(_outcome_chip(o) for o in n['outcomes'])}</div></div>"
         for n in new_outcomes
     )
     new_outcomes_section = (
@@ -429,16 +427,13 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
  .narrative{{background:var(--soft);border-left:3px solid var(--accent);
    padding:.6rem 1rem;border-radius:8px;margin:.75rem 0}}
  .narrative h3{{margin:.2rem 0;color:var(--primary)}}
- .persona-outcomes{{margin:1rem 0}}
- .persona-outcomes h3{{margin:0 0 .5rem;font-size:1rem;color:var(--primary)}}
- .outcome-grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:.55rem}}
- .outcome{{border:1px solid var(--line);border-left:3px solid var(--pos);
-   border-radius:8px;padding:.55rem .75rem;background:#fff}}
- .outcome-name{{font-weight:650;font-size:.92rem}}
- .outcome-desc{{color:var(--muted);font-size:.84rem;margin-top:.15rem;line-height:1.35}}
- .new-tag{{display:inline-block;background:var(--pos);color:#fff;font-size:.62rem;
-   font-weight:700;letter-spacing:.06em;border-radius:4px;padding:.1rem .3rem;
-   margin-right:.45rem;vertical-align:2px}}
+ .persona-outcomes{{background:var(--soft);border:1px solid var(--line);
+   border-left:3px solid var(--pos);border-radius:10px;padding:.7rem .95rem;margin:.7rem 0}}
+ .persona-outcomes h3{{margin:0 0 .45rem;font-size:1rem;color:var(--primary)}}
+ .chip-row{{display:flex;flex-wrap:wrap;gap:.4rem}}
+ .chip{{display:inline-block;border:1px solid var(--pos);color:var(--pos);
+   background:#fff;border-radius:999px;padding:.22rem .7rem;font-size:.82rem;
+   font-weight:600;line-height:1.2;white-space:nowrap}}
  ul{{margin:.3rem 0}}
  footer{{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--line);
    color:var(--muted);font-size:.8rem}}

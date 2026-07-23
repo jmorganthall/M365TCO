@@ -349,3 +349,20 @@ def test_business_narratives_stored_on_engagement(client, monkeypatch):
     stored2 = client.get(f"/api/engagements/{eid}/narrative").json()
     assert stored2["narratives"][0]["whats_new"] == "Now with Copilot."
     assert len(stored2["narratives"]) == 1
+
+    # Operator edit: the AI output is a draft; the SA's reviewed wording is the
+    # record. PATCH updates only the provided fields and re-tags the row
+    # Estimate (human-asserted) instead of AISuggestedUnconfirmed.
+    row = stored2["narratives"][0]
+    assert row["source_tag"] == "AISuggestedUnconfirmed"
+    edited = client.patch(
+        f"/api/engagements/{eid}/narrative/{row['id']}",
+        json={"value": "Saves $45k/yr and consolidates two vendors."}).json()
+    assert edited["narratives"][0]["value"] == "Saves $45k/yr and consolidates two vendors."
+    assert edited["narratives"][0]["whats_new"] == "Now with Copilot."  # untouched
+    assert edited["narratives"][0]["source_tag"] == "Estimate"
+    # A wrong-engagement id 404s instead of leaking.
+    other = client.post("/api/engagements", json={"customer_name": "Other Co"}).json()
+    r = client.patch(f"/api/engagements/{other['id']}/narrative/{row['id']}",
+                     json={"value": "x"})
+    assert r.status_code == 404
