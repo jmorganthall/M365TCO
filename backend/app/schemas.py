@@ -192,9 +192,17 @@ class PersonaOut(ORMModel):
 
 # ---- Outcome ----
 class OutcomeIn(BaseModel):
-    name: str
+    # Default "" so partial PATCH bodies validate (create guards non-empty).
+    name: str = ""
     description: str = ""
     is_custom: bool = True
+
+
+# ---- Stored business narrative (operator edit) ----
+class NarrativeUpdate(BaseModel):
+    today: Optional[str] = None
+    whats_new: Optional[str] = None
+    value: Optional[str] = None
 
 
 class OutcomeOut(ORMModel):

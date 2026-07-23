@@ -12,6 +12,7 @@ export default function CoverageMap({ engagement, meta }) {
   const [err, setErr] = useState('')
   const [msg, setMsg] = useState('')
   const [newOutcome, setNewOutcome] = useState('')
+  const [newOutcomeDesc, setNewOutcomeDesc] = useState('')
 
   function load() {
     api.get(`/api/engagements/${eid}/outcomes`).then(setOutcomes)
@@ -39,8 +40,24 @@ export default function CoverageMap({ engagement, meta }) {
 
   async function addCustomOutcome() {
     if (!newOutcome.trim()) return
-    try { await api.post(`/api/engagements/${eid}/outcomes`, { name: newOutcome, is_custom: true }); setNewOutcome(''); load() }
-    catch (e) { setErr(e.message) }
+    try {
+      await api.post(`/api/engagements/${eid}/outcomes`,
+        { name: newOutcome, description: newOutcomeDesc, is_custom: true })
+      setNewOutcome(''); setNewOutcomeDesc(''); load()
+    } catch (e) { setErr(e.message) }
+  }
+  // Engagement-owned outcome fields are editable here (the name AND the
+  // description that prints on the readout's New-outcomes tiles). Commits on
+  // blur; updates local state so the list doesn't reload under the cursor.
+  async function patchOutcome(id, patch) {
+    const current = outcomes.find((o) => o.id === id)
+    if (!current) return
+    if (patch.name !== undefined && !patch.name.trim()) return  // never blank a name
+    if (Object.entries(patch).every(([k, v]) => (current[k] || '') === v)) return
+    try {
+      const updated = await api.patch(`/api/engagements/${eid}/outcomes/${id}`, patch)
+      setOutcomes((list) => list.map((o) => (o.id === id ? updated : o)))
+    } catch (e) { setErr(e.message) }
   }
   async function updateOutcomes() {
     const warning =
@@ -137,15 +154,20 @@ export default function CoverageMap({ engagement, meta }) {
             Custom outcomes (and their coverage/persona requirements) are <b>deleted</b>; seeded outcomes
             keep their coverage. You'll be asked to confirm.</small>
         </div>
-        <div className="pill-list" style={{ margin: '.3rem 0' }}>
-          {[...outcomes].sort((a, b) => a.name.localeCompare(b.name)).map((o) => (
-            <span key={o.id} className={`badge ${o.is_custom ? 'warn' : 'muted'}`}
-              title={o.description || ''}>
-              {o.name}{o.is_custom ? ' · custom' : ''}
-            </span>
-          ))}
-          {outcomes.length === 0 && <span className="muted">No outcomes yet.</span>}
-        </div>
+        <p className="hint" style={{ margin: '.2rem 0 .4rem' }}>Name and description are this
+          engagement's own copy and editable here — the description prints on the readout's
+          <b> New outcomes</b> chips (and their hover text). Commits on blur.</p>
+        {[...outcomes].sort((a, b) => a.name.localeCompare(b.name)).map((o) => (
+          <div key={o.id} className="toolbar" style={{ gap: '.4rem', margin: '.25rem 0', alignItems: 'center' }}>
+            <input style={{ flex: 1 }} defaultValue={o.name}
+              onBlur={(e) => patchOutcome(o.id, { name: e.target.value })} />
+            <input style={{ flex: 2 }} defaultValue={o.description || ''}
+              placeholder="Description (customer-facing — shown on the readout)"
+              onBlur={(e) => patchOutcome(o.id, { description: e.target.value })} />
+            {o.is_custom && <span className="badge warn">custom</span>}
+          </div>
+        ))}
+        {outcomes.length === 0 && <span className="muted">No outcomes yet.</span>}
       </details>
 
       <div className="card">
@@ -256,6 +278,12 @@ export default function CoverageMap({ engagement, meta }) {
             <label>New outcome name</label>
             <input value={newOutcome} placeholder="e.g. Privileged access management"
               onChange={(e) => setNewOutcome(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addCustomOutcome()} />
+          </div>
+          <div style={{ flex: 3 }}>
+            <label>Description <small className="muted">(customer-facing — prints on the readout)</small></label>
+            <input value={newOutcomeDesc} placeholder="What this capability does, in plain English"
+              onChange={(e) => setNewOutcomeDesc(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && addCustomOutcome()} />
           </div>
           <button onClick={addCustomOutcome}>Add outcome</button>

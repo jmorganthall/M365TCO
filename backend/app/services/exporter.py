@@ -131,12 +131,28 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     # New outcomes: per in-scope persona, the capabilities the move lights up
     # that nothing they hold today delivers (computed by services/compute from
     # the ratified coverage map — the same source the Coverage Check validates).
-    # The value story beyond cost; omitted entirely when there is nothing new.
+    # Rendered as a tile grid — each capability named AND described in plain
+    # English, tagged NEW, under a "Persona (headcount) → target" header — so
+    # the customer sees what they're getting, not just a list of labels.
+    # Omitted entirely when there is nothing new.
     new_outcomes = result.get("new_outcomes") or []
+    target_by_pid = {
+        s["persona_id"]: s["target_sku_reference"]
+        for s in result.get("scenarios", []) if s.get("in_scope")
+    }
+
+    def _outcome_chip(o):
+        # One outlined chip per capability — scannable, like the GUI's pills;
+        # the description rides as hover text (and stays editable data).
+        desc = (o.get("description") or "").strip()
+        title = f" title=\"{html.escape(desc, quote=True)}\"" if desc else ""
+        return f"<span class='chip'{title}>{html.escape(o['name'])}</span>"
+
     new_outcome_blocks = "".join(
-        f"<div class='narrative'><h3>{html.escape(n['persona_name'])} "
-        f"<span class='muted'>({n['headcount']})</span></h3>"
-        f"<p>{' · '.join(html.escape(o['name']) for o in n['outcomes'])}</p></div>"
+        f"<div class='persona-outcomes'><h3>{html.escape(n['persona_name'])} "
+        f"<span class='muted'>({n['headcount']}) → "
+        f"{html.escape(target_by_pid.get(n['persona_id'], ''))}</span></h3>"
+        f"<div class='chip-row'>{''.join(_outcome_chip(o) for o in n['outcomes'])}</div></div>"
         for n in new_outcomes
     )
     new_outcomes_section = (
@@ -411,6 +427,13 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
  .narrative{{background:var(--soft);border-left:3px solid var(--accent);
    padding:.6rem 1rem;border-radius:8px;margin:.75rem 0}}
  .narrative h3{{margin:.2rem 0;color:var(--primary)}}
+ .persona-outcomes{{background:var(--soft);border:1px solid var(--line);
+   border-left:3px solid var(--pos);border-radius:10px;padding:.7rem .95rem;margin:.7rem 0}}
+ .persona-outcomes h3{{margin:0 0 .45rem;font-size:1rem;color:var(--primary)}}
+ .chip-row{{display:flex;flex-wrap:wrap;gap:.4rem}}
+ .chip{{display:inline-block;border:1px solid var(--pos);color:var(--pos);
+   background:#fff;border-radius:999px;padding:.22rem .7rem;font-size:.82rem;
+   font-weight:600;line-height:1.2;white-space:nowrap}}
  ul{{margin:.3rem 0}}
  footer{{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--line);
    color:var(--muted);font-size:.8rem}}
@@ -423,6 +446,11 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 {hero}
 {narrative_section}
 {quick_win_section}
+
+<section><h2>Per-persona scenarios</h2>
+<table><thead><tr><th>Persona</th><th>Target SKU</th><th>Headcount</th>
+<th>Current</th><th>Target</th><th>Delta</th><th>Scope</th></tr></thead>
+<tbody>{rows_scenarios}</tbody></table></section>
 {new_outcomes_section}
 
 <section><h2>How we get to the number</h2>
@@ -430,11 +458,6 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 tooling those users free up when they move, and the target Microsoft licensing —
 building to the net TCO delta, with each line broken down per persona.</p>
 <table class="bridge">{bridge_head}<tbody>{bridge_rows}</tbody></table></section>
-
-<section><h2>Per-persona scenarios</h2>
-<table><thead><tr><th>Persona</th><th>Target SKU</th><th>Headcount</th>
-<th>Current</th><th>Target</th><th>Delta</th><th>Scope</th></tr></thead>
-<tbody>{rows_scenarios}</tbody></table></section>
 {disp_section}
 {elim_section}
 {appendix_section}

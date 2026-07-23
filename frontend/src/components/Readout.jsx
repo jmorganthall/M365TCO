@@ -248,6 +248,25 @@ export default function Readout({ engagement }) {
         </div>
       )}
 
+      <div className="card">
+        <h2>Per-persona scenarios</h2>
+        <table>
+          <thead><tr><th>Persona</th><th>Target</th><th className="num">HC</th>
+            <th className="num">Current</th><th className="num">Target</th><th className="num">Delta</th><th>Scope</th></tr></thead>
+          <tbody>
+            {result.scenarios.map((s) => (
+              <tr key={s.scenario_id} style={{ opacity: s.in_scope ? 1 : 0.5 }}>
+                <td>{s.persona_name}</td><td>{s.target_sku_reference}</td><td className="num">{s.headcount}</td>
+                <td className="num">{usd(s.current_spend_annual)}</td>
+                <td className="num">{usd(s.target_spend_annual)}</td>
+                <td className={`num ${s.delta_annual < 0 ? 'pos' : ''}`}>{usd(s.delta_annual)}</td>
+                <td>{s.in_scope ? <span className="badge pos">In scope</span> : <span className="badge muted">Excluded</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
       {(result.new_outcomes || []).length > 0 && (
         <div className="card">
           <h2>New outcomes</h2>
@@ -255,14 +274,19 @@ export default function Readout({ engagement }) {
             nothing they hold today delivers — the value the move adds beyond the cost story.
             Validate coverage on the Coverage Check step; ✨ Business narratives drafts why each
             matters for this customer.</p>
-          {result.new_outcomes.map((n) => (
-            <div key={n.persona_id} className="popcheck">
-              <b>{n.persona_name}</b> <span className="muted">({n.headcount})</span>
-              <div className="pill-list" style={{ marginTop: '.35rem' }}>
-                {n.outcomes.map((o) => <span key={o.id} className="badge pos">{o.name}</span>)}
+          {result.new_outcomes.map((n) => {
+            const target = inScope.find((s) => s.persona_id === n.persona_id)?.target_sku_reference
+            return (
+              <div key={n.persona_id} className="popcheck">
+                <b>{n.persona_name}</b> <span className="muted">({n.headcount}){target ? <> → {target}</> : null}</span>
+                <div className="pill-list" style={{ marginTop: '.35rem' }}>
+                  {n.outcomes.map((o) => (
+                    <span key={o.id} className="badge pos" title={o.description || ''}>{o.name}</span>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -276,13 +300,10 @@ export default function Readout({ engagement }) {
           </div>
           {narratives.length === 0
             ? <p className="muted">No in-scope scenarios to narrate yet — set target bundles on the Scenarios tab.</p>
-            : narratives.map((n, i) => (
-              <div key={i} className="popcheck" style={{ marginTop: '.5rem' }}>
-                <b>{n.persona}</b>
-                {n.today && <p style={{ margin: '.3rem 0' }}><b>Today: </b>{n.today}</p>}
-                {n.whats_new && <p style={{ margin: '.3rem 0' }}><b>What's new: </b>{n.whats_new}</p>}
-                {n.value && <p style={{ margin: '.3rem 0' }}><b>Value: </b>{n.value}</p>}
-              </div>
+            : narratives.map((n) => (
+              <NarrativeBlock key={n.id || n.persona} n={n} eid={eid}
+                onSaved={(r) => { setNarratives(r.narratives); setNarrativesAt(r.generated_at) }}
+                onError={setErr} />
             ))}
         </div>
       )}
@@ -435,25 +456,6 @@ export default function Readout({ engagement }) {
       )}
 
       <div className="card">
-        <h2>Per-persona scenarios</h2>
-        <table>
-          <thead><tr><th>Persona</th><th>Target</th><th className="num">HC</th>
-            <th className="num">Current</th><th className="num">Target</th><th className="num">Delta</th><th>Scope</th></tr></thead>
-          <tbody>
-            {result.scenarios.map((s) => (
-              <tr key={s.scenario_id} style={{ opacity: s.in_scope ? 1 : 0.5 }}>
-                <td>{s.persona_name}</td><td>{s.target_sku_reference}</td><td className="num">{s.headcount}</td>
-                <td className="num">{usd(s.current_spend_annual)}</td>
-                <td className="num">{usd(s.target_spend_annual)}</td>
-                <td className={`num ${s.delta_annual < 0 ? 'pos' : ''}`}>{usd(s.delta_annual)}</td>
-                <td>{s.in_scope ? <span className="badge pos">In scope</span> : <span className="badge muted">Excluded</span>}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="card">
         <h2>Third-party dispositions</h2>
         <table>
           <thead><tr><th>Product</th><th>Disposition</th><th className="num">Displaced/Covered</th>
@@ -504,6 +506,56 @@ export default function Readout({ engagement }) {
         </div>
       )}
     </>
+  )
+}
+
+// A stored narrative block: read view with a ✎ control that opens the three
+// fields (today / what's new / value) for hand-editing. The AI output is a
+// draft; the SA's reviewed wording is the record — saving re-tags the row
+// Estimate (human-asserted), shown as an "edited" badge instead of "AI draft".
+function NarrativeBlock({ n, eid, onSaved, onError }) {
+  const [editing, setEditing] = useState(false)
+  const [f, setF] = useState({ today: n.today, whats_new: n.whats_new, value: n.value })
+  useEffect(() => setF({ today: n.today, whats_new: n.whats_new, value: n.value }), [n.id, n.today, n.whats_new, n.value])
+  const aiDraft = n.source_tag === 'AISuggestedUnconfirmed'
+  async function save() {
+    try {
+      const r = await api.patch(`/api/engagements/${eid}/narrative/${n.id}`, f)
+      setEditing(false)
+      onSaved(r)
+    } catch (e) { onError(e.message) }
+  }
+  return (
+    <div className="popcheck" style={{ marginTop: '.5rem' }}>
+      <div className="flex-between">
+        <span><b>{n.persona}</b>{' '}
+          <span className={`badge ${aiDraft ? 'muted' : 'pos'}`}>{aiDraft ? 'AI draft' : 'edited'}</span></span>
+        {!editing && n.id && (
+          <button className="ghost sm" title="Edit this narrative by hand"
+            onClick={() => setEditing(true)}>✎ Edit</button>
+        )}
+      </div>
+      {!editing ? (
+        <>
+          {n.today && <p style={{ margin: '.3rem 0' }}><b>Today: </b>{n.today}</p>}
+          {n.whats_new && <p style={{ margin: '.3rem 0' }}><b>What's new: </b>{n.whats_new}</p>}
+          {n.value && <p style={{ margin: '.3rem 0' }}><b>Value: </b>{n.value}</p>}
+        </>
+      ) : (
+        <div style={{ marginTop: '.4rem' }}>
+          <label>Today</label>
+          <textarea rows={2} value={f.today} onChange={(e) => setF({ ...f, today: e.target.value })} />
+          <label>What's new</label>
+          <textarea rows={2} value={f.whats_new} onChange={(e) => setF({ ...f, whats_new: e.target.value })} />
+          <label>Value</label>
+          <textarea rows={2} value={f.value} onChange={(e) => setF({ ...f, value: e.target.value })} />
+          <div className="toolbar" style={{ marginTop: '.4rem' }}>
+            <button className="sm" onClick={save}>Save</button>
+            <button className="ghost sm" onClick={() => { setEditing(false); setF({ today: n.today, whats_new: n.whats_new, value: n.value }) }}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
