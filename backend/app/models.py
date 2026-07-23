@@ -72,6 +72,10 @@ class Engagement(Base):
     )
     market: Mapped[str] = mapped_column(String, default="US")
     currency: Mapped[str] = mapped_column(String, default="USD")
+    # Multiplies the annualized net delta into the headline figure ("36-month
+    # savings") on the Readout tab and both exports. The engine itself stays
+    # annualized; this is a presentation horizon. Editable on Customer Info.
+    modeling_horizon_years: Mapped[int] = mapped_column(Integer, default=3)
     global_tooling_pct: Mapped[float] = mapped_column(Numeric(6, 4), default=0.30)
     notes: Mapped[str] = mapped_column(Text, default="")
     # Customer-info metadata (Customer Info tab). User-entered context about the

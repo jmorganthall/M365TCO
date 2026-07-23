@@ -137,7 +137,7 @@ label { display: block; font-size: .76rem; color: var(--muted); margin-bottom: .
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: .45rem .55rem; border-bottom: 1px solid var(--border); font-size: .84rem; }
 th { color: var(--muted); font-weight: 600; }
-td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pos { color: var(--pos); } .neg { color: var(--neg); } .warn { color: var(--warn); }
 .tabs { display: flex; gap: .3rem; margin: 1rem 0; flex-wrap: wrap; }
 .tabs button { background: var(--panel); border: 1px solid var(--border); color: var(--muted); }
@@ -176,6 +176,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .popcheck { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: .6rem .8rem; margin: .6rem 0; }
 table.bridge td { border-bottom: none; padding: .3rem .55rem; }
 table.bridge th { font-size: .8rem; padding: .3rem .55rem; }
+ul.moves { list-style: none; margin: .4rem 0 0; padding: 0; }
+ul.moves li { margin: .18rem 0; }
 table.bridge tr.bridge-sub td { color: var(--muted); padding-left: 1.4rem; font-size: .8rem; }
 table.bridge tr.bridge-total td { border-top: 1px solid var(--border); padding-top: .45rem; }
 .err { color: var(--neg); font-size: .82rem; margin: .4rem 0; }

@@ -38,7 +38,19 @@ def _is_data_image(value: str) -> bool:
 
 
 def _usd(value) -> str:
-    return f"${float(value or 0):,.2f}"
+    v = float(value or 0)
+    return f"−${abs(v):,.2f}" if v < 0 else f"${v:,.2f}"
+
+
+def _signed_usd0(value) -> str:
+    """Compact signed money for the headline and move lines: −$246,560 / +$3,000.
+    Cents add nothing at headline altitude; the bridge tables keep them."""
+    v = float(value or 0)
+    if v < 0:
+        return f"−${abs(v):,.0f}"
+    if v > 0:
+        return f"+${v:,.0f}"
+    return "$0"
 
 
 def _pct(value) -> str:
@@ -55,7 +67,6 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     delta = rollup["net_tco_delta_annual"]
     # Cost-change convention: negative = saving (good, green), positive = a cost
     # increase (neutral — spending more isn't an error, just shown honestly).
-    delta_label = "Annual savings" if delta < 0 else "Annual cost increase" if delta > 0 else "No net change"
     delta_cls = "pos" if delta < 0 else ""
 
     dispositions = result["dispositions"]
@@ -117,6 +128,25 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         if quick_wins else ""
     )
 
+    # New outcomes: per in-scope persona, the capabilities the move lights up
+    # that nothing they hold today delivers (computed by services/compute from
+    # the ratified coverage map — the same source the Coverage Check validates).
+    # The value story beyond cost; omitted entirely when there is nothing new.
+    new_outcomes = result.get("new_outcomes") or []
+    new_outcome_blocks = "".join(
+        f"<div class='narrative'><h3>{html.escape(n['persona_name'])} "
+        f"<span class='muted'>({n['headcount']})</span></h3>"
+        f"<p>{' · '.join(html.escape(o['name']) for o in n['outcomes'])}</p></div>"
+        for n in new_outcomes
+    )
+    new_outcomes_section = (
+        "<section><h2>New outcomes</h2>"
+        "<p class='sub'>Capabilities each persona gains with the target licensing that "
+        "nothing they hold today delivers — the value the move adds beyond the cost story.</p>"
+        f"{new_outcome_blocks}</section>"
+        if new_outcome_blocks else ""
+    )
+
     # Spend bridge (cost-change framing): the new target Microsoft cost, minus the
     # existing spend it retires (current Microsoft + freed-up third-party), builds
     # to the net change. The freed third-party splits into "already covered by
@@ -172,7 +202,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
             + "</tr>"
             for f in items
         )
-        return (f"<tr><td>Less: {label} <span style='color:#666'>{sub}</span></td>"
+        return (f"<tr><td>Less: {label} <span class='muted'>{sub}</span></td>"
                 + _cells([_offset_sum(s, in_already) for s in cols], total,
                          negate=True, cls="pos")
                 + f"</tr>{rows}")
@@ -196,28 +226,33 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         f"{delta_cells}<td class='num {delta_cls}'><b>{_usd(delta)}</b></td></tr>"
     )
 
-    # Headline move summary: the up-front story — "we save you $X/yr by moving
-    # Sales to E5 and Engineering to E3" — one clause per in-scope persona with
-    # its own delta. Everything below the headline is supporting detail for this
-    # sentence. Omitted when there are no in-scope scenarios to summarize.
-    def _move_clause(s):
-        d = s["delta_annual"]
-        tag = f"saves {_usd(-d)}/yr" if d < 0 else f"adds {_usd(d)}/yr" if d > 0 else "cost-neutral"
-        cls = " class='pos'" if d < 0 else ""
-        return (f"<b>{html.escape(s['persona_name'])}</b> ({s['headcount']}) to "
-                f"<b>{html.escape(s['target_sku_reference'])}</b> <span{cls}>({tag})</span>")
-
-    move_summary = ""
-    if in_scope:
-        clauses = [_move_clause(s) for s in in_scope]
-        moves = clauses[0] if len(clauses) == 1 else ", ".join(clauses[:-1]) + " and " + clauses[-1]
-        if delta < 0:
-            lead = f"We save you <b class='pos'>{_usd(-delta)}</b>/yr by moving "
-        elif delta > 0:
-            lead = f"An added {_usd(delta)}/yr — shown honestly, for the added capabilities — moving "
-        else:
-            lead = "Cost-neutral: moving "
-        move_summary = f"<p class='sub' style='max-width:52rem'>{lead}{moves}.</p>"
+    # Hero block: the headline is the HORIZON figure (annual delta × the
+    # engagement's modeling horizon, e.g. "36-month savings") with the
+    # annualized number beneath it, and each in-scope move is one plain line —
+    # "Baseline (1000) → Microsoft 365 E5 (−$246,560/yr)". Everything after the
+    # hero is supporting detail.
+    horizon = int(engagement.modeling_horizon_years or 3)
+    months = horizon * 12
+    horizon_label = (
+        f"{months}-month savings" if delta < 0
+        else f"{months}-month cost increase" if delta > 0 else "No net change"
+    )
+    move_items = "".join(
+        f"<li><b>{html.escape(s['persona_name'])}</b> ({s['headcount']}) → "
+        f"<b>{html.escape(s['target_sku_reference'])}</b> "
+        f"<span class='{'pos' if s['delta_annual'] < 0 else ''}'>"
+        f"({_signed_usd0(s['delta_annual'])}/yr)</span></li>"
+        for s in in_scope
+    )
+    hero = (
+        f"<section class='hero'>"
+        f"<div class='hero-label'>{horizon_label} <span class='hero-note'>"
+        f"· {horizon}-year view · negative = saving</span></div>"
+        f"<div class='headline {delta_cls}'>{_signed_usd0(delta * horizon)}</div>"
+        f"<div class='hero-sub'>{_signed_usd0(delta)}/yr annualized</div>"
+        + (f"<ul class='moves'>{move_items}</ul>" if in_scope else "")
+        + "</section>"
+    )
 
     # Eliminations section — build only the parts that have content, and omit the
     # whole section if nothing was eliminated (don't print "None" to a customer).
@@ -315,7 +350,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     )
     if soft_inputs:
         items = "".join(
-            f"<li>{html.escape(name)} <span style='color:#666'>({kind})</span>: "
+            f"<li>{html.escape(name)} <span class='muted'>({kind})</span>: "
             f"{soft_label[tag]}</li>"
             for name, kind, tag in soft_inputs
         )
@@ -343,31 +378,52 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>M365 TCO Readout — {html.escape(engagement.customer_name)}</title>
 <style>
- body{{font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin:2rem;color:#1a1a2e;max-width:1100px}}
- h1{{margin-bottom:0;color:{primary}}} .sub{{color:#555}}
- .headline{{font-size:2.2rem;font-weight:700;margin:.5rem 0}}
- .pos{{color:#127436}} .neg{{color:#b00020}}
- .narrative{{background:#f3f6ff;border-left:3px solid {accent};padding:.5rem 1rem;border-radius:6px;margin:.75rem 0}}
- .narrative h3{{margin:.2rem 0;color:{primary}}}
- h2{{color:{primary}}}
- table{{border-collapse:collapse;width:100%;margin:1rem 0}}
- th,td{{border:1px solid #ddd;padding:.45rem .6rem;text-align:left;font-size:.92rem}}
- th{{background:#fafafa}} td.num{{text-align:right;font-variant-numeric:tabular-nums}}
- table.bridge td{{border:none;padding:.3rem .6rem}}
- table.bridge th{{border:none;background:none;color:#666;font-size:.85rem;padding:.3rem .6rem}}
- table.bridge tr.sub td{{color:#666;padding-left:1.8rem;font-size:.85rem}}
- table.bridge tr.total td{{border-top:1px solid #ccc}}
- section{{margin:1.5rem 0}} ul{{margin:.3rem 0}}
- footer{{margin-top:2rem;color:#777;font-size:.8rem}}
-</style></head><body>
+ :root{{--primary:{primary};--accent:{accent};--pos:#127436;--neg:#b00020;
+   --ink:#1f2430;--muted:#5b6472;--line:#e5e8ee;--soft:#f6f8fb}}
+ *{{box-sizing:border-box}}
+ body{{font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',sans-serif;
+   margin:0;color:var(--ink);background:#fff;line-height:1.45}}
+ main{{max-width:1020px;margin:0 auto;padding:2.2rem 2rem 3rem}}
+ h1{{margin:.2rem 0 0;font-size:1.65rem;color:var(--primary);letter-spacing:-.01em}}
+ .sub{{color:var(--muted);font-size:.94rem}}
+ .hero{{margin:1.5rem 0 2rem;padding:1.3rem 1.6rem;background:var(--soft);
+   border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:10px}}
+ .hero-label{{font-size:.8rem;font-weight:650;text-transform:uppercase;
+   letter-spacing:.08em;color:var(--muted)}}
+ .hero-note{{font-weight:400;text-transform:none;letter-spacing:0}}
+ .headline{{font-size:3rem;font-weight:750;line-height:1.1;margin:.15rem 0;letter-spacing:-.02em}}
+ .hero-sub{{color:var(--muted)}}
+ ul.moves{{list-style:none;margin:.9rem 0 0;padding:.8rem 0 0;border-top:1px solid var(--line)}}
+ ul.moves li{{margin:.3rem 0;font-size:1.02rem}}
+ .pos{{color:var(--pos)}} .neg{{color:var(--neg)}} .muted{{color:var(--muted)}}
+ section{{margin:2rem 0}}
+ h2{{font-size:1.12rem;color:var(--primary);margin:0 0 .4rem;
+   padding-bottom:.3rem;border-bottom:1px solid var(--line)}}
+ table{{border-collapse:collapse;width:100%;margin:.8rem 0;font-size:.92rem}}
+ th{{color:var(--muted);font-weight:600;font-size:.76rem;text-transform:uppercase;
+   letter-spacing:.05em;text-align:left;padding:.5rem .65rem;border-bottom:2px solid var(--line)}}
+ td{{padding:.5rem .65rem;border-bottom:1px solid var(--line);text-align:left}}
+ td.num,th.num{{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}}
+ table.bridge td{{border:none;padding:.32rem .65rem}}
+ table.bridge th{{border:none;text-transform:none;letter-spacing:0;font-size:.85rem;padding:.32rem .65rem}}
+ table.bridge tr.sub td{{color:var(--muted);padding-left:1.9rem;font-size:.85rem}}
+ table.bridge tr.total td{{border-top:2px solid var(--ink);padding-top:.5rem}}
+ .narrative{{background:var(--soft);border-left:3px solid var(--accent);
+   padding:.6rem 1rem;border-radius:8px;margin:.75rem 0}}
+ .narrative h3{{margin:.2rem 0;color:var(--primary)}}
+ ul{{margin:.3rem 0}}
+ footer{{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--line);
+   color:var(--muted);font-size:.8rem}}
+</style></head><body><main>
+<header>
 {logo_html}
 <h1>M365 TCO Readout</h1>
 <div class="sub">{html.escape(engagement.customer_name)} · {html.escape(engagement.market or "")}/{html.escape(engagement.currency or "USD")} · annualized {html.escape(engagement.currency or "USD")}</div>
-
-<div class="headline {delta_cls}">{_usd(delta)} <span style="font-size:1rem;font-weight:400">{delta_label}</span></div>
-{move_summary}
+</header>
+{hero}
 {narrative_section}
 {quick_win_section}
+{new_outcomes_section}
 
 <section><h2>How we get to the number</h2>
 <p class="sub">Existing annualized spend for the in-scope population, the third-party
@@ -384,7 +440,7 @@ building to the net TCO delta, with each line broken down per persona.</p>
 {appendix_section}
 <footer>v1 pure licensing TCO. Excludes managed-services, migration/PS, Microsoft
 funding, Azure consumption, and soft savings (deferred). Generated by the M365 TCO Tool.</footer>
-</body></html>"""
+</main></body></html>"""
 
 
 def build_xlsx(engagement: models.Engagement, result: dict) -> bytes:
@@ -433,6 +489,11 @@ def build_xlsx(engagement: models.Engagement, result: dict) -> bytes:
     ])
     wr.append(["Target Microsoft licensing (annual, in scope)", rollup["target_microsoft_annual"]])
     wr.append(["Net TCO delta (annual) — negative = saving", rollup["net_tco_delta_annual"]])
+    horizon = int(engagement.modeling_horizon_years or 3)
+    wr.append([
+        f"Net TCO delta ({horizon * 12}-month headline)",
+        rollup["net_tco_delta_annual"] * horizon,
+    ])
     wr.append(["Residual third-party cost (annual)", rollup["residual_third_party_cost_annual"]])
     wr.append(["In-scope persona headcount", pop["in_scope_persona_headcount"]])
     wr.append(["Third-party covered population", pop["third_party_covered_population"]])

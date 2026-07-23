@@ -1,5 +1,14 @@
 import React, { useEffect, useState } from 'react'
 import { api, usd } from '../api'
+
+// Compact signed money for the headline and move lines (−$246,560 / +$3,000) —
+// cents add nothing at headline altitude; the bridge tables keep them.
+const signedUsd0 = (v) => {
+  const n = Math.round(Number(v) || 0)
+  if (n < 0) return `−$${Math.abs(n).toLocaleString('en-US')}`
+  if (n > 0) return `+$${n.toLocaleString('en-US')}`
+  return '$0'
+}
 import { PricingBadge } from './PricingBanner.jsx'
 
 // Sanity-check results persist across tab navigation (per engagement) without a
@@ -128,11 +137,12 @@ export default function Readout({ engagement }) {
       <div className="card">
         <div className="flex-between">
           <div>
-            <div className="muted">Net TCO delta · annualized {engagement.currency} · <small>negative = saving</small> <PricingBadge /></div>
-            <div className={`headline ${saving ? 'pos' : ''}`} style={{ fontSize: '2.6rem' }}>{usd(r.net_tco_delta_annual)}</div>
-            <div className="muted" style={{ maxWidth: '46rem' }}>
-              <MoveSummary scenarios={inScope} delta={r.net_tco_delta_annual} />
+            <div className="muted">Net TCO delta · {(engagement.modeling_horizon_years || 3) * 12}-month · {engagement.currency} · <small>negative = saving</small> <PricingBadge /></div>
+            <div className={`headline ${saving ? 'pos' : ''}`} style={{ fontSize: '2.6rem' }}>
+              {signedUsd0(r.net_tco_delta_annual * (engagement.modeling_horizon_years || 3))}
             </div>
+            <div className="muted">{signedUsd0(r.net_tco_delta_annual)}/yr annualized · {engagement.modeling_horizon_years || 3}-year view</div>
+            <MoveSummary scenarios={inScope} />
           </div>
           <div className="row" style={{ gap: '.4rem' }}>
             {aiEnabled && (
@@ -235,6 +245,24 @@ export default function Readout({ engagement }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {(result.new_outcomes || []).length > 0 && (
+        <div className="card">
+          <h2>New outcomes</h2>
+          <p className="hint">Capabilities each persona gains with the target licensing that
+            nothing they hold today delivers — the value the move adds beyond the cost story.
+            Validate coverage on the Coverage Check step; ✨ Business narratives drafts why each
+            matters for this customer.</p>
+          {result.new_outcomes.map((n) => (
+            <div key={n.persona_id} className="popcheck">
+              <b>{n.persona_name}</b> <span className="muted">({n.headcount})</span>
+              <div className="pill-list" style={{ marginTop: '.35rem' }}>
+                {n.outcomes.map((o) => <span key={o.id} className="badge pos">{o.name}</span>)}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -479,27 +507,23 @@ export default function Readout({ engagement }) {
   )
 }
 
-// The headline sub-line: not a generic "if you move to the target scenarios"
-// but the actual story, up front — "we save you $X/yr by moving Sales to E5 and
-// Engineering to E3", one clause per in-scope persona with its own delta.
-// Everything below the headline is supporting detail for this sentence.
-function MoveSummary({ scenarios, delta }) {
+// The moves under the headline: one plain line per in-scope persona —
+// "Baseline (1000) → Microsoft 365 E5 (−$246,560/yr)". Everything below the
+// headline is supporting detail for these lines.
+function MoveSummary({ scenarios }) {
   if (!scenarios.length) {
-    return <>No in-scope scenarios yet — set a target bundle per persona on the Scenarios tab.</>
+    return <div className="muted">No in-scope scenarios yet — set a target bundle per persona on the Scenarios tab.</div>
   }
-  const moves = scenarios.map((s, i) => (
-    <React.Fragment key={s.scenario_id}>
-      {i > 0 && (i === scenarios.length - 1 ? ' and ' : ', ')}
-      <b>{s.persona_name}</b> ({s.headcount}) to <b>{s.target_sku_reference}</b>{' '}
-      <span className={s.delta_annual < 0 ? 'pos' : ''}>
-        ({s.delta_annual < 0 ? `saves ${usd(-s.delta_annual)}/yr`
-          : s.delta_annual > 0 ? `adds ${usd(s.delta_annual)}/yr` : 'cost-neutral'})
-      </span>
-    </React.Fragment>
-  ))
-  if (delta < 0) return <>We save you <b className="pos">{usd(-delta)}</b>/yr by moving {moves}.</>
-  if (delta > 0) return <>An added {usd(delta)}/yr — shown honestly, for the added capabilities — moving {moves}.</>
-  return <>Cost-neutral: moving {moves}.</>
+  return (
+    <ul className="moves">
+      {scenarios.map((s) => (
+        <li key={s.scenario_id}>
+          <b>{s.persona_name}</b> ({s.headcount}) → <b>{s.target_sku_reference}</b>{' '}
+          <span className={s.delta_annual < 0 ? 'pos' : ''}>({signedUsd0(s.delta_annual)}/yr)</span>
+        </li>
+      ))}
+    </ul>
+  )
 }
 
 // The current classification of a disposition row ('' = unclassified).

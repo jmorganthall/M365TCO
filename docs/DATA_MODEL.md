@@ -115,6 +115,8 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Identity:** `uuid`. **Scope:** root (owns everything else).
 - **Relationships:** one-to-many to all eight child sets, all `cascade="all, delete-orphan"`.
 - **Field ownership:** user-entered (`customer_name`, `market`, `currency`,
+  `modeling_horizon_years` (multiplies the annual delta into the readout
+  headline, e.g. 3 → "36-month savings"; the engine itself stays annualized),
   `notes`, `global_tooling_pct`, `default_segment`,
   `default_term_duration`, `default_billing_plan`, `bp_swap_enabled`, the readout
   branding `brand_logo_data_url` / `brand_primary_color` / `brand_accent_color`,
@@ -124,11 +126,12 @@ FK, UUID PK, cascade-deleted with the engagement.
   against the loaded price catalog (or the configured defaults when none is
   loaded) — the engine never converts currency, so a mismatch would print a
   readout header that contradicts its own numbers. Editable on Customer Info.
-- **Retired:** `modeling_horizon_years` (and `GlobalDefaults.
-  default_modeling_horizon_years`) — no multi-year math exists in v1, and the
-  engagement copy had no GUI surface. `ThirdPartyProduct.commitment_term_months`
-  and `PriceSyncSettings.redirect_uri` were retired in the same sweep (collected
-  but never read; never referenced at all). All dropped via `_RETIRED_COLUMNS`.
+- **Retired:** `ThirdPartyProduct.commitment_term_months` and
+  `PriceSyncSettings.redirect_uri` (collected but never read; never referenced
+  at all), plus `GlobalDefaults.default_modeling_horizon_years` — all dropped
+  via `_RETIRED_COLUMNS`. `modeling_horizon_years` itself was retired in the
+  same sweep and then reintroduced once it gained a real reader (the N-month
+  headline) — the no-write-only-fields rule working in both directions.
 - **Customer Info:** `customer_name` is the engagement's editable display name;
   the metadata fields above are basic customer context (the Customer Info tab) used
   for display and later as grounding for the AI business-narrative research. They
@@ -744,10 +747,15 @@ The global library is never mutated by workshop edits — this is the
 3. **Persist back** only engine-output fields (scenario spend cache + disposition
    outputs), preserving operator-owned fields.
 4. The readout routes then append the **license-limit evaluation**
-   (`services/limits.evaluate`, §4.4e) as `license_limits` and the **Business
-   Premium swap summary** (`services/swap.summarize`, §4.8b) as `bp_swap` — both
-   derived, persisting nothing, riding on every readout consumer (compute, HTML/xlsx
-   export, snapshot). The swap also shapes step 1's hydration (effective target).
+   (`services/limits.evaluate`, §4.4e) as `license_limits`, the **Business
+   Premium swap summary** (`services/swap.summarize`, §4.8b) as `bp_swap`, and
+   the per-persona **new-outcomes story** (`services/compute.new_outcomes` —
+   the Coverage Check computation reused: outcomes the in-scope target lights
+   up that nothing delivers today) as `new_outcomes` — all derived, persisting
+   nothing, riding on every readout consumer (compute, HTML/xlsx export,
+   snapshot). `new_outcomes` also grounds the AI business-narrative prompt
+   ("why these capabilities matter for this persona at this customer"). The
+   swap also shapes step 1's hydration (effective target).
 5. The readout surfaces (Readout tab, HTML export) render the spend bridge and
    the headline move summary **per persona** purely from the serialized
    per-scenario fields (`target_spend_annual`, `current_microsoft_annual`,
