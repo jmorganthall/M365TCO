@@ -203,7 +203,11 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Identity:** `uuid`. **Scope:** engagement-scoped (5.3.1 — scoped copies so
   edits never mutate the global library).
 - **Field ownership:** seeded (`name`, `description`, `seed_key` from the library);
-  user-entered when added mid-workshop (`is_custom = true`).
+  user-entered when added mid-workshop (`is_custom = true`). The engagement's
+  copy of `name` and `description` is editable in the GUI (the Coverage Map
+  outcome list; the add form takes a description too) — `description` is
+  customer-facing content: it prints as hover text on the readout's
+  New-outcomes chips.
 - **CRUD:** `GET/POST/PATCH/DELETE …/outcomes`. `OutcomeOut` exposes the
   system-derived **`seed_key`** (the stable library identifier, null for custom
   outcomes) so consumers — the AI coverage-suggest prompt, Coverage Check, tests —
@@ -626,13 +630,19 @@ separate from the HTTP call for unit testing).
 `POST …/narrative` drafts the sales story for each in-scope persona scenario —
 today / what's new / value — grounded in the computed scenarios
 (`services/narrative.build_narrative_payload` — pure: persona, headcount, current
-SKUs, target bundle + add-ons, displaced third-party tools, and the annual
-delta), via the editable `scenario_narrative` AiPrompt on the resolved main
-model. Returns `[{persona, today, whats_new, value}]` on the Readout view. The result
+SKUs, target bundle + add-ons, displaced third-party tools, the per-persona
+`new_outcomes` the move lights up, and the annual delta), via the editable
+`scenario_narrative` AiPrompt on the resolved main model. Returns
+`[{id, persona, today, whats_new, value, source_tag}]` on the Readout view. The result
 is **stored on the engagement** as `ScenarioNarrative` rows (persona_id +
 snapshotted persona_name, today/whats_new/value, generated_at, provenance
 `AISuggestedUnconfirmed`) so it survives navigation — `GET …/narrative` returns
-the stored set; `POST …/narrative` regenerates and replaces it wholesale. The
+the stored set; `POST …/narrative` regenerates and replaces it wholesale.
+`PATCH …/narrative/{id}` is the operator edit (partial: today / what's new /
+value, via the ✎ control on the Readout tab): the AI output is a draft, the
+SA's reviewed wording is the record — an edit re-tags the row `Estimate`
+(human-asserted) and the GUI badge flips from "AI draft" to "edited".
+Regeneration still replaces edited rows, so edit after the final generation. The
 payload now also carries the **Customer Info context**
 (`build_customer_context`: name, industry, HQ, website, size, notes) so the
 prompt can weave supportable market-direction / headline / M&A observations in
@@ -650,7 +660,11 @@ Microsoft licensing (its bundles' ratified coverage, tagged-or-org-wide lines)
 plus third parties whose ratified coverage applies to the persona — **tagged to
 it, or untagged (org-wide, mirroring current licensing)** so established
 coverage-map mappings count even before a product is persona-tagged. It is a pure
-read over existing relationships — no new state, no new field.
+read over existing relationships — no new state, no new field. The computation
+lives in `services/compute.persona_coverage_gaps` (shared with the readout's
+New-outcomes section, §6.2 step 4); each uncovered outcome carries
+`{id, name, description}` so consumers can show what the capability is, not
+just its label.
 
 The Coverage Check step (between Scenarios and Readout) walks each gap and the
 operator resolves it with **existing** actions only:

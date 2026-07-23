@@ -142,15 +142,19 @@ The steps run along a chevron **progress stepper** at the top of an engagement:
 6. **Readout & export** — the horizon headline (annual net delta × the
    engagement's modeling horizon, e.g. "36-month savings", annualized figure
    beneath) over one plain move line per persona ("Baseline (1000) → Microsoft
-   365 E5 (−$246,560/yr)"), the Quick-wins "save today" story, the spend bridge
-   (every line broken down per persona: one column per in-scope persona plus a
-   Total), per-persona scenarios, third-party dispositions, and rollup;
+   365 E5 (−$246,560/yr)"), the Quick-wins "save today" story, per-persona
+   scenarios, the **New outcomes** chips (per persona, the capabilities the
+   move lights up that nothing delivers today — outcome descriptions on
+   hover, editable on the Coverage Map), the spend bridge (every line broken
+   down per persona: one column per in-scope persona plus a Total),
+   third-party dispositions, and rollup;
    plus **License-limit** checks (Microsoft licensing caps evaluated tenant-wide —
    e.g. Microsoft 365 Business Basic/Standard/Premium share a 300-seat maximum,
    shown as an over/under badge across current + future state), the **Business
    Premium swap** savings line, advisory **AI sanity check** + **business
-   narratives**, per-engagement **readout branding** (logo + theme colors), and
-   HTML / xlsx export.
+   narratives** (stored per persona, hand-editable on the Readout — an edit
+   re-tags the row from AI draft to human-asserted), per-engagement **readout
+   branding** (logo + theme colors), and HTML / xlsx export.
 
 The **in/out-of-scope** toggle on a scenario recomputes everything. A header
 **🔧 Tools** menu holds engagement-specific tools outside the workshop flow — the
