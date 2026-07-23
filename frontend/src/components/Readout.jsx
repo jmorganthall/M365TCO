@@ -248,6 +248,25 @@ export default function Readout({ engagement }) {
         </div>
       )}
 
+      <div className="card">
+        <h2>Per-persona scenarios</h2>
+        <table>
+          <thead><tr><th>Persona</th><th>Target</th><th className="num">HC</th>
+            <th className="num">Current</th><th className="num">Target</th><th className="num">Delta</th><th>Scope</th></tr></thead>
+          <tbody>
+            {result.scenarios.map((s) => (
+              <tr key={s.scenario_id} style={{ opacity: s.in_scope ? 1 : 0.5 }}>
+                <td>{s.persona_name}</td><td>{s.target_sku_reference}</td><td className="num">{s.headcount}</td>
+                <td className="num">{usd(s.current_spend_annual)}</td>
+                <td className="num">{usd(s.target_spend_annual)}</td>
+                <td className={`num ${s.delta_annual < 0 ? 'pos' : ''}`}>{usd(s.delta_annual)}</td>
+                <td>{s.in_scope ? <span className="badge pos">In scope</span> : <span className="badge muted">Excluded</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
       {(result.new_outcomes || []).length > 0 && (
         <div className="card">
           <h2>New outcomes</h2>
@@ -433,25 +452,6 @@ export default function Readout({ engagement }) {
           </div>
         </div>
       )}
-
-      <div className="card">
-        <h2>Per-persona scenarios</h2>
-        <table>
-          <thead><tr><th>Persona</th><th>Target</th><th className="num">HC</th>
-            <th className="num">Current</th><th className="num">Target</th><th className="num">Delta</th><th>Scope</th></tr></thead>
-          <tbody>
-            {result.scenarios.map((s) => (
-              <tr key={s.scenario_id} style={{ opacity: s.in_scope ? 1 : 0.5 }}>
-                <td>{s.persona_name}</td><td>{s.target_sku_reference}</td><td className="num">{s.headcount}</td>
-                <td className="num">{usd(s.current_spend_annual)}</td>
-                <td className="num">{usd(s.target_spend_annual)}</td>
-                <td className={`num ${s.delta_annual < 0 ? 'pos' : ''}`}>{usd(s.delta_annual)}</td>
-                <td>{s.in_scope ? <span className="badge pos">In scope</span> : <span className="badge muted">Excluded</span>}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
 
       <div className="card">
         <h2>Third-party dispositions</h2>

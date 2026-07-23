@@ -423,6 +423,11 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 {hero}
 {narrative_section}
 {quick_win_section}
+
+<section><h2>Per-persona scenarios</h2>
+<table><thead><tr><th>Persona</th><th>Target SKU</th><th>Headcount</th>
+<th>Current</th><th>Target</th><th>Delta</th><th>Scope</th></tr></thead>
+<tbody>{rows_scenarios}</tbody></table></section>
 {new_outcomes_section}
 
 <section><h2>How we get to the number</h2>
@@ -430,11 +435,6 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 tooling those users free up when they move, and the target Microsoft licensing —
 building to the net TCO delta, with each line broken down per persona.</p>
 <table class="bridge">{bridge_head}<tbody>{bridge_rows}</tbody></table></section>
-
-<section><h2>Per-persona scenarios</h2>
-<table><thead><tr><th>Persona</th><th>Target SKU</th><th>Headcount</th>
-<th>Current</th><th>Target</th><th>Delta</th><th>Scope</th></tr></thead>
-<tbody>{rows_scenarios}</tbody></table></section>
 {disp_section}
 {elim_section}
 {appendix_section}
