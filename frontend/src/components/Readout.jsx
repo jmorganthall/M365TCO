@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api, usd, pct } from '../api'
+import { api, usd } from '../api'
 import { PricingBadge } from './PricingBanner.jsx'
 
 // Sanity-check results persist across tab navigation (per engagement) without a

@@ -122,9 +122,6 @@ def test_readout_renders_business_narrative_when_present(client, monkeypatch):
 
     eng = models.Engagement(customer_name="Story Co")
 
-    class _Rollup(dict):
-        pass
-
     result = {
         "rollup": {
             "net_tco_delta_annual": -1000, "population_check": {},
