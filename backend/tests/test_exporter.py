@@ -100,11 +100,17 @@ def test_readout_breaks_bridge_down_per_persona(client):
 
     html = client.get(f"/api/engagements/{eid}/readout.html").text
 
-    # The headline subtext is the per-persona move story, not the generic phrase.
-    assert "if you move to the target scenarios" not in html
-    assert "moving" in html
-    assert "<b>Sales</b> (100) to <b>Microsoft 365 E5</b>" in html
-    assert "<b>Engineering</b> (50) to <b>Microsoft 365 E3</b>" in html
+    # The hero: a 36-month headline (annual delta × default 3-year horizon) over
+    # one compact move line per persona with its own signed annual delta. This
+    # engagement has no current Microsoft spend, so the move is honestly a cost
+    # increase: Sales +40k/yr (60k target − 20k freed Okta), Engineering +10k.
+    assert "36-month cost increase" in html
+    assert "+$150,000" in html                       # 3 × +50,000, no cents
+    assert "+$50,000/yr annualized" in html
+    assert "<b>Sales</b> (100) → <b>Microsoft 365 E5</b>" in html
+    assert "(+$40,000/yr)" in html                   # Sales' own move delta
+    assert "<b>Engineering</b> (50) → <b>Microsoft 365 E3</b>" in html
+    assert "(+$10,000/yr)" in html
     # The bridge is a matrix: a column head per persona (→ its target) + Total.
     assert "Sales <small>→ Microsoft 365 E5</small>" in html
     assert "Engineering <small>→ Microsoft 365 E3</small>" in html
@@ -112,6 +118,16 @@ def test_readout_breaks_bridge_down_per_persona(client):
     # The freed-up tool sub-row splits per persona: Okta's per-unit cost is
     # 30000/150 = $200, credited 100 and 50 seats → −$20k + −$10k = −$30k total.
     assert "−$20,000.00" in html and "−$10,000.00" in html and "−$30,000.00" in html
+    # New outcomes: the targets cover far more than Okta (identity-sso) delivers
+    # today, so both personas get a per-persona block of newly-lit capabilities.
+    assert "<h2>New outcomes</h2>" in html
+    assert "<h3>Sales <span class='muted'>(100)</span></h3>" in html
+    assert "<h3>Engineering <span class='muted'>(50)</span></h3>" in html
+    # Okta's outcome is delivered today, so it is NOT listed as new.
+    outcomes = {o["seed_key"]: o["name"]
+                for o in client.get(f"/api/engagements/{eid}/outcomes").json()}
+    new_section = html.split("<h2>New outcomes</h2>")[1].split("</section>")[0]
+    assert outcomes["identity-sso"] not in new_section
 
 
 def test_readout_renders_business_narrative_when_present(client, monkeypatch):
@@ -159,7 +175,7 @@ def test_readout_disclosures_soft_inputs_and_honest_currency(client):
 
     html = client.get(f"/api/engagements/{eid}/readout.html").text
     assert "Inputs carried as assumptions" in html
-    assert "KW <span style='color:#666'>(persona)</span>: estimate" in html
+    assert "KW <span class='muted'>(persona)</span>: estimate" in html
     assert "Okta <span" not in html          # hard-tagged input is not disclosed
     assert "annualized USD" in html          # engagement currency, printed live
 

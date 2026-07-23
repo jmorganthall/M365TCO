@@ -21,12 +21,14 @@ from ..services.serialize import result_to_dict
 
 def _computed_dict(db, engagement_id: str) -> dict:
     """The serialized engine result plus the tenant-wide license-limit evaluation
-    (§ services/limits) and the Business Premium swap summary (§ services/swap) —
-    so every readout consumer (compute, HTML/xlsx export, snapshot) carries the
-    guardrail check and the swap story, and neither is hidden."""
+    (§ services/limits), the Business Premium swap summary (§ services/swap),
+    and the per-persona new-outcomes story (§ services/compute) — so every
+    readout consumer (compute, HTML/xlsx export, snapshot) carries the guardrail
+    check, the swap story, and the value story, and none is hidden."""
     result = result_to_dict(compute.compute_and_persist(db, engagement_id))
     result["license_limits"] = limits.evaluate(db, engagement_id)
     result["bp_swap"] = swap.summarize(db, engagement_id, result)
+    result["new_outcomes"] = compute.new_outcomes(db, engagement_id, result)
     return result
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
@@ -150,6 +152,7 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
         customer_name=f"{src.customer_name} (copy)",
         market=src.market,
         currency=src.currency,
+        modeling_horizon_years=src.modeling_horizon_years,
         global_tooling_pct=src.global_tooling_pct,
         default_segment=src.default_segment,
         default_term_duration=src.default_term_duration,
@@ -332,6 +335,7 @@ def scenario_narrative(engagement_id: str, db: Session = Depends(get_db)):
     if not ai.is_enabled():
         raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
     result = result_to_dict(compute.compute_and_persist(db, engagement_id))
+    result["new_outcomes"] = compute.new_outcomes(db, engagement_id, result)
     scenarios = narrative.build_narrative_payload(eng, result)
     if not scenarios:
         return {"narratives": [], "generated_at": None}  # nothing in scope to narrate
@@ -378,51 +382,14 @@ def coverage_gaps(engagement_id: str, db: Session = Depends(get_db)):
     only; the operator resolves each gap by mapping an existing third party (or
     adding one), so the future new-outcomes story is trustworthy."""
     eng = _get_engagement(db, engagement_id)
-    sku_outcomes = compute._ratified_sku_outcomes(db, engagement_id)
-    tp_outcomes = compute._ratified_thirdparty_outcomes(db, engagement_id)
-    name_by_id = {o.id: o.name for o in eng.outcomes}
     third_parties = [
         {"id": t.id, "name": t.name, "persona_ids": list(t.persona_ids)}
         for t in eng.third_party_products
     ]
-
-    # Outcomes each persona's proposed scenario (base target + add-ons) delivers.
-    target_by_persona: dict[str, set[str]] = {}
-    for s in eng.scenarios:
-        covered = set(sku_outcomes.get(compute._cover_key(db, s.target_sku_reference), set()))
-        for addon in s.addons:
-            covered |= sku_outcomes.get(addon.bundle_id, set())
-        target_by_persona[s.persona_id] = covered
-
-    personas = []
-    for p in eng.personas:
-        target_outcomes = target_by_persona.get(p.id, set())
-        covered_today: set[str] = set()
-        # Current Microsoft licensing: lines tagged to this persona, plus untagged
-        # (org-wide) lines that apply to everyone.
-        for lic in eng.current_licenses:
-            if lic.persona_ids and p.id not in lic.persona_ids:
-                continue
-            covered_today |= sku_outcomes.get(compute._cover_key(db, lic.sku_reference), set())
-        # Third parties per the ratified coverage map: tagged to this persona, or
-        # untagged (org-wide) — so established mappings are reflected even before
-        # a product is persona-tagged.
-        for t in eng.third_party_products:
-            if t.persona_ids and p.id not in t.persona_ids:
-                continue
-            covered_today |= tp_outcomes.get(t.id, set())
-        # Only the target's outcomes that aren't already delivered today.
-        uncovered = sorted(target_outcomes - covered_today)
-        personas.append({
-            "persona_id": p.id,
-            "persona_name": p.name,
-            "headcount": p.headcount,
-            "has_scenario": p.id in target_by_persona,
-            "target_outcome_count": len(target_outcomes),
-            "covered_of_target": len(target_outcomes & covered_today),
-            "uncovered_outcomes": [{"id": oid, "name": name_by_id.get(oid, oid)} for oid in uncovered],
-        })
-    return {"personas": personas, "third_parties": third_parties}
+    return {
+        "personas": compute.persona_coverage_gaps(db, engagement_id),
+        "third_parties": third_parties,
+    }
 
 
 @router.get("/{engagement_id}/readout.html", response_class=HTMLResponse)

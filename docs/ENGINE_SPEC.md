@@ -231,7 +231,9 @@ move* — the two sum to the same total, so the bridge still builds to the net d
 > `current_microsoft_annual`, the per-product `offsets`, `delta_annual`). The
 > bridge identity therefore holds per column as well as in total; the engine
 > emits no separate per-persona bridge structure, so there is nothing to keep
-> in sync.
+> in sync. The readout **headline** is `net_tco_delta_annual ×
+> engagement.modeling_horizon_years` (e.g. "36-month savings") — a presentation
+> multiplication; every engine quantity remains annualized.
 
 ## Recompute is total, not incremental (6.7)
 

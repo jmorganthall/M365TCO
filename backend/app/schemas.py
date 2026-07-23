@@ -19,6 +19,7 @@ class EngagementCreate(BaseModel):
     customer_name: str = ""
     market: str = "US"
     currency: str = "USD"
+    modeling_horizon_years: int = 3
     # When omitted, these inherit from GlobalDefaults at creation time.
     global_tooling_pct: Optional[Decimal] = None
     # Pricing-basis defaults. Omitted values inherit GlobalDefaults at creation
@@ -128,6 +129,7 @@ class EngagementUpdate(BaseModel):
     customer_name: Optional[str] = None
     market: Optional[str] = None
     currency: Optional[str] = None
+    modeling_horizon_years: Optional[int] = None
     global_tooling_pct: Optional[Decimal] = None
     default_segment: Optional[str] = None
     default_term_duration: Optional[str] = None
@@ -151,6 +153,7 @@ class EngagementOut(ORMModel):
     customer_name: str
     market: str
     currency: str
+    modeling_horizon_years: int = 3
     global_tooling_pct: Decimal
     default_segment: str
     default_term_duration: str

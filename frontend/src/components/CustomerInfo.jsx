@@ -54,6 +54,7 @@ export default function CustomerInfo({ engagement, meta, onUpdate }) {
     // Normalize empties: text → "", number/date → null (so "clear" really clears).
     let value = raw
     if (field === 'employee_count') value = raw === '' || raw === null ? null : Number(raw)
+    else if (field === 'modeling_horizon_years') value = Math.max(1, Number(raw) || 3)
     else if (field === 'workshop_date') value = raw || null
     if ((engagement[field] ?? '') === (value ?? '')) return  // no-op if unchanged
     setErr('')
@@ -126,6 +127,13 @@ export default function CustomerInfo({ engagement, meta, onUpdate }) {
           <input value={f.currency} onChange={set('currency')} onBlur={(e) => commit('currency', e.target.value)} />
           <small className="src">Validated against the catalog; a mismatch is rejected.</small>
         </div>
+        <div>
+          <label>Modeling horizon (years) {savedTag('modeling_horizon_years')}</label>
+          <input type="number" min="1" value={f.modeling_horizon_years}
+            onChange={set('modeling_horizon_years')}
+            onBlur={(e) => commit('modeling_horizon_years', e.target.value)} />
+          <small className="src">Multiplies the annual delta into the readout headline (e.g. 3 → 36-month savings).</small>
+        </div>
       </div>
 
       <div style={{ marginTop: '.6rem' }}>
@@ -157,5 +165,6 @@ function fromEngagement(e) {
     notes: e.notes || '',
     market: e.market || '',
     currency: e.currency || '',
+    modeling_horizon_years: e.modeling_horizon_years ?? 3,
   }
 }

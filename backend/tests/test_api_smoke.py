@@ -225,7 +225,8 @@ def test_readout_delta_sign_and_color_convention(client):
     assert r["rollup"]["net_tco_delta_annual"] == -30000.0  # negative = saving
     html_body = client.get(f"/api/engagements/{eid}/readout.html").text
     assert "headline pos" in html_body            # saving -> green
-    assert "Annual savings" in html_body
+    assert "36-month savings" in html_body        # horizon headline (3yr default)
+    assert "−$90,000" in html_body                # 3 × −30,000, compact
     assert "headline neg" not in html_body        # never red
 
     # Cost increase: expensive target.
@@ -240,7 +241,7 @@ def test_readout_delta_sign_and_color_convention(client):
     r2 = client.post(f"/api/engagements/{e2}/compute").json()
     assert r2["rollup"]["net_tco_delta_annual"] == 50000.0  # positive = cost increase
     html2 = client.get(f"/api/engagements/{e2}/readout.html").text
-    assert "Annual cost increase" in html2
+    assert "36-month cost increase" in html2
     assert "headline neg" not in html2            # increase is neutral, not red
 
 

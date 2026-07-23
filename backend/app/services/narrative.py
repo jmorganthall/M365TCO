@@ -53,6 +53,13 @@ def build_narrative_payload(eng, result: dict) -> list[dict]:
             bundle_name.get(a.bundle_id, a.bundle_id) for a in s.addons
         ]
 
+    # Outcomes the move lights up per persona (computed by services/compute and
+    # attached to the result) — the concrete "what's new" the prompt grounds in.
+    new_by_pid = {
+        n["persona_id"]: [o["name"] for o in n.get("outcomes", [])]
+        for n in (result.get("new_outcomes") or [])
+    }
+
     out = []
     for s in result.get("scenarios", []) or []:
         if not s.get("in_scope"):
@@ -65,6 +72,7 @@ def build_narrative_payload(eng, result: dict) -> list[dict]:
             "target_bundle": s.get("target_sku_reference"),
             "target_addons": addons_by_persona.get(pid, []),
             "displaced_tools": [o.get("third_party_product_name") for o in s.get("offsets", []) or []],
+            "new_outcomes": new_by_pid.get(pid, []),
             "current_annual": s.get("current_spend_annual"),
             "target_annual": s.get("target_spend_annual"),
             "delta_annual": s.get("delta_annual"),

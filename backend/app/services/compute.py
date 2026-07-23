@@ -466,3 +466,70 @@ def compute_and_persist(db: Session, engagement_id: str) -> EngineResult:
 
     db.commit()
     return result
+
+
+def persona_coverage_gaps(db: Session, engagement_id: str) -> list[dict]:
+    """Per persona: the outcomes the PROPOSED target scenario (base bundle +
+    add-ons) would deliver that nothing delivers today. "Delivered today" reads
+    the existing coverage map: the persona's current Microsoft licensing (its
+    bundles' ratified coverage, tagged-or-org-wide lines) plus third parties
+    whose ratified coverage applies to the persona. Derived, persists nothing.
+    Serves both the Coverage Check step (as gaps to resolve) and the readout's
+    New-outcomes section (whatever remains unresolved is genuinely new)."""
+    eng = db.get(models.Engagement, engagement_id)
+    sku_outcomes = _ratified_sku_outcomes(db, engagement_id)
+    tp_outcomes = _ratified_thirdparty_outcomes(db, engagement_id)
+    name_by_id = {o.id: o.name for o in eng.outcomes}
+
+    # Outcomes each persona's proposed scenario (base target + add-ons) delivers.
+    target_by_persona: dict[str, set[str]] = {}
+    for s in eng.scenarios:
+        covered = set(sku_outcomes.get(_cover_key(db, s.target_sku_reference), set()))
+        for addon in s.addons:
+            covered |= sku_outcomes.get(addon.bundle_id, set())
+        target_by_persona[s.persona_id] = covered
+
+    personas = []
+    for p in eng.personas:
+        target_outcomes = target_by_persona.get(p.id, set())
+        covered_today: set[str] = set()
+        # Current Microsoft licensing: lines tagged to this persona, plus
+        # untagged (org-wide) lines that apply to everyone.
+        for lic in eng.current_licenses:
+            if lic.persona_ids and p.id not in lic.persona_ids:
+                continue
+            covered_today |= sku_outcomes.get(_cover_key(db, lic.sku_reference), set())
+        # Third parties per the ratified coverage map: tagged to this persona,
+        # or untagged (org-wide).
+        for t in eng.third_party_products:
+            if t.persona_ids and p.id not in t.persona_ids:
+                continue
+            covered_today |= tp_outcomes.get(t.id, set())
+        uncovered = sorted(target_outcomes - covered_today)
+        personas.append({
+            "persona_id": p.id,
+            "persona_name": p.name,
+            "headcount": p.headcount,
+            "has_scenario": p.id in target_by_persona,
+            "target_outcome_count": len(target_outcomes),
+            "covered_of_target": len(target_outcomes & covered_today),
+            "uncovered_outcomes": [{"id": oid, "name": name_by_id.get(oid, oid)} for oid in uncovered],
+        })
+    return personas
+
+
+def new_outcomes(db: Session, engagement_id: str, result: dict) -> list[dict]:
+    """The readout's New-outcomes story: per IN-SCOPE persona, the outcomes the
+    move lights up that nothing they hold today delivers. Personas with nothing
+    new are omitted (the readout never prints an empty block)."""
+    in_scope = {s["persona_id"] for s in result.get("scenarios", []) if s.get("in_scope")}
+    return [
+        {
+            "persona_id": g["persona_id"],
+            "persona_name": g["persona_name"],
+            "headcount": g["headcount"],
+            "outcomes": g["uncovered_outcomes"],
+        }
+        for g in persona_coverage_gaps(db, engagement_id)
+        if g["has_scenario"] and g["persona_id"] in in_scope and g["uncovered_outcomes"]
+    ]

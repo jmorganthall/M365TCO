@@ -139,9 +139,10 @@ The steps run along a chevron **progress stepper** at the top of an engagement:
    *covered elsewhere / out of scope* (recorded as a $0 sentinel, so it's kept
    out of cost and the new-outcome story), add a third party, or leave it as a
    genuine new outcome the target lights up. Reads existing relationships only.
-6. **Readout & export** — the Net TCO delta headlined by the per-persona move
-   story ("we save you $X/yr by moving Sales to E5 and Engineering to E3", each
-   move with its own delta), the Quick-wins "save today" story, the spend bridge
+6. **Readout & export** — the horizon headline (annual net delta × the
+   engagement's modeling horizon, e.g. "36-month savings", annualized figure
+   beneath) over one plain move line per persona ("Baseline (1000) → Microsoft
+   365 E5 (−$246,560/yr)"), the Quick-wins "save today" story, the spend bridge
    (every line broken down per persona: one column per in-scope persona plus a
    Total), per-persona scenarios, third-party dispositions, and rollup;
    plus **License-limit** checks (Microsoft licensing caps evaluated tenant-wide —
