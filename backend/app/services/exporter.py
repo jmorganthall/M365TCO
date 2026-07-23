@@ -131,12 +131,30 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     # New outcomes: per in-scope persona, the capabilities the move lights up
     # that nothing they hold today delivers (computed by services/compute from
     # the ratified coverage map — the same source the Coverage Check validates).
-    # The value story beyond cost; omitted entirely when there is nothing new.
+    # Rendered as a tile grid — each capability named AND described in plain
+    # English, tagged NEW, under a "Persona (headcount) → target" header — so
+    # the customer sees what they're getting, not just a list of labels.
+    # Omitted entirely when there is nothing new.
     new_outcomes = result.get("new_outcomes") or []
+    target_by_pid = {
+        s["persona_id"]: s["target_sku_reference"]
+        for s in result.get("scenarios", []) if s.get("in_scope")
+    }
+
+    def _outcome_tile(o):
+        desc = (o.get("description") or "").strip()
+        return (
+            "<div class='outcome'><div class='outcome-name'>"
+            f"<span class='new-tag'>NEW</span>{html.escape(o['name'])}</div>"
+            + (f"<div class='outcome-desc'>{html.escape(desc)}</div>" if desc else "")
+            + "</div>"
+        )
+
     new_outcome_blocks = "".join(
-        f"<div class='narrative'><h3>{html.escape(n['persona_name'])} "
-        f"<span class='muted'>({n['headcount']})</span></h3>"
-        f"<p>{' · '.join(html.escape(o['name']) for o in n['outcomes'])}</p></div>"
+        f"<div class='persona-outcomes'><h3>{html.escape(n['persona_name'])} "
+        f"<span class='muted'>({n['headcount']}) → "
+        f"{html.escape(target_by_pid.get(n['persona_id'], ''))}</span></h3>"
+        f"<div class='outcome-grid'>{''.join(_outcome_tile(o) for o in n['outcomes'])}</div></div>"
         for n in new_outcomes
     )
     new_outcomes_section = (
@@ -411,6 +429,16 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
  .narrative{{background:var(--soft);border-left:3px solid var(--accent);
    padding:.6rem 1rem;border-radius:8px;margin:.75rem 0}}
  .narrative h3{{margin:.2rem 0;color:var(--primary)}}
+ .persona-outcomes{{margin:1rem 0}}
+ .persona-outcomes h3{{margin:0 0 .5rem;font-size:1rem;color:var(--primary)}}
+ .outcome-grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:.55rem}}
+ .outcome{{border:1px solid var(--line);border-left:3px solid var(--pos);
+   border-radius:8px;padding:.55rem .75rem;background:#fff}}
+ .outcome-name{{font-weight:650;font-size:.92rem}}
+ .outcome-desc{{color:var(--muted);font-size:.84rem;margin-top:.15rem;line-height:1.35}}
+ .new-tag{{display:inline-block;background:var(--pos);color:#fff;font-size:.62rem;
+   font-weight:700;letter-spacing:.06em;border-radius:4px;padding:.1rem .3rem;
+   margin-right:.45rem;vertical-align:2px}}
  ul{{margin:.3rem 0}}
  footer{{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--line);
    color:var(--muted);font-size:.8rem}}

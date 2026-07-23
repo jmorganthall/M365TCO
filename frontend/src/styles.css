@@ -178,6 +178,11 @@ table.bridge td { border-bottom: none; padding: .3rem .55rem; }
 table.bridge th { font-size: .8rem; padding: .3rem .55rem; }
 ul.moves { list-style: none; margin: .4rem 0 0; padding: 0; }
 ul.moves li { margin: .18rem 0; }
+.outcome-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: .5rem; margin-top: .45rem; }
+.outcome { background: var(--panel2); border: 1px solid var(--border); border-left: 3px solid var(--pos, #127436); border-radius: 8px; padding: .5rem .7rem; }
+.outcome-name { font-weight: 600; font-size: .88rem; }
+.outcome-desc { color: var(--muted); font-size: .78rem; margin-top: .15rem; line-height: 1.35; }
+.new-tag { display: inline-block; background: var(--pos, #127436); color: #fff; font-size: .6rem; font-weight: 700; letter-spacing: .06em; border-radius: 4px; padding: .1rem .3rem; margin-right: .4rem; vertical-align: 2px; }
 table.bridge tr.bridge-sub td { color: var(--muted); padding-left: 1.4rem; font-size: .8rem; }
 table.bridge tr.bridge-total td { border-top: 1px solid var(--border); padding-top: .45rem; }
 .err { color: var(--neg); font-size: .82rem; margin: .4rem 0; }

@@ -274,14 +274,22 @@ export default function Readout({ engagement }) {
             nothing they hold today delivers — the value the move adds beyond the cost story.
             Validate coverage on the Coverage Check step; ✨ Business narratives drafts why each
             matters for this customer.</p>
-          {result.new_outcomes.map((n) => (
-            <div key={n.persona_id} className="popcheck">
-              <b>{n.persona_name}</b> <span className="muted">({n.headcount})</span>
-              <div className="pill-list" style={{ marginTop: '.35rem' }}>
-                {n.outcomes.map((o) => <span key={o.id} className="badge pos">{o.name}</span>)}
+          {result.new_outcomes.map((n) => {
+            const target = inScope.find((s) => s.persona_id === n.persona_id)?.target_sku_reference
+            return (
+              <div key={n.persona_id} style={{ marginTop: '.6rem' }}>
+                <b>{n.persona_name}</b> <span className="muted">({n.headcount}){target ? <> → {target}</> : null}</span>
+                <div className="outcome-grid">
+                  {n.outcomes.map((o) => (
+                    <div key={o.id} className="outcome">
+                      <div className="outcome-name"><span className="new-tag">NEW</span>{o.name}</div>
+                      {o.description && <div className="outcome-desc">{o.description}</div>}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 

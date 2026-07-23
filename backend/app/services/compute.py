@@ -480,6 +480,7 @@ def persona_coverage_gaps(db: Session, engagement_id: str) -> list[dict]:
     sku_outcomes = _ratified_sku_outcomes(db, engagement_id)
     tp_outcomes = _ratified_thirdparty_outcomes(db, engagement_id)
     name_by_id = {o.id: o.name for o in eng.outcomes}
+    desc_by_id = {o.id: o.description or "" for o in eng.outcomes}
 
     # Outcomes each persona's proposed scenario (base target + add-ons) delivers.
     target_by_persona: dict[str, set[str]] = {}
@@ -513,7 +514,11 @@ def persona_coverage_gaps(db: Session, engagement_id: str) -> list[dict]:
             "has_scenario": p.id in target_by_persona,
             "target_outcome_count": len(target_outcomes),
             "covered_of_target": len(target_outcomes & covered_today),
-            "uncovered_outcomes": [{"id": oid, "name": name_by_id.get(oid, oid)} for oid in uncovered],
+            "uncovered_outcomes": [
+                {"id": oid, "name": name_by_id.get(oid, oid),
+                 "description": desc_by_id.get(oid, "")}
+                for oid in uncovered
+            ],
         })
     return personas
 

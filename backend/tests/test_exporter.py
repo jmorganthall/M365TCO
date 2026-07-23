@@ -121,8 +121,12 @@ def test_readout_breaks_bridge_down_per_persona(client):
     # New outcomes: the targets cover far more than Okta (identity-sso) delivers
     # today, so both personas get a per-persona block of newly-lit capabilities.
     assert "<h2>New outcomes</h2>" in html
-    assert "<h3>Sales <span class='muted'>(100)</span></h3>" in html
-    assert "<h3>Engineering <span class='muted'>(50)</span></h3>" in html
+    assert "<h3>Sales <span class='muted'>(100) → Microsoft 365 E5</span></h3>" in html
+    assert "<h3>Engineering <span class='muted'>(50) → Microsoft 365 E3</span></h3>" in html
+    # Tiles carry the outcome DESCRIPTION (what the capability actually is),
+    # not just the label, each tagged NEW.
+    assert "<span class='new-tag'>NEW</span>" in html
+    assert "class='outcome-desc'" in html
     # Okta's outcome is delivered today, so it is NOT listed as new.
     outcomes = {o["seed_key"]: o["name"]
                 for o in client.get(f"/api/engagements/{eid}/outcomes").json()}
