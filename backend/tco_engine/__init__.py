@@ -52,4 +52,7 @@ __all__ = [
     "FreedThirdParty",
     "QuickWin",
     "EngineResult",
+    "analyze_bundles",
+    "CandidateBundle",
+    "BundleAnalysis",
 ]
