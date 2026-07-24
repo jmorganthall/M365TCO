@@ -146,19 +146,16 @@ export default function Readout({ engagement }) {
                   <div className={`headline headline-xl ${total > 0 ? 'pos' : ''}`}>
                     {usd0(total * horizon)} <span style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--muted)' }}>{word}</span>
                   </div>
-                  <div className="muted">
-                    {qw > 0
-                      ? <>{usd0(qw)}/yr from quick wins {movesValue > 0 ? `+ ${usd0(movesValue)}/yr from the persona moves` : movesValue < 0 ? `− ${usd0(movesValue)}/yr invested in the persona moves` : 'with the persona moves cost-neutral'} = <b>{usd0(total)}/yr</b> run-rate</>
-                      : <>{usd0(total)}/yr run-rate</>}
-                  </div>
-                  <div className="popcheck" style={{ marginTop: '.5rem' }}>
-                    {qw > 0 && <div>① Retire duplicate tools today — no licensing change: <b className="pos">{usd0(qw)}/yr</b></div>}
-                    <div>{qw > 0 ? '② ' : ''}Move each persona to right-sized licensing:{' '}
-                      <b className={movesValue > 0 ? 'pos' : ''}>
-                        {movesValue > 0 ? `saves ${usd0(movesValue)}/yr` : movesValue < 0 ? `adds ${usd0(movesValue)}/yr` : 'cost-neutral'}
-                      </b>
-                      <MoveSummary scenarios={inScope} />
+                  <div className="muted">{usd0(total)}/yr run-rate</div>
+                  {qw > 0 && (
+                    <div className="popcheck" style={{ marginTop: '.5rem' }}>
+                      ① Retire duplicate tools today — no licensing change:{' '}
+                      <b className="pos">{usd0(qw)}/yr</b>
                     </div>
+                  )}
+                  <div className="popcheck" style={{ marginTop: '.4rem' }}>
+                    {qw > 0 ? '② ' : ''}Move each persona to right-sized licensing:
+                    <MoveSummary scenarios={inScope} />
                   </div>
                 </>
               )
@@ -604,10 +601,10 @@ function MoveSummary({ scenarios }) {
         const v = Number(s.move_incremental_delta_annual ?? s.delta_annual) || 0
         return (
           <li key={s.scenario_id}>
-            <b>{s.persona_name}</b> ({s.headcount}) → <b>{s.target_sku_reference}</b>{' '}
-            <span className={v < 0 ? 'pos' : ''}>
-              ({v < 0 ? `saves ${usd0(v)}/yr` : v > 0 ? `adds ${usd0(v)}/yr` : 'cost-neutral'})
+            <span className={`move-amt ${v < 0 ? 'pos' : v === 0 ? 'muted' : ''}`}>
+              {v < 0 ? `${usd0(v)}/yr` : v > 0 ? `(${usd0(v)}/yr)` : '$0/yr'}
             </span>
+            <b>{s.persona_name}</b> ({s.headcount}) → <b>{s.target_sku_reference}</b>
           </li>
         )
       })}

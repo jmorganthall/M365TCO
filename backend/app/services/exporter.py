@@ -300,17 +300,19 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     else:
         head_word, head_cls = "no net change", ""
 
-    def _moves_phrase(v):
+    def _moves_amount(v):
+        # Number first, like card ①, no words: finance notation. Positive plain
+        # (green) = savings; parentheses (black) = added expense.
         if v < 0:
-            return f"<span class='pos'>(saves {_usd0(v)}/yr)</span>"
+            return f"<span class='move-amt pos'>{_usd0(v)}/yr</span>"
         if v > 0:
-            return f"<span>(adds {_usd0(v)}/yr)</span>"
-        return "<span class='muted'>(cost-neutral)</span>"
+            return f"<span class='move-amt'>({_usd0(v)}/yr)</span>"
+        return "<span class='move-amt muted'>$0/yr</span>"
 
     move_items = "".join(
-        f"<li><b>{html.escape(s['persona_name'])}</b> ({s['headcount']}) → "
-        f"<b>{html.escape(s['target_sku_reference'])}</b> "
-        f"{_moves_phrase(s.get('move_incremental_delta_annual', s['delta_annual']))}</li>"
+        f"<li>{_moves_amount(s.get('move_incremental_delta_annual', s['delta_annual']))}"
+        f"<b>{html.escape(s['persona_name'])}</b> ({s['headcount']}) → "
+        f"<b>{html.escape(s['target_sku_reference'])}</b></li>"
         for s in in_scope
     )
     part_today = (
@@ -319,14 +321,11 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         f"<div class='part-value pos'>{_usd0(qw_total)}/yr</div></div>"
         if qw_total > 0 else ""
     )
-    moves_word = (
-        f"<span class='pos'>saves {_usd0(moves_value)}/yr</span>" if moves_value > 0
-        else f"adds {_usd0(moves_value)}/yr" if moves_value < 0 else "cost-neutral"
-    )
+    # Card ② is just the moves — persona → bundle (amount), no roll-up number
+    # repeating what the bridge derives later.
     part_moves = (
         f"<div class='hero-part'><div class='part-label'>"
         f"{'② ' if part_today else ''}Move each persona to right-sized licensing</div>"
-        f"<div class='part-value'>{moves_word}</div>"
         + (f"<ul class='moves'>{move_items}</ul>" if in_scope else "")
         + "</div>"
     )
@@ -342,20 +341,9 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         else "<div class='hero-caveat'>Figures are run-rate: they assume retirements "
              "from day one; year one phases with contract end dates.</div>"
     )
-    # The components visibly SUM into the headline — the big number is the
-    # rolled-up total (quick wins + persona moves), the parts are its story.
-    if qw_total > 0 and in_scope:
-        moves_term = (
-            f"+ {_usd0(moves_value)}/yr from the persona moves" if moves_value > 0
-            else f"− {_usd0(moves_value)}/yr invested in the persona moves" if moves_value < 0
-            else "with the persona moves cost-neutral"
-        )
-        hero_sub = (
-            f"{_usd0(qw_total)}/yr from quick wins {moves_term} "
-            f"= <b>{_usd0(total_opportunity)}/yr</b> run-rate"
-        )
-    else:
-        hero_sub = f"{_usd0(total_opportunity)}/yr run-rate"
+    # One headline, two stacked sub-cards. The components' dollars live in the
+    # cards ONLY — no equation line repeating them above.
+    hero_sub = f"{_usd0(total_opportunity)}/yr run-rate"
     hero = (
         f"<section class='hero'>"
         f"<div class='hero-label'>Total opportunity <span class='hero-note'>"
@@ -560,15 +548,16 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
  .headline{{font-size:3rem;font-weight:750;line-height:1.1;margin:.15rem 0;letter-spacing:-.02em}}
  .hero-sub{{color:var(--muted)}}
  .headline-word{{font-size:1.15rem;font-weight:600;color:var(--muted);letter-spacing:0}}
- .hero-split{{display:flex;gap:.8rem;flex-wrap:wrap;margin-top:.9rem;
+ .hero-split{{display:flex;flex-direction:column;gap:.7rem;margin-top:.9rem;
    padding-top:.9rem;border-top:1px solid var(--line)}}
- .hero-part{{flex:1;min-width:300px;background:#fff;border:1px solid var(--line);
+ .hero-part{{background:#fff;border:1px solid var(--line);
    border-radius:8px;padding:.6rem .85rem}}
  .part-label{{font-size:.8rem;font-weight:650;color:var(--muted)}}
  .part-value{{font-size:1.35rem;font-weight:750;margin:.1rem 0}}
  .hero-caveat{{margin-top:.7rem;font-size:.82rem;color:var(--muted)}}
  ul.moves{{list-style:none;margin:.35rem 0 0;padding:0}}
  ul.moves li{{margin:.25rem 0;font-size:.95rem}}
+ .move-amt{{display:inline-block;min-width:10.5rem;font-weight:700}}
  .pos{{color:var(--pos)}} .neg{{color:var(--neg)}} .muted{{color:var(--muted)}}
  section{{margin:2rem 0}}
  h2{{font-size:1.12rem;color:var(--primary);margin:0 0 .4rem;
@@ -600,7 +589,6 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
    .headline{{font-size:2rem}}
    .headline-word{{display:block;font-size:1rem;margin-top:.1rem}}
    .hero{{padding:.9rem 1rem}}
-   .hero-part{{min-width:100%}}
    table{{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}}
    td:first-child,th:first-child{{min-width:190px}}
    th,td{{padding:.42rem .5rem}}
