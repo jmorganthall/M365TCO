@@ -260,7 +260,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         + _freed_group("third-party newly retired by the move",
                        "(capability arrives with the target)",
                        newly, "credited_annual")
-        + f"<tr class='total'><td><b>Net change in run-rate</b> "
+        + f"<tr class='total'><td><b>Net change per year</b> "
         f"<span class='muted'>({delta_word})</span></td>"
         f"{delta_cells}<td class='num {delta_cls}'><b>{_usd(delta)}</b></td></tr>"
     )
@@ -302,12 +302,14 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 
     def _moves_amount(v):
         # Number first, like card ①, no words: finance notation. Positive plain
-        # (green) = savings; parentheses (black) = added expense.
+        # (green) = savings; parentheses (black) = added expense. Every hero
+        # figure is over the SAME horizon, so the components visibly sum to the
+        # headline; "per year" appears exactly once, under the headline.
         if v < 0:
-            return f"<span class='move-amt pos'>{_usd0(v)}/yr</span>"
+            return f"<span class='move-amt pos'>{_usd0(v * horizon)}</span>"
         if v > 0:
-            return f"<span class='move-amt'>({_usd0(v)}/yr)</span>"
-        return "<span class='move-amt muted'>$0/yr</span>"
+            return f"<span class='move-amt'>({_usd0(v * horizon)})</span>"
+        return "<span class='move-amt muted'>$0</span>"
 
     move_items = "".join(
         f"<li>{_moves_amount(s.get('move_incremental_delta_annual', s['delta_annual']))}"
@@ -318,7 +320,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     part_today = (
         f"<div class='hero-part'><div class='part-label'>① Retire duplicate tools today "
         f"— no licensing change</div>"
-        f"<div class='part-value pos'>{_usd0(qw_total)}/yr</div></div>"
+        f"<div class='part-value pos'>{_usd0(qw_total * horizon)}</div></div>"
         if qw_total > 0 else ""
     )
     # Card ② is just the moves — persona → bundle (amount), no roll-up number
@@ -335,19 +337,19 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     hero_caveat = (
         f"<div class='hero-caveat'>Baseline spend uses list-price assumptions for "
         f"{assumed_n} current SKU{'s' if assumed_n != 1 else ''} — validating against "
-        f"invoices is step one and may move this number. Figures are run-rate: they "
-        f"assume retirements from day one; year one phases with contract end dates.</div>"
+        f"invoices is step one and may move this number. Figures assume full savings "
+        f"from day one; year one phases with contract end dates.</div>"
         if assumed_n
-        else "<div class='hero-caveat'>Figures are run-rate: they assume retirements "
-             "from day one; year one phases with contract end dates.</div>"
+        else "<div class='hero-caveat'>Figures assume full savings from day one; "
+             "year one phases with contract end dates.</div>"
     )
     # One headline, two stacked sub-cards. The components' dollars live in the
     # cards ONLY — no equation line repeating them above.
-    hero_sub = f"{_usd0(total_opportunity)}/yr run-rate"
+    hero_sub = f"{_usd0(total_opportunity)} per year"
     hero = (
         f"<section class='hero'>"
         f"<div class='hero-label'>Total opportunity <span class='hero-note'>"
-        f"· {horizon}-year run-rate view · quick wins + licensing moves</span></div>"
+        f"· all figures over {months} months · quick wins + licensing moves</span></div>"
         f"<div class='headline {head_cls}'>{_usd0(total_opportunity * horizon)} "
         f"<span class='headline-word'>{head_word}</span></div>"
         f"<div class='hero-sub'>{hero_sub}</div>"
@@ -506,7 +508,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         f"and pull contract end dates for the {n_retire} retirement target{'s' if n_retire != 1 else ''} "
         "— this converts the assumptions above into an invoice-verified business case.</li>"
         "<li><b>Sequence.</b> Co-term each retirement against its renewal date into a "
-        "phased savings schedule. The figures here are run-rate; year one phases in.</li>"
+        "phased savings schedule. The figures here assume full savings from day one; year one phases in.</li>"
         "<li><b>Fund.</b> Microsoft co-investment programs may offset transition cost — "
         "quantified in the follow-on.</li>"
         "<li><b>Decide.</b> A 30-day validation sprint converts this readout into an "
