@@ -124,6 +124,7 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
                 tooling_pct=_dec(tp.tooling_pct),
                 renewal_date=tp.renewal_date.isoformat() if tp.renewal_date else None,
                 delivered_outcome_ids=frozenset(tp_outcomes.get(tp.id, set())),
+                persona_ids=frozenset(tp.persona_ids),
                 override=Override(disp.override) if disp else Override.NONE,
                 override_reason=disp.override_reason if disp else "",
                 residual_intent=(

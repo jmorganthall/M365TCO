@@ -164,16 +164,39 @@ export default function Readout({ engagement }) {
                     {usd0(total * horizon)} <span style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--muted)' }}>{word}</span>
                   </div>
                   <div className="muted">{usd0(total)} per year</div>
-                  {qw > 0 && (
-                    <div className="popcheck" style={{ marginTop: '.5rem' }}>
-                      ① Retire duplicate tools today — no licensing change:{' '}
-                      <b className="pos">{usd0(qw * horizon)}</b>
-                    </div>
-                  )}
-                  <div className="popcheck" style={{ marginTop: '.4rem' }}>
-                    {qw > 0 ? '② ' : ''}Move each persona to right-sized licensing:
-                    <MoveSummary scenarios={inScope} horizon={horizon} />
-                  </div>
+                  {(() => {
+                    // Share of the total per lever. total = quick wins + moves,
+                    // so the moves' share is the complement — always sums to 100,
+                    // no 99/101 rounding. Only meaningful on a net saving.
+                    const showPct = total > 0
+                    const qwPct = showPct ? Math.round(qw / total * 100) : 0
+                    const movesPct = 100 - qwPct
+                    // A share opposing the total (a net investment) shows in
+                    // parentheses, matching the move amounts' finance notation.
+                    const pct = (p) => showPct
+                      ? <span className="part-pct">{p < 0 ? `(${Math.abs(p)}%)` : `${p}%`}</span>
+                      : null
+                    return (
+                      <>
+                        {qw > 0 && (
+                          <div className="popcheck hero-part" style={{ marginTop: '.5rem' }}>
+                            <div className="hero-part-main">
+                              ① Retire duplicate tools today — no licensing change:{' '}
+                              <b className="pos">{usd0(qw * horizon)}</b>
+                            </div>
+                            {pct(qwPct)}
+                          </div>
+                        )}
+                        <div className="popcheck hero-part" style={{ marginTop: '.4rem' }}>
+                          <div className="hero-part-main">
+                            {qw > 0 ? '② ' : ''}Move each persona to right-sized licensing:
+                            <MoveSummary scenarios={inScope} horizon={horizon} />
+                          </div>
+                          {pct(movesPct)}
+                        </div>
+                      </>
+                    )
+                  })()}
                 </>
               )
             })()}

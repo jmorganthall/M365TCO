@@ -60,10 +60,33 @@ displaces(scenario, product) =
 A product that delivers an outcome the SKU does not cover is **not** displaced by
 that scenario.
 
+### Persona-scoped displacement (6.3a)
+
+A move can only retire a tool for a persona that actually **holds** it. A product
+carries the personas it is used by (the `ThirdPartyPersona` tags); displacement is
+gated on that membership, so credit never leaks to a persona whose target merely
+covers the outcomes:
+
+```
+applies(product, persona) =
+    product.persona_ids is empty            # untagged → org-wide (applies to all)
+    OR persona ∈ product.persona_ids        # tagged → only those personas hold it
+
+# both gates, or no displacement / no offset credit:
+displaces_for(scenario, product) =
+    applies(product, persona(scenario)) AND displaces(scenario, product)
+```
+
+An **untagged** product (no persona tags) is org-wide, which preserves the
+headcount spread across all displacing scenarios. A **tagged** product is
+displaced only by its tagged personas' in-scope moves — so a tool tagged to a
+persona who does not move stays `Unchanged` with its full carrying cost, never
+credited as reduced by an unrelated persona's move.
+
 ## Per-product disposition (6.4), in-scope set only
 
 ```
-displacing = in-scope scenarios s where displaces(s, product)
+displacing = in-scope scenarios s where displaces_for(s, product)   # persona-scoped (6.3a)
 displaced_users = Σ headcount(persona(s)) for s in displacing
 residual_count  = max(covered_count - displaced_users, 0)
 

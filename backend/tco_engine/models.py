@@ -80,6 +80,11 @@ class ThirdPartyProduct:
     tooling_pct: Decimal = Decimal("0.30")
     renewal_date: Optional[str] = None
     delivered_outcome_ids: frozenset[str] = field(default_factory=frozenset)
+    # Personas that actually USE this tool (the ThirdPartyPersona tags). A move
+    # can only retire the tool for a persona that holds it, so displacement is
+    # scoped to these (Section 6.3a). Empty = untagged / org-wide (applies to
+    # everyone), preserving the pre-tag headcount spread.
+    persona_ids: frozenset[str] = field(default_factory=frozenset)
     # Engine-output overrides (persisted on ProductDisposition, fed back in):
     override: Override = Override.NONE
     override_reason: str = ""

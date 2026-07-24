@@ -199,6 +199,16 @@ def _scenario_displaces_product(
     return product.delivered_outcome_ids.issubset(scenario.target_covered_outcome_ids)
 
 
+def _product_applies_to_persona(product: ThirdPartyProduct, persona_id: str) -> bool:
+    """Section 6.3a: a move can only retire a tool for a persona that actually
+    HOLDS it. A tool tagged to specific personas is used only by them; an
+    untagged tool is org-wide (applies to everyone), which preserves the
+    pre-tag headcount spread. Without this, displacement credit leaks to any
+    persona whose target happens to cover the tool's outcomes — even one that
+    was never assigned the tool."""
+    return not product.persona_ids or persona_id in product.persona_ids
+
+
 def compute(engagement: Engagement) -> EngineResult:
     personas: dict[str, Persona] = {p.id: p for p in engagement.personas}
 
@@ -213,6 +223,7 @@ def compute(engagement: Engagement) -> EngineResult:
             for s in engagement.scenarios
             if s.in_scope
             and s.persona_id in personas
+            and _product_applies_to_persona(product, s.persona_id)
             and _scenario_displaces_product(s, product)
         ]
         displacing_scenarios_by_product[product.id] = displacing
@@ -405,7 +416,12 @@ def compute(engagement: Engagement) -> EngineResult:
         offsets: list[OffsetDetail] = []
         offset_total = Decimal("0")
         for product in engagement.third_party_products:
-            if _scenario_displaces_product(scenario, product):
+            # A move only offsets a tool this persona actually holds (6.3a) AND
+            # whose outcomes the target covers (6.6). Both gates, or no credit.
+            if (
+                _product_applies_to_persona(product, persona.id)
+                and _scenario_displaces_product(scenario, product)
+            ):
                 per_unit = product.per_unit_annual_cost
                 alloc = offset_alloc.get((product.id, scenario.id))
                 if alloc is not None:
