@@ -578,8 +578,8 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
  .hero-part-main{{flex:1;min-width:0}}
  .part-label{{font-size:.8rem;font-weight:650;color:var(--muted)}}
  .part-value{{font-size:1.35rem;font-weight:750;margin:.1rem 0}}
- .part-pct{{flex:0 0 auto;font-size:1.9rem;font-weight:750;color:var(--muted);
-   letter-spacing:-.02em;line-height:1}}
+ .part-pct{{flex:0 0 auto;font-size:1.9rem;font-weight:700;color:var(--muted);
+   opacity:.55;letter-spacing:-.02em;line-height:1}}
  .hero-caveat{{margin-top:.7rem;font-size:.82rem;color:var(--muted)}}
  ul.moves{{list-style:none;margin:.35rem 0 0;padding:0}}
  ul.moves li{{margin:.25rem 0;font-size:.95rem;display:flex;gap:.55rem;align-items:baseline}}
