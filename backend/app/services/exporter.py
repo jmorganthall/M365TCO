@@ -342,20 +342,9 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         else "<div class='hero-caveat'>Figures are run-rate: they assume retirements "
              "from day one; year one phases with contract end dates.</div>"
     )
-    # The components visibly SUM into the headline — the big number is the
-    # rolled-up total (quick wins + persona moves), the parts are its story.
-    if qw_total > 0 and in_scope:
-        moves_term = (
-            f"+ {_usd0(moves_value)}/yr from the persona moves" if moves_value > 0
-            else f"− {_usd0(moves_value)}/yr invested in the persona moves" if moves_value < 0
-            else "with the persona moves cost-neutral"
-        )
-        hero_sub = (
-            f"{_usd0(qw_total)}/yr from quick wins {moves_term} "
-            f"= <b>{_usd0(total_opportunity)}/yr</b> run-rate"
-        )
-    else:
-        hero_sub = f"{_usd0(total_opportunity)}/yr run-rate"
+    # One headline, two stacked sub-cards. The components' dollars live in the
+    # cards ONLY — no equation line repeating them above.
+    hero_sub = f"{_usd0(total_opportunity)}/yr run-rate"
     hero = (
         f"<section class='hero'>"
         f"<div class='hero-label'>Total opportunity <span class='hero-note'>"
@@ -560,9 +549,9 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
  .headline{{font-size:3rem;font-weight:750;line-height:1.1;margin:.15rem 0;letter-spacing:-.02em}}
  .hero-sub{{color:var(--muted)}}
  .headline-word{{font-size:1.15rem;font-weight:600;color:var(--muted);letter-spacing:0}}
- .hero-split{{display:flex;gap:.8rem;flex-wrap:wrap;margin-top:.9rem;
+ .hero-split{{display:flex;flex-direction:column;gap:.7rem;margin-top:.9rem;
    padding-top:.9rem;border-top:1px solid var(--line)}}
- .hero-part{{flex:1;min-width:300px;background:#fff;border:1px solid var(--line);
+ .hero-part{{background:#fff;border:1px solid var(--line);
    border-radius:8px;padding:.6rem .85rem}}
  .part-label{{font-size:.8rem;font-weight:650;color:var(--muted)}}
  .part-value{{font-size:1.35rem;font-weight:750;margin:.1rem 0}}
@@ -600,7 +589,6 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
    .headline{{font-size:2rem}}
    .headline-word{{display:block;font-size:1rem;margin-top:.1rem}}
    .hero{{padding:.9rem 1rem}}
-   .hero-part{{min-width:100%}}
    table{{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}}
    td:first-child,th:first-child{{min-width:190px}}
    th,td{{padding:.42rem .5rem}}
