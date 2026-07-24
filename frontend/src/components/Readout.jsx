@@ -1,14 +1,10 @@
 import React, { useEffect, useState } from 'react'
 import { api, usd } from '../api'
 
-// Compact signed money for the headline and move lines (−$246,560 / +$3,000) —
-// cents add nothing at headline altitude; the bridge tables keep them.
-const signedUsd0 = (v) => {
-  const n = Math.round(Number(v) || 0)
-  if (n < 0) return `−$${Math.abs(n).toLocaleString('en-US')}`
-  if (n > 0) return `+$${n.toLocaleString('en-US')}`
-  return '$0'
-}
+// Compact unsigned money for headline altitude ($246,560) — direction is said
+// in words ("saved" / "adds"), never as a sign next to the word savings.
+// The bridge tables keep signed accounting math.
+const usd0 = (v) => `$${Math.abs(Math.round(Number(v) || 0)).toLocaleString('en-US')}`
 import { PricingBadge } from './PricingBanner.jsx'
 
 // Sanity-check results persist across tab navigation (per engagement) without a
@@ -137,12 +133,36 @@ export default function Readout({ engagement }) {
       <div className="card">
         <div className="flex-between">
           <div>
-            <div className="muted">Net TCO delta · {(engagement.modeling_horizon_years || 3) * 12}-month · {engagement.currency} · <small>negative = saving</small> <PricingBadge /></div>
-            <div className={`headline ${saving ? 'pos' : ''}`} style={{ fontSize: '2.6rem' }}>
-              {signedUsd0(r.net_tco_delta_annual * (engagement.modeling_horizon_years || 3))}
-            </div>
-            <div className="muted">{signedUsd0(r.net_tco_delta_annual)}/yr annualized · {engagement.modeling_horizon_years || 3}-year view</div>
-            <MoveSummary scenarios={inScope} />
+            {(() => {
+              const horizon = engagement.modeling_horizon_years || 3
+              const qw = Number(r.quick_win_savings_annual) || 0
+              const movesValue = -(Number(r.move_incremental_delta_annual) || 0)
+              const total = qw + movesValue // positive = saved per year
+              const word = total > 0 ? `saved over ${horizon * 12} months`
+                : total < 0 ? `added cost over ${horizon * 12} months` : 'no net change'
+              return (
+                <>
+                  <div className="muted">Total opportunity · {horizon}-year run-rate view · quick wins + licensing moves · {engagement.currency} <PricingBadge /></div>
+                  <div className={`headline ${total > 0 ? 'pos' : ''}`} style={{ fontSize: '2.6rem' }}>
+                    {usd0(total * horizon)} <span style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--muted)' }}>{word}</span>
+                  </div>
+                  <div className="muted">
+                    {qw > 0
+                      ? <>{usd0(qw)}/yr from quick wins {movesValue > 0 ? `+ ${usd0(movesValue)}/yr from the persona moves` : movesValue < 0 ? `− ${usd0(movesValue)}/yr invested in the persona moves` : 'with the persona moves cost-neutral'} = <b>{usd0(total)}/yr</b> run-rate</>
+                      : <>{usd0(total)}/yr run-rate</>}
+                  </div>
+                  <div className="popcheck" style={{ marginTop: '.5rem' }}>
+                    {qw > 0 && <div>① Retire duplicate tools today — no licensing change: <b className="pos">{usd0(qw)}/yr</b></div>}
+                    <div>{qw > 0 ? '② ' : ''}Move each persona to right-sized licensing:{' '}
+                      <b className={movesValue > 0 ? 'pos' : ''}>
+                        {movesValue > 0 ? `saves ${usd0(movesValue)}/yr` : movesValue < 0 ? `adds ${usd0(movesValue)}/yr` : 'cost-neutral'}
+                      </b>
+                      <MoveSummary scenarios={inScope} />
+                    </div>
+                  </div>
+                </>
+              )
+            })()}
           </div>
           <div className="row" style={{ gap: '.4rem' }}>
             {aiEnabled && (
@@ -311,21 +331,25 @@ export default function Readout({ engagement }) {
       <div className="card">
         <h2>How we get to the number</h2>
         <p className="hint">The new target Microsoft licensing, less the existing spend it
-          retires (current Microsoft plus the third-party tooling those users free up),
-          building to the net change above — each line broken down per persona.
-          Negative = saving.</p>
+          retires (current Microsoft plus the third-party tooling those users stop paying
+          for), building to the net change above — each line broken down per persona.
+          The quick-win group reconciles exactly with the Quick wins card.</p>
         {(() => {
           const freed = r.freed_third_party || []
           const already = freed.filter((f) => f.already_covered)
           const newly = freed.filter((f) => !f.already_covered)
-          const alreadyIds = new Set(already.map((f) => f.third_party_product_id))
           // One column per in-scope persona plus Total. With a single persona the
           // total IS that persona, so columns only appear at two or more.
           const cols = inScope.length > 1 ? inScope : []
-          const offsetOf = (s, pid) =>
-            Number(s.offsets.find((o) => o.third_party_product_id === pid)?.credited_offset_annual || 0)
-          const offsetSum = (s, inAlready) => s.offsets.reduce((t, o) =>
-            t + (alreadyIds.has(o.third_party_product_id) === inAlready ? Number(o.credited_offset_annual || 0) : 0), 0)
+          // Offset field per product per persona; the group field on the product
+          // rollup maps to the matching per-offset field.
+          const OFFSET_FIELD = {
+            redundant_today_annual: 'redundant_today_annual',
+            move_unlocked_annual: 'move_unlocked_annual',
+            credited_annual: 'credited_offset_annual',
+          }
+          const offsetOf = (s, pid, field) =>
+            Number(s.offsets.find((o) => o.third_party_product_id === pid)?.[OFFSET_FIELD[field]] || 0)
           const fmt = (v, negate) => (negate ? (v ? `−${usd(v)}` : usd(0)) : usd(v))
           const cells = (values, total, { negate = false, cls = '' } = {}) => (
             <>
@@ -335,23 +359,30 @@ export default function Readout({ engagement }) {
               <td className={`num ${cls}`}>{fmt(total, negate)}</td>
             </>
           )
-          const sum = (arr) => arr.reduce((t, f) => t + Number(f.credited_annual || 0), 0)
-          const block = (label, sub, arr, inAlready) => (
-            <React.Fragment key={label}>
-              <tr>
-                <td>Less: {label} <small className="muted">{sub}</small></td>
-                {cells(cols.map((s) => offsetSum(s, inAlready)), sum(arr), { negate: true, cls: 'pos' })}
-              </tr>
-              {arr.map((f) => (
-                <tr key={f.third_party_product_id} className="bridge-sub">
-                  <td>↳ {f.third_party_product_name}{f.credited_annual === 0
-                    ? <span className="muted"> — $0 credited (set its covered population to free up spend)</span>
-                    : ' freed up'}</td>
-                  {cells(cols.map((s) => offsetOf(s, f.third_party_product_id)), f.credited_annual, { negate: true, cls: 'pos' })}
+          // A bridge group: products contributing via `field`. GUI keeps the
+          // operator hint for $0-credited tools (covered population not set);
+          // the customer HTML drops those rows entirely.
+          const block = (label, sub, arr, field) => {
+            const items = arr.filter((f) => Number(f[field] || 0) || (field === 'credited_annual' && Number(f.credited_annual || 0) === 0 && !f.already_covered))
+            if (!items.length) return null
+            const total = items.reduce((t, f) => t + Number(f[field] || 0), 0)
+            return (
+              <React.Fragment key={label}>
+                <tr>
+                  <td>Less: {label} <small className="muted">{sub}</small></td>
+                  {cells(cols.map((s) => items.reduce((t, f) => t + offsetOf(s, f.third_party_product_id, field), 0)), total, { negate: true, cls: 'pos' })}
                 </tr>
-              ))}
-            </React.Fragment>
-          )
+                {items.map((f) => (
+                  <tr key={f.third_party_product_id} className="bridge-sub">
+                    <td>↳ {f.third_party_product_name}{Number(f.credited_annual || 0) === 0
+                      ? <span className="muted"> — $0 credited (set its covered population to count its spend)</span>
+                      : null}</td>
+                    {cells(cols.map((s) => offsetOf(s, f.third_party_product_id, field)), f[field], { negate: true, cls: 'pos' })}
+                  </tr>
+                ))}
+              </React.Fragment>
+            )
+          }
           return (
             <table className="bridge">
               {cols.length > 0 && (
@@ -383,11 +414,12 @@ export default function Readout({ engagement }) {
                     </tr>
                   )
                   : <>
-                    {already.length > 0 && block('third-party already covered by current licensing', '(quick win — free today)', already, true)}
-                    {newly.length > 0 && block('third-party additionally freed by the move', '(new displacement from the target)', newly, false)}
+                    {block('third-party redundant today', '(the quick wins — no licensing change required)', already, 'redundant_today_annual')}
+                    {block('further seats on those tools retired by the move', '(covered only once the target lands)', already, 'move_unlocked_annual')}
+                    {block('third-party newly retired by the move', '(capability arrives with the target)', newly, 'credited_annual')}
                   </>}
                 <tr className="bridge-total">
-                  <td><b>Net TCO delta</b> <small className="muted">{saving ? '(annual savings)' : r.net_tco_delta_annual > 0 ? '(annual cost increase)' : '(no net change)'}</small></td>
+                  <td><b>Net change in run-rate</b> <small className="muted">{saving ? `(${usd0(r.net_tco_delta_annual)}/yr saved)` : r.net_tco_delta_annual > 0 ? `(${usd0(r.net_tco_delta_annual)}/yr added)` : '(no net change)'}</small></td>
                   {cols.map((s) => (
                     <td key={s.scenario_id} className={`num ${s.delta_annual < 0 ? 'pos' : ''}`}><b>{usd(s.delta_annual)}</b></td>
                   ))}
@@ -559,21 +591,26 @@ function NarrativeBlock({ n, eid, onSaved, onError }) {
   )
 }
 
-// The moves under the headline: one plain line per in-scope persona —
-// "Baseline (1000) → Microsoft 365 E5 (−$246,560/yr)". Everything below the
-// headline is supporting detail for these lines.
+// The moves under the headline: one plain line per in-scope persona, showing
+// the move's OWN value (quick-win credit stripped, so ① and ② never
+// double-count) — "Baseline (1000) → Microsoft 365 E5 (adds $22,560/yr)".
 function MoveSummary({ scenarios }) {
   if (!scenarios.length) {
     return <div className="muted">No in-scope scenarios yet — set a target bundle per persona on the Scenarios tab.</div>
   }
   return (
     <ul className="moves">
-      {scenarios.map((s) => (
-        <li key={s.scenario_id}>
-          <b>{s.persona_name}</b> ({s.headcount}) → <b>{s.target_sku_reference}</b>{' '}
-          <span className={s.delta_annual < 0 ? 'pos' : ''}>({signedUsd0(s.delta_annual)}/yr)</span>
-        </li>
-      ))}
+      {scenarios.map((s) => {
+        const v = Number(s.move_incremental_delta_annual ?? s.delta_annual) || 0
+        return (
+          <li key={s.scenario_id}>
+            <b>{s.persona_name}</b> ({s.headcount}) → <b>{s.target_sku_reference}</b>{' '}
+            <span className={v < 0 ? 'pos' : ''}>
+              ({v < 0 ? `saves ${usd0(v)}/yr` : v > 0 ? `adds ${usd0(v)}/yr` : 'cost-neutral'})
+            </span>
+          </li>
+        )
+      })}
     </ul>
   )
 }

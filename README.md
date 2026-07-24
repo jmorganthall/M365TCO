@@ -139,10 +139,13 @@ The steps run along a chevron **progress stepper** at the top of an engagement:
    *covered elsewhere / out of scope* (recorded as a $0 sentinel, so it's kept
    out of cost and the new-outcome story), add a third party, or leave it as a
    genuine new outcome the target lights up. Reads existing relationships only.
-6. **Readout & export** — the horizon headline (annual net delta × the
-   engagement's modeling horizon, e.g. "36-month savings", annualized figure
-   beneath) over one plain move line per persona ("Baseline (1000) → Microsoft
-   365 E5 (−$246,560/yr)"), the Quick-wins "save today" story, per-persona
+6. **Readout & export** — the total-opportunity headline over the engagement's
+   modeling horizon ("$X saved over 36 months", stated in words — never a sign
+   next to the word savings), decomposed into ① retire duplicate tools today
+   (the quick wins, no licensing change) and ② each persona's move at its OWN
+   incremental value (quick-win credit stripped so the two never double-count),
+   with a list-price caveat under the hero when baseline spend is assumed;
+   the Quick-wins "save today" story, per-persona
    scenarios, the **New outcomes** chips (per persona, the capabilities the
    move lights up that nothing delivers today — outcome descriptions on
    hover, editable on the Coverage Map), the spend bridge (every line broken

@@ -27,7 +27,7 @@ def test_readout_minimal_omits_internal_and_inapplicable_sections(client):
     assert "tool-seats" not in html
     assert "distinct-people count" not in html
     # Sections that don't apply are omitted (not shown as "None").
-    assert "Third-party dispositions" not in html   # no third-party tools
+    assert "what happens to each" not in html       # no third-party tools
     assert "What this retires" not in html           # nothing eliminated
     assert "Tooling split" not in html               # no managed tools
     assert "Assumed full elimination" not in html
@@ -60,7 +60,7 @@ def test_readout_conditionals_show_when_managed_and_eliminated(client):
 
     html = client.get(f"/api/engagements/{eid}/readout.html").text
     assert "Population check" not in html
-    assert "Third-party dispositions" in html
+    assert "Third-party tools — what happens to each" in html
     assert "What this retires" in html
     assert "Tools fully eliminated" in html and "Okta" in html
     assert "Tooling split" in html          # a managed tool exists
@@ -104,13 +104,13 @@ def test_readout_breaks_bridge_down_per_persona(client):
     # one compact move line per persona with its own signed annual delta. This
     # engagement has no current Microsoft spend, so the move is honestly a cost
     # increase: Sales +40k/yr (60k target − 20k freed Okta), Engineering +10k.
-    assert "36-month cost increase" in html
-    assert "+$150,000" in html                       # 3 × +50,000, no cents
-    assert "+$50,000/yr annualized" in html
+    assert "added cost over 36 months" in html
+    assert "$150,000" in html                        # 3 × 50,000, unsigned + words
+    assert "$50,000/yr run-rate" in html
     assert "<b>Sales</b> (100) → <b>Microsoft 365 E5</b>" in html
-    assert "(+$40,000/yr)" in html                   # Sales' own move delta
+    assert "(adds $40,000/yr)" in html               # Sales' own move value
     assert "<b>Engineering</b> (50) → <b>Microsoft 365 E3</b>" in html
-    assert "(+$10,000/yr)" in html
+    assert "(adds $10,000/yr)" in html
     # The bridge is a matrix: a column head per persona (→ its target) + Total.
     assert "Sales <small>→ Microsoft 365 E5</small>" in html
     assert "Engineering <small>→ Microsoft 365 E3</small>" in html

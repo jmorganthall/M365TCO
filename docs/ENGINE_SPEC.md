@@ -71,7 +71,7 @@ if override == ForceFullElimination:
     disposition = FullyEliminated;  residual_count = 0;  residual_cost = 0
     (override_reason is required and prints on the readout)
 elif displaced_users == 0:
-    disposition = Unchanged;        residual_cost = 0
+    disposition = Unchanged;        residual_cost = residual_count * per_unit  # carrying cost — the customer keeps paying it
 elif residual_count == 0:
     disposition = FullyEliminated;  residual_cost = 0
 else:
@@ -100,10 +100,22 @@ current_microsoft = Σ over lines whose pool includes this persona of
     where line_total = line.quantity_assigned * line.unit_price_paid_annual
       and pool = line.persona_ids if set, else all personas with a scenario
 
-# Linear-by-user offset: for each product this scenario displaces, credit
-# headcount * per_unit_annual_cost. This is the persona's allocated share of
-# third-party cost it consumes today.
-offset = Σ (persona.headcount * product.per_unit_annual_cost)
+# Linear-by-user offset, CAPPED at the covered population (6.3a): for each
+# product this scenario displaces, credit allocated_units * per_unit_annual_cost.
+# A move can only retire seats the product actually covers, so a product's
+# total credit never exceeds covered_count * per_unit (never more than the
+# tool costs). When Σ headcount over the in-scope displacing scenarios exceeds
+# covered_count, each scenario's units scale pro-rata by headcount
+# (units = headcount * covered_count / Σ headcount — fractional units are
+# expected); otherwise units = headcount. An out-of-scope scenario caps
+# individually at covered_count. Money is allocated cumulatively across the
+# displacing scenarios so per-product parts sum exactly (no rounding drift).
+#
+# Each credit also splits into redundant_today_annual — the quick-win portion,
+# min(displaced_today from 6.10, total allocated units) allocated pro-rata —
+# and move_unlocked_annual (the remainder), so readouts can label "free
+# today" vs "unlocked by the move" without double-counting (see 6.8a).
+offset = Σ (allocated_units * product.per_unit_annual_cost)
            over products where displaces(scenario, product)
 
 current_spend_annual = current_microsoft + offset
@@ -167,7 +179,8 @@ fully_eliminated_tools = products with disposition == FullyEliminated
 # its product is FullyEliminated. Any residual users → the product still renews.
 eliminated_renewal_cycles = renewal entries of FullyEliminated products only
 
-residual_third_party_cost_annual = Σ residual_cost over PartiallyReduced products
+residual_third_party_cost_annual = Σ residual_cost over PartiallyReduced AND
+                                   Unchanged products   # what the customer keeps paying
 
 population_check = {
     in_scope_persona_headcount: Σ headcount of in-scope scenarios' personas,
@@ -187,12 +200,23 @@ net_tco_delta_annual = target_microsoft_annual
                      - existing_third_party_annual
 
 # Per-product freed-up savings: the in-scope offsets aggregated by product, so a
-# readout can name each displaced tool and the dollars it frees ("we freed up
+# readout can name each displaced tool and the dollars it frees ("we retired
 # SentinelOne, saving $X"). Sums to existing_third_party_annual. A product with
 # covered_count 0 has per-unit cost 0, so its credited_annual is 0 even when it
 # is displaced/eliminated — the freed dollars are 0 until a covered population
 # is entered.
-freed_third_party = [ {product, credited_annual = Σ its in-scope offsets} ]
+freed_third_party = [ {product,
+                       credited_annual        = Σ its in-scope offsets (capped, 6.3a),
+                       redundant_today_annual = the quick-win portion (6.3a),
+                       move_unlocked_annual   = credited − redundant_today} ]
+
+# 6.8a Headline decomposition — "retire today" vs "the moves", never
+# double-counting a dollar:
+freed_redundant_today_annual  = Σ redundant_today_annual over freed_third_party
+move_incremental_delta_annual = net_tco_delta_annual + freed_redundant_today_annual
+# (per scenario: move_incremental_delta_annual = delta_annual + Σ its offsets'
+#  redundant_today_annual). The identity holds by construction:
+#  net = move_incremental − freed_redundant_today.
 ```
 
 > Rule 2 — override disclosure: a ForceFullElimination override asserts savings
