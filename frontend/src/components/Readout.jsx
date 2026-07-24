@@ -142,20 +142,20 @@ export default function Readout({ engagement }) {
                 : total < 0 ? `added cost over ${horizon * 12} months` : 'no net change'
               return (
                 <>
-                  <div className="muted">Total opportunity · {horizon}-year run-rate view · quick wins + licensing moves · {engagement.currency} <PricingBadge /></div>
+                  <div className="muted">Total opportunity · all figures over {horizon * 12} months · quick wins + licensing moves · {engagement.currency} <PricingBadge /></div>
                   <div className={`headline headline-xl ${total > 0 ? 'pos' : ''}`}>
                     {usd0(total * horizon)} <span style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--muted)' }}>{word}</span>
                   </div>
-                  <div className="muted">{usd0(total)}/yr run-rate</div>
+                  <div className="muted">{usd0(total)} per year</div>
                   {qw > 0 && (
                     <div className="popcheck" style={{ marginTop: '.5rem' }}>
                       ① Retire duplicate tools today — no licensing change:{' '}
-                      <b className="pos">{usd0(qw)}/yr</b>
+                      <b className="pos">{usd0(qw * horizon)}</b>
                     </div>
                   )}
                   <div className="popcheck" style={{ marginTop: '.4rem' }}>
                     {qw > 0 ? '② ' : ''}Move each persona to right-sized licensing:
-                    <MoveSummary scenarios={inScope} />
+                    <MoveSummary scenarios={inScope} horizon={horizon} />
                   </div>
                 </>
               )
@@ -591,18 +591,19 @@ function NarrativeBlock({ n, eid, onSaved, onError }) {
 // The moves under the headline: one plain line per in-scope persona, showing
 // the move's OWN value (quick-win credit stripped, so ① and ② never
 // double-count) — "Baseline (1000) → Microsoft 365 E5 (adds $22,560/yr)".
-function MoveSummary({ scenarios }) {
+function MoveSummary({ scenarios, horizon = 1 }) {
   if (!scenarios.length) {
     return <div className="muted">No in-scope scenarios yet — set a target bundle per persona on the Scenarios tab.</div>
   }
   return (
     <ul className="moves">
       {scenarios.map((s) => {
-        const v = Number(s.move_incremental_delta_annual ?? s.delta_annual) || 0
+        // Hero figures share one horizon so the components sum to the headline.
+        const v = (Number(s.move_incremental_delta_annual ?? s.delta_annual) || 0) * horizon
         return (
           <li key={s.scenario_id}>
             <span className={`move-amt ${v < 0 ? 'pos' : v === 0 ? 'muted' : ''}`}>
-              {v < 0 ? `${usd0(v)}/yr` : v > 0 ? `(${usd0(v)}/yr)` : '$0/yr'}
+              {v < 0 ? usd0(v) : v > 0 ? `(${usd0(v)})` : '$0'}
             </span>
             <b>{s.persona_name}</b> ({s.headcount}) → <b>{s.target_sku_reference}</b>
           </li>

@@ -106,11 +106,11 @@ def test_readout_breaks_bridge_down_per_persona(client):
     # increase: Sales +40k/yr (60k target − 20k freed Okta), Engineering +10k.
     assert "added cost over 36 months" in html
     assert "$150,000" in html                        # 3 × 50,000, unsigned + words
-    assert "$50,000/yr run-rate" in html
-    # Amount-first move lines, finance notation: added expense in parentheses,
-    # black; savings would be plain green. No words.
-    assert "($40,000/yr)</span><b>Sales</b> (100) → <b>Microsoft 365 E5</b>" in html
-    assert "($10,000/yr)</span><b>Engineering</b> (50) → <b>Microsoft 365 E3</b>" in html
+    assert "$50,000 per year" in html
+    # Hero figures share one horizon (3yr): components sum to the headline.
+    # Finance notation: added expense in parentheses, black; savings plain green.
+    assert "($120,000)</span><b>Sales</b> (100) → <b>Microsoft 365 E5</b>" in html
+    assert "($30,000)</span><b>Engineering</b> (50) → <b>Microsoft 365 E3</b>" in html
     # The bridge is a matrix: a column head per persona (→ its target) + Total.
     assert "Sales <small>→ Microsoft 365 E5</small>" in html
     assert "Engineering <small>→ Microsoft 365 E3</small>" in html
