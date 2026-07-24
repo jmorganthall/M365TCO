@@ -178,8 +178,15 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 table.bridge td { border-bottom: none; padding: .3rem .55rem; }
 table.bridge th { font-size: .8rem; padding: .3rem .55rem; }
 ul.moves { list-style: none; margin: .4rem 0 0; padding: 0; }
-ul.moves li { margin: .18rem 0; }
-.move-amt { display: inline-block; min-width: 10.5rem; font-weight: 700; }
+/* Two columns per move line: fixed amount column, wrapping description — a
+   long bundle name wraps within its own column, never under the amount. */
+ul.moves li { margin: .18rem 0; display: flex; gap: .55rem; align-items: baseline; }
+.move-amt { flex: 0 0 8.5rem; font-weight: 700; }
+.move-desc { flex: 1; min-width: 0; }
+/* The readout's action bar: one horizontal row of controls across the top of
+   the headline card, wrapping on narrow screens. */
+.readout-toolbar { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center;
+  padding-bottom: .65rem; margin-bottom: .85rem; border-bottom: 1px solid var(--border); }
 table.bridge tr.bridge-sub td { color: var(--muted); padding-left: 1.4rem; font-size: .8rem; }
 table.bridge tr.bridge-total td { border-top: 1px solid var(--border); padding-top: .45rem; }
 .err { color: var(--neg); font-size: .82rem; margin: .4rem 0; }
@@ -289,6 +296,9 @@ button.chip-btn:hover { filter: brightness(1.25); }
 
   /* Field grids collapse to a single column. */
   .grid.c2, .grid.c3, .grid.c4 { grid-template-columns: 1fr; }
+
+  /* Move-line amount column narrows so the description keeps room. */
+  .move-amt { flex-basis: 6.5rem; }
 
   /* Settings page: let its two-column layout stack on mobile. */
   .settings-layout { flex-direction: column; }

@@ -131,7 +131,24 @@ export default function Readout({ engagement }) {
   return (
     <>
       <div className="card">
-        <div className="flex-between">
+        <div className="readout-toolbar">
+          {aiEnabled && (
+            <button className="ghost sm" onClick={runSanity} disabled={checking}
+              title="Ask an inexpensive model to flag likely mistakes before you present">
+              {checking ? 'Checking…' : '✨ AI sanity check'}</button>
+          )}
+          {aiEnabled && (
+            <button className="ghost sm" onClick={runNarrative} disabled={narrating}
+              title="Draft the per-persona business narrative (today / what's new / value)">
+              {narrating ? 'Writing…' : '✨ Business narratives'}</button>
+          )}
+          <a href={`/api/engagements/${eid}/readout.html`} target="_blank" rel="noreferrer">
+            <button className="ghost sm">Open HTML readout</button></a>
+          <a href={`/api/engagements/${eid}/readout.xlsx`}>
+            <button className="ghost sm">Export .xlsx</button></a>
+          <button className="ghost sm" onClick={snapshot}>Snapshot</button>
+        </div>
+        <div className="hero-block">
           <div>
             {(() => {
               const horizon = engagement.modeling_horizon_years || 3
@@ -160,23 +177,6 @@ export default function Readout({ engagement }) {
                 </>
               )
             })()}
-          </div>
-          <div className="row" style={{ gap: '.4rem' }}>
-            {aiEnabled && (
-              <button className="ghost sm" onClick={runSanity} disabled={checking}
-                title="Ask an inexpensive model to flag likely mistakes before you present">
-                {checking ? 'Checking…' : '✨ AI sanity check'}</button>
-            )}
-            {aiEnabled && (
-              <button className="ghost sm" onClick={runNarrative} disabled={narrating}
-                title="Draft the per-persona business narrative (today / what's new / value)">
-                {narrating ? 'Writing…' : '✨ Business narratives'}</button>
-            )}
-            <a href={`/api/engagements/${eid}/readout.html`} target="_blank" rel="noreferrer">
-              <button className="ghost sm">Open HTML readout</button></a>
-            <a href={`/api/engagements/${eid}/readout.xlsx`}>
-              <button className="ghost sm">Export .xlsx</button></a>
-            <button className="ghost sm" onClick={snapshot}>Snapshot</button>
           </div>
         </div>
         <div className="popcheck">
@@ -605,7 +605,9 @@ function MoveSummary({ scenarios, horizon = 1 }) {
             <span className={`move-amt ${v < 0 ? 'pos' : v === 0 ? 'muted' : ''}`}>
               {v < 0 ? usd0(v) : v > 0 ? `(${usd0(v)})` : '$0'}
             </span>
-            <b>{s.persona_name}</b> ({s.headcount}) → <b>{s.target_sku_reference}</b>
+            <span className="move-desc">
+              <b>{s.persona_name}</b> ({s.headcount}) → <b>{s.target_sku_reference}</b>
+            </span>
           </li>
         )
       })}
