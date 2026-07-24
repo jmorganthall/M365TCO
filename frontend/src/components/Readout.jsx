@@ -601,10 +601,10 @@ function MoveSummary({ scenarios }) {
         const v = Number(s.move_incremental_delta_annual ?? s.delta_annual) || 0
         return (
           <li key={s.scenario_id}>
-            <b>{s.persona_name}</b> ({s.headcount}) → <b>{s.target_sku_reference}</b>{' '}
-            <span className={v < 0 ? 'pos' : ''}>
-              ({v < 0 ? `saves ${usd0(v)}/yr` : v > 0 ? `adds ${usd0(v)}/yr` : 'cost-neutral'})
+            <span className={`move-amt ${v < 0 ? 'pos' : v === 0 ? 'muted' : ''}`}>
+              {v < 0 ? `saves ${usd0(v)}/yr` : v > 0 ? `adds ${usd0(v)}/yr` : 'cost-neutral'}
             </span>
+            <b>{s.persona_name}</b> ({s.headcount}) → <b>{s.target_sku_reference}</b>
           </li>
         )
       })}

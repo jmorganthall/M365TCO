@@ -300,17 +300,18 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     else:
         head_word, head_cls = "no net change", ""
 
-    def _moves_phrase(v):
+    def _moves_amount(v):
+        # Number first, like card ① — the eye scans the amounts down the left.
         if v < 0:
-            return f"<span class='pos'>(saves {_usd0(v)}/yr)</span>"
+            return f"<span class='move-amt pos'>saves {_usd0(v)}/yr</span>"
         if v > 0:
-            return f"<span>(adds {_usd0(v)}/yr)</span>"
-        return "<span class='muted'>(cost-neutral)</span>"
+            return f"<span class='move-amt'>adds {_usd0(v)}/yr</span>"
+        return "<span class='move-amt muted'>cost-neutral</span>"
 
     move_items = "".join(
-        f"<li><b>{html.escape(s['persona_name'])}</b> ({s['headcount']}) → "
-        f"<b>{html.escape(s['target_sku_reference'])}</b> "
-        f"{_moves_phrase(s.get('move_incremental_delta_annual', s['delta_annual']))}</li>"
+        f"<li>{_moves_amount(s.get('move_incremental_delta_annual', s['delta_annual']))}"
+        f"<b>{html.escape(s['persona_name'])}</b> ({s['headcount']}) → "
+        f"<b>{html.escape(s['target_sku_reference'])}</b></li>"
         for s in in_scope
     )
     part_today = (
@@ -555,6 +556,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
  .hero-caveat{{margin-top:.7rem;font-size:.82rem;color:var(--muted)}}
  ul.moves{{list-style:none;margin:.35rem 0 0;padding:0}}
  ul.moves li{{margin:.25rem 0;font-size:.95rem}}
+ .move-amt{{display:inline-block;min-width:10.5rem;font-weight:700}}
  .pos{{color:var(--pos)}} .neg{{color:var(--neg)}} .muted{{color:var(--muted)}}
  section{{margin:2rem 0}}
  h2{{font-size:1.12rem;color:var(--primary);margin:0 0 .4rem;
