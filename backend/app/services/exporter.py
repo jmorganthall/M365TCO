@@ -319,14 +319,11 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         f"<div class='part-value pos'>{_usd0(qw_total)}/yr</div></div>"
         if qw_total > 0 else ""
     )
-    moves_word = (
-        f"<span class='pos'>saves {_usd0(moves_value)}/yr</span>" if moves_value > 0
-        else f"adds {_usd0(moves_value)}/yr" if moves_value < 0 else "cost-neutral"
-    )
+    # Card ② is just the moves — persona → bundle (amount), no roll-up number
+    # repeating what the bridge derives later.
     part_moves = (
         f"<div class='hero-part'><div class='part-label'>"
         f"{'② ' if part_today else ''}Move each persona to right-sized licensing</div>"
-        f"<div class='part-value'>{moves_word}</div>"
         + (f"<ul class='moves'>{move_items}</ul>" if in_scope else "")
         + "</div>"
     )

@@ -154,10 +154,7 @@ export default function Readout({ engagement }) {
                     </div>
                   )}
                   <div className="popcheck" style={{ marginTop: '.4rem' }}>
-                    {qw > 0 ? '② ' : ''}Move each persona to right-sized licensing:{' '}
-                    <b className={movesValue > 0 ? 'pos' : ''}>
-                      {movesValue > 0 ? `saves ${usd0(movesValue)}/yr` : movesValue < 0 ? `adds ${usd0(movesValue)}/yr` : 'cost-neutral'}
-                    </b>
+                    {qw > 0 ? '② ' : ''}Move each persona to right-sized licensing:
                     <MoveSummary scenarios={inScope} />
                   </div>
                 </>
