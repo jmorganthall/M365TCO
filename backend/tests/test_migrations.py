@@ -110,3 +110,48 @@ def test_no_write_only_columns():
         and column.name not in blob
     ]
     assert not missing, f"write-only columns (no reader outside the model): {missing}"
+
+
+def test_backfill_process_automation_coverage_targets_power_automate_suites(tmp_path):
+    """A DB seeded before process-automation was mapped to the standard-connector
+    suites: the backfill adds it to every Power-Automate-standard bundle (E1/E3/
+    E7/F3/Business) and leaves F1 (no Power Platform) alone. Idempotent, and it
+    never disturbs an existing operator row."""
+    from app.db import Base, SessionLocal, engine as _default_engine
+    import app.db as dbmod
+    from app import models
+    from app.main import _backfill_process_automation_coverage, _POWER_AUTOMATE_STANDARD_BUNDLES
+
+    eng = create_engine(f"sqlite:///{tmp_path}/legacy.db")
+    Base.metadata.create_all(eng)
+    # Seed a legacy global coverage template: E5 has process-automation, the
+    # standard suites do NOT (the pre-fix state), plus an unrelated F1 row.
+    from sqlalchemy.orm import Session
+    with Session(eng) as s:
+        s.add_all([
+            models.DefaultBundleCoverage(bundle_key="m365-e5", outcome_key="process-automation", coverage="Full"),
+            models.DefaultBundleCoverage(bundle_key="m365-e3", outcome_key="identity-sso", coverage="Full"),
+            models.DefaultBundleCoverage(bundle_key="m365-f1", outcome_key="identity-sso", coverage="Full"),
+        ])
+        s.commit()
+
+    # Point the module session at the legacy DB, run the backfill, restore.
+    orig_engine, orig_factory = dbmod.engine, dbmod.SessionLocal
+    from sqlalchemy.orm import sessionmaker
+    dbmod.SessionLocal = sessionmaker(bind=eng, autoflush=False, autocommit=False, future=True)
+    try:
+        db = dbmod.SessionLocal()
+        _backfill_process_automation_coverage(db)
+        _backfill_process_automation_coverage(db)  # idempotent second run
+        db.close()
+    finally:
+        dbmod.SessionLocal = orig_factory
+
+    with Session(eng) as s:
+        rows = s.query(models.DefaultBundleCoverage).filter_by(outcome_key="process-automation").all()
+        got = {r.bundle_key for r in rows}
+    # Every standard+ suite now covers it (E5 already did, now the rest too).
+    assert set(_POWER_AUTOMATE_STANDARD_BUNDLES) | {"m365-e5"} == got
+    # F1 was never granted it (no Power Platform), and only once per bundle.
+    assert "m365-f1" not in got
+    assert len(rows) == len(got)

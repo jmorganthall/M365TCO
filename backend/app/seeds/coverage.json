@@ -1,6 +1,6 @@
 {
-  "version": "2026-07-seed-v6-endpoint-privilege-mgmt",
-  "note": "Default Bundle -> outcome coverage library, keyed by Bundle key (see seeds/bundles.json) and outcomes.json keys. Seeded (ratified) into engagement-scoped CoverageMapEntry rows (bundle_id set) on engagement creation. A first-pass authored default from standard Microsoft SKU inclusions — the SA refines per engagement (and, later, the global library) in the GUI. Security outcomes are split: Endpoint = EPP (anti-malware/AV) vs EDR (behavioral detection); Email = Hygiene (EOP) vs Advanced Threat Protection (Defender for Office 365). Identity is split three ways: SSO/IdP (cloud directory + single sign-on, on any Entra/Azure AD tenant — so every M365/O365 suite has it) vs MFA & Conditional Access (Entra P1: multi-factor + dynamic/adaptive access policies — NOT basic security-defaults, so O365 and Business Basic/Standard lack it) vs Governance (Entra P2: PIM/Identity Protection/access reviews). Collaboration is now Team Chat & Meetings (the Teams-vs-Slack/Zoom hub) — desktop apps and cloud storage are their own outcomes.",
+  "version": "2026-07-seed-v7-power-automate-standard-coverage",
+  "note": "Default Bundle -> outcome coverage library, keyed by Bundle key (see seeds/bundles.json) and outcomes.json keys. Seeded (ratified) into engagement-scoped CoverageMapEntry rows (bundle_id set) on engagement creation. A first-pass authored default from standard Microsoft SKU inclusions \u2014 the SA refines per engagement (and, later, the global library) in the GUI. Security outcomes are split: Endpoint = EPP (anti-malware/AV) vs EDR (behavioral detection); Email = Hygiene (EOP) vs Advanced Threat Protection (Defender for Office 365). Identity is split three ways: SSO/IdP (cloud directory + single sign-on, on any Entra/Azure AD tenant \u2014 so every M365/O365 suite has it) vs MFA & Conditional Access (Entra P1: multi-factor + dynamic/adaptive access policies \u2014 NOT basic security-defaults, so O365 and Business Basic/Standard lack it) vs Governance (Entra P2: PIM/Identity Protection/access reviews). Collaboration is now Team Chat & Meetings (the Teams-vs-Slack/Zoom hub) \u2014 desktop apps and cloud storage are their own outcomes.",
   "bundles": [
     {
       "bundle": "o365-e1",
@@ -23,6 +23,10 @@
         },
         {
           "outcome": "information-governance",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "process-automation",
           "coverage": "Full"
         }
       ]
@@ -56,6 +60,10 @@
         },
         {
           "outcome": "information-governance",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "process-automation",
           "coverage": "Full"
         }
       ]
@@ -164,6 +172,10 @@
         {
           "outcome": "information-governance",
           "coverage": "Full"
+        },
+        {
+          "outcome": "process-automation",
+          "coverage": "Full"
         }
       ]
     },
@@ -188,6 +200,10 @@
         },
         {
           "outcome": "information-governance",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "process-automation",
           "coverage": "Full"
         }
       ]
@@ -217,6 +233,10 @@
         },
         {
           "outcome": "information-governance",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "process-automation",
           "coverage": "Full"
         }
       ]
@@ -275,6 +295,10 @@
         {
           "outcome": "information-governance",
           "coverage": "Full"
+        },
+        {
+          "outcome": "process-automation",
+          "coverage": "Full"
         }
       ]
     },
@@ -323,6 +347,10 @@
         },
         {
           "outcome": "endpoint-privilege-management",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "process-automation",
           "coverage": "Full"
         }
       ]
@@ -471,6 +499,10 @@
         },
         {
           "outcome": "cloud-storage-full",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "process-automation",
           "coverage": "Full"
         }
       ]

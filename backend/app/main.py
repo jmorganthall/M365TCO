@@ -254,6 +254,7 @@ async def lifespan(_app: FastAPI):
         _backfill_coverage_bundle_ids(db)
         _backfill_binary_coverage(db)
         _backfill_new_default_outcomes(db)
+        _backfill_process_automation_coverage(db)
         _retire_split_outcomes(db)  # drop split-away outcomes from the global library
         _reconcile_catalog_provenance(db)
     finally:
@@ -292,6 +293,45 @@ def _backfill_binary_coverage(db) -> None:
     for table in ("coverage_map_entries", "default_bundle_coverage"):
         db.execute(text(f"UPDATE {table} SET coverage='Full' WHERE coverage<>'Full'"))
     db.commit()
+
+
+# Suites whose Power Automate rights (standard connectors or better) cover the
+# workflow/process-automation outcome, but which predate that mapping in the
+# global template. E3 and E5 have IDENTICAL Power Automate entitlements, so a
+# DB first seeded with process-automation on E5-only would falsely show it as a
+# NEW outcome for an E3→E5 move. This backfill brings the global template in
+# line (E5 variants already carry it). Frontline F1 and the security/compliance
+# add-ons are correctly excluded — they include no Power Automate.
+_POWER_AUTOMATE_STANDARD_BUNDLES = (
+    "o365-e1", "o365-e3", "m365-e3", "m365-e7", "m365-f3",
+    "m365-business-basic", "m365-business-standard", "m365-business-premium",
+)
+
+
+def _backfill_process_automation_coverage(db) -> None:
+    """Additive migration: add process-automation (Full) to the global default
+    coverage of every Power-Automate-standard suite that lacks it. Targets an
+    explicit bundle list and inserts only the missing (bundle, outcome) row, so
+    operator edits to other coverage are untouched. Global template only —
+    existing engagements keep their copied coverage (edited in the GUI per the
+    seed rules). No-op on a fresh DB (normal seeding already has it). Idempotent."""
+    from sqlalchemy import select
+
+    from . import models
+
+    existing = db.execute(select(models.DefaultBundleCoverage)).scalars().all()
+    if not existing:
+        return  # fresh DB — seed_default_coverage already wrote the new rows
+    have = {(c.bundle_key, c.outcome_key) for c in existing}
+    changed = False
+    for bundle_key in _POWER_AUTOMATE_STANDARD_BUNDLES:
+        if (bundle_key, "process-automation") not in have:
+            db.add(models.DefaultBundleCoverage(
+                bundle_key=bundle_key, outcome_key="process-automation",
+                coverage="Full"))
+            changed = True
+    if changed:
+        db.commit()
 
 
 def _backfill_new_default_outcomes(db) -> None:
