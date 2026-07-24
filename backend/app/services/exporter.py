@@ -542,7 +542,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     )
 
     return f"""<!doctype html>
-<html><head><meta charset="utf-8"><title>M365 TCO Readout — {html.escape(engagement.customer_name)}</title>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>M365 TCO Readout — {html.escape(engagement.customer_name)}</title>
 <style>
  :root{{--primary:{primary};--accent:{accent};--pos:#127436;--neg:#b00020;
    --ink:#1f2430;--muted:#5b6472;--line:#e5e8ee;--soft:#f6f8fb}}
@@ -595,6 +595,16 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
  ul{{margin:.3rem 0}}
  footer{{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--line);
    color:var(--muted);font-size:.8rem}}
+ @media (max-width:720px){{
+   main{{padding:1.1rem .9rem 2rem}}
+   .headline{{font-size:2rem}}
+   .headline-word{{display:block;font-size:1rem;margin-top:.1rem}}
+   .hero{{padding:.9rem 1rem}}
+   .hero-part{{min-width:100%}}
+   table{{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}}
+   td:first-child,th:first-child{{min-width:190px}}
+   th,td{{padding:.42rem .5rem}}
+ }}
 </style></head><body><main>
 <header>
 {logo_html}

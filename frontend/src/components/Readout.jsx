@@ -143,7 +143,7 @@ export default function Readout({ engagement }) {
               return (
                 <>
                   <div className="muted">Total opportunity · {horizon}-year run-rate view · quick wins + licensing moves · {engagement.currency} <PricingBadge /></div>
-                  <div className={`headline ${total > 0 ? 'pos' : ''}`} style={{ fontSize: '2.6rem' }}>
+                  <div className={`headline headline-xl ${total > 0 ? 'pos' : ''}`}>
                     {usd0(total * horizon)} <span style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--muted)' }}>{word}</span>
                   </div>
                   <div className="muted">

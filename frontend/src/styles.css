@@ -173,6 +173,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .badge.warn { color: var(--warn); border-color: var(--warn); }
 .badge.muted { color: var(--muted); }
 .headline { font-size: 2rem; font-weight: 700; }
+.headline-xl { font-size: 2.6rem; }
 .popcheck { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: .6rem .8rem; margin: .6rem 0; }
 table.bridge td { border-bottom: none; padding: .3rem .55rem; }
 table.bridge th { font-size: .8rem; padding: .3rem .55rem; }
@@ -272,6 +273,21 @@ button.chip-btn:hover { filter: brightness(1.25); }
   /* Progress stepper: scroll horizontally instead of wrapping into a tall column. */
   .stepper { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 3px; }
   .step { flex-shrink: 0; }
+
+  /* Card headers (headline + action buttons, section title + controls): wrap so
+     the buttons drop BELOW the content full-width instead of squeezing it into
+     a half-screen column. */
+  .flex-between { flex-wrap: wrap; gap: .6rem; }
+  .headline-xl { font-size: 2rem; }
+
+  /* Wide tables (the per-persona bridge matrix above all) scroll inside their
+     card instead of stretching the page sideways. The label column keeps a
+     sane width so it wraps in phrases, not one word per line. */
+  .card table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .card table td:first-child, .card table th:first-child { min-width: 190px; }
+
+  /* Field grids collapse to a single column. */
+  .grid.c2, .grid.c3, .grid.c4 { grid-template-columns: 1fr; }
 
   /* Settings page: let its two-column layout stack on mobile. */
   .settings-layout { flex-direction: column; }
