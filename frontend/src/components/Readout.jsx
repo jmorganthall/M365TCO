@@ -602,7 +602,7 @@ function MoveSummary({ scenarios }) {
         return (
           <li key={s.scenario_id}>
             <span className={`move-amt ${v < 0 ? 'pos' : v === 0 ? 'muted' : ''}`}>
-              {v < 0 ? `saves ${usd0(v)}/yr` : v > 0 ? `adds ${usd0(v)}/yr` : 'cost-neutral'}
+              {v < 0 ? `${usd0(v)}/yr` : v > 0 ? `(${usd0(v)}/yr)` : '$0/yr'}
             </span>
             <b>{s.persona_name}</b> ({s.headcount}) → <b>{s.target_sku_reference}</b>
           </li>

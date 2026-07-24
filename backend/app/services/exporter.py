@@ -301,12 +301,13 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         head_word, head_cls = "no net change", ""
 
     def _moves_amount(v):
-        # Number first, like card ① — the eye scans the amounts down the left.
+        # Number first, like card ①, no words: finance notation. Positive plain
+        # (green) = savings; parentheses (black) = added expense.
         if v < 0:
-            return f"<span class='move-amt pos'>saves {_usd0(v)}/yr</span>"
+            return f"<span class='move-amt pos'>{_usd0(v)}/yr</span>"
         if v > 0:
-            return f"<span class='move-amt'>adds {_usd0(v)}/yr</span>"
-        return "<span class='move-amt muted'>cost-neutral</span>"
+            return f"<span class='move-amt'>({_usd0(v)}/yr)</span>"
+        return "<span class='move-amt muted'>$0/yr</span>"
 
     move_items = "".join(
         f"<li>{_moves_amount(s.get('move_incremental_delta_annual', s['delta_annual']))}"
