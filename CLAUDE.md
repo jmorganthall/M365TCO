@@ -25,7 +25,8 @@ file to build that check.
 ## Data architecture (the law)
 
 Everything is a first-class object; minimize data that lives outside one. Read
-and obey `docs/DATA_ARCHITECTURE.md` and `docs/DATA_MODEL.md`:
+and obey `docs/DATA_ARCHITECTURE.md` and `docs/DATA_MODEL.md`; `docs/DATA_MAP.md`
+charts how the first-class objects connect and how the engine traverses them:
 
 - New data is a new first-class object (or a typed field on one) with identity,
   owner/scope, schema, a uniform CRUD module, and provenance — not a free-text
