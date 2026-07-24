@@ -42,15 +42,12 @@ def _usd(value) -> str:
     return f"−${abs(v):,.2f}" if v < 0 else f"${v:,.2f}"
 
 
-def _signed_usd0(value) -> str:
-    """Compact signed money for the headline and move lines: −$246,560 / +$3,000.
-    Cents add nothing at headline altitude; the bridge tables keep them."""
-    v = float(value or 0)
-    if v < 0:
-        return f"−${abs(v):,.0f}"
-    if v > 0:
-        return f"+${v:,.0f}"
-    return "$0"
+def _usd0(value) -> str:
+    """Compact unsigned money for headline altitude: $246,560. Finance readers
+    stall on a minus sign next to the word "savings", so headline surfaces say
+    the direction in words ("saved" / "adds") around an unsigned figure; the
+    bridge tables keep signed accounting math."""
+    return f"${abs(float(value or 0)):,.0f}"
 
 
 def _pct(value) -> str:
@@ -84,23 +81,33 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         for s in result["scenarios"]
     )
 
-    # Third-party dispositions — only when there are third-party tools to speak to.
+    # Third-party dispositions — customer language, never engine enums, and only
+    # rows with real dollars behind them (a costless tool is noise, not a finding).
+    _action = {
+        "FullyEliminated": "Retire fully",
+        "PartiallyReduced": "Reduce seats",
+        "Unchanged": "Keep",
+    }
+    disp_rows_src = [
+        d for d in dispositions
+        if (d.get("effective_annual_cost") or 0) or (d.get("residual_annual_cost") or 0)
+    ]
     disp_section = ""
-    if has_third_party:
+    if disp_rows_src:
         rows_disp = "".join(
             f"<tr><td>{html.escape(d['third_party_product_name'])}</td>"
-            f"<td>{d['disposition']}</td>"
-            f"<td>{d['displaced_users']} / {d['covered_count']}</td>"
-            f"<td>{d['residual_count']}</td>"
+            f"<td>{_action.get(d['disposition'], d['disposition'])}</td>"
+            f"<td class='num'>{min(d['displaced_users'], d['covered_count'])}</td>"
+            f"<td class='num'>{d['residual_count']}</td>"
             f"<td class='num'>{_usd(d['residual_annual_cost'])}</td>"
-            f"<td>{'managed @ ' + _pct(d['tooling_pct']) if d['is_managed'] else 'unmanaged'}</td>"
+            f"<td>{'Managed service (' + _pct(d['tooling_pct']) + ' tooling share counted)' if d['is_managed'] else 'Direct license'}</td>"
             f"<td>{html.escape(d['override_reason']) if d['override'] != 'None' else ''}</td></tr>"
-            for d in dispositions
+            for d in disp_rows_src
         )
         disp_section = (
-            "<section><h2>Third-party dispositions</h2>"
-            "<table><thead><tr><th>Product</th><th>Disposition</th><th>Displaced/Covered</th>"
-            "<th>Residual</th><th>Residual cost</th><th>Basis</th><th>Override reason</th></tr></thead>"
+            "<section><h2>Third-party tools — what happens to each</h2>"
+            "<table><thead><tr><th>Product</th><th>Action</th><th>Seats retired</th>"
+            "<th>Seats kept</th><th>Remaining cost/yr</th><th>Cost basis</th><th>Note</th></tr></thead>"
             f"<tbody>{rows_disp}</tbody></table></section>"
         )
 
@@ -118,12 +125,12 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         for q in quick_wins
     )
     quick_win_section = (
-        f"<section><h2>💡 Quick wins — you're already covered</h2>"
+        f"<section><h2>Quick wins — you're already covered</h2>"
         f"<p class='sub'>These third-party tools deliver outcomes your <b>current</b> Microsoft "
-        f"licensing already provides — retirable <b>today</b>, independent of any move. "
-        f"Save <b class='pos'>{_usd(quick_win_total)}</b>/yr.</p>"
+        f"licensing already provides. They can be retired <b>today</b>, with no licensing "
+        f"change: <b class='pos'>{_usd(quick_win_total)}</b>/yr stops immediately.</p>"
         f"<table><thead><tr><th>Tool</th><th>Duplicated capability (already in current licensing)</th>"
-        f"<th>Covered</th><th>Redundant today</th><th>Save/yr</th></tr></thead>"
+        f"<th>Seats on the tool</th><th>Redundant today</th><th>Stops/yr</th></tr></thead>"
         f"<tbody>{quick_win_rows}</tbody></table></section>"
         if quick_wins else ""
     )
@@ -180,13 +187,9 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     in_scope = [s for s in result["scenarios"] if s["in_scope"]]
     cols = in_scope if len(in_scope) > 1 else []
 
-    def _offset_of(s, product_id):
-        return next((o["credited_offset_annual"] for o in s.get("offsets", [])
+    def _offset_field(s, product_id, field):
+        return next((o.get(field, 0) for o in s.get("offsets", [])
                      if o["third_party_product_id"] == product_id), 0)
-
-    def _offset_sum(s, in_already):
-        return sum(o["credited_offset_annual"] for o in s.get("offsets", [])
-                   if (o["third_party_product_id"] in already_ids) == in_already)
 
     def _fmt(value, negate):
         return (f"−{_usd(value)}" if value else _usd(0)) if negate else _usd(value)
@@ -204,25 +207,38 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         )
         bridge_head = f"<thead><tr><th></th>{ths}<th class='num'>Total</th></tr></thead>"
 
-    def _freed_block(label, sub, items, in_already):
-        if not items:
+    def _freed_group(label, sub, items, field):
+        """One bridge group: products contributing via `field` (dollar rows of
+        zero are dropped — no placeholder rows on a customer document)."""
+        rows_items = [f for f in items if f.get(field, 0)]
+        if not rows_items:
             return ""
-        total = sum(f["credited_annual"] for f in items)
+        total = sum(f[field] for f in rows_items)
         rows = "".join(
-            f"<tr class='sub'><td>↳ {html.escape(f['third_party_product_name'])}"
-            + (" — $0 credited (set its covered population to free up spend)"
-               if f["credited_annual"] == 0 else " freed up")
-            + "</td>"
-            + _cells([_offset_of(s, f["third_party_product_id"]) for s in cols],
-                     f["credited_annual"], negate=True, cls="pos")
+            f"<tr class='sub'><td>↳ {html.escape(f['third_party_product_name'])}</td>"
+            + _cells([_offset_field(s, f["third_party_product_id"],
+                                    {"redundant_today_annual": "redundant_today_annual",
+                                     "move_unlocked_annual": "move_unlocked_annual",
+                                     "credited_annual": "credited_offset_annual"}[field])
+                      for s in cols],
+                     f[field], negate=True, cls="pos")
             + "</tr>"
-            for f in items
+            for f in rows_items
         )
+        group_total_cells = _cells(
+            [sum(_offset_field(s, f["third_party_product_id"],
+                               {"redundant_today_annual": "redundant_today_annual",
+                                "move_unlocked_annual": "move_unlocked_annual",
+                                "credited_annual": "credited_offset_annual"}[field])
+                 for f in rows_items) for s in cols],
+            total, negate=True, cls="pos")
         return (f"<tr><td>Less: {label} <span class='muted'>{sub}</span></td>"
-                + _cells([_offset_sum(s, in_already) for s in cols], total,
-                         negate=True, cls="pos")
-                + f"</tr>{rows}")
+                f"{group_total_cells}</tr>{rows}")
 
+    delta_word = (
+        f"{_usd0(delta)}/yr saved" if delta < 0
+        else f"{_usd0(delta)}/yr added" if delta > 0 else "no net change"
+    )
     delta_cells = "".join(
         f"<td class='num {'pos' if s['delta_annual'] < 0 else ''}'><b>{_usd(s['delta_annual'])}</b></td>"
         for s in cols
@@ -235,60 +251,133 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         + _cells([s["current_microsoft_annual"] for s in cols], existing_ms,
                  negate=True, cls="pos")
         + "</tr>"
-        + _freed_block("third-party already covered by current licensing", "(quick win — free today)", already, True)
-        + _freed_block("third-party additionally freed by the move", "(new displacement from the target)", newly, False)
-        + f"<tr class='total'><td><b>Net TCO delta</b> "
-        f"({'annual savings' if delta < 0 else 'annual cost increase' if delta > 0 else 'no net change'})</td>"
+        + _freed_group("third-party redundant today",
+                       "(the quick wins — no licensing change required)",
+                       already, "redundant_today_annual")
+        + _freed_group("further seats on those tools retired by the move",
+                       "(covered only once the target lands)",
+                       already, "move_unlocked_annual")
+        + _freed_group("third-party newly retired by the move",
+                       "(capability arrives with the target)",
+                       newly, "credited_annual")
+        + f"<tr class='total'><td><b>Net change in run-rate</b> "
+        f"<span class='muted'>({delta_word})</span></td>"
         f"{delta_cells}<td class='num {delta_cls}'><b>{_usd(delta)}</b></td></tr>"
     )
+    # Reconciliation note: the "redundant today" group equals the Quick Wins
+    # total whenever every quick-win tool is displaced by a move. When one
+    # isn't (its savings live outside this bridge), say so explicitly instead
+    # of leaving two sections that disagree.
+    bridged_today = float(rollup.get("freed_redundant_today_annual", 0) or 0)
+    qw_check = float(rollup.get("quick_win_savings_annual", 0) or 0)
+    bridge_note = ""
+    if abs(bridged_today - qw_check) >= 0.005:
+        bridge_note = (
+            f"<p class='sub'>A further {_usd(qw_check - bridged_today)}/yr of quick-win "
+            f"savings sits outside this bridge — tools retirable today that no persona "
+            f"move touches. See Quick wins above; the two together make the total "
+            f"opportunity in the headline.</p>"
+        )
 
-    # Hero block: the headline is the HORIZON figure (annual delta × the
-    # engagement's modeling horizon, e.g. "36-month savings") with the
-    # annualized number beneath it, and each in-scope move is one plain line —
-    # "Baseline (1000) → Microsoft 365 E5 (−$246,560/yr)". Everything after the
-    # hero is supporting detail.
+    # Hero block (Section 6.8a decomposition): the headline splits into the two
+    # things the customer can actually decide — ① retire duplicate tools today
+    # (the quick wins, no licensing change) and ② move each persona to
+    # right-sized licensing (the moves' OWN value, quick-win credit stripped so
+    # the two never double-count a dollar). The anchor number is their sum over
+    # the modeling horizon, stated in words ("saved"), never as a signed
+    # figure next to the word savings.
     horizon = int(engagement.modeling_horizon_years or 3)
     months = horizon * 12
-    horizon_label = (
-        f"{months}-month savings" if delta < 0
-        else f"{months}-month cost increase" if delta > 0 else "No net change"
-    )
+    qw_total = float(rollup.get("quick_win_savings_annual", 0) or 0)
+    move_incr = float(rollup.get("move_incremental_delta_annual", 0) or 0)
+    moves_value = -move_incr  # positive = the moves save money
+    total_opportunity = qw_total + moves_value  # positive = total saved / yr
+
+    if total_opportunity > 0:
+        head_word, head_cls = f"saved over {months} months", "pos"
+    elif total_opportunity < 0:
+        head_word, head_cls = f"added cost over {months} months", ""
+    else:
+        head_word, head_cls = "no net change", ""
+
+    def _moves_phrase(v):
+        if v < 0:
+            return f"<span class='pos'>(saves {_usd0(v)}/yr)</span>"
+        if v > 0:
+            return f"<span>(adds {_usd0(v)}/yr)</span>"
+        return "<span class='muted'>(cost-neutral)</span>"
+
     move_items = "".join(
         f"<li><b>{html.escape(s['persona_name'])}</b> ({s['headcount']}) → "
         f"<b>{html.escape(s['target_sku_reference'])}</b> "
-        f"<span class='{'pos' if s['delta_annual'] < 0 else ''}'>"
-        f"({_signed_usd0(s['delta_annual'])}/yr)</span></li>"
+        f"{_moves_phrase(s.get('move_incremental_delta_annual', s['delta_annual']))}</li>"
         for s in in_scope
+    )
+    part_today = (
+        f"<div class='hero-part'><div class='part-label'>① Retire duplicate tools today "
+        f"— no licensing change</div>"
+        f"<div class='part-value pos'>{_usd0(qw_total)}/yr</div></div>"
+        if qw_total > 0 else ""
+    )
+    moves_word = (
+        f"<span class='pos'>saves {_usd0(moves_value)}/yr</span>" if moves_value > 0
+        else f"adds {_usd0(moves_value)}/yr" if moves_value < 0 else "cost-neutral"
+    )
+    part_moves = (
+        f"<div class='hero-part'><div class='part-label'>"
+        f"{'② ' if part_today else ''}Move each persona to right-sized licensing</div>"
+        f"<div class='part-value'>{moves_word}</div>"
+        + (f"<ul class='moves'>{move_items}</ul>" if in_scope else "")
+        + "</div>"
+    )
+    # List-price caveat: when baseline spend rests on assumed prices, say so
+    # next to the headline, not in the appendix — it builds trust, not doubt.
+    assumed_n = sum(1 for lic in engagement.current_licenses if lic.source_tag == "ListPrice")
+    hero_caveat = (
+        f"<div class='hero-caveat'>Baseline spend uses list-price assumptions for "
+        f"{assumed_n} current SKU{'s' if assumed_n != 1 else ''} — validating against "
+        f"invoices is step one and may move this number. Figures are run-rate: they "
+        f"assume retirements from day one; year one phases with contract end dates.</div>"
+        if assumed_n
+        else "<div class='hero-caveat'>Figures are run-rate: they assume retirements "
+             "from day one; year one phases with contract end dates.</div>"
     )
     hero = (
         f"<section class='hero'>"
-        f"<div class='hero-label'>{horizon_label} <span class='hero-note'>"
-        f"· {horizon}-year view · negative = saving</span></div>"
-        f"<div class='headline {delta_cls}'>{_signed_usd0(delta * horizon)}</div>"
-        f"<div class='hero-sub'>{_signed_usd0(delta)}/yr annualized</div>"
-        + (f"<ul class='moves'>{move_items}</ul>" if in_scope else "")
-        + "</section>"
+        f"<div class='hero-label'>Total opportunity <span class='hero-note'>"
+        f"· {horizon}-year run-rate view</span></div>"
+        f"<div class='headline {head_cls}'>{_usd0(total_opportunity * horizon)} "
+        f"<span class='headline-word'>{head_word}</span></div>"
+        f"<div class='hero-sub'>{_usd0(total_opportunity)}/yr run-rate</div>"
+        f"<div class='hero-split'>{part_today}{part_moves}</div>"
+        f"{hero_caveat}"
+        f"</section>"
     )
 
     # Eliminations section — build only the parts that have content, and omit the
     # whole section if nothing was eliminated (don't print "None" to a customer).
     elim_parts = []
     fully_elim = rollup["fully_eliminated_tools"]
+    renewal_by_name = {
+        r["third_party_product_name"]: r["renewal_date"]
+        for r in rollup["eliminated_renewal_cycles"]
+        if r.get("renewal_date")
+    }
     if fully_elim:
-        items = "".join(f"<li>{html.escape(t)}</li>" for t in fully_elim)
-        elim_parts.append(f"<p><b>Tools fully eliminated:</b></p><ul>{items}</ul>")
-    renewal_cycles = rollup["eliminated_renewal_cycles"]
-    if renewal_cycles:
         items = "".join(
-            f"<li>{html.escape(r['third_party_product_name'])}"
-            + (f" — renews {r['renewal_date']}" if r["renewal_date"] else "")
+            f"<li>{html.escape(t)}"
+            + (f" <span class='muted'>— contract renews {renewal_by_name[t]}; "
+               f"co-term the retirement against this date</span>"
+               if t in renewal_by_name else "")
             + "</li>"
-            for r in renewal_cycles
+            for t in fully_elim
         )
-        elim_parts.append(f"<p><b>Renewal cycles eliminated:</b></p><ul>{items}</ul>")
+        elim_parts.append(f"<p><b>Tools fully eliminated:</b></p><ul>{items}</ul>")
     if has_third_party:
         elim_parts.append(
-            f"<p><b>Residual third-party cost:</b> {_usd(rollup['residual_third_party_cost_annual'])}</p>"
+            f"<p><b>Third-party spend that remains after the move:</b> "
+            f"{_usd(rollup['residual_third_party_cost_annual'])}/yr "
+            f"<span class='muted'>(reduced seats plus tools kept as-is)</span></p>"
         )
     elim_section = (
         f"<section><h2>What this retires</h2>{''.join(elim_parts)}</section>"
@@ -312,6 +401,32 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 
     # Assumptions & sources — only the notes that apply to this engagement.
     appendix_parts = []
+    # The from-state anchors the whole story: show what the customer holds
+    # today (the current-licensing mix), never leave it invisible.
+    if engagement.current_licenses:
+        lic_rows = "".join(
+            f"<tr><td>{html.escape(lic.sku_reference)}"
+            + (" <span class='muted'>(list price assumed)</span>"
+               if lic.source_tag == "ListPrice" else "")
+            + f"</td><td class='num'>{lic.quantity_assigned}</td>"
+            f"<td class='num'>{_usd(lic.unit_price_paid_annual)}</td>"
+            f"<td class='num'>{_usd(float(lic.unit_price_paid_annual or 0) * (lic.quantity_assigned or 0))}</td></tr>"
+            for lic in engagement.current_licenses
+        )
+        appendix_parts.append(
+            "<p><b>Current Microsoft licensing (as provided):</b></p>"
+            "<table><thead><tr><th>SKU</th><th>Seats assigned</th>"
+            "<th>Price paid /seat/yr</th><th>Annual</th></tr></thead>"
+            f"<tbody>{lic_rows}</tbody></table>"
+        )
+    # Target pricing basis — the first procurement question in the room.
+    _term_label = {"P1Y": "1-year term", "P1M": "monthly term", "P3Y": "3-year term"}
+    appendix_parts.append(
+        f"<p><b>Target pricing basis:</b> {html.escape(engagement.default_segment or 'Commercial')} · "
+        f"{html.escape(_term_label.get(engagement.default_term_duration or 'P1Y', engagement.default_term_duration or 'P1Y'))} · "
+        f"{html.escape(engagement.default_billing_plan or 'Monthly')} billing — catalog price "
+        f"unless an operator-entered price overrides a line.</p>"
+    )
     if managed_any:
         tooling_overrides = [
             d for d in dispositions
@@ -379,6 +494,27 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         if appendix_parts else ""
     )
 
+    # The "then what": a readout that ends at a footer leaves no path from
+    # assumed to confirmed. Validate → Sequence → Fund → Decide, plus the two
+    # objections a CIO raises unprompted (change management, one-time cost).
+    n_retire = len(fully_elim)
+    next_steps_section = (
+        "<section><h2>Recommended next steps</h2><ol>"
+        "<li><b>Validate.</b> Confirm current licensing counts and third-party invoices, "
+        f"and pull contract end dates for the {n_retire} retirement target{'s' if n_retire != 1 else ''} "
+        "— this converts the assumptions above into an invoice-verified business case.</li>"
+        "<li><b>Sequence.</b> Co-term each retirement against its renewal date into a "
+        "phased savings schedule. The figures here are run-rate; year one phases in.</li>"
+        "<li><b>Fund.</b> Microsoft co-investment programs may offset transition cost — "
+        "quantified in the follow-on.</li>"
+        "<li><b>Decide.</b> A 30-day validation sprint converts this readout into an "
+        "invoice-verified, phased business case.</li></ol>"
+        "<p class='sub'>Noted up front: savings are gross of one-time migration cost, and "
+        "workload moves (chat, device management, identity) are change-management events, "
+        "not just license swaps — both are scoped in the follow-on.</p></section>"
+        if in_scope else ""
+    )
+
     # Readout branding (user-entered). Sanitize hard: colors must match a strict
     # CSS-color pattern and the logo must be a base64 image data URL, so neither
     # can break out of the <style>/<img> context. Blank -> neutral built-in theme.
@@ -409,8 +545,16 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
  .hero-note{{font-weight:400;text-transform:none;letter-spacing:0}}
  .headline{{font-size:3rem;font-weight:750;line-height:1.1;margin:.15rem 0;letter-spacing:-.02em}}
  .hero-sub{{color:var(--muted)}}
- ul.moves{{list-style:none;margin:.9rem 0 0;padding:.8rem 0 0;border-top:1px solid var(--line)}}
- ul.moves li{{margin:.3rem 0;font-size:1.02rem}}
+ .headline-word{{font-size:1.15rem;font-weight:600;color:var(--muted);letter-spacing:0}}
+ .hero-split{{display:flex;gap:.8rem;flex-wrap:wrap;margin-top:.9rem;
+   padding-top:.9rem;border-top:1px solid var(--line)}}
+ .hero-part{{flex:1;min-width:300px;background:#fff;border:1px solid var(--line);
+   border-radius:8px;padding:.6rem .85rem}}
+ .part-label{{font-size:.8rem;font-weight:650;color:var(--muted)}}
+ .part-value{{font-size:1.35rem;font-weight:750;margin:.1rem 0}}
+ .hero-caveat{{margin-top:.7rem;font-size:.82rem;color:var(--muted)}}
+ ul.moves{{list-style:none;margin:.35rem 0 0;padding:0}}
+ ul.moves li{{margin:.25rem 0;font-size:.95rem}}
  .pos{{color:var(--pos)}} .neg{{color:var(--neg)}} .muted{{color:var(--muted)}}
  section{{margin:2rem 0}}
  h2{{font-size:1.12rem;color:var(--primary);margin:0 0 .4rem;
@@ -449,7 +593,8 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 
 <section><h2>Per-persona scenarios</h2>
 <table><thead><tr><th>Persona</th><th>Target SKU</th><th>Headcount</th>
-<th>Current</th><th>Target</th><th>Delta</th><th>Scope</th></tr></thead>
+<th>Current total spend/yr<br><small>(Microsoft + attributed third-party)</small></th>
+<th>Target Microsoft/yr</th><th>Change/yr</th><th>Scope</th></tr></thead>
 <tbody>{rows_scenarios}</tbody></table></section>
 {new_outcomes_section}
 
@@ -457,12 +602,13 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 <p class="sub">Existing annualized spend for the in-scope population, the third-party
 tooling those users free up when they move, and the target Microsoft licensing —
 building to the net TCO delta, with each line broken down per persona.</p>
-<table class="bridge">{bridge_head}<tbody>{bridge_rows}</tbody></table></section>
+<table class="bridge">{bridge_head}<tbody>{bridge_rows}</tbody></table>{bridge_note}</section>
 {disp_section}
 {elim_section}
 {appendix_section}
-<footer>v1 pure licensing TCO. Excludes managed-services, migration/PS, Microsoft
-funding, Azure consumption, and soft savings (deferred). Generated by the M365 TCO Tool.</footer>
+{next_steps_section}
+<footer>Licensing-only view. Migration services, Microsoft funding, Azure consumption,
+and operational savings are quantified in the follow-on. Generated by the M365 TCO Tool.</footer>
 </main></body></html>"""
 
 
@@ -512,6 +658,10 @@ def build_xlsx(engagement: models.Engagement, result: dict) -> bytes:
     ])
     wr.append(["Target Microsoft licensing (annual, in scope)", rollup["target_microsoft_annual"]])
     wr.append(["Net TCO delta (annual) — negative = saving", rollup["net_tco_delta_annual"]])
+    wr.append(["  of which: quick wins (retirable today, no move)",
+               -(rollup.get("freed_redundant_today_annual", 0) or 0)])
+    wr.append(["  of which: the moves' own value (excl. quick wins)",
+               rollup.get("move_incremental_delta_annual", 0) or 0])
     horizon = int(engagement.modeling_horizon_years or 3)
     wr.append([
         f"Net TCO delta ({horizon * 12}-month headline)",

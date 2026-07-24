@@ -630,3 +630,134 @@ def test_analyze_bundles_net_increase_still_shows_added_outcomes():
     assert set(b.added_outcome_ids) == {B, C}
     # net increase with no no-gap-priced... it still covers required A (no gap)
     assert b.covers_all_required is True
+
+
+def test_offset_credit_caps_at_covered_population():
+    """Section 6.3a: a move can only retire seats the product actually covers.
+    Two personas (1000 + 250) both displace a tool covering 1000 seats at
+    $43/seat ($43,000/yr total): the credit must cap at $43,000 — never more
+    than the tool costs — allocated pro-rata by headcount (800/200 units)."""
+    base = Persona(id="base", name="Baseline", headcount=1000)
+    ctr = Persona(id="ctr", name="Contractor", headcount=250)
+    jamf = ThirdPartyProduct(
+        id="jamf", name="JAMF", annual_cost=D("43000"), covered_count=1000,
+        delivered_outcome_ids=frozenset({ENDPOINT}),
+    )
+    s1 = PersonaScenario(id="s1", persona_id="base", target_sku_reference="E5",
+                         target_unit_price_annual=D("0"),
+                         target_covered_outcome_ids=frozenset({ENDPOINT}))
+    s2 = PersonaScenario(id="s2", persona_id="ctr", target_sku_reference="BP",
+                         target_unit_price_annual=D("0"),
+                         target_covered_outcome_ids=frozenset({ENDPOINT}))
+    res = compute(_engagement([base, ctr], [jamf], [s1, s2]))
+
+    freed = res.rollup.freed_third_party[0]
+    assert freed.credited_annual == D("43000.00")  # capped at the tool's cost
+    by_scen = {r.scenario_id: r for r in res.scenarios}
+    assert by_scen["s1"].offsets[0].credited_units == D("800.0000")
+    assert by_scen["s2"].offsets[0].credited_units == D("200.0000")
+    assert (by_scen["s1"].offsets[0].credited_offset_annual
+            + by_scen["s2"].offsets[0].credited_offset_annual) == D("43000.00")
+    # The bridge identity still holds with capped credits.
+    r = res.rollup
+    assert r.net_tco_delta_annual == (
+        r.target_microsoft_annual - r.existing_microsoft_annual
+        - r.existing_third_party_annual
+    )
+
+
+def test_freed_credit_splits_redundant_today_vs_move_unlocked():
+    """The already-covered credit splits into the quick-win portion (seats whose
+    CURRENT licensing already duplicates the tool — 'free today') and what the
+    move unlocks, so a readout's 'free today' line reconciles exactly with the
+    Quick Wins total. Okta covers 1250; 1000 Baseline seats hold covering
+    licenses today (quick win), the 250 Contractor seats only displace via the
+    move: $172,000 today + $43,000 move-unlocked = $215,000 credited."""
+    base = Persona(id="base", name="Baseline", headcount=1000)
+    ctr = Persona(id="ctr", name="Contractor", headcount=250)
+    lic = CurrentLicenseLine(
+        quantity_assigned=1000, unit_price_paid_annual=D("380"),
+        covered_outcome_ids=frozenset({IDENTITY}), persona_ids=("base",),
+    )
+    okta = ThirdPartyProduct(
+        id="okta", name="Okta", annual_cost=D("215000"), covered_count=1250,
+        delivered_outcome_ids=frozenset({IDENTITY}),
+    )
+    s1 = PersonaScenario(id="s1", persona_id="base", target_sku_reference="E5",
+                         target_unit_price_annual=D("0"),
+                         target_covered_outcome_ids=frozenset({IDENTITY}))
+    s2 = PersonaScenario(id="s2", persona_id="ctr", target_sku_reference="BP",
+                         target_unit_price_annual=D("0"),
+                         target_covered_outcome_ids=frozenset({IDENTITY}))
+    res = compute(Engagement(
+        id="e", personas=[base, ctr], third_party_products=[okta],
+        scenarios=[s1, s2], current_licenses=[lic],
+    ))
+    r = res.rollup
+    assert r.quick_win_savings_annual == D("172000.00")  # 1000 × $172
+    freed = r.freed_third_party[0]
+    assert freed.already_covered is True
+    assert freed.credited_annual == D("215000.00")
+    # 'Free today' on the bridge == the Quick Wins total, to the cent.
+    assert freed.redundant_today_annual == r.quick_win_savings_annual
+    assert freed.move_unlocked_annual == D("43000.00")
+    assert freed.redundant_today_annual + freed.move_unlocked_annual == freed.credited_annual
+
+
+def test_unchanged_tool_carries_its_full_cost_as_residual():
+    """A tool the move doesn't touch is not $0: the customer keeps paying it.
+    Unchanged dispositions carry covered_count × per_unit as residual cost and
+    the rollup's residual total includes them."""
+    kw = Persona(id="kw", name="KW", headcount=100)
+    snowflake = ThirdPartyProduct(
+        id="snow", name="Snowflake", annual_cost=D("50000"), covered_count=100,
+        delivered_outcome_ids=frozenset({EMAIL_SEC}),  # target doesn't cover it
+    )
+    s = PersonaScenario(id="s", persona_id="kw", target_sku_reference="E5",
+                        target_unit_price_annual=D("0"),
+                        target_covered_outcome_ids=frozenset({IDENTITY}))
+    res = compute(_engagement([kw], [snowflake], [s]))
+    d = res.dispositions[0]
+    assert d.disposition == Disposition.UNCHANGED
+    assert d.residual_annual_cost == D("50000.00")
+    assert res.rollup.residual_third_party_cost_annual == D("50000.00")
+    # And it must NOT demand residual classification — it's simply untouched.
+    assert d.requires_residual_classification is False
+
+
+def test_headline_decomposition_never_double_counts_quick_wins():
+    """Section 6.8a: the headline splits into 'retire today' (quick wins) and
+    the moves' OWN value, reconciling exactly to the end-state net delta:
+    net = move_incremental − freed_redundant_today. Per persona likewise."""
+    base = Persona(id="base", name="Baseline", headcount=1000)
+    ctr = Persona(id="ctr", name="Contractor", headcount=250)
+    lic = CurrentLicenseLine(
+        quantity_assigned=1000, unit_price_paid_annual=D("380"),
+        covered_outcome_ids=frozenset({IDENTITY}), persona_ids=("base",),
+    )
+    okta = ThirdPartyProduct(
+        id="okta", name="Okta", annual_cost=D("215000"), covered_count=1250,
+        delivered_outcome_ids=frozenset({IDENTITY}),
+    )
+    s1 = PersonaScenario(id="s1", persona_id="base", target_sku_reference="E5",
+                         target_unit_price_annual=D("600"),
+                         target_covered_outcome_ids=frozenset({IDENTITY}))
+    s2 = PersonaScenario(id="s2", persona_id="ctr", target_sku_reference="BP",
+                         target_unit_price_annual=D("264"),
+                         target_covered_outcome_ids=frozenset({IDENTITY}))
+    res = compute(Engagement(
+        id="e", personas=[base, ctr], third_party_products=[okta],
+        scenarios=[s1, s2], current_licenses=[lic],
+    ))
+    r = res.rollup
+    assert r.freed_redundant_today_annual == D("172000.00")  # == quick wins here
+    assert r.move_incremental_delta_annual == _round2(
+        r.net_tco_delta_annual + r.freed_redundant_today_annual)
+    # Per persona: delta + its own redundant-today credit = its move value.
+    for s in res.scenarios:
+        today = sum(o.redundant_today_annual for o in s.offsets)
+        assert s.move_incremental_delta_annual == _round2(s.delta_annual + today)
+
+
+def _round2(v):
+    return v.quantize(D("0.01"))

@@ -30,13 +30,16 @@ def result_to_dict(result: EngineResult) -> dict:
                 "current_third_party_offset_annual": _num(
                     s.current_third_party_offset_annual
                 ),
+                "move_incremental_delta_annual": _num(s.move_incremental_delta_annual),
                 "offsets": [
                     {
                         "third_party_product_id": o.third_party_product_id,
                         "third_party_product_name": o.third_party_product_name,
                         "per_unit_annual_cost": _num(o.per_unit_annual_cost),
-                        "credited_units": o.credited_units,
+                        "credited_units": _num(o.credited_units),
                         "credited_offset_annual": _num(o.credited_offset_annual),
+                        "redundant_today_annual": _num(o.redundant_today_annual),
+                        "move_unlocked_annual": _num(o.move_unlocked_annual),
                     }
                     for o in s.offsets
                 ],
@@ -89,10 +92,18 @@ def result_to_dict(result: EngineResult) -> dict:
                     "third_party_product_name": f.third_party_product_name,
                     "credited_annual": _num(f.credited_annual),
                     "already_covered": f.already_covered,
+                    "redundant_today_annual": _num(f.redundant_today_annual),
+                    "move_unlocked_annual": _num(f.move_unlocked_annual),
                 }
                 for f in result.rollup.freed_third_party
             ],
             "quick_win_savings_annual": _num(result.rollup.quick_win_savings_annual),
+            "freed_redundant_today_annual": _num(
+                result.rollup.freed_redundant_today_annual
+            ),
+            "move_incremental_delta_annual": _num(
+                result.rollup.move_incremental_delta_annual
+            ),
             "quick_wins": [
                 {
                     "third_party_product_id": q.third_party_product_id,

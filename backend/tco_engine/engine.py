@@ -32,13 +32,23 @@ def _money(value: Decimal) -> Decimal:
 
 @dataclass
 class OffsetDetail:
-    """One displaced third-party product credited against a persona scenario."""
+    """One displaced third-party product credited against a persona scenario.
+
+    Credits are CAPPED at the product's covered population (Section 6.3a): a
+    move can only retire seats the product actually covers, so when the
+    displacing personas' combined headcount exceeds covered_count each
+    scenario's credited units scale pro-rata by headcount (hence Decimal).
+    The credit further splits into the portion that is redundant TODAY (the
+    quick-win seats — current licensing already covers them) and the portion
+    the move itself unlocks, so readouts reconcile exactly with Quick Wins."""
 
     third_party_product_id: str
     third_party_product_name: str
     per_unit_annual_cost: Decimal
-    credited_units: int
+    credited_units: Decimal
     credited_offset_annual: Decimal
+    redundant_today_annual: Decimal = Decimal("0")
+    move_unlocked_annual: Decimal = Decimal("0")
 
 
 @dataclass
@@ -54,6 +64,10 @@ class ScenarioResult:
     delta_annual: Decimal
     current_microsoft_annual: Decimal
     current_third_party_offset_annual: Decimal
+    # The move's OWN value (Section 6.3a): delta_annual with the quick-win
+    # (redundant-today) credit added back — what changing this persona's
+    # licensing contributes beyond savings available with no move at all.
+    move_incremental_delta_annual: Decimal = Decimal("0")
     offsets: list[OffsetDetail] = field(default_factory=list)
 
 
@@ -90,9 +104,16 @@ class EliminatedRenewal:
 class FreedThirdParty:
     """A third-party product's credited savings, aggregated across the in-scope
     scenarios that displace it. This is the persona-allocated offset the engine
-    credits today — the "we freed up SentinelOne, saving $X" line. When
-    `credited_annual` is 0 the product delivers a covered outcome but its
-    `covered_count` (and thus per-unit cost) is 0, so no dollars are freed."""
+    credits — the "we retired SentinelOne, saving $X" line — capped at the
+    product's covered population (6.3a). When `credited_annual` is 0 the
+    product delivers a covered outcome but its `covered_count` (and thus
+    per-unit cost) is 0, so no dollars are credited.
+
+    `credited_annual = redundant_today_annual + move_unlocked_annual`:
+    the first is the quick-win portion (seats whose CURRENT licensing already
+    duplicates the tool — retirable with no move), the second is what the move
+    itself unlocks. The split lets a readout show "free today" with exactly
+    the Quick Wins total and never label move-dependent dollars as free."""
 
     third_party_product_id: str
     third_party_product_name: str
@@ -100,6 +121,8 @@ class FreedThirdParty:
     # True when the customer's CURRENT licensing already covers this product's
     # outcomes — i.e. it's a quick win (redundant today), not value the move adds.
     already_covered: bool = False
+    redundant_today_annual: Decimal = Decimal("0")
+    move_unlocked_annual: Decimal = Decimal("0")
 
 
 @dataclass
@@ -143,6 +166,14 @@ class RollupResult:
     # today" headline; quick_wins lists the redundant products.
     quick_win_savings_annual: Decimal
     quick_wins: list[QuickWin]
+    # Headline decomposition (Section 6.8a): the quick-win portion of the freed
+    # credit (seats redundant today — no move required) and the moves' OWN
+    # value with that portion added back. By construction:
+    #   net_tco_delta_annual = move_incremental_delta_annual
+    #                        - freed_redundant_today_annual
+    # so "retire today" + "the moves" never double-count a dollar.
+    freed_redundant_today_annual: Decimal = Decimal("0")
+    move_incremental_delta_annual: Decimal = Decimal("0")
 
 
 @dataclass
@@ -198,8 +229,11 @@ def compute(engagement: Engagement) -> EngineResult:
             residual_count = 0
             residual_annual_cost = Decimal("0")
         elif displaced_users == 0:
+            # The move doesn't touch this tool — the customer keeps paying it.
+            # Its carrying cost is real residual spend (Section 6.4): $0 here
+            # would understate what remains and inflate the savings story.
             disposition = Disposition.UNCHANGED
-            residual_annual_cost = Decimal("0")
+            residual_annual_cost = _money(Decimal(residual_count) * per_unit)
         elif residual_count == 0:
             disposition = Disposition.FULLY_ELIMINATED
             residual_annual_cost = Decimal("0")
@@ -275,6 +309,54 @@ def compute(engagement: Engagement) -> EngineResult:
         sum((q.credited_annual for q in quick_wins), Decimal("0"))
     )
 
+    # ----- Displacement credit allocation (Section 6.3a) -----
+    # A move can only retire seats the product actually covers, so a product's
+    # total credit caps at covered_count × per_unit (never more than the tool
+    # costs). When the displacing personas' combined headcount exceeds the
+    # covered population, each scenario's units scale pro-rata by headcount.
+    # Each credit also splits into the portion redundant TODAY (the quick-win
+    # seats) vs what the move unlocks, allocated cumulatively so every
+    # product's parts sum exactly to its capped total (no rounding drift).
+    qw_today = {q.third_party_product_id: q.displaced_today for q in quick_wins}
+    offset_alloc: dict[tuple[str, str], tuple[Decimal, Decimal, Decimal]] = {}
+    for product in engagement.third_party_products:
+        displacing = displacing_scenarios_by_product[product.id]
+        if not displacing:
+            continue
+        per_unit = product.per_unit_annual_cost
+        covered = Decimal(product.covered_count)
+        total_hc = sum(personas[s.persona_id].headcount for s in displacing)
+        if product.covered_count == 0 or total_hc == 0:
+            scale = Decimal(0)
+        elif total_hc <= product.covered_count:
+            scale = Decimal(1)
+        else:
+            scale = covered / Decimal(total_hc)
+        effective_units = min(Decimal(total_hc), covered)
+        today_units = min(Decimal(qw_today.get(product.id, 0)), effective_units)
+        cum_units = Decimal(0)
+        assigned_credit = Decimal(0)
+        assigned_today = Decimal(0)
+        for s in displacing:
+            hc = Decimal(personas[s.persona_id].headcount)
+            cum_units += hc * scale
+            credit_target = _money(cum_units * per_unit)
+            credit = credit_target - assigned_credit
+            assigned_credit = credit_target
+            if effective_units > 0:
+                today_target = _money(
+                    today_units * cum_units / effective_units * per_unit
+                )
+            else:
+                today_target = Decimal("0.00")
+            today = today_target - assigned_today
+            assigned_today = today_target
+            offset_alloc[(product.id, s.id)] = (
+                (hc * scale).quantize(Decimal("0.0001")),
+                credit,
+                today,
+            )
+
     # ----- Per-persona scenario math (Section 6.2 / 6.3) -----
     # Personas that have a scenario (appear in the readout). An UNTAGGED current
     # license — one the operator entered without attributing to a persona — is
@@ -315,23 +397,33 @@ def compute(engagement: Engagement) -> EngineResult:
                 share = Decimal(1) / Decimal(len(pool) or 1)
             current_ms += line_total * share
 
-        # Linear-by-user offset: each product this scenario displaces credits
-        # headcount * per_unit_annual_cost (Section 6.3). This is the persona's
-        # allocated share of third-party cost it consumes today.
+        # Linear-by-user offset, capped at the covered population (Sections
+        # 6.3 / 6.3a): each product this scenario displaces credits its
+        # allocated units × per_unit_annual_cost. In-scope scenarios use the
+        # pro-rata allocation precomputed above; an out-of-scope what-if row
+        # caps individually at covered_count (it has no share of the pool).
         offsets: list[OffsetDetail] = []
         offset_total = Decimal("0")
         for product in engagement.third_party_products:
             if _scenario_displaces_product(scenario, product):
                 per_unit = product.per_unit_annual_cost
-                credited = _money(Decimal(persona.headcount) * per_unit)
+                alloc = offset_alloc.get((product.id, scenario.id))
+                if alloc is not None:
+                    units, credited, today = alloc
+                else:
+                    units = Decimal(min(persona.headcount, product.covered_count))
+                    credited = _money(units * per_unit)
+                    today = Decimal("0.00")
                 offset_total += credited
                 offsets.append(
                     OffsetDetail(
                         third_party_product_id=product.id,
                         third_party_product_name=product.name,
                         per_unit_annual_cost=per_unit,
-                        credited_units=persona.headcount,
+                        credited_units=units,
                         credited_offset_annual=credited,
+                        redundant_today_annual=today,
+                        move_unlocked_annual=_money(credited - today),
                     )
                 )
 
@@ -358,6 +450,9 @@ def compute(engagement: Engagement) -> EngineResult:
                 delta_annual=delta,
                 current_microsoft_annual=_money(current_ms),
                 current_third_party_offset_annual=_money(offset_total),
+                move_incremental_delta_annual=_money(
+                    delta + sum((o.redundant_today_annual for o in offsets), Decimal("0"))
+                ),
                 offsets=offsets,
             )
         )
@@ -387,12 +482,16 @@ def compute(engagement: Engagement) -> EngineResult:
         if d.renewal_date
     ]
 
+    # What the customer keeps paying after the move: partial residuals PLUS the
+    # carrying cost of tools the move doesn't touch (Unchanged). Excluding the
+    # untouched tools would understate remaining spend (Section 6.8).
     residual_cost = _money(
         sum(
             (
                 d.residual_annual_cost
                 for d in dispositions
-                if d.disposition == Disposition.PARTIALLY_REDUCED
+                if d.disposition
+                in (Disposition.PARTIALLY_REDUCED, Disposition.UNCHANGED)
             ),
             Decimal("0"),
         )
@@ -434,10 +533,18 @@ def compute(engagement: Engagement) -> EngineResult:
                     third_party_product_name=o.third_party_product_name,
                     credited_annual=o.credited_offset_annual,
                     already_covered=o.third_party_product_id in quick_win_ids,
+                    redundant_today_annual=o.redundant_today_annual,
+                    move_unlocked_annual=o.move_unlocked_annual,
                 )
             else:
                 entry.credited_annual = _money(
                     entry.credited_annual + o.credited_offset_annual
+                )
+                entry.redundant_today_annual = _money(
+                    entry.redundant_today_annual + o.redundant_today_annual
+                )
+                entry.move_unlocked_annual = _money(
+                    entry.move_unlocked_annual + o.move_unlocked_annual
                 )
     freed_third_party = sorted(
         freed_by_product.values(),
@@ -457,6 +564,13 @@ def compute(engagement: Engagement) -> EngineResult:
         freed_third_party=freed_third_party,
         quick_win_savings_annual=quick_win_savings,
         quick_wins=quick_wins,
+        freed_redundant_today_annual=_money(
+            sum((f.redundant_today_annual for f in freed_third_party), Decimal("0"))
+        ),
+        move_incremental_delta_annual=_money(
+            net_delta
+            + sum((f.redundant_today_annual for f in freed_third_party), Decimal("0"))
+        ),
     )
 
     return EngineResult(
