@@ -183,6 +183,10 @@ ul.moves { list-style: none; margin: .4rem 0 0; padding: 0; }
 ul.moves li { margin: .18rem 0; display: flex; gap: .55rem; align-items: baseline; }
 .move-amt { flex: 0 0 8.5rem; font-weight: 700; }
 .move-desc { flex: 1; min-width: 0; }
+/* Hero component card: content left, share-of-total percentage top-right. */
+.hero-part { display: flex; align-items: flex-start; gap: 1rem; }
+.hero-part-main { flex: 1; min-width: 0; }
+.part-pct { flex: 0 0 auto; font-size: 1.7rem; font-weight: 750; color: var(--muted); letter-spacing: -.02em; line-height: 1; }
 /* The readout's action bar: one horizontal row of controls across the top of
    the headline card, wrapping on narrow screens. */
 .readout-toolbar { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center;

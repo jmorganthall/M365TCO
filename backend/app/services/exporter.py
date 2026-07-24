@@ -317,18 +317,39 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         f"<b>{html.escape(s['target_sku_reference'])}</b></span></li>"
         for s in in_scope
     )
+    # Share of the total each lever contributes. The two are the two parts of one
+    # number (total = quick wins + moves), so the moves' share is the complement
+    # of the quick-win share — they always sum to 100%, never 99/101 from
+    # independent rounding. Shown only when the total is a net saving; on a net
+    # cost, a "share of a negative" reads as nonsense, so it's suppressed.
+    show_pct = total_opportunity > 0
+    qw_pct = round(qw_total / total_opportunity * 100) if show_pct else 0
+    moves_pct = 100 - qw_pct
+    # A share that opposes the total (the move is a net investment) renders in
+    # parentheses — the same finance notation the move amounts use for a cost.
+    def _pct_html(p):
+        if not show_pct:
+            return ""
+        text = f"({abs(p)}%)" if p < 0 else f"{p}%"
+        return f"<div class='part-pct'>{text}</div>"
+
     part_today = (
-        f"<div class='hero-part'><div class='part-label'>① Retire duplicate tools today "
+        f"<div class='hero-part'>"
+        f"<div class='hero-part-main'><div class='part-label'>① Retire duplicate tools today "
         f"— no licensing change</div>"
         f"<div class='part-value pos'>{_usd0(qw_total * horizon)}</div></div>"
+        f"{_pct_html(qw_pct)}</div>"
         if qw_total > 0 else ""
     )
     # Card ② is just the moves — persona → bundle (amount), no roll-up number
     # repeating what the bridge derives later.
     part_moves = (
-        f"<div class='hero-part'><div class='part-label'>"
+        f"<div class='hero-part'>"
+        f"<div class='hero-part-main'><div class='part-label'>"
         f"{'② ' if part_today else ''}Move each persona to right-sized licensing</div>"
         + (f"<ul class='moves'>{move_items}</ul>" if in_scope else "")
+        + "</div>"
+        + _pct_html(moves_pct)
         + "</div>"
     )
     # List-price caveat: when baseline spend rests on assumed prices, say so
@@ -552,10 +573,13 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
  .headline-word{{font-size:1.15rem;font-weight:600;color:var(--muted);letter-spacing:0}}
  .hero-split{{display:flex;flex-direction:column;gap:.7rem;margin-top:.9rem;
    padding-top:.9rem;border-top:1px solid var(--line)}}
- .hero-part{{background:#fff;border:1px solid var(--line);
-   border-radius:8px;padding:.6rem .85rem}}
+ .hero-part{{background:#fff;border:1px solid var(--line);border-radius:8px;
+   padding:.6rem .85rem;display:flex;align-items:flex-start;gap:1rem}}
+ .hero-part-main{{flex:1;min-width:0}}
  .part-label{{font-size:.8rem;font-weight:650;color:var(--muted)}}
  .part-value{{font-size:1.35rem;font-weight:750;margin:.1rem 0}}
+ .part-pct{{flex:0 0 auto;font-size:1.9rem;font-weight:750;color:var(--muted);
+   letter-spacing:-.02em;line-height:1}}
  .hero-caveat{{margin-top:.7rem;font-size:.82rem;color:var(--muted)}}
  ul.moves{{list-style:none;margin:.35rem 0 0;padding:0}}
  ul.moves li{{margin:.25rem 0;font-size:.95rem;display:flex;gap:.55rem;align-items:baseline}}
