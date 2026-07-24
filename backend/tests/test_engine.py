@@ -761,3 +761,54 @@ def test_headline_decomposition_never_double_counts_quick_wins():
 
 def _round2(v):
     return v.quantize(D("0.01"))
+
+
+def test_displacement_respects_third_party_persona_tags():
+    """A tool tagged to only one persona must credit only that persona's move —
+    not any persona whose target happens to cover the tool's outcomes. Slack
+    (tagged Baseline, 1000 seats, delivers chat) with BOTH E5 and BP covering
+    chat: all $24k goes to Baseline, $0 to the Contractor who never held it."""
+    base = Persona(id="base", name="Baseline", headcount=1000)
+    ctr = Persona(id="ctr", name="Contractor", headcount=250)
+    slack = ThirdPartyProduct(
+        id="slack", name="Slack", annual_cost=D("24000"), covered_count=1000,
+        delivered_outcome_ids=frozenset({EMAIL_SEC}),
+        persona_ids=frozenset({"base"}),                 # tagged to Baseline only
+    )
+    s1 = PersonaScenario(id="s1", persona_id="base", target_sku_reference="E5",
+                         target_unit_price_annual=D("0"),
+                         target_covered_outcome_ids=frozenset({EMAIL_SEC}))
+    s2 = PersonaScenario(id="s2", persona_id="ctr", target_sku_reference="BP",
+                         target_unit_price_annual=D("0"),
+                         target_covered_outcome_ids=frozenset({EMAIL_SEC}))  # also covers it
+    res = compute(_engagement([base, ctr], [slack], [s1, s2]))
+    by = {r.scenario_id: r for r in res.scenarios}
+    # Baseline gets the full credit; the Contractor gets nothing.
+    assert by["s1"].offsets[0].credited_offset_annual == D("24000.00")
+    assert by["s2"].offsets == []
+    # Untagged tool keeps the org-wide spread (regression guard).
+    slack_org = replace(slack, persona_ids=frozenset())
+    res2 = compute(_engagement([base, ctr], [slack_org], [s1, s2]))
+    by2 = {r.scenario_id: r for r in res2.scenarios}
+    assert by2["s1"].offsets[0].credited_offset_annual == D("19200.00")
+    assert by2["s2"].offsets[0].credited_offset_annual == D("4800.00")
+
+
+def test_move_of_untagging_persona_does_not_retire_others_tool():
+    """A tool tagged to Baseline is NOT displaced when only the Contractor moves —
+    the Contractor doesn't hold it, so it stays Unchanged with its full carrying
+    cost, instead of being falsely credited as reduced."""
+    base = Persona(id="base", name="Baseline", headcount=1000)
+    ctr = Persona(id="ctr", name="Contractor", headcount=250)
+    slack = ThirdPartyProduct(
+        id="slack", name="Slack", annual_cost=D("24000"), covered_count=1000,
+        delivered_outcome_ids=frozenset({EMAIL_SEC}), persona_ids=frozenset({"base"}),
+    )
+    # Only the Contractor is in scope; Baseline stays put.
+    s2 = PersonaScenario(id="s2", persona_id="ctr", target_sku_reference="BP",
+                         target_unit_price_annual=D("0"),
+                         target_covered_outcome_ids=frozenset({EMAIL_SEC}))
+    res = compute(_engagement([base, ctr], [slack], [s2]))
+    d = res.dispositions[0]
+    assert d.disposition == Disposition.UNCHANGED
+    assert d.residual_annual_cost == D("24000.00")
