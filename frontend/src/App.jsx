@@ -120,7 +120,7 @@ export default function App() {
               <div>
                 <h2 style={{ margin: 0 }}>{active.customer_name || 'Untitled engagement'}</h2>
                 <span className="muted">
-                  {active.market}/{active.currency} · annualized {active.currency} ·
+                  {active.market}/{active.currency} ·
                   tooling split {Math.round(active.global_tooling_pct * 100)}%
                 </span>
               </div>

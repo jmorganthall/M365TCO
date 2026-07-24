@@ -130,7 +130,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         f"licensing already provides. They can be retired <b>today</b>, with no licensing "
         f"change: <b class='pos'>{_usd(quick_win_total)}</b>/yr stops immediately.</p>"
         f"<table><thead><tr><th>Tool</th><th>Duplicated capability (already in current licensing)</th>"
-        f"<th>Seats on the tool</th><th>Redundant today</th><th>Stops/yr</th></tr></thead>"
+        f"<th>Seats on the tool</th><th>Redundant today</th><th>Savings/yr</th></tr></thead>"
         f"<tbody>{quick_win_rows}</tbody></table></section>"
         if quick_wins else ""
     )
@@ -313,8 +313,8 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 
     move_items = "".join(
         f"<li>{_moves_amount(s.get('move_incremental_delta_annual', s['delta_annual']))}"
-        f"<b>{html.escape(s['persona_name'])}</b> ({s['headcount']}) → "
-        f"<b>{html.escape(s['target_sku_reference'])}</b></li>"
+        f"<span class='move-desc'><b>{html.escape(s['persona_name'])}</b> ({s['headcount']}) → "
+        f"<b>{html.escape(s['target_sku_reference'])}</b></span></li>"
         for s in in_scope
     )
     part_today = (
@@ -558,8 +558,9 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
  .part-value{{font-size:1.35rem;font-weight:750;margin:.1rem 0}}
  .hero-caveat{{margin-top:.7rem;font-size:.82rem;color:var(--muted)}}
  ul.moves{{list-style:none;margin:.35rem 0 0;padding:0}}
- ul.moves li{{margin:.25rem 0;font-size:.95rem}}
- .move-amt{{display:inline-block;min-width:10.5rem;font-weight:700}}
+ ul.moves li{{margin:.25rem 0;font-size:.95rem;display:flex;gap:.55rem;align-items:baseline}}
+ .move-amt{{flex:0 0 8.5rem;font-weight:700}}
+ .move-desc{{flex:1;min-width:0}}
  .pos{{color:var(--pos)}} .neg{{color:var(--neg)}} .muted{{color:var(--muted)}}
  section{{margin:2rem 0}}
  h2{{font-size:1.12rem;color:var(--primary);margin:0 0 .4rem;
@@ -593,13 +594,14 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
    .hero{{padding:.9rem 1rem}}
    table{{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}}
    td:first-child,th:first-child{{min-width:190px}}
+   .move-amt{{flex-basis:6.5rem}}
    th,td{{padding:.42rem .5rem}}
  }}
 </style></head><body><main>
 <header>
 {logo_html}
 <h1>M365 TCO Readout</h1>
-<div class="sub">{html.escape(engagement.customer_name)} · {html.escape(engagement.market or "")}/{html.escape(engagement.currency or "USD")} · annualized {html.escape(engagement.currency or "USD")}</div>
+<div class="sub">{html.escape(engagement.customer_name)} · {html.escape(engagement.market or "")}/{html.escape(engagement.currency or "USD")}</div>
 </header>
 {hero}
 {narrative_section}

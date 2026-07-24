@@ -109,8 +109,8 @@ def test_readout_breaks_bridge_down_per_persona(client):
     assert "$50,000 per year" in html
     # Hero figures share one horizon (3yr): components sum to the headline.
     # Finance notation: added expense in parentheses, black; savings plain green.
-    assert "($120,000)</span><b>Sales</b> (100) → <b>Microsoft 365 E5</b>" in html
-    assert "($30,000)</span><b>Engineering</b> (50) → <b>Microsoft 365 E3</b>" in html
+    assert "($120,000)</span><span class='move-desc'><b>Sales</b> (100) → <b>Microsoft 365 E5</b></span>" in html
+    assert "($30,000)</span><span class='move-desc'><b>Engineering</b> (50) → <b>Microsoft 365 E3</b></span>" in html
     # The bridge is a matrix: a column head per persona (→ its target) + Total.
     assert "Sales <small>→ Microsoft 365 E5</small>" in html
     assert "Engineering <small>→ Microsoft 365 E3</small>" in html
@@ -188,7 +188,7 @@ def test_readout_disclosures_soft_inputs_and_honest_currency(client):
     assert "Inputs carried as assumptions" in html
     assert "KW <span class='muted'>(persona)</span>: estimate" in html
     assert "Okta <span" not in html          # hard-tagged input is not disclosed
-    assert "annualized USD" in html          # engagement currency, printed live
+    assert "US/USD" in html                  # engagement market/currency, printed live
 
     # All-hard engagement: the assumptions block is omitted, never a placeholder.
     eng2 = client.post("/api/engagements", json={"customer_name": "Hard Co"}).json()
