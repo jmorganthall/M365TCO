@@ -342,13 +342,27 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         else "<div class='hero-caveat'>Figures are run-rate: they assume retirements "
              "from day one; year one phases with contract end dates.</div>"
     )
+    # The components visibly SUM into the headline — the big number is the
+    # rolled-up total (quick wins + persona moves), the parts are its story.
+    if qw_total > 0 and in_scope:
+        moves_term = (
+            f"+ {_usd0(moves_value)}/yr from the persona moves" if moves_value > 0
+            else f"− {_usd0(moves_value)}/yr invested in the persona moves" if moves_value < 0
+            else "with the persona moves cost-neutral"
+        )
+        hero_sub = (
+            f"{_usd0(qw_total)}/yr from quick wins {moves_term} "
+            f"= <b>{_usd0(total_opportunity)}/yr</b> run-rate"
+        )
+    else:
+        hero_sub = f"{_usd0(total_opportunity)}/yr run-rate"
     hero = (
         f"<section class='hero'>"
         f"<div class='hero-label'>Total opportunity <span class='hero-note'>"
-        f"· {horizon}-year run-rate view</span></div>"
+        f"· {horizon}-year run-rate view · quick wins + licensing moves</span></div>"
         f"<div class='headline {head_cls}'>{_usd0(total_opportunity * horizon)} "
         f"<span class='headline-word'>{head_word}</span></div>"
-        f"<div class='hero-sub'>{_usd0(total_opportunity)}/yr run-rate</div>"
+        f"<div class='hero-sub'>{hero_sub}</div>"
         f"<div class='hero-split'>{part_today}{part_moves}</div>"
         f"{hero_caveat}"
         f"</section>"

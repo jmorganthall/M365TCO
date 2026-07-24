@@ -142,11 +142,15 @@ export default function Readout({ engagement }) {
                 : total < 0 ? `added cost over ${horizon * 12} months` : 'no net change'
               return (
                 <>
-                  <div className="muted">Total opportunity · {horizon}-year run-rate view · {engagement.currency} <PricingBadge /></div>
+                  <div className="muted">Total opportunity · {horizon}-year run-rate view · quick wins + licensing moves · {engagement.currency} <PricingBadge /></div>
                   <div className={`headline ${total > 0 ? 'pos' : ''}`} style={{ fontSize: '2.6rem' }}>
                     {usd0(total * horizon)} <span style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--muted)' }}>{word}</span>
                   </div>
-                  <div className="muted">{usd0(total)}/yr run-rate</div>
+                  <div className="muted">
+                    {qw > 0
+                      ? <>{usd0(qw)}/yr from quick wins {movesValue > 0 ? `+ ${usd0(movesValue)}/yr from the persona moves` : movesValue < 0 ? `− ${usd0(movesValue)}/yr invested in the persona moves` : 'with the persona moves cost-neutral'} = <b>{usd0(total)}/yr</b> run-rate</>
+                      : <>{usd0(total)}/yr run-rate</>}
+                  </div>
                   <div className="popcheck" style={{ marginTop: '.5rem' }}>
                     {qw > 0 && <div>① Retire duplicate tools today — no licensing change: <b className="pos">{usd0(qw)}/yr</b></div>}
                     <div>{qw > 0 ? '② ' : ''}Move each persona to right-sized licensing:{' '}
