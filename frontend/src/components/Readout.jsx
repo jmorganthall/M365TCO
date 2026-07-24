@@ -248,7 +248,7 @@ export default function Readout({ engagement }) {
           <table>
             <thead><tr>
               <th>Tool</th><th>Duplicated capability (already in current licensing)</th>
-              <th className="num">Covered</th><th className="num">Redundant today</th><th className="num">Save/yr</th>
+              <th className="num">Covered</th><th className="num">Redundant today</th><th className="num">Savings/yr</th>
             </tr></thead>
             <tbody>
               {r.quick_wins.map((q) => (

@@ -188,7 +188,7 @@ def test_readout_disclosures_soft_inputs_and_honest_currency(client):
     assert "Inputs carried as assumptions" in html
     assert "KW <span class='muted'>(persona)</span>: estimate" in html
     assert "Okta <span" not in html          # hard-tagged input is not disclosed
-    assert "annualized USD" in html          # engagement currency, printed live
+    assert "US/USD" in html                  # engagement market/currency, printed live
 
     # All-hard engagement: the assumptions block is omitted, never a placeholder.
     eng2 = client.post("/api/engagements", json={"customer_name": "Hard Co"}).json()

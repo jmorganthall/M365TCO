@@ -130,7 +130,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         f"licensing already provides. They can be retired <b>today</b>, with no licensing "
         f"change: <b class='pos'>{_usd(quick_win_total)}</b>/yr stops immediately.</p>"
         f"<table><thead><tr><th>Tool</th><th>Duplicated capability (already in current licensing)</th>"
-        f"<th>Seats on the tool</th><th>Redundant today</th><th>Stops/yr</th></tr></thead>"
+        f"<th>Seats on the tool</th><th>Redundant today</th><th>Savings/yr</th></tr></thead>"
         f"<tbody>{quick_win_rows}</tbody></table></section>"
         if quick_wins else ""
     )
@@ -601,7 +601,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 <header>
 {logo_html}
 <h1>M365 TCO Readout</h1>
-<div class="sub">{html.escape(engagement.customer_name)} · {html.escape(engagement.market or "")}/{html.escape(engagement.currency or "USD")} · annualized {html.escape(engagement.currency or "USD")}</div>
+<div class="sub">{html.escape(engagement.customer_name)} · {html.escape(engagement.market or "")}/{html.escape(engagement.currency or "USD")}</div>
 </header>
 {hero}
 {narrative_section}
