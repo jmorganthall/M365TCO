@@ -812,3 +812,49 @@ def test_move_of_untagging_persona_does_not_retire_others_tool():
     d = res.dispositions[0]
     assert d.disposition == Disposition.UNCHANGED
     assert d.residual_annual_cost == D("24000.00")
+
+
+def test_quick_win_requires_same_persona_holds_covering_license():
+    """A tool is redundant TODAY only where the SAME persona both uses it and
+    holds covering licensing (6.3a). Okta used by Contractors (no license) is
+    NOT a quick win just because Sales holds a covering E3 — retiring it would
+    strand the Contractors who actually use it."""
+    sales = Persona(id="sales", name="Sales", headcount=100)
+    ctr = Persona(id="ctr", name="Contractor", headcount=50)
+    e3 = CurrentLicenseLine(
+        quantity_assigned=100, unit_price_paid_annual=D("380"),
+        covered_outcome_ids=frozenset({IDENTITY}), persona_ids=("sales",),
+    )
+    okta = ThirdPartyProduct(
+        id="okta", name="Okta", annual_cost=D("25000"), covered_count=50,
+        delivered_outcome_ids=frozenset({IDENTITY}), persona_ids=frozenset({"ctr"}),
+    )
+    res = compute(Engagement(
+        id="e", personas=[sales, ctr], third_party_products=[okta],
+        scenarios=[], current_licenses=[e3],
+    ))
+    assert res.rollup.quick_wins == []
+    assert res.rollup.quick_win_savings_annual == D("0.00")
+
+
+def test_quick_win_credits_the_persona_that_holds_its_own_coverage():
+    """When the tool-using persona DOES hold covering licensing, it is a real
+    quick win for that persona's overlap — capped at the covering seats it holds
+    (shelfware: 30 of 50 Contractors on E3 → only 30 redundant)."""
+    ctr = Persona(id="ctr", name="Contractor", headcount=50)
+    e3 = CurrentLicenseLine(
+        quantity_assigned=30, unit_price_paid_annual=D("380"),
+        covered_outcome_ids=frozenset({IDENTITY}), persona_ids=("ctr",),
+    )
+    okta = ThirdPartyProduct(
+        id="okta", name="Okta", annual_cost=D("25000"), covered_count=50,
+        delivered_outcome_ids=frozenset({IDENTITY}), persona_ids=frozenset({"ctr"}),
+    )
+    res = compute(Engagement(
+        id="e", personas=[ctr], third_party_products=[okta],
+        scenarios=[], current_licenses=[e3],
+    ))
+    q = res.rollup.quick_wins[0]
+    assert q.displaced_today == 30                       # capped at the 30 E3 seats
+    assert q.credited_annual == D("15000.00")            # 30 × $500/seat
+    assert q.residual_today == 20
