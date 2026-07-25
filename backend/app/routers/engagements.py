@@ -224,7 +224,9 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
             engagement_id=dst.id, sku_reference=lic.sku_reference,
             quantity_purchased=lic.quantity_purchased, quantity_assigned=lic.quantity_assigned,
             unit_price_paid_annual=lic.unit_price_paid_annual,
-            discount_pct=lic.discount_pct, source_tag=lic.source_tag,
+            price_override=lic.price_override,
+            overridden_price_annual=lic.overridden_price_annual,
+            source_tag=lic.source_tag,
             segment=lic.segment, term_duration=lic.term_duration,
             billing_plan=lic.billing_plan,
         )
@@ -249,7 +251,10 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
             engagement_id=dst.id, persona_id=persona_map.get(s.persona_id, s.persona_id),
             target_sku_reference=s.target_sku_reference,
             target_unit_price_annual=s.target_unit_price_annual,
-            target_discount_pct=s.target_discount_pct, in_scope=s.in_scope,
+            target_discount_pct=s.target_discount_pct,
+            price_override=s.price_override,
+            overridden_price_annual=s.overridden_price_annual,
+            in_scope=s.in_scope,
             bp_swap_optout=s.bp_swap_optout,
             term_duration=s.term_duration, billing_plan=s.billing_plan,
         )

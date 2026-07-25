@@ -436,15 +436,29 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     # The from-state anchors the whole story: show what the customer holds
     # today (the current-licensing mix), never leave it invisible.
     if engagement.current_licenses:
-        lic_rows = "".join(
-            f"<tr><td>{html.escape(lic.sku_reference)}"
-            + (" <span class='muted'>(list price assumed)</span>"
-               if lic.source_tag == "ListPrice" else "")
-            + f"</td><td class='num'>{lic.quantity_assigned}</td>"
-            f"<td class='num'>{_usd(lic.unit_price_paid_annual)}</td>"
-            f"<td class='num'>{_usd(float(lic.unit_price_paid_annual or 0) * (lic.quantity_assigned or 0))}</td></tr>"
-            for lic in engagement.current_licenses
-        )
+        def _lic_row(lic) -> str:
+            effective = float(lic.effective_unit_price_annual)
+            list_base = float(lic.list_unit_price_annual)
+            # Override note: the SKU is unchanged, but the customer pays a
+            # negotiated rate — disclose it and the implied % off list.
+            note = ""
+            if lic.price_override:
+                off = (list_base - effective) / list_base if list_base else 0
+                note = (
+                    " <span class='muted'>(custom price"
+                    + (f" · −{_pct(off)} vs list {_usd(list_base)}" if list_base else "")
+                    + ")</span>"
+                )
+            elif lic.source_tag == "ListPrice":
+                note = " <span class='muted'>(list price assumed)</span>"
+            return (
+                f"<tr><td>{html.escape(lic.sku_reference)}{note}</td>"
+                f"<td class='num'>{lic.quantity_assigned}</td>"
+                f"<td class='num'>{_usd(effective)}</td>"
+                f"<td class='num'>{_usd(effective * (lic.quantity_assigned or 0))}</td></tr>"
+            )
+
+        lic_rows = "".join(_lic_row(lic) for lic in engagement.current_licenses)
         appendix_parts.append(
             "<p><b>Current Microsoft licensing (as provided):</b></p>"
             "<table><thead><tr><th>SKU</th><th>Seats assigned</th>"
@@ -486,15 +500,32 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
             "<p><b>Assumed full elimination</b> (savings asserted on users the target does "
             f"not automatically displace):</p><ul>{items}</ul>"
         )
-    # Only lines with a recorded discount are disclosed — an appendix line must
-    # say something real, never print a placeholder to the customer.
-    discounted = [lic for lic in engagement.current_licenses if lic.discount_pct]
-    if discounted:
-        items = "".join(
-            f"<li>{html.escape(lic.sku_reference)}: {_pct(lic.discount_pct)} discount</li>"
-            for lic in discounted
+    # Price overrides — the customer pays a negotiated rate that differs from the
+    # catalog list on some lines. Disclose each with its implied % off list so the
+    # baseline is transparent. Only real overrides are listed (never a placeholder).
+    persona_name = {p.id: p.name for p in engagement.personas}
+
+    def _override_note(list_base: float, effective: float) -> str:
+        if list_base and effective != list_base:
+            off = (list_base - effective) / list_base
+            return f"{_usd(effective)}/seat/yr (−{_pct(off)} vs list {_usd(list_base)})"
+        return f"{_usd(effective)}/seat/yr (custom price)"
+
+    override_items = [
+        f"<li>{html.escape(lic.sku_reference)}: "
+        f"{_override_note(float(lic.list_unit_price_annual), float(lic.effective_unit_price_annual))}</li>"
+        for lic in engagement.current_licenses if lic.price_override
+    ] + [
+        f"<li>{html.escape(persona_name.get(s.persona_id, 'Persona'))} → "
+        f"{html.escape(s.target_sku_reference)}: "
+        f"{_override_note(float(s.composed_list_annual), float(s.effective_net_annual))}</li>"
+        for s in engagement.scenarios if s.price_override
+    ]
+    if override_items:
+        appendix_parts.append(
+            "<p><b>Negotiated price overrides</b> (customer pays a rate that differs "
+            f"from catalog list):</p><ul>{''.join(override_items)}</ul>"
         )
-        appendix_parts.append(f"<p><b>Current Microsoft line discounts:</b></p><ul>{items}</ul>")
     # Input provenance (DATA_MODEL §9): separate hard inputs from soft ones.
     # Disclose every input whose source_tag marks it as an assumption rather than
     # a customer-stated/invoiced fact; omitted entirely when there are none.
@@ -696,6 +727,23 @@ def build_xlsx(engagement: models.Engagement, result: dict) -> bytes:
             s["in_scope"], s["current_spend_annual"], s["target_spend_annual"],
             s["delta_annual"], s["current_microsoft_annual"],
             s["current_third_party_offset_annual"],
+        ])
+
+    # Current licensing — the from-state, with the list baseline, the effective
+    # (paid) price, and any negotiated override made explicit.
+    wc = wb.create_sheet("Current licensing")
+    wc.append(
+        ["SKU", "Seats assigned", "List $/seat/yr", "Effective $/seat/yr",
+         "Price override", "% off list", "Annual"]
+    )
+    for lic in engagement.current_licenses:
+        list_base = float(lic.list_unit_price_annual)
+        effective = float(lic.effective_unit_price_annual)
+        off = (list_base - effective) / list_base if (lic.price_override and list_base) else 0
+        wc.append([
+            lic.sku_reference, lic.quantity_assigned, list_base, effective,
+            "yes" if lic.price_override else "no",
+            round(off, 4), effective * (lic.quantity_assigned or 0),
         ])
 
     wd = wb.create_sheet("Dispositions")

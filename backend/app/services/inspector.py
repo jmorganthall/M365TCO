@@ -31,9 +31,10 @@ _DERIVED = {
 _SYSTEM = {"created_at", "updated_at", "generated_at"}
 
 _LABELS = {
-    "sku_reference": "SKU reference", "unit_price_paid_annual": "Price paid ($/seat/yr)",
+    "sku_reference": "SKU reference", "unit_price_paid_annual": "List price ($/seat/yr)",
     "quantity_assigned": "Assigned", "quantity_purchased": "Purchased",
-    "discount_pct": "Discount", "persona_ids": "Applies to",
+    "price_override": "Price override", "overridden_price_annual": "Override price ($/seat/yr)",
+    "target_discount_pct": "Discount", "persona_ids": "Applies to",
     "raw_cost": "Cost (as entered)", "cost_period": "Period", "annual_cost": "Annual cost",
     "persona_name": "Persona", "whats_new": "What's new", "generated_at": "Generated",
     "covered_count": "Covers", "covered_count_override": "Covers override",
@@ -96,7 +97,7 @@ def _registry():
          "label": "Current Microsoft licensing",
          "desc": "What the customer holds today. Feeds the Microsoft side of current spend.",
          "primary": ["sku_reference", "quantity_assigned", "unit_price_paid_annual"],
-         "extra": ["persona_ids"]},
+         "extra": ["price_override", "overridden_price_annual", "persona_ids"]},
         {"cls": models.ThirdPartyProduct, "type": "ThirdPartyProduct",
          "label": "Third-party products",
          "desc": "Non-Microsoft spend. Effective cost (managed split) feeds displacement.",

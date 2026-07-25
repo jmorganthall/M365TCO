@@ -8,6 +8,21 @@ import { BasisSelect, billingLabel, effectiveBasis, termLabel } from './basis.js
 const annualToMonthly = (a) => (a ? Math.round((Number(a) / 12) * 100) / 100 : 0)
 const monthlyToAnnual = (m) => Math.round(Number(m || 0) * 12 * 100) / 100
 
+// The catalog LIST baseline (unit_price_paid_annual) and the EFFECTIVE price the
+// customer pays — the manual override when the line overrides list, else the list
+// baseline. Mirrors CurrentMicrosoftLicense.effective_unit_price_annual on the
+// backend so the GUI and engine agree on what the line costs.
+const listAnnual = (l) => Number(l.unit_price_paid_annual || 0)
+const effectiveAnnual = (l) =>
+  l.price_override && l.overridden_price_annual != null
+    ? Number(l.overridden_price_annual)
+    : listAnnual(l)
+// Fraction below list the effective price sits at (0 when at/above list).
+const pctOffList = (l) => {
+  const list = listAnnual(l)
+  return list > 0 ? Math.max(0, (list - effectiveAnnual(l)) / list) : 0
+}
+
 // Monthly $/seat cell: holds local text so decimals type cleanly, commits the
 // annualized value on blur. Resyncs when the stored value changes (e.g. a SKU
 // pick auto-fills the price).
@@ -38,10 +53,13 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
   const notInCatalog = catalog.length && (l.sku_reference || '').trim() && !matchSku(catalog, l.sku_reference, basis)
   // Show the basis on the row when a line overrides the engagement default.
   const overridden = l.segment || l.term_duration || l.billing_plan
+  const off = pctOffList(l)
   const chips = []
   if (notInCatalog) chips.push(<span key="c" className="badge warn" title="No matching SKU in the imported price list">⚠ not in catalog</span>)
   if (!fullyAssigned) chips.push(<span key="a" className="badge warn">{l.quantity_assigned}/{l.quantity_purchased} assigned</span>)
-  if (l.discount_pct) chips.push(<span key="d" className="badge muted">−{pct(l.discount_pct)}</span>)
+  if (l.price_override) chips.push(
+    <span key="ov" className="badge" title={`Custom price · list ${usd(listAnnual(l))}/seat/yr`}>
+      override{off > 0 ? ` −${pct(off)}` : ''}</span>)
   if (overridden) chips.push(<span key="basis" className="badge muted" title="Pricing basis overrides the engagement default">{basis.segment} · {basis.term}</span>)
   tagNames.forEach((n, i) => chips.push(<span key={`p${i}`} className="badge muted">{n}</span>))
   // No persona tag → the engine treats the line as an org-wide pool (spread
@@ -51,6 +69,28 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
   const togglePersona = (pid) => {
     const next = tagIds.includes(pid) ? tagIds.filter((x) => x !== pid) : [...tagIds, pid]
     update(l.id, { persona_ids: next })
+  }
+
+  // Turn the explicit price override on/off. Enabling seeds the manual price from
+  // the current effective/list value so the $/seat cell doesn't jump; disabling
+  // keeps the stored override for a later re-enable and lets the effective price
+  // fall back to list.
+  const toggleOverride = (on) => {
+    if (on) {
+      const seed = l.overridden_price_annual != null ? l.overridden_price_annual : listAnnual(l)
+      update(l.id, { price_override: true, overridden_price_annual: seed })
+    } else {
+      update(l.id, { price_override: false })
+    }
+  }
+
+  // "Revert to list": stop overriding AND re-pull the list baseline from the
+  // catalog at this line's basis, honoring the current terms (segment/term/billing).
+  const revertToList = () => {
+    const m = catalog.length ? matchSku(catalog, l.sku_reference, basis) : null
+    const patch = { price_override: false }
+    if (m) { patch.unit_price_paid_annual = m.annual_erp_price; patch.source_tag = 'ListPrice' }
+    update(l.id, patch)
   }
 
   // A line-level basis change (segment/term/payment) re-resolves the SKU
@@ -94,14 +134,20 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
             settledSku.current = sku.sku_title
             if (changed || !Number(l.unit_price_paid_annual)) {
               // ERP = the customer-facing list price. UnitPrice is the partner
-              // net (~ERP × 0.80) and must never seed what a CUSTOMER pays.
-              update(l.id, { unit_price_paid_annual: sku.annual_erp_price, source_tag: 'ListPrice' })
+              // net (~ERP × 0.80) and must never seed what a CUSTOMER pays. A
+              // genuine SKU change also clears any price override — the override
+              // was a negotiated rate for the OLD SKU.
+              const patch = { unit_price_paid_annual: sku.annual_erp_price, source_tag: 'ListPrice' }
+              if (changed) { patch.price_override = false; patch.overridden_price_annual = null }
+              update(l.id, patch)
             }
           }} /></td>
         <td className="num"><input type="number" style={{ width: 80 }} value={l.quantity_purchased}
           onChange={(e) => setQty(e.target.value)} /></td>
-        <td className="num"><MonthlyPriceInput annual={l.unit_price_paid_annual} style={{ width: 100 }}
-          onCommit={(annual) => update(l.id, { unit_price_paid_annual: annual })} /></td>
+        <td className="num"><MonthlyPriceInput annual={effectiveAnnual(l)} style={{ width: 100 }}
+          onCommit={(annual) => update(l.id, l.price_override
+            ? { overridden_price_annual: annual }
+            : { unit_price_paid_annual: annual })} /></td>
         <td><div className="pill-list">
           {chips.length ? chips : <span className="muted" style={{ fontSize: '.75rem' }}>fully assigned</span>}
         </div></td>
@@ -116,10 +162,18 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
                 <input type="number" value={l.quantity_assigned}
                   onChange={(e) => update(l.id, { quantity_assigned: Number(e.target.value) })} />
                 <small className="src">Below purchased = shelfware.</small></div>
-              <div><label>Discount</label>
-                <input type="number" step="0.05" value={l.discount_pct ?? ''} placeholder="e.g. 0.15"
-                  onChange={(e) => update(l.id, { discount_pct: e.target.value === '' ? null : Number(e.target.value) })} />
-                <small className="src">Fraction off list (0.15 = 15%). Recorded on the readout.</small></div>
+              <div><label>Custom price</label>
+                <label className="src" style={{ display: 'flex', alignItems: 'center', gap: '.4rem' }}>
+                  <input type="checkbox" style={{ width: 'auto' }} checked={!!l.price_override}
+                    onChange={(e) => toggleOverride(e.target.checked)} />
+                  Override the list price
+                </label>
+                <small className="src">
+                  {l.price_override
+                    ? <>Paying <b>{usd(effectiveAnnual(l) / 12)}</b>/seat/mo · list {usd(listAnnual(l) / 12)}
+                      {off > 0 ? ` (−${pct(off)})` : ''}. Edit the $/seat cell above.</>
+                    : <>The $/seat cell shows the catalog list. Tick to enter a negotiated price.</>}
+                </small></div>
               <div><label>Applies to (personas)</label>
                 <div className="pill-list">
                   {personas.map((p) => (
@@ -147,13 +201,10 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
                 <small className="src">Changing the basis re-seeds this line's $/seat from the matching catalog variant.</small></div>
               <div><label>List price</label>
                 <button className="ghost sm" style={{ marginTop: '.15rem' }}
-                  disabled={!catalog.length || !(l.sku_reference || '').trim()}
-                  title="Replace this line's $/seat with the catalog ERP (customer-facing list) for the SKU at this line's basis"
-                  onClick={() => {
-                    const m = matchSku(catalog, l.sku_reference, basis)
-                    if (m) update(l.id, { unit_price_paid_annual: m.annual_erp_price, source_tag: 'ListPrice' })
-                  }}>↺ Reseed from list</button>
-                <small className="src">Overwrites the entered price with the catalog list (ERP).</small></div>
+                  disabled={!l.price_override && (!catalog.length || !(l.sku_reference || '').trim())}
+                  title="Clear the override and re-pull the catalog list (ERP) for this SKU at this line's basis"
+                  onClick={revertToList}>↺ Revert to list price</button>
+                <small className="src">Clears any override and re-seeds the catalog list (ERP) at this basis.</small></div>
             </div>
           </td>
         </tr>

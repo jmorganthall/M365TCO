@@ -120,8 +120,12 @@ else:
 # personas move to a target — rather than silently vanishing from the TCO.
 current_microsoft = Σ over lines whose pool includes this persona of
       line_total * (persona.headcount / Σ headcount of the line's pool)
-    where line_total = line.quantity_assigned * line.unit_price_paid_annual
+    where line_total = line.quantity_assigned * line.effective_unit_price_annual
       and pool = line.persona_ids if set, else all personas with a scenario
+# effective_unit_price_annual = the line's explicit price override when set
+# (price_override + overridden_price_annual), else the catalog list baseline
+# (unit_price_paid_annual). An override is a negotiated rate on the SAME SKU, so it
+# lowers current spend without changing coverage.
 
 # Linear-by-user offset, CAPPED at the covered population (6.3a): for each
 # product this scenario displaces, credit allocated_units * per_unit_annual_cost.
@@ -146,6 +150,9 @@ current_spend_annual = current_microsoft + offset
 # outcomes across the base + add-on bundles, sums their list prices, and applies
 # the scenario discount to yield the net target_unit_price_annual the engine uses:
 #   net = (base_list + Σ addon_list) * (1 - target_discount_pct)
+# An explicit price override (price_override + overridden_price_annual) SUPERSEDES
+# this: net = overridden_price_annual — a negotiated net rate on the same composed
+# target (the discount is ignored while the override is on).
 # target_covered_outcome_ids is the union across base + add-ons.
 # Business Premium swap (data layer): when the engagement's BP swap is active for a
 # scenario (inherited, not opted out, Business Premium covers every outcome the persona

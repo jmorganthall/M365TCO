@@ -99,7 +99,9 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
     current_lines = [
         CurrentLicenseLine(
             quantity_assigned=lic.quantity_assigned,
-            unit_price_paid_annual=_dec(lic.unit_price_paid_annual),
+            # Effective price = the override when the line overrides list, else the
+            # catalog list baseline — so an override actually lowers current spend.
+            unit_price_paid_annual=lic.effective_unit_price_annual,
             sku_reference=lic.sku_reference,
             persona_ids=tuple(lic.persona_ids),
             # What this existing license already delivers (its bundle's ratified
@@ -144,16 +146,18 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
         if swap.applies(eng, swap_ctx, s):
             bp = swap_ctx["bp"]
             covered = set(swap_ctx["bp_covered"])
-            list_price = swap_ctx["bp_price"]
+            # A swap substitutes Business Premium wholesale; the persona's own price
+            # override doesn't apply to a target it isn't on.
+            net_price = swap_ctx["bp_price"] * (Decimal("1") - _dec(s.target_discount_pct))
             target_ref = bp.name
         else:
             covered = set(sku_outcomes.get(_cover_key(db, s.target_sku_reference), set()))
-            list_price = _dec(s.target_unit_price_annual)
             for addon in s.addons:
                 covered |= sku_outcomes.get(addon.bundle_id, set())
-                list_price += _dec(addon.unit_price_annual)
+            # Net = the override when the scenario overrides list, else
+            # (base + add-ons) × (1 − discount).
+            net_price = s.effective_net_annual
             target_ref = s.target_sku_reference
-        net_price = list_price * (Decimal("1") - _dec(s.target_discount_pct))
         scenarios.append(EngScenario(
             id=s.id,
             persona_id=s.persona_id,
@@ -239,7 +243,7 @@ def analyze_persona_bundles(
     current_ms = Decimal("0")
     for line in persona_lines:
         required |= sku_outcomes.get(_cover_key(db, line.sku_reference), set())
-        line_total = Decimal(line.quantity_assigned) * _dec(line.unit_price_paid_annual)
+        line_total = Decimal(line.quantity_assigned) * line.effective_unit_price_annual
         tagged = [pid for pid in line.persona_ids if pid in hc]
         tagged_hc = sum(hc[pid] for pid in tagged)
         share = (Decimal(hc.get(persona_id, 0)) / Decimal(tagged_hc)) if tagged_hc > 0 \

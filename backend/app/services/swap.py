@@ -114,13 +114,11 @@ def _business_cap(db: Session, bp_id: str) -> tuple[models.LicenseLimit | None, 
 
 
 def _own_target_net(s: models.PersonaScenario) -> Decimal:
-    """The scenario's own composed target price per seat (base + add-ons, less the
-    scenario discount) — the future-state cost it would carry WITHOUT the swap. This
-    is what swapping to Business Premium is measured against for the saving test."""
-    list_price = _dec(s.target_unit_price_annual)
-    for a in s.addons:
-        list_price += _dec(a.unit_price_annual)
-    return list_price * (Decimal("1") - _dec(s.target_discount_pct))
+    """The scenario's own net target price per seat — the future-state cost it would
+    carry WITHOUT the swap, which swapping to Business Premium is measured against
+    for the saving test. Honors an explicit price override (which supersedes the
+    base + add-ons − discount composition); see PersonaScenario.effective_net_annual."""
+    return s.effective_net_annual
 
 
 def compute_context(db: Session, eng: models.Engagement) -> dict:
