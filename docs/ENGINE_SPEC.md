@@ -258,9 +258,10 @@ fundable                 = max(msft_uplift_annual, 0)
 ecif_funding_low_annual  = fundable / ecif_roi_conservative   # e.g. 10:1 → 1/10 (less)
 ecif_funding_high_annual = fundable / ecif_roi_generous       # e.g.  5:1 → 1/5  (more)
 # ecif_roi_conservative / ecif_roi_generous are engagement policy inputs (default
-# 10 and 5). Surfaced on the readout's Microsoft ECIF card only when the engagement
-# is flagged a managed Microsoft account (a presentation gate; the math is
-# unconditional). Advisory — actual ECIF is scoped with the Microsoft account team.
+# 10 and 5). Surfaced as an advisory co-investment note under the readout's next
+# steps only when the engagement is flagged a managed Microsoft account (a
+# presentation gate; the math is unconditional). Advisory — actual ECIF is scoped
+# with the Microsoft account team.
 ```
 
 > Rule 2 — override disclosure: a ForceFullElimination override asserts savings

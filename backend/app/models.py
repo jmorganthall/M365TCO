@@ -114,9 +114,9 @@ class Engagement(Base):
     # the tenant over the cap — it falls through to the next-best plan. User-entered.
     business_cap_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     # Managed Microsoft account: the customer has a Microsoft Account Team Unit
-    # (ATU) assigned. When on, the readout surfaces the Microsoft ECIF projected-
-    # funding card (Microsoft co-investment that funds partner professional
-    # services against the annual uplift in Microsoft spend). User-entered.
+    # (ATU) assigned. When on, the readout adds a Microsoft ECIF co-investment note
+    # under Recommended next steps (Microsoft may fund partner professional services
+    # against the annual uplift in Microsoft spend). User-entered.
     managed_ms_account: Mapped[bool] = mapped_column(Boolean, default=False)
     # ECIF funding is quoted as an ROI ratio N:1 — Microsoft may fund ~1/N of the
     # annual Microsoft-spend uplift. The projected funding is presented as a range

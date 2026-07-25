@@ -145,7 +145,7 @@ export default function CustomerInfo({ engagement, meta, onUpdate }) {
       </div>
 
       <div style={{ marginTop: '1rem' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '.4rem', margin: 0 }}>
+        <label className="check">
           <input type="checkbox" checked={f.managed_ms_account}
             onChange={(e) => { setF({ ...f, managed_ms_account: e.target.checked }); commit('managed_ms_account', e.target.checked) }} />
           <b>Managed Microsoft account</b> {savedTag('managed_ms_account')}
