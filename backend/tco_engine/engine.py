@@ -280,27 +280,50 @@ def compute(engagement: Engagement) -> EngineResult:
     products_by_id = {p.id: p for p in engagement.third_party_products}
 
     # ----- Quick wins: duplicates the CURRENT licensing already covers (6.10) -----
-    # Scenario-independent: outcomes the existing Microsoft licensing already
-    # delivers, and — per product — the seats that already hold a license covering
-    # all its outcomes. A product fully covered today is a duplicate the customer
-    # can drop now ("save $X today without doing anything").
-    current_covered_all: set[str] = set()
-    for line in engagement.current_licenses:
-        current_covered_all |= set(line.covered_outcome_ids)
-
+    # Scenario-independent: a tool is redundant TODAY only for seats where the
+    # SAME persona both USES the tool and already HOLDS a current license
+    # covering all its outcomes (6.3a). Crediting a tool because a *different*
+    # persona holds covering licensing would assert savings the customer can't
+    # realize — retiring it would strand the personas who actually use it.
     quick_wins: list[QuickWin] = []
     for product in engagement.third_party_products:
         outs = product.delivered_outcome_ids
-        if not outs or not (set(outs) <= current_covered_all):
+        if not outs:
             continue
-        # Seats already holding a current license that covers ALL this product's
-        # outcomes — the overlapping (redundant) population.
-        covered_pop = sum(
-            line.quantity_assigned
-            for line in engagement.current_licenses
+        covering_lines = [
+            line for line in engagement.current_licenses
             if set(outs) <= set(line.covered_outcome_ids)
-        )
-        displaced_today = min(product.covered_count, covered_pop)
+        ]
+        if not covering_lines:
+            continue
+
+        if product.persona_ids:
+            # Per-persona overlap: a tagged persona is redundant for this tool up
+            # to the covering seats it actually holds — its own tagged covering
+            # lines, or its full headcount when an untagged (org-wide) line covers
+            # everyone.
+            untagged_covers = any(not line.persona_ids for line in covering_lines)
+            displaced_today = 0
+            for pid in product.persona_ids:
+                p = personas.get(pid)
+                if p is None:
+                    continue
+                if untagged_covers:
+                    covering_seats = p.headcount
+                else:
+                    covering_seats = sum(
+                        line.quantity_assigned
+                        for line in covering_lines
+                        if pid in line.persona_ids
+                    )
+                displaced_today += min(p.headcount, covering_seats)
+            displaced_today = min(product.covered_count, displaced_today)
+        else:
+            # Untagged tool (org-wide): no persona attribution possible, so the
+            # covering population is every covering line's assigned seats.
+            covered_pop = sum(line.quantity_assigned for line in covering_lines)
+            displaced_today = min(product.covered_count, covered_pop)
+
         credited = _money(Decimal(displaced_today) * product.per_unit_annual_cost)
         if credited <= 0:
             continue

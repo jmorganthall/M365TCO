@@ -251,18 +251,29 @@ move_incremental_delta_annual = net_tco_delta_annual + freed_redundant_today_ann
 
 ## Quick wins — duplicates the current licensing already covers (6.10)
 
+Scenario-independent. A tool is redundant TODAY only where the **same persona**
+both USES the tool and already HOLDS a current license covering all its outcomes
+(persona-scoped, §6.3a). Crediting a tool because a *different* persona holds
+covering licensing would assert savings the customer can't realize — retiring it
+would strand the personas who actually use it.
+
 ```
-# Scenario-independent. current_covered = union of covered_outcome_ids across all
-# current license lines (each line's bundle's ratified Microsoft coverage). A
-# third-party product is a QUICK WIN when it delivers ≥1 outcome and ALL of its
-# delivered outcomes are already in current_covered — the customer is paying twice
-# and can drop it TODAY, with no move ("save $X today without doing anything").
-for product where delivered_outcome_ids ⊆ current_covered and delivered ≠ ∅:
-    covered_pop      = Σ quantity_assigned of current lines whose covered_outcome_ids
-                       ⊇ product.delivered_outcome_ids            # seats already covered
-    displaced_today  = min(product.covered_count, covered_pop)
-    credited_annual  = displaced_today * product.per_unit_annual_cost   # effective basis
-    residual_today   = covered_count - displaced_today
+covering_lines(product) = current lines L whose covered_outcome_ids ⊇ product.delivered_outcome_ids
+
+for product with delivered_outcome_ids ≠ ∅ and covering_lines non-empty:
+    if product.persona_ids:                       # TAGGED tool → per-persona overlap
+        untagged_covers = any covering line is untagged (org-wide)
+        displaced_today = Σ over persona P in product.persona_ids of
+            min(P.headcount,
+                P.headcount               if untagged_covers          # org-wide line covers everyone
+                else Σ quantity_assigned of covering lines tagged to P)
+        displaced_today = min(product.covered_count, displaced_today)
+    else:                                          # UNTAGGED tool → org-wide (legacy)
+        covered_pop     = Σ quantity_assigned of covering_lines
+        displaced_today = min(product.covered_count, covered_pop)
+
+    credited_annual = displaced_today * product.per_unit_annual_cost   # effective basis
+    residual_today  = covered_count - displaced_today
 quick_win_savings_annual = Σ credited_annual over quick-win products (credited > 0)
 ```
 
