@@ -143,9 +143,10 @@ FK, UUID PK, cascade-deleted with the engagement.
   Business Premium to save" toggle (§4.8b). Each eligible scenario inherits it
   unless the persona opts out.
 - **Note:** `managed_ms_account` marks a customer with a Microsoft Account Team
-  Unit (ATU) assigned. When set, the readout surfaces the **Microsoft ECIF
-  projected-funding** card — a presentation gate only; the engine computes the
-  uplift and funding range unconditionally (ENGINE_SPEC §6.8b). `ecif_roi_conservative`
+  Unit (ATU) assigned. When set, the readout adds an advisory **Microsoft ECIF
+  co-investment** note under *Recommended next steps* (the Fund step) — a
+  presentation gate only; the engine computes the uplift and funding range
+  unconditionally (ENGINE_SPEC §6.8b). `ecif_roi_conservative`
   (default 10) and `ecif_roi_generous` (default 5) are the ROI ratios N:1 the engine
   divides the annual Microsoft-spend uplift by to project the funding range Microsoft
   may co-invest (~1/N of the uplift). Advisory — actual ECIF is scoped with the

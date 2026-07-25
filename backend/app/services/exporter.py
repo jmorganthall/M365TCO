@@ -530,6 +530,27 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     # assumed to confirmed. Validate → Sequence → Fund → Decide, plus the two
     # objections a CIO raises unprompted (change management, one-time cost).
     n_retire = len(fully_elim)
+    # The Fund step. For a managed account (a Microsoft ATU is assigned) with a
+    # positive Microsoft-spend uplift, quantify the ECIF co-investment inline
+    # rather than as a headline — Microsoft may fund ~1/N of the annual uplift.
+    fund_step = (
+        "<li><b>Fund.</b> Microsoft co-investment programs may offset transition "
+        "cost — quantified in the follow-on.</li>"
+    )
+    if engagement.managed_ms_account and (rollup.get("msft_uplift_annual", 0) or 0) > 0:
+        uplift = rollup["msft_uplift_annual"]
+        ecif_low = rollup.get("ecif_funding_low_annual", 0) or 0
+        ecif_high = rollup.get("ecif_funding_high_annual", 0) or 0
+        cons = _fmt_ratio(engagement.ecif_roi_conservative)
+        gen = _fmt_ratio(engagement.ecif_roi_generous)
+        fund_step = (
+            "<li><b>Fund.</b> As a managed account (a Microsoft Account Team Unit is "
+            f"assigned), this move lifts annual Microsoft spend by {_usd0(uplift)}/yr. "
+            "Microsoft may be willing to co-invest partner professional services against "
+            f"that uplift via ECIF — roughly {_usd0(ecif_low)}–{_usd0(ecif_high)}/yr "
+            f"(≈ 1/{cons}–1/{gen} of the uplift) to accelerate adoption. Indicative only; "
+            "scope with the Microsoft account team.</li>"
+        )
     next_steps_section = (
         "<section><h2>Recommended next steps</h2><ol>"
         "<li><b>Validate.</b> Confirm current licensing counts and third-party invoices, "
@@ -537,8 +558,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         "— this converts the assumptions above into an invoice-verified business case.</li>"
         "<li><b>Sequence.</b> Co-term each retirement against its renewal date into a "
         "phased savings schedule. The figures here assume full savings from day one; year one phases in.</li>"
-        "<li><b>Fund.</b> Microsoft co-investment programs may offset transition cost — "
-        "quantified in the follow-on.</li>"
+        + fund_step +
         "<li><b>Decide.</b> A 30-day validation sprint converts this readout into an "
         "invoice-verified, phased business case.</li></ol>"
         "<p class='sub'>Noted up front: savings are gross of one-time migration cost, and "
@@ -546,48 +566,6 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         "not just license swaps — both are scoped in the follow-on.</p></section>"
         if in_scope else ""
     )
-
-    # Microsoft ECIF projected funding — managed accounts only (a Microsoft ATU is
-    # assigned). The net uplift in annual Microsoft spend (target − current) and the
-    # range Microsoft may fund to accelerate adoption (~1/N of the uplift). Advisory.
-    ecif_section = ""
-    if engagement.managed_ms_account:
-        uplift = rollup.get("msft_uplift_annual", 0) or 0
-        cons = _fmt_ratio(engagement.ecif_roi_conservative)
-        gen = _fmt_ratio(engagement.ecif_roi_generous)
-        if uplift > 0:
-            ecif_low = rollup.get("ecif_funding_low_annual", 0) or 0
-            ecif_high = rollup.get("ecif_funding_high_annual", 0) or 0
-            ecif_section = (
-                "<section><h2>Microsoft ECIF — projected funding</h2>"
-                "<p class='sub'>Managed account with a Microsoft Account Team Unit (ATU) "
-                "assigned. Microsoft <b>may</b> fund partner professional services to "
-                f"accelerate adoption — typically {cons}:1 ROI (≈ 1/{cons} of the annual "
-                f"uplift), moving up to {gen}:1 (≈ 1/{gen}) for certain motions. Indicative "
-                "only; actual ECIF is scoped and approved with the Microsoft account team.</p>"
-                f"<div class='headline' style='color:var(--accent)'>{_usd0(ecif_low)} – "
-                f"{_usd0(ecif_high)} <span class='headline-word'>may be funded / yr</span></div>"
-                "<table class='bridge'><tbody>"
-                "<tr><td>Target-state Microsoft licensing (annual, in scope)</td>"
-                f"<td class='num'>{_usd(target_ms)}</td></tr>"
-                "<tr><td>Less: current-state Microsoft licensing (annual, in scope)</td>"
-                f"<td class='num'>−{_usd(existing_ms)}</td></tr>"
-                "<tr class='total'><td><b>Net annual uplift in Microsoft spend</b></td>"
-                f"<td class='num'><b>{_usd(uplift)}</b></td></tr>"
-                f"<tr class='sub'><td>Projected ECIF funding — {cons}:1 (≈ 1/{cons} of uplift)</td>"
-                f"<td class='num'>{_usd(ecif_low)}</td></tr>"
-                f"<tr class='sub'><td>Projected ECIF funding — {gen}:1 (≈ 1/{gen} of uplift)</td>"
-                f"<td class='num'>{_usd(ecif_high)}</td></tr>"
-                "</tbody></table></section>"
-            )
-        else:
-            ecif_section = (
-                "<section><h2>Microsoft ECIF — projected funding</h2>"
-                "<p class='sub'>Managed account with a Microsoft ATU assigned. The proposed "
-                f"future state does not increase annual Microsoft spend (net uplift {_usd(uplift)}), "
-                "so there is no Microsoft-spend growth for ECIF to fund against. ECIF accelerates "
-                "adoption where the move grows Microsoft consumption.</p></section>"
-            )
 
     # Readout branding (user-entered). Sanitize hard: colors must match a strict
     # CSS-color pattern and the logo must be a base64 image data URL, so neither
@@ -679,7 +657,6 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 {hero}
 {narrative_section}
 {quick_win_section}
-{ecif_section}
 
 <section><h2>Per-persona scenarios</h2>
 <table><thead><tr><th>Persona</th><th>Target SKU</th><th>Headcount</th>

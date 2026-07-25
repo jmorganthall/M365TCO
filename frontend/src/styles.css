@@ -133,6 +133,17 @@ input, select, textarea {
   background: var(--panel2); border: 1px solid var(--border); color: var(--ink);
   border-radius: 6px; padding: .4rem .5rem; font-size: .85rem; width: 100%;
 }
+/* Checkboxes and radios must NOT inherit the full-width text-field styling above:
+   reset them to their natural control size so they sit inline next to a label
+   instead of stretching into a box that shoves the label away. */
+input[type="checkbox"], input[type="radio"] {
+  width: auto; padding: 0; margin: 0; border-radius: 0;
+  accent-color: var(--accent); vertical-align: middle; cursor: pointer;
+}
+/* An inline checkbox+label control: the box and its text on one tidy row, the
+   label at readable weight/color (not the muted field-label styling above). */
+label.check { display: inline-flex; align-items: center; gap: .45rem; margin: 0;
+  font-size: .9rem; color: var(--ink); cursor: pointer; }
 label { display: block; font-size: .76rem; color: var(--muted); margin-bottom: .2rem; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: .45rem .55rem; border-bottom: 1px solid var(--border); font-size: .84rem; }
