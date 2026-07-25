@@ -246,6 +246,21 @@ move_incremental_delta_annual = net_tco_delta_annual + freed_redundant_today_ann
 # (per scenario: move_incremental_delta_annual = delta_annual + Σ its offsets'
 #  redundant_today_annual). The identity holds by construction:
 #  net = move_incremental − freed_redundant_today.
+
+# 6.8b ECIF projected funding — the net uplift in annual Microsoft spend and the
+# range Microsoft may co-invest (ECIF) to accelerate adoption. Uplift is the pure
+# Microsoft increase (target − existing Microsoft), EXCLUDING the third-party
+# offset: ECIF tracks incremental Microsoft revenue, not net customer TCO. The
+# funding ends divide the uplift by the engagement's ROI ratios (N:1 → ~1/N of the
+# uplift). A non-positive uplift, or a non-positive ratio, yields zero funding.
+msft_uplift_annual       = target_microsoft_annual − existing_microsoft_annual
+fundable                 = max(msft_uplift_annual, 0)
+ecif_funding_low_annual  = fundable / ecif_roi_conservative   # e.g. 10:1 → 1/10 (less)
+ecif_funding_high_annual = fundable / ecif_roi_generous       # e.g.  5:1 → 1/5  (more)
+# ecif_roi_conservative / ecif_roi_generous are engagement policy inputs (default
+# 10 and 5). Surfaced on the readout's Microsoft ECIF card only when the engagement
+# is flagged a managed Microsoft account (a presentation gate; the math is
+# unconditional). Advisory — actual ECIF is scoped with the Microsoft account team.
 ```
 
 > Rule 2 — override disclosure: a ForceFullElimination override asserts savings

@@ -288,6 +288,46 @@ export default function Readout({ engagement }) {
         </div>
       )}
 
+      {engagement.managed_ms_account && (
+        <div className="card" style={{ borderColor: 'var(--accent, #2563eb)' }}>
+          <div className="muted">🤝 Microsoft ECIF — projected funding <small>(managed account · Microsoft ATU assigned)</small></div>
+          {r.msft_uplift_annual > 0 ? (
+            <>
+              <div className="headline" style={{ color: 'var(--accent, #2563eb)' }}>
+                {usd0(r.ecif_funding_low_annual)}
+                <span style={{ margin: '0 .4rem', fontWeight: 400, color: 'var(--muted)' }}>–</span>
+                {usd0(r.ecif_funding_high_annual)}
+                <span style={{ fontSize: '1rem', fontWeight: 400, color: 'var(--muted)' }}> may be funded</span>
+              </div>
+              <p className="hint">Microsoft <b>may</b> fund partner professional services to accelerate adoption —
+                typically <b>{Number(engagement.ecif_roi_conservative)}:1</b> ROI (≈ 1/{Number(engagement.ecif_roi_conservative)} of
+                the annual uplift), moving up to <b>{Number(engagement.ecif_roi_generous)}:1</b> (≈ 1/{Number(engagement.ecif_roi_generous)})
+                for certain motions. Applied to the net annual uplift in Microsoft spend below.
+                Indicative only — actual ECIF is scoped and approved with the Microsoft account team.</p>
+              <table>
+                <tbody>
+                  <tr><td>Target-state Microsoft licensing <small className="muted">(annual, in scope)</small></td>
+                    <td className="num">{usd(r.target_microsoft_annual)}</td></tr>
+                  <tr><td>Less: current-state Microsoft licensing <small className="muted">(annual, in scope)</small></td>
+                    <td className="num">−{usd(r.existing_microsoft_annual)}</td></tr>
+                  <tr style={{ borderTop: '2px solid var(--ink, #1f2430)' }}>
+                    <td><b>Net annual uplift in Microsoft spend</b></td>
+                    <td className="num"><b>{usd(r.msft_uplift_annual)}</b></td></tr>
+                  <tr><td>Projected ECIF funding — {Number(engagement.ecif_roi_conservative)}:1 <small className="muted">(≈ 1/{Number(engagement.ecif_roi_conservative)} of uplift)</small></td>
+                    <td className="num">{usd(r.ecif_funding_low_annual)}</td></tr>
+                  <tr><td>Projected ECIF funding — {Number(engagement.ecif_roi_generous)}:1 <small className="muted">(≈ 1/{Number(engagement.ecif_roi_generous)} of uplift)</small></td>
+                    <td className="num">{usd(r.ecif_funding_high_annual)}</td></tr>
+                </tbody>
+              </table>
+            </>
+          ) : (
+            <p className="hint">The proposed future state doesn't increase annual Microsoft spend
+              (net uplift {usd(r.msft_uplift_annual)}), so there's no Microsoft-spend growth for ECIF to
+              fund against. ECIF accelerates adoption where the move grows Microsoft consumption.</p>
+          )}
+        </div>
+      )}
+
       <div className="card">
         <h2>Per-persona scenarios</h2>
         <table>

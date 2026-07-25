@@ -113,6 +113,18 @@ class Engagement(Base):
     # recommended, and will not recommend a Business plan for a persona that would push
     # the tenant over the cap — it falls through to the next-best plan. User-entered.
     business_cap_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Managed Microsoft account: the customer has a Microsoft Account Team Unit
+    # (ATU) assigned. When on, the readout surfaces the Microsoft ECIF projected-
+    # funding card (Microsoft co-investment that funds partner professional
+    # services against the annual uplift in Microsoft spend). User-entered.
+    managed_ms_account: Mapped[bool] = mapped_column(Boolean, default=False)
+    # ECIF funding is quoted as an ROI ratio N:1 — Microsoft may fund ~1/N of the
+    # annual Microsoft-spend uplift. The projected funding is presented as a range
+    # between a conservative end (typically 10:1 → ~1/10 of the uplift) and a more
+    # generous end for certain motions (5:1 → ~1/5). Editable per engagement; the
+    # engine reads them to compute the ECIF range in the rollup. User-entered.
+    ecif_roi_conservative: Mapped[float] = mapped_column(Numeric(6, 2), default=10)
+    ecif_roi_generous: Mapped[float] = mapped_column(Numeric(6, 2), default=5)
 
     personas: Mapped[list["Persona"]] = relationship(
         back_populates="engagement", cascade="all, delete-orphan"

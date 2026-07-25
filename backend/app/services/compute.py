@@ -169,6 +169,8 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
         third_party_products=third_party,
         scenarios=scenarios,
         current_licenses=current_lines,
+        ecif_roi_conservative=_dec(eng.ecif_roi_conservative),
+        ecif_roi_generous=_dec(eng.ecif_roi_generous),
     )
 
 

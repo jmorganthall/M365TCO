@@ -477,6 +477,57 @@ def test_spend_bridge_components_build_to_net_delta():
     assert r.freed_third_party[0].credited_annual == D("50000.00")
 
 
+def test_ecif_projected_funding_from_microsoft_uplift():
+    """Section 6.8b: ECIF funding = the Microsoft-only uplift (target − existing
+    Microsoft, excluding the third-party offset) divided by the ROI ratios. With
+    the default 10:1 / 5:1, that's 1/10 and 1/5 of the annual uplift."""
+    kw = Persona(id="kw", name="KW", headcount=100)
+    # current MS = 100*300 = 30000; target = 100*500 = 50000; uplift = 20000.
+    current = {"kw": [CurrentLicenseLine(quantity_assigned=100, unit_price_paid_annual=D("300"))]}
+    scenario = PersonaScenario(
+        id="s", persona_id="kw", target_sku_reference="E5",
+        target_unit_price_annual=D("500"),
+    )
+    r = compute(_engagement([kw], [], [scenario], current)).rollup
+    assert r.msft_uplift_annual == D("20000.00")
+    assert r.ecif_funding_low_annual == D("2000.00")   # 20000 / 10
+    assert r.ecif_funding_high_annual == D("4000.00")  # 20000 / 5
+
+
+def test_ecif_funding_zero_when_no_microsoft_uplift():
+    """A move that does not grow Microsoft spend projects no ECIF funding — a
+    non-positive uplift funds nothing rather than a negative number."""
+    kw = Persona(id="kw", name="KW", headcount=100)
+    current = {"kw": [CurrentLicenseLine(quantity_assigned=100, unit_price_paid_annual=D("500"))]}
+    scenario = PersonaScenario(
+        id="s", persona_id="kw", target_sku_reference="E5",
+        target_unit_price_annual=D("300"),  # cheaper target → negative uplift
+    )
+    r = compute(_engagement([kw], [], [scenario], current)).rollup
+    assert r.msft_uplift_annual == D("-20000.00")
+    assert r.ecif_funding_low_annual == D("0.00")
+    assert r.ecif_funding_high_annual == D("0.00")
+
+
+def test_ecif_funding_honors_custom_roi_ratios():
+    """The ROI ratios are engagement policy inputs; a richer 4:1 / 2:1 pair funds
+    a larger slice of the same uplift."""
+    kw = Persona(id="kw", name="KW", headcount=100)
+    current = {"kw": [CurrentLicenseLine(quantity_assigned=100, unit_price_paid_annual=D("300"))]}
+    scenario = PersonaScenario(
+        id="s", persona_id="kw", target_sku_reference="E5",
+        target_unit_price_annual=D("500"),
+    )
+    eng = replace(
+        _engagement([kw], [], [scenario], current),
+        ecif_roi_conservative=D("4"), ecif_roi_generous=D("2"),
+    )
+    r = compute(eng).rollup
+    assert r.msft_uplift_annual == D("20000.00")
+    assert r.ecif_funding_low_annual == D("5000.00")    # 20000 / 4
+    assert r.ecif_funding_high_annual == D("10000.00")  # 20000 / 2
+
+
 def test_freed_third_party_zero_credit_when_covered_count_zero():
     """A displaced/eliminated product with covered_count 0 has per-unit cost 0,
     so it frees $0 — surfaced honestly rather than as silent savings."""

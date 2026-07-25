@@ -104,6 +104,9 @@ def result_to_dict(result: EngineResult) -> dict:
             "move_incremental_delta_annual": _num(
                 result.rollup.move_incremental_delta_annual
             ),
+            "msft_uplift_annual": _num(result.rollup.msft_uplift_annual),
+            "ecif_funding_low_annual": _num(result.rollup.ecif_funding_low_annual),
+            "ecif_funding_high_annual": _num(result.rollup.ecif_funding_high_annual),
             "quick_wins": [
                 {
                     "third_party_product_id": q.third_party_product_id,

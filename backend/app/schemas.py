@@ -140,6 +140,9 @@ class EngagementUpdate(BaseModel):
     notes: Optional[str] = None
     bp_swap_enabled: Optional[bool] = None
     business_cap_enabled: Optional[bool] = None
+    managed_ms_account: Optional[bool] = None
+    ecif_roi_conservative: Optional[Decimal] = None
+    ecif_roi_generous: Optional[Decimal] = None
     # Customer Info tab.
     workshop_date: Optional[date] = None
     industry: Optional[str] = None
@@ -164,6 +167,9 @@ class EngagementOut(ORMModel):
     notes: str
     bp_swap_enabled: bool
     business_cap_enabled: bool = False
+    managed_ms_account: bool = False
+    ecif_roi_conservative: Decimal = Decimal("10")
+    ecif_roi_generous: Decimal = Decimal("5")
     workshop_date: Optional[date] = None
     industry: str = ""
     hq_location: str = ""
