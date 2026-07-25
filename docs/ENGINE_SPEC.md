@@ -154,6 +154,12 @@ current_spend_annual = current_microsoft + offset
 # substitutes the EFFECTIVE target with Business Premium (its covered outcomes + catalog
 # price × (1 - discount)) before the engine runs. The engine math below is unchanged —
 # it consumes whichever target the data layer resolved.
+# The eligibility "requires" set mirrors the org-wide rule (6.2): a persona must not
+# lose any outcome delivered by its TAGGED current licenses, by any UNTAGGED (org-wide)
+# current license — which every persona holds — or by its declared PersonaRequirements.
+# So an org-wide Calling Plan (PSTN dial-tone, which BP lacks) makes every persona
+# ineligible, exactly as it would show as a coverage gap; the swap never silently drops
+# a capability an org-wide license was providing (services/swap.required_by_persona).
 target_spend_annual  = persona.headcount * scenario.target_unit_price_annual
 delta_annual         = target_spend_annual - current_spend_annual   # +cost / -saving
 ```
