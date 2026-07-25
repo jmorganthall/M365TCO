@@ -9,6 +9,7 @@ env vars in app/pricesync/config.py.)
 
 from __future__ import annotations
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -60,13 +61,29 @@ class Settings(BaseSettings):
     update_check_ttl_seconds: int = 21600
 
     # One-click update. The app runs INSIDE the container it would update, so it
-    # can't pull a new image and recreate itself. Instead a Watchtower sidecar
-    # (docker-compose.yml) watches this container and exposes an authenticated HTTP
-    # API; the "Update now" button POSTs to it. This is that sidecar's base URL
-    # (operational config — the bearer token is a secret in the encrypted store,
-    # secrets.WATCHTOWER_API_TOKEN). Empty disables the action (the banner then just
-    # advises pulling the newest image). Default targets the internal compose name.
-    watchtower_url: str = ""
+    # can't pull a new image and recreate itself. Instead a Watchtower instance
+    # (a compose sidecar, or a shared/central Watchtower on the host) watches this
+    # container and exposes an authenticated HTTP API; the "Update now" button POSTs
+    # to it. This is that Watchtower's base URL (operational config). Empty disables
+    # the action (the banner then just advises pulling the newest image).
+    # Accepts either env name: the app-prefixed TCO_WATCHTOWER_URL or the bare
+    # WATCHTOWER_URL (handy when a shared Watchtower is wired the same way across
+    # several apps on one host).
+    watchtower_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("TCO_WATCHTOWER_URL", "WATCHTOWER_URL"),
+    )
+    # The Watchtower HTTP-API bearer token, as OPERATIONAL config from the deploy
+    # environment. This is the fallback source: the encrypted secret store
+    # (secrets.WATCHTOWER_API_TOKEN, entered in Settings › Secrets) is preferred and
+    # wins when both are set. The env path exists so a shared, host-managed
+    # Watchtower token can be injected once through the environment (e.g. from the
+    # host's secret manager) instead of pasted into each app's GUI. Accepts
+    # TCO_WATCHTOWER_TOKEN or the bare WATCHTOWER_TOKEN. Never commit a real value.
+    watchtower_token: str = Field(
+        default="",
+        validation_alias=AliasChoices("TCO_WATCHTOWER_TOKEN", "WATCHTOWER_TOKEN"),
+    )
 
 
 settings = Settings()

@@ -35,11 +35,15 @@ services:
       # --- Operational config (sensible defaults; override via .env) ---
       TCO_CORS_ORIGINS: "${TCO_CORS_ORIGINS:-*}"
       TCO_OPENROUTER_MODEL: "${TCO_OPENROUTER_MODEL:-anthropic/claude-3.5-sonnet}"
-      # Where the app reaches the Watchtower sidecar's HTTP API for the in-app
-      # "Update now" button (internal compose network). Leave the default unless you
-      # run Watchtower elsewhere. The matching API token is entered in the app under
-      # Settings › Secrets (encrypted), NOT here.
-      TCO_WATCHTOWER_URL: "${TCO_WATCHTOWER_URL:-http://watchtower:8080}"
+      # Where the app reaches Watchtower's HTTP API for the in-app "Update now"
+      # button. Defaults to the compose sidecar below; point WATCHTOWER_URL at a
+      # shared/central Watchtower (host:port) if you run one instead. (The app also
+      # accepts the legacy TCO_WATCHTOWER_URL name.)
+      WATCHTOWER_URL: "${WATCHTOWER_URL:-http://watchtower:8080}"
+      # The Watchtower API token. Preferred: enter it in the app (Settings › Secrets,
+      # encrypted) and leave this blank. Alternatively inject a shared token here —
+      # the secret store wins if both are set. (Legacy name: TCO_WATCHTOWER_TOKEN.)
+      WATCHTOWER_TOKEN: "${WATCHTOWER_TOKEN:-}"
       # Price-sheet sync (Partner Center) is configured entirely in the app UI
       # (Settings > Pricing sync) — no env vars. Credentials are stored encrypted,
       # unlocked by TCO_MASTER_SECRET; sheets land under /data/pricesheets.

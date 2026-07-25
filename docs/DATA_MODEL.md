@@ -148,8 +148,10 @@ FK, UUID PK, cascade-deleted with the engagement.
   presentation gate only; the engine computes the uplift and funding range
   unconditionally (ENGINE_SPEC §6.8b). `ecif_roi_conservative` and
   `ecif_roi_generous` are the ROI ratios N:1 the engine divides the annual
-  Microsoft-spend uplift by to project the funding range Microsoft may co-invest
-  (~1/N of the uplift). They are **seeded from `GlobalDefaults`** on creation
+  Microsoft-spend uplift by to size the **one-time** ECIF fund Microsoft may
+  co-invest (~1/N of the annual uplift, per standard Microsoft investment ROI —
+  used for pre-/post-sales acceleration, not a recurring figure). They are
+  **seeded from `GlobalDefaults`** on creation
   (`default_ecif_roi_conservative` 10 / `default_ecif_roi_generous` 5, §4.11),
   then owned per engagement. Advisory — actual ECIF is scoped with the Microsoft
   account team. All three are editable on the Customer Info tab and copied by

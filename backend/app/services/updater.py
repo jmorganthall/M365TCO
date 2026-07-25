@@ -8,8 +8,12 @@ POSTs to it and Watchtower does the pull + recreate. That is also why the update
 briefly drops the connection: the container is replaced out from under the app.
 
 Config split follows the app's law (docs/DATA_ARCHITECTURE.md): the Watchtower
-base URL is operational settings (settings.watchtower_url, an env var), while the
-bearer token is a secret in the encrypted store (secrets.WATCHTOWER_API_TOKEN).
+base URL is operational settings (settings.watchtower_url, an env var). The bearer
+token is preferentially a secret in the encrypted store (secrets.WATCHTOWER_API_TOKEN,
+entered in Settings › Secrets); as a fallback it may be supplied from the deploy
+environment (settings.watchtower_token / WATCHTOWER_TOKEN) so a shared, centrally
+managed Watchtower can be wired once through env vars — the secret store wins when
+both are present.
 """
 
 from __future__ import annotations
@@ -21,8 +25,15 @@ from . import secrets
 
 
 def _token() -> str | None:
+    """The Watchtower HTTP-API bearer token. Encrypted secret store first (it wins
+    when both are set), then the operational env fallback (settings.watchtower_token
+    / WATCHTOWER_TOKEN)."""
     store = secrets.get_store()
-    return store.get(secrets.WATCHTOWER_API_TOKEN) if store.enabled else None
+    if store.enabled:
+        stored = store.get(secrets.WATCHTOWER_API_TOKEN)
+        if stored:
+            return stored
+    return settings.watchtower_token or None
 
 
 def status() -> dict:
@@ -47,11 +58,13 @@ def trigger() -> dict:
     reported back to the UI rather than swallowed."""
     url = (settings.watchtower_url or "").rstrip("/")
     if not url:
-        return {"ok": False, "detail": "No Watchtower URL configured — set TCO_WATCHTOWER_URL."}
+        return {"ok": False,
+                "detail": "No Watchtower URL configured — set WATCHTOWER_URL (or TCO_WATCHTOWER_URL)."}
     token = _token()
     if not token:
         return {"ok": False,
-                "detail": "No Watchtower API token set — add it under Settings › Secrets."}
+                "detail": "No Watchtower API token set — add it under Settings › Secrets, "
+                          "or set WATCHTOWER_TOKEN in the environment."}
     try:
         resp = httpx.post(
             f"{url}/v1/update",

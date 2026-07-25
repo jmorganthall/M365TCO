@@ -490,8 +490,8 @@ def test_ecif_projected_funding_from_microsoft_uplift():
     )
     r = compute(_engagement([kw], [], [scenario], current)).rollup
     assert r.msft_uplift_annual == D("20000.00")
-    assert r.ecif_funding_low_annual == D("2000.00")   # 20000 / 10
-    assert r.ecif_funding_high_annual == D("4000.00")  # 20000 / 5
+    assert r.ecif_funding_low == D("2000.00")   # 20000 / 10
+    assert r.ecif_funding_high == D("4000.00")  # 20000 / 5
 
 
 def test_ecif_funding_zero_when_no_microsoft_uplift():
@@ -505,8 +505,8 @@ def test_ecif_funding_zero_when_no_microsoft_uplift():
     )
     r = compute(_engagement([kw], [], [scenario], current)).rollup
     assert r.msft_uplift_annual == D("-20000.00")
-    assert r.ecif_funding_low_annual == D("0.00")
-    assert r.ecif_funding_high_annual == D("0.00")
+    assert r.ecif_funding_low == D("0.00")
+    assert r.ecif_funding_high == D("0.00")
 
 
 def test_ecif_funding_honors_custom_roi_ratios():
@@ -524,8 +524,8 @@ def test_ecif_funding_honors_custom_roi_ratios():
     )
     r = compute(eng).rollup
     assert r.msft_uplift_annual == D("20000.00")
-    assert r.ecif_funding_low_annual == D("5000.00")    # 20000 / 4
-    assert r.ecif_funding_high_annual == D("10000.00")  # 20000 / 2
+    assert r.ecif_funding_low == D("5000.00")    # 20000 / 4
+    assert r.ecif_funding_high == D("10000.00")  # 20000 / 2
 
 
 def test_freed_third_party_zero_credit_when_covered_count_zero():
