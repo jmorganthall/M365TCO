@@ -452,11 +452,12 @@ export default function Readout({ engagement }) {
         {engagement.managed_ms_account && r.msft_uplift_annual > 0 && (
           <p className="hint" style={{ marginTop: '.6rem' }}>
             🤝 <b>Microsoft ECIF (managed account).</b> This move lifts annual Microsoft spend by{' '}
-            <b>{usd(r.msft_uplift_annual)}</b>/yr. As a managed account with an ATU assigned, Microsoft may
-            be willing to co-invest partner services against that uplift — roughly{' '}
-            {usd0(r.ecif_funding_low_annual)}–{usd0(r.ecif_funding_high_annual)}/yr via ECIF
-            (≈ 1/{Number(engagement.ecif_roi_conservative)}–1/{Number(engagement.ecif_roi_generous)} of the uplift)
-            to accelerate adoption. Advisory — scope with the Microsoft account team.
+            <b>{usd(r.msft_uplift_annual)}</b>/yr. Per standard Microsoft investment ROI, that uplift is
+            estimated to unlock a <b>one-time</b> ECIF fund of roughly{' '}
+            {usd0(r.ecif_funding_low)}–{usd0(r.ecif_funding_high)}
+            {' '}(≈ 1/{Number(engagement.ecif_roi_conservative)}–1/{Number(engagement.ecif_roi_generous)} of the annual uplift) —
+            used to accelerate or de-friction pre-sales (assessment, discovery, design) and post-sales
+            (implementation, migration) work. Advisory — scope with the Microsoft account team.
           </p>
         )}
       </div>

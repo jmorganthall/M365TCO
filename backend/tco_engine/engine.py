@@ -175,14 +175,16 @@ class RollupResult:
     freed_redundant_today_annual: Decimal = Decimal("0")
     move_incremental_delta_annual: Decimal = Decimal("0")
     # ECIF projected funding (Section 6.8b). The net uplift in annual Microsoft
-    # spend between current and target state, and the range Microsoft may fund to
-    # accelerate adoption (~1/N of the uplift, N = the engagement's ROI ratios).
-    #   msft_uplift_annual       = target_microsoft_annual − existing_microsoft_annual
-    #   ecif_funding_low_annual  = max(uplift, 0) / conservative_ratio   # e.g. 1/10
-    #   ecif_funding_high_annual = max(uplift, 0) / generous_ratio       # e.g. 1/5
+    # spend (target − current) is the ANNUAL basis; ECIF itself is a ONE-TIME fund
+    # Microsoft may invest against that uplift to accelerate adoption, sized at ~1/N
+    # of the annual uplift (N = the engagement's ROI ratios). The funding figures
+    # are one-time amounts, NOT per-year — hence no `_annual` suffix on them.
+    #   msft_uplift_annual = target_microsoft_annual − existing_microsoft_annual
+    #   ecif_funding_low   = max(uplift, 0) / conservative_ratio   # e.g. 1/10 (less)
+    #   ecif_funding_high  = max(uplift, 0) / generous_ratio       # e.g. 1/5  (more)
     msft_uplift_annual: Decimal = Decimal("0")
-    ecif_funding_low_annual: Decimal = Decimal("0")
-    ecif_funding_high_annual: Decimal = Decimal("0")
+    ecif_funding_low: Decimal = Decimal("0")
+    ecif_funding_high: Decimal = Decimal("0")
 
 
 @dataclass
@@ -601,8 +603,9 @@ def compute(engagement: Engagement) -> EngineResult:
 
     # ECIF projected funding (Section 6.8b). Uplift is the pure Microsoft-spend
     # increase (target − existing Microsoft), excluding the third-party offset —
-    # ECIF tracks incremental Microsoft revenue, not net customer TCO. A non-
-    # positive uplift (no Microsoft growth) projects no funding. A funding end
+    # ECIF tracks incremental Microsoft revenue, not net customer TCO. The funding
+    # is a ONE-TIME amount (~1/N of the annual uplift), not a recurring figure. A
+    # non-positive uplift (no Microsoft growth) projects no funding. A funding end
     # with a non-positive ratio is treated as zero rather than dividing by zero.
     msft_uplift = _money(target_microsoft - existing_microsoft)
     fundable = msft_uplift if msft_uplift > 0 else Decimal("0")
@@ -638,8 +641,8 @@ def compute(engagement: Engagement) -> EngineResult:
             + sum((f.redundant_today_annual for f in freed_third_party), Decimal("0"))
         ),
         msft_uplift_annual=msft_uplift,
-        ecif_funding_low_annual=ecif_low,
-        ecif_funding_high_annual=ecif_high,
+        ecif_funding_low=ecif_low,
+        ecif_funding_high=ecif_high,
     )
 
     return EngineResult(

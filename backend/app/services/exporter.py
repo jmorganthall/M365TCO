@@ -531,25 +531,27 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     # objections a CIO raises unprompted (change management, one-time cost).
     n_retire = len(fully_elim)
     # The Fund step. For a managed account (a Microsoft ATU is assigned) with a
-    # positive Microsoft-spend uplift, quantify the ECIF co-investment inline
-    # rather than as a headline — Microsoft may fund ~1/N of the annual uplift.
+    # positive Microsoft-spend uplift, quantify the ECIF co-investment inline rather
+    # than as a headline. ECIF is a ONE-TIME fund (~1/N of the ANNUAL uplift, per
+    # standard Microsoft investment ROI) — so the funding figure carries no "/yr".
     fund_step = (
         "<li><b>Fund.</b> Microsoft co-investment programs may offset transition "
         "cost — quantified in the follow-on.</li>"
     )
     if engagement.managed_ms_account and (rollup.get("msft_uplift_annual", 0) or 0) > 0:
         uplift = rollup["msft_uplift_annual"]
-        ecif_low = rollup.get("ecif_funding_low_annual", 0) or 0
-        ecif_high = rollup.get("ecif_funding_high_annual", 0) or 0
+        ecif_low = rollup.get("ecif_funding_low", 0) or 0
+        ecif_high = rollup.get("ecif_funding_high", 0) or 0
         cons = _fmt_ratio(engagement.ecif_roi_conservative)
         gen = _fmt_ratio(engagement.ecif_roi_generous)
         fund_step = (
             "<li><b>Fund.</b> As a managed account (a Microsoft Account Team Unit is "
             f"assigned), this move lifts annual Microsoft spend by {_usd0(uplift)}/yr. "
-            "Microsoft may be willing to co-invest partner professional services against "
-            f"that uplift via ECIF — roughly {_usd0(ecif_low)}–{_usd0(ecif_high)}/yr "
-            f"(≈ 1/{cons}–1/{gen} of the uplift) to accelerate adoption. Indicative only; "
-            "scope with the Microsoft account team.</li>"
+            "Per standard Microsoft investment ROI, that uplift is estimated to unlock a "
+            f"one-time ECIF fund of roughly {_usd0(ecif_low)}–{_usd0(ecif_high)} "
+            f"(≈ 1/{cons}–1/{gen} of the annual uplift) — used to accelerate or de-friction "
+            "pre-sales (assessment, discovery, design) and post-sales (implementation, "
+            "migration) work. Indicative only; scope with the Microsoft account team.</li>"
         )
     next_steps_section = (
         "<section><h2>Recommended next steps</h2><ol>"
@@ -739,10 +741,10 @@ def build_xlsx(engagement: models.Engagement, result: dict) -> bytes:
         gen = _fmt_ratio(engagement.ecif_roi_generous)
         wr.append(["Net annual uplift in Microsoft spend (target − current)",
                    rollup.get("msft_uplift_annual", 0)])
-        wr.append([f"Projected ECIF funding — {cons}:1 (annual)",
-                   rollup.get("ecif_funding_low_annual", 0)])
-        wr.append([f"Projected ECIF funding — {gen}:1 (annual)",
-                   rollup.get("ecif_funding_high_annual", 0)])
+        wr.append([f"Projected ECIF funding — {cons}:1 (one-time)",
+                   rollup.get("ecif_funding_low", 0)])
+        wr.append([f"Projected ECIF funding — {gen}:1 (one-time)",
+                   rollup.get("ecif_funding_high", 0)])
     wr.append(["Residual third-party cost (annual)", rollup["residual_third_party_cost_annual"]])
     wr.append(["In-scope persona headcount", pop["in_scope_persona_headcount"]])
     wr.append(["Third-party covered population", pop["third_party_covered_population"]])
