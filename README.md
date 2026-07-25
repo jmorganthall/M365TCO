@@ -69,20 +69,27 @@ vars with sane defaults (see `.env.example`); only `TCO_MASTER_SECRET` is requir
 ### One-click updates (optional)
 
 The app can only *detect* a new image from inside its container — it can't recreate
-itself — so the bundled `watchtower` sidecar does the pull + restart. It watches
-only the labeled `m365tco` container. To enable the in-app **Update now** button:
+itself — so a `watchtower` instance does the pull + restart. The bundled sidecar
+watches only the labeled `m365tco` container; you can also point the app at a
+shared/central Watchtower you already run. To enable the in-app **Update now** button:
 
-1. Set `WATCHTOWER_HTTP_API_TOKEN` in `.env` to a long random value and `up -d`.
-2. Paste the **same** value into the app under **Settings › Secrets › "Watchtower
-   update API token."** (`TCO_WATCHTOWER_URL` already defaults to the internal
-   `http://watchtower:8080`.)
+1. Set `WATCHTOWER_HTTP_API_TOKEN` on the Watchtower container to a long random value
+   and `up -d`.
+2. Give the app the **same** token, either way:
+   - **In the app** — paste it under **Settings › Secrets › "Watchtower update API
+     token"** (encrypted; preferred), or
+   - **Via env** — set `WATCHTOWER_TOKEN` in the deploy environment (useful when a
+     shared token is managed centrally). The secret store wins if both are set.
+3. Point `WATCHTOWER_URL` at your Watchtower (defaults to the internal
+   `http://watchtower:8080`; set e.g. `http://host:8998` for a shared one). The
+   legacy `TCO_WATCHTOWER_URL` / `TCO_WATCHTOWER_TOKEN` names still work.
 
 The button appears on the "update available" banner and in Settings › Version;
-clicking it triggers Watchtower, so the container restarts and the UI reconnects
-after a few seconds. Watchtower also auto-checks on a schedule
-(`WATCHTOWER_POLL_INTERVAL`, default 24h; set `0` for on-demand only). Delete the
-`watchtower` service from `docker-compose.yml` to opt out entirely and update by
-pulling the image yourself.
+clicking it triggers Watchtower, which pulls the latest image and recreates the
+container, so the UI reconnects after a few seconds. Watchtower also auto-checks on
+a schedule (`WATCHTOWER_POLL_INTERVAL`, default 24h; set `0` for on-demand only).
+Delete the `watchtower` service from `docker-compose.yml` to opt out of the bundled
+sidecar (e.g. when using a shared one) and update by pulling the image yourself.
 
 ### Azure Container Apps (future rehost)
 

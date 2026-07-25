@@ -59,6 +59,33 @@ def test_trigger_success_calls_watchtower(monkeypatch):
     assert st["configured"] is True
 
 
+def test_token_from_env_fallback_and_store_precedence(monkeypatch):
+    # No secret-store token, but an operational env token (WATCHTOWER_TOKEN) is set:
+    # the update is considered configured and the env token is used.
+    _set_token(None)
+    monkeypatch.setattr(settings, "watchtower_url", "http://watchtower:8080")
+    monkeypatch.setattr(settings, "watchtower_token", "env-token")
+    assert updater.status() == {"configured": True, "url_set": True, "token_set": True}
+
+    seen = {}
+
+    def fake_post(url, headers=None, timeout=None):
+        seen["auth"] = headers.get("Authorization")
+        return _Resp(200)
+
+    monkeypatch.setattr(updater.httpx, "post", fake_post)
+    assert updater.trigger()["ok"] is True
+    assert seen["auth"] == "Bearer env-token"
+
+    # The encrypted secret store wins when both are present.
+    _set_token("store-token")
+    assert updater.trigger()["ok"] is True
+    assert seen["auth"] == "Bearer store-token"
+
+    _set_token(None)
+    monkeypatch.setattr(settings, "watchtower_token", "")
+
+
 def test_trigger_reports_auth_and_transport_errors(monkeypatch):
     monkeypatch.setattr(settings, "watchtower_url", "http://watchtower:8080")
     _set_token("wrong")
