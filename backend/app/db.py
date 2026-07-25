@@ -88,6 +88,10 @@ def _auto_add_missing_columns(target_engine=None) -> None:
 # violate the no-hidden-data rule.
 _RETIRED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("current_microsoft_licenses", "price_basis"),
+    # Current-line discount was annotation-only (never load-bearing). Superseded by
+    # the explicit price override (price_override + overridden_price_annual), which
+    # actually drives current spend. Dropped so the dead annotation can't linger.
+    ("current_microsoft_licenses", "discount_pct"),
     # engagements.modeling_horizon_years was retired here, then reintroduced
     # with a real reader (the N-month headline) — the additive reconciliation
     # re-adds it (DEFAULT 3) on DBs that ran the retired version.

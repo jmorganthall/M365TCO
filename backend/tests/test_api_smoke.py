@@ -440,7 +440,7 @@ def test_data_inspector_surfaces_objects_and_refs(client):
     # Every persisted field is surfaced, including the ones with no edit UI.
     lic = types["CurrentMicrosoftLicense"]
     keys = {f["key"] for f in lic["fields"]}
-    assert {"source_tag", "persona_ids", "discount_pct"} <= keys
+    assert {"source_tag", "persona_ids", "price_override", "overridden_price_annual"} <= keys
     # The persona tag reference resolves to the persona name.
     rec = lic["records"][0]
     assert rec["cells"]["persona_ids"]["ref"]["label"] == "KW"

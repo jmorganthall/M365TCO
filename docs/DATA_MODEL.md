@@ -432,10 +432,23 @@ FK, UUID PK, cascade-deleted with the engagement.
   via `CurrentLicensePersona` (§4.5a). The legacy single `persona_id` column is
   deprecated (kept only for the one-time backfill).
 - **Field ownership:** user-entered (`quantity_assigned` ← model on this not
-  purchased, `unit_price_paid_annual`, `discount_pct`, and the
-  per-line basis overrides `segment` / `term_duration` / `billing_plan` where
-  NULL = inherit the engagement default per §4.1); provenance.
-  API exposes `persona_ids` (the tags), not `persona_id`.
+  purchased, `unit_price_paid_annual` = the catalog **list baseline** seeded from
+  the sheet ERP, the price-override pair below, and the per-line basis overrides
+  `segment` / `term_duration` / `billing_plan` where NULL = inherit the engagement
+  default per §4.1); provenance. API exposes `persona_ids` (the tags), not
+  `persona_id`.
+- **Price override (first-class):** `price_override` (bool) + `overridden_price_annual`.
+  The SKU (hence the outcome/coverage) is unchanged, but the customer pays a
+  negotiated rate that differs from list. The **effective** price the engine
+  consumes is `effective_unit_price_annual` = the override when `price_override`
+  is on, else the list baseline — so an override actually lowers current spend
+  (`unit_price_paid_annual` stays the list reference the "% off list" badge is
+  measured against). "Revert to list" clears the flag and re-seeds the baseline
+  from the catalog at the line's basis (honoring segment/term/billing). GUI surface:
+  the line's expander (checkbox + the $/seat cell edits the override) plus the
+  Current Licensing chip and the readout appendix. This supersedes the old
+  annotation-only `discount_pct`, which never drove spend — **retired** (dropped
+  via `_RETIRED_COLUMNS`).
 - **Retired:** a per-line `price_basis` enum (EA/CSP/MCA-E/… contract-vehicle
   disclosure) was removed — never collected in practice, never used in any
   calculation, and its only output was an "Unknown" placeholder on the readout
@@ -521,9 +534,18 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Relationships:** hard FK `persona_id`; **soft ref** to the base target bundle
   via `target_sku_reference`; **add-on bundles** via `ScenarioAddon` (§4.8a).
 - **Field ownership:** user-entered (`target_sku_reference` + `target_unit_price_annual`
-  = the base bundle & its list price, `target_discount_pct`, `in_scope`,
-  `bp_swap_optout`, `term_duration`/`billing_plan`); **engine-output cache**
-  (`current_spend_annual`, `target_spend_annual`, `delta_annual`).
+  = the base bundle & its list price, `target_discount_pct`, the price-override pair
+  below, `in_scope`, `bp_swap_optout`, `term_duration`/`billing_plan`); **engine-output
+  cache** (`current_spend_annual`, `target_spend_annual`, `delta_annual`).
+- **Price override (first-class):** `price_override` (bool) + `overridden_price_annual`
+  — the same mechanism as the current line (§4.5), applied to the composed **net**
+  target. The base SKU + add-ons are unchanged, but the customer pays a negotiated
+  net $/seat/yr. `effective_net_annual` = the override when on, else
+  `(base + add-ons) × (1 − discount)`; the override **supersedes** the discount
+  (which stays available when the override is off) and is what the engine and the
+  BP-swap saving test consume. The "% off list" badge is measured against
+  `composed_list_annual` (base + add-ons, pre-discount). A swap to Business Premium
+  substitutes wholesale, so the persona's own override doesn't apply to it.
 - **Line-level quoting basis:** `term_duration` / `billing_plan` (NULL = inherit
   the engagement defaults — the bottom tier of the §4.1 hierarchy). Changing
   either on a PATCH **requotes** the base bundle and every add-on from the

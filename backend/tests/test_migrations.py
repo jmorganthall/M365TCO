@@ -67,6 +67,28 @@ def test_drops_retired_price_basis_column(tmp_path):
     _drop_retired_columns(eng)
 
 
+def test_drops_retired_discount_pct_column(tmp_path):
+    """The annotation-only current-line discount was retired for the explicit price
+    override; a legacy DB's discount_pct column must be physically dropped."""
+    from app.db import Base, _drop_retired_columns
+
+    eng = create_engine(f"sqlite:///{tmp_path}/legacy.db")
+    Base.metadata.create_all(eng)
+    with eng.begin() as c:
+        c.execute(text(
+            'ALTER TABLE "current_microsoft_licenses" ADD COLUMN "discount_pct" NUMERIC'
+        ))
+
+    _drop_retired_columns(eng)
+
+    cols = {c["name"] for c in inspect(eng).get_columns("current_microsoft_licenses")}
+    assert "discount_pct" not in cols
+    # The override fields that replaced it are present.
+    assert "price_override" in cols
+    assert "overridden_price_annual" in cols
+    _drop_retired_columns(eng)  # idempotent
+
+
 def test_drop_retired_is_noop_without_the_column(tmp_path):
     from app.db import Base, _drop_retired_columns
 

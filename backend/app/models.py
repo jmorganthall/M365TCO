@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime, timezone
+from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
@@ -386,8 +387,22 @@ class CurrentMicrosoftLicense(Base):
     sku_reference: Mapped[str] = mapped_column(String, default="")
     quantity_purchased: Mapped[int] = mapped_column(Integer, default=0)
     quantity_assigned: Mapped[int] = mapped_column(Integer, default=0)
+    # The catalog LIST baseline for this line's SKU at its basis (seeded from the
+    # price sheet ERP; hand-editable when the SKU isn't in the catalog). It is the
+    # reference the "% off list" is measured against — NOT necessarily what the
+    # customer pays: a price override (below) can supersede it.
     unit_price_paid_annual: Mapped[float] = mapped_column(Numeric(14, 4), default=0)
-    discount_pct: Mapped[float | None] = mapped_column(Numeric(6, 4), nullable=True)
+    # Explicit price override: the SKU/outcome is unchanged, but the customer pays
+    # a negotiated rate that differs from list. `price_override` flags it on;
+    # `overridden_price_annual` holds the manual $/seat/yr. When on, this is the
+    # load-bearing price the engine consumes (see effective_unit_price_annual) and
+    # the readout badges "−X% vs list"; "revert to list" clears the flag and the
+    # price falls back to the catalog at the line's basis. Supersedes the old
+    # annotation-only `discount_pct` (retired) — the override actually drives spend.
+    price_override: Mapped[bool] = mapped_column(Boolean, default=False)
+    overridden_price_annual: Mapped[float | None] = mapped_column(
+        Numeric(14, 4), nullable=True
+    )
     # Pricing basis for THIS line. NULL = inherit the engagement default (which
     # itself inherits the global default). Set = this line overrides it. These
     # pick which priced catalog variant seeds the list price and record the
@@ -412,6 +427,21 @@ class CurrentMicrosoftLicense(Base):
     def persona_ids(self) -> list[str]:
         """The personas this license applies to (many-to-many tags)."""
         return [pl.persona_id for pl in self.persona_links]
+
+    @property
+    def list_unit_price_annual(self) -> Decimal:
+        """The catalog list baseline (`unit_price_paid_annual`) as a Decimal — the
+        reference the override's "% off list" is measured against."""
+        return Decimal(str(self.unit_price_paid_annual or 0))
+
+    @property
+    def effective_unit_price_annual(self) -> Decimal:
+        """What the customer actually pays per seat/yr: the manual override when
+        `price_override` is on, else the list baseline. The load-bearing price the
+        engine consumes for current spend."""
+        if self.price_override and self.overridden_price_annual is not None:
+            return Decimal(str(self.overridden_price_annual))
+        return self.list_unit_price_annual
 
 
 class CurrentLicensePersona(Base):
@@ -542,8 +572,18 @@ class PersonaScenario(Base):
     target_sku_reference: Mapped[str] = mapped_column(String, default="")
     target_unit_price_annual: Mapped[float] = mapped_column(Numeric(14, 4), default=0)
     # Discount off the composed list price (fraction; 0.15 = 15%). Applies to
-    # base + add-ons to yield the net target price.
+    # base + add-ons to yield the net target price — unless a price override is on,
+    # which supersedes it.
     target_discount_pct: Mapped[float | None] = mapped_column(Numeric(6, 4), nullable=True)
+    # Explicit price override for the composed target: the base SKU + add-ons are
+    # unchanged, but the customer pays a negotiated NET $/seat/yr. When on,
+    # `overridden_price_annual` is the load-bearing net price the engine consumes
+    # (see effective_net_annual), superseding base + add-ons + discount; the
+    # readout badges "−X% vs list" and "revert to list" clears the flag.
+    price_override: Mapped[bool] = mapped_column(Boolean, default=False)
+    overridden_price_annual: Mapped[float | None] = mapped_column(
+        Numeric(14, 4), nullable=True
+    )
     in_scope: Mapped[bool] = mapped_column(Boolean, default=True)
     # Per-persona opt-OUT of the engagement's Business Premium swap (the inheritance
     # override). False = inherit the engagement default; True = keep this persona's
@@ -563,6 +603,32 @@ class PersonaScenario(Base):
     addons: Mapped[list["ScenarioAddon"]] = relationship(
         cascade="all, delete-orphan", back_populates="scenario"
     )
+
+    @property
+    def composed_list_annual(self) -> Decimal:
+        """Catalog list for the composed target (base + add-ons), before discount
+        and before any override — the baseline the "% off list" is measured
+        against."""
+        total = Decimal(str(self.target_unit_price_annual or 0))
+        for a in self.addons:
+            total += Decimal(str(a.unit_price_annual or 0))
+        return total
+
+    @property
+    def discounted_net_annual(self) -> Decimal:
+        """(base + add-ons) × (1 − discount) — the composed net target price when no
+        override is set."""
+        return self.composed_list_annual * (
+            Decimal("1") - Decimal(str(self.target_discount_pct or 0))
+        )
+
+    @property
+    def effective_net_annual(self) -> Decimal:
+        """The net target price per seat/yr the engine consumes: the manual override
+        when `price_override` is on, else the discounted composed net."""
+        if self.price_override and self.overridden_price_annual is not None:
+            return Decimal(str(self.overridden_price_annual))
+        return self.discounted_net_annual
 
 
 class ScenarioNarrative(Base):

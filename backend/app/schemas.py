@@ -235,8 +235,11 @@ class CurrentLicenseIn(BaseModel):
     sku_reference: str = ""
     quantity_purchased: int = 0
     quantity_assigned: int = 0
+    # The catalog list baseline for this line (seeded from the sheet ERP).
     unit_price_paid_annual: Decimal = Decimal("0")
-    discount_pct: Optional[Decimal] = None
+    # Explicit price override: pay a negotiated rate that differs from list.
+    price_override: bool = False
+    overridden_price_annual: Optional[Decimal] = None
     # Per-line pricing-basis overrides. None = inherit the engagement default.
     segment: Optional[str] = None
     term_duration: Optional[str] = None
@@ -252,7 +255,8 @@ class CurrentLicenseOut(ORMModel):
     quantity_purchased: int
     quantity_assigned: int
     unit_price_paid_annual: Decimal
-    discount_pct: Optional[Decimal]
+    price_override: bool = False
+    overridden_price_annual: Optional[Decimal] = None
     segment: Optional[str]
     term_duration: Optional[str]
     billing_plan: Optional[str]
@@ -340,6 +344,9 @@ class ScenarioIn(BaseModel):
     target_sku_reference: str = ""
     target_unit_price_annual: Decimal = Decimal("0")
     target_discount_pct: Optional[Decimal] = None
+    # Explicit override of the composed net target price (supersedes discount).
+    price_override: bool = False
+    overridden_price_annual: Optional[Decimal] = None
     in_scope: bool = True
     bp_swap_optout: bool = False
     # Line-level quoting basis; None inherits the engagement default.
@@ -352,6 +359,8 @@ class ScenarioUpdate(BaseModel):
     target_sku_reference: Optional[str] = None
     target_unit_price_annual: Optional[Decimal] = None
     target_discount_pct: Optional[Decimal] = None
+    price_override: Optional[bool] = None
+    overridden_price_annual: Optional[Decimal] = None
     in_scope: Optional[bool] = None
     bp_swap_optout: Optional[bool] = None
     # Changing either requotes the composed target from the catalog.
@@ -366,6 +375,8 @@ class ScenarioOut(ORMModel):
     target_sku_reference: str
     target_unit_price_annual: Decimal
     target_discount_pct: Optional[Decimal]
+    price_override: bool = False
+    overridden_price_annual: Optional[Decimal] = None
     in_scope: bool
     bp_swap_optout: bool
     term_duration: Optional[str]
