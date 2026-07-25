@@ -54,6 +54,13 @@ def _pct(value) -> str:
     return f"{float(value or 0) * 100:.0f}%"
 
 
+def _fmt_ratio(value) -> str:
+    """Render an ECIF ROI ratio without trailing zeros: 10.00 → '10', 7.50 → '7.5'."""
+    d = Decimal(str(value or 0))
+    d = d.to_integral_value() if d == d.to_integral_value() else d.normalize()
+    return format(d, "f")
+
+
 def build_html(engagement: models.Engagement, result: dict) -> str:
     """Customer-facing HTML readout. Internal/QA data (the population check) is not
     shown, and sections that don't apply are omitted rather than printed as "None":
@@ -540,6 +547,48 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         if in_scope else ""
     )
 
+    # Microsoft ECIF projected funding — managed accounts only (a Microsoft ATU is
+    # assigned). The net uplift in annual Microsoft spend (target − current) and the
+    # range Microsoft may fund to accelerate adoption (~1/N of the uplift). Advisory.
+    ecif_section = ""
+    if engagement.managed_ms_account:
+        uplift = rollup.get("msft_uplift_annual", 0) or 0
+        cons = _fmt_ratio(engagement.ecif_roi_conservative)
+        gen = _fmt_ratio(engagement.ecif_roi_generous)
+        if uplift > 0:
+            ecif_low = rollup.get("ecif_funding_low_annual", 0) or 0
+            ecif_high = rollup.get("ecif_funding_high_annual", 0) or 0
+            ecif_section = (
+                "<section><h2>Microsoft ECIF — projected funding</h2>"
+                "<p class='sub'>Managed account with a Microsoft Account Team Unit (ATU) "
+                "assigned. Microsoft <b>may</b> fund partner professional services to "
+                f"accelerate adoption — typically {cons}:1 ROI (≈ 1/{cons} of the annual "
+                f"uplift), moving up to {gen}:1 (≈ 1/{gen}) for certain motions. Indicative "
+                "only; actual ECIF is scoped and approved with the Microsoft account team.</p>"
+                f"<div class='headline' style='color:var(--accent)'>{_usd0(ecif_low)} – "
+                f"{_usd0(ecif_high)} <span class='headline-word'>may be funded / yr</span></div>"
+                "<table class='bridge'><tbody>"
+                "<tr><td>Target-state Microsoft licensing (annual, in scope)</td>"
+                f"<td class='num'>{_usd(target_ms)}</td></tr>"
+                "<tr><td>Less: current-state Microsoft licensing (annual, in scope)</td>"
+                f"<td class='num'>−{_usd(existing_ms)}</td></tr>"
+                "<tr class='total'><td><b>Net annual uplift in Microsoft spend</b></td>"
+                f"<td class='num'><b>{_usd(uplift)}</b></td></tr>"
+                f"<tr class='sub'><td>Projected ECIF funding — {cons}:1 (≈ 1/{cons} of uplift)</td>"
+                f"<td class='num'>{_usd(ecif_low)}</td></tr>"
+                f"<tr class='sub'><td>Projected ECIF funding — {gen}:1 (≈ 1/{gen} of uplift)</td>"
+                f"<td class='num'>{_usd(ecif_high)}</td></tr>"
+                "</tbody></table></section>"
+            )
+        else:
+            ecif_section = (
+                "<section><h2>Microsoft ECIF — projected funding</h2>"
+                "<p class='sub'>Managed account with a Microsoft ATU assigned. The proposed "
+                f"future state does not increase annual Microsoft spend (net uplift {_usd(uplift)}), "
+                "so there is no Microsoft-spend growth for ECIF to fund against. ECIF accelerates "
+                "adoption where the move grows Microsoft consumption.</p></section>"
+            )
+
     # Readout branding (user-entered). Sanitize hard: colors must match a strict
     # CSS-color pattern and the logo must be a base64 image data URL, so neither
     # can break out of the <style>/<img> context. Blank -> neutral built-in theme.
@@ -630,6 +679,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 {hero}
 {narrative_section}
 {quick_win_section}
+{ecif_section}
 
 <section><h2>Per-persona scenarios</h2>
 <table><thead><tr><th>Persona</th><th>Target SKU</th><th>Headcount</th>
@@ -707,6 +757,15 @@ def build_xlsx(engagement: models.Engagement, result: dict) -> bytes:
         f"Net TCO delta ({horizon * 12}-month headline)",
         rollup["net_tco_delta_annual"] * horizon,
     ])
+    if engagement.managed_ms_account:
+        cons = _fmt_ratio(engagement.ecif_roi_conservative)
+        gen = _fmt_ratio(engagement.ecif_roi_generous)
+        wr.append(["Net annual uplift in Microsoft spend (target − current)",
+                   rollup.get("msft_uplift_annual", 0)])
+        wr.append([f"Projected ECIF funding — {cons}:1 (annual)",
+                   rollup.get("ecif_funding_low_annual", 0)])
+        wr.append([f"Projected ECIF funding — {gen}:1 (annual)",
+                   rollup.get("ecif_funding_high_annual", 0)])
     wr.append(["Residual third-party cost (annual)", rollup["residual_third_party_cost_annual"]])
     wr.append(["In-scope persona headcount", pop["in_scope_persona_headcount"]])
     wr.append(["Third-party covered population", pop["third_party_covered_population"]])

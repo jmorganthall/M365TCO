@@ -55,6 +55,8 @@ export default function CustomerInfo({ engagement, meta, onUpdate }) {
     let value = raw
     if (field === 'employee_count') value = raw === '' || raw === null ? null : Number(raw)
     else if (field === 'modeling_horizon_years') value = Math.max(1, Number(raw) || 3)
+    else if (field === 'ecif_roi_conservative') value = raw === '' || raw === null ? 10 : Math.max(1, Number(raw) || 10)
+    else if (field === 'ecif_roi_generous') value = raw === '' || raw === null ? 5 : Math.max(1, Number(raw) || 5)
     else if (field === 'workshop_date') value = raw || null
     if ((engagement[field] ?? '') === (value ?? '')) return  // no-op if unchanged
     setErr('')
@@ -143,6 +145,38 @@ export default function CustomerInfo({ engagement, meta, onUpdate }) {
       </div>
 
       <div style={{ marginTop: '1rem' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '.4rem', margin: 0 }}>
+          <input type="checkbox" checked={f.managed_ms_account}
+            onChange={(e) => { setF({ ...f, managed_ms_account: e.target.checked }); commit('managed_ms_account', e.target.checked) }} />
+          <b>Managed Microsoft account</b> {savedTag('managed_ms_account')}
+        </label>
+        <p className="hint" style={{ margin: '.2rem 0 .5rem' }}>Check when the customer has a Microsoft
+          Account Team Unit (ATU) assigned. Enables the <b>Microsoft ECIF projected funding</b> card on the
+          readout — Microsoft co-investment that may fund partner services against the annual uplift in
+          Microsoft spend.</p>
+        {f.managed_ms_account && (
+          <div className="grid c2">
+            <div>
+              <label>ECIF ROI — conservative (N:1) {savedTag('ecif_roi_conservative')}</label>
+              <input type="number" min="1" step="0.5" value={f.ecif_roi_conservative}
+                onChange={set('ecif_roi_conservative')}
+                onBlur={(e) => commit('ecif_roi_conservative', e.target.value)} />
+              <small className="src">Lower-funding end — Microsoft may fund ~1/{f.ecif_roi_conservative || 10} of the
+                annual Microsoft-spend uplift (typically 10:1).</small>
+            </div>
+            <div>
+              <label>ECIF ROI — generous (N:1) {savedTag('ecif_roi_generous')}</label>
+              <input type="number" min="1" step="0.5" value={f.ecif_roi_generous}
+                onChange={set('ecif_roi_generous')}
+                onBlur={(e) => commit('ecif_roi_generous', e.target.value)} />
+              <small className="src">Higher-funding end for certain motions — ~1/{f.ecif_roi_generous || 5} of the
+                uplift (up to 5:1).</small>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginTop: '1rem' }}>
         <b>Pricing basis defaults</b>
         <p className="hint" style={{ margin: '.2rem 0 .5rem' }}>Which priced catalog variant quotes this
           engagement's bundles and SKUs — inherited from the global defaults at creation; current-license
@@ -166,5 +200,8 @@ function fromEngagement(e) {
     market: e.market || '',
     currency: e.currency || '',
     modeling_horizon_years: e.modeling_horizon_years ?? 3,
+    managed_ms_account: !!e.managed_ms_account,
+    ecif_roi_conservative: Number(e.ecif_roi_conservative ?? 10),
+    ecif_roi_generous: Number(e.ecif_roi_generous ?? 5),
   }
 }

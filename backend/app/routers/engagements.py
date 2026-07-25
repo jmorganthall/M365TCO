@@ -161,6 +161,9 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
         brand_primary_color=src.brand_primary_color,
         brand_accent_color=src.brand_accent_color,
         notes=src.notes,
+        managed_ms_account=src.managed_ms_account,
+        ecif_roi_conservative=src.ecif_roi_conservative,
+        ecif_roi_generous=src.ecif_roi_generous,
     )
     db.add(dst)
     db.flush()

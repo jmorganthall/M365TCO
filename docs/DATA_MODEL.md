@@ -118,7 +118,9 @@ FK, UUID PK, cascade-deleted with the engagement.
   `modeling_horizon_years` (multiplies the annual delta into the readout
   headline, e.g. 3 → "36-month savings"; the engine itself stays annualized),
   `notes`, `global_tooling_pct`, `default_segment`,
-  `default_term_duration`, `default_billing_plan`, `bp_swap_enabled`, the readout
+  `default_term_duration`, `default_billing_plan`, `bp_swap_enabled`,
+  `business_cap_enabled`, `managed_ms_account`, the ECIF ROI ratios
+  `ecif_roi_conservative` / `ecif_roi_generous`, the readout
   branding `brand_logo_data_url` / `brand_primary_color` / `brand_accent_color`,
   and the Customer-Info metadata `workshop_date` / `industry` / `hq_location` /
   `website` / `employee_count`); derived (`created_at`, `updated_at`).
@@ -140,6 +142,15 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Note:** `bp_swap_enabled` is the engagement-level "swap eligible users to
   Business Premium to save" toggle (§4.8b). Each eligible scenario inherits it
   unless the persona opts out.
+- **Note:** `managed_ms_account` marks a customer with a Microsoft Account Team
+  Unit (ATU) assigned. When set, the readout surfaces the **Microsoft ECIF
+  projected-funding** card — a presentation gate only; the engine computes the
+  uplift and funding range unconditionally (ENGINE_SPEC §6.8b). `ecif_roi_conservative`
+  (default 10) and `ecif_roi_generous` (default 5) are the ROI ratios N:1 the engine
+  divides the annual Microsoft-spend uplift by to project the funding range Microsoft
+  may co-invest (~1/N of the uplift). Advisory — actual ECIF is scoped with the
+  Microsoft account team. All three are editable on the Customer Info tab and copied
+  by `duplicate`.
 - **CRUD:** `GET/POST/PATCH/DELETE /api/engagements`, plus `duplicate`, `compute`,
   `readout.html`, `readout.xlsx`, `snapshots`.
 - **Lifecycle:** on create, seeds outcomes + Microsoft coverage from the seed

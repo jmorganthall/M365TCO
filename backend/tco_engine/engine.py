@@ -174,6 +174,15 @@ class RollupResult:
     # so "retire today" + "the moves" never double-count a dollar.
     freed_redundant_today_annual: Decimal = Decimal("0")
     move_incremental_delta_annual: Decimal = Decimal("0")
+    # ECIF projected funding (Section 6.8b). The net uplift in annual Microsoft
+    # spend between current and target state, and the range Microsoft may fund to
+    # accelerate adoption (~1/N of the uplift, N = the engagement's ROI ratios).
+    #   msft_uplift_annual       = target_microsoft_annual − existing_microsoft_annual
+    #   ecif_funding_low_annual  = max(uplift, 0) / conservative_ratio   # e.g. 1/10
+    #   ecif_funding_high_annual = max(uplift, 0) / generous_ratio       # e.g. 1/5
+    msft_uplift_annual: Decimal = Decimal("0")
+    ecif_funding_low_annual: Decimal = Decimal("0")
+    ecif_funding_high_annual: Decimal = Decimal("0")
 
 
 @dataclass
@@ -590,6 +599,24 @@ def compute(engagement: Engagement) -> EngineResult:
         key=lambda f: (-f.credited_annual, f.third_party_product_name),
     )
 
+    # ECIF projected funding (Section 6.8b). Uplift is the pure Microsoft-spend
+    # increase (target − existing Microsoft), excluding the third-party offset —
+    # ECIF tracks incremental Microsoft revenue, not net customer TCO. A non-
+    # positive uplift (no Microsoft growth) projects no funding. A funding end
+    # with a non-positive ratio is treated as zero rather than dividing by zero.
+    msft_uplift = _money(target_microsoft - existing_microsoft)
+    fundable = msft_uplift if msft_uplift > 0 else Decimal("0")
+    ecif_low = (
+        _money(fundable / engagement.ecif_roi_conservative)
+        if engagement.ecif_roi_conservative > 0
+        else Decimal("0.00")
+    )
+    ecif_high = (
+        _money(fundable / engagement.ecif_roi_generous)
+        if engagement.ecif_roi_generous > 0
+        else Decimal("0.00")
+    )
+
     rollup = RollupResult(
         net_tco_delta_annual=net_delta,
         fully_eliminated_tools=fully_eliminated_names,
@@ -610,6 +637,9 @@ def compute(engagement: Engagement) -> EngineResult:
             net_delta
             + sum((f.redundant_today_annual for f in freed_third_party), Decimal("0"))
         ),
+        msft_uplift_annual=msft_uplift,
+        ecif_funding_low_annual=ecif_low,
+        ecif_funding_high_annual=ecif_high,
     )
 
     return EngineResult(

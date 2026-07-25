@@ -135,3 +135,8 @@ class Engagement:
     # Existing MS licenses as a flat list; each line carries the personas it
     # applies to. The engine allocates each line across its personas by headcount.
     current_licenses: list[CurrentLicenseLine] = field(default_factory=list)
+    # ECIF ROI ratios (N:1). The engine projects Microsoft co-investment funding
+    # as ~1/N of the annual Microsoft-spend uplift, presented as a range between a
+    # conservative end and a more generous end. Policy inputs, like tooling_pct.
+    ecif_roi_conservative: Decimal = Decimal("10")
+    ecif_roi_generous: Decimal = Decimal("5")
