@@ -30,6 +30,9 @@ function UpdateNow({ prevSha }) {
     try {
       const r = await api.post('/api/update')
       if (!r.ok) { setPhase('error'); setDetail(r.detail || 'Update failed.'); return }
+      // Watchtower answers 200 even when it recreated nothing (no newer image).
+      // Don't fake a "restarting" spinner + reload for a no-op — surface why.
+      if (r.no_op) { setPhase('error'); setDetail(r.detail || 'Watchtower found nothing to update.'); return }
       setDetail(r.detail || 'Update triggered.')
       waitForRestart()
     } catch (e) { setPhase('error'); setDetail(e.message) }
