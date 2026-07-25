@@ -121,8 +121,9 @@ class Engagement(Base):
     # ECIF funding is quoted as an ROI ratio N:1 — Microsoft may fund ~1/N of the
     # annual Microsoft-spend uplift. The projected funding is presented as a range
     # between a conservative end (typically 10:1 → ~1/10 of the uplift) and a more
-    # generous end for certain motions (5:1 → ~1/5). Editable per engagement; the
-    # engine reads them to compute the ECIF range in the rollup. User-entered.
+    # generous end for certain motions (5:1 → ~1/5). Seeded from GlobalDefaults on
+    # creation ("seed, then own"), then editable per engagement; the engine reads
+    # them to compute the ECIF range in the rollup.
     ecif_roi_conservative: Mapped[float] = mapped_column(Numeric(6, 2), default=10)
     ecif_roi_generous: Mapped[float] = mapped_column(Numeric(6, 2), default=5)
 
@@ -671,6 +672,12 @@ class GlobalDefaults(Base):
     # monthly billing on an annual commit, not a data error.
     default_term_duration: Mapped[str] = mapped_column(String, default="P1Y")
     default_billing_plan: Mapped[str] = mapped_column(String, default="Monthly")
+    # Ground-floor ECIF funding ratios (N:1 → Microsoft may fund ~1/N of the annual
+    # Microsoft-spend uplift). New engagements copy these into their own
+    # ecif_roi_conservative/generous on creation; changing them here retargets only
+    # NEW engagements. 10:1 / 5:1 out of the box, matching the per-engagement default.
+    default_ecif_roi_conservative: Mapped[float] = mapped_column(Numeric(6, 2), default=10)
+    default_ecif_roi_generous: Mapped[float] = mapped_column(Numeric(6, 2), default=5)
     # Operator-selected OpenRouter model for AI assist. Empty = use the env
     # default (settings.openrouter_model). Operational config, runtime-editable.
     openrouter_model: Mapped[str] = mapped_column(String, default="")

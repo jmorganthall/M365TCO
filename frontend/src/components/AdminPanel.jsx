@@ -111,6 +111,20 @@ export default function AdminPanel({ onClose }) {
                 <BasisSelect kind="billing" value={defaults.default_billing_plan}
                   onChange={(v) => saveDefaults({ default_billing_plan: v })} />
               </div>
+              <div>
+                <label>Default ECIF ROI — conservative (N:1)</label>
+                <input type="number" step="0.5" min="1"
+                  defaultValue={defaults.default_ecif_roi_conservative}
+                  onBlur={(e) => saveDefaults({ default_ecif_roi_conservative: Number(e.target.value) })} />
+                <small className="src">Lower-funding end for new managed accounts — ~1/N of the annual uplift.</small>
+              </div>
+              <div>
+                <label>Default ECIF ROI — generous (N:1)</label>
+                <input type="number" step="0.5" min="1"
+                  defaultValue={defaults.default_ecif_roi_generous}
+                  onBlur={(e) => saveDefaults({ default_ecif_roi_generous: Number(e.target.value) })} />
+                <small className="src">Higher-funding end for certain motions.</small>
+              </div>
               <span className="muted" style={{ alignSelf: 'flex-end', paddingBottom: '.5rem' }}>
                 Current tooling split: {pct(defaults.default_tooling_pct)}
               </span>

@@ -146,17 +146,20 @@ FK, UUID PK, cascade-deleted with the engagement.
   Unit (ATU) assigned. When set, the readout adds an advisory **Microsoft ECIF
   co-investment** note under *Recommended next steps* (the Fund step) — a
   presentation gate only; the engine computes the uplift and funding range
-  unconditionally (ENGINE_SPEC §6.8b). `ecif_roi_conservative`
-  (default 10) and `ecif_roi_generous` (default 5) are the ROI ratios N:1 the engine
-  divides the annual Microsoft-spend uplift by to project the funding range Microsoft
-  may co-invest (~1/N of the uplift). Advisory — actual ECIF is scoped with the
-  Microsoft account team. All three are editable on the Customer Info tab and copied
-  by `duplicate`.
+  unconditionally (ENGINE_SPEC §6.8b). `ecif_roi_conservative` and
+  `ecif_roi_generous` are the ROI ratios N:1 the engine divides the annual
+  Microsoft-spend uplift by to project the funding range Microsoft may co-invest
+  (~1/N of the uplift). They are **seeded from `GlobalDefaults`** on creation
+  (`default_ecif_roi_conservative` 10 / `default_ecif_roi_generous` 5, §4.11),
+  then owned per engagement. Advisory — actual ECIF is scoped with the Microsoft
+  account team. All three are editable on the Customer Info tab and copied by
+  `duplicate`.
 - **CRUD:** `GET/POST/PATCH/DELETE /api/engagements`, plus `duplicate`, `compute`,
   `readout.html`, `readout.xlsx`, `snapshots`.
 - **Lifecycle:** on create, seeds outcomes + Microsoft coverage from the seed
-  library (§6), and copies `default_segment` from `GlobalDefaults`. `duplicate`
-  deep-copies every child (and the basis defaults) with id remapping.
+  library (§6), and copies `default_segment`, the pricing-basis defaults, and the
+  ECIF ROI ratios from `GlobalDefaults`. `duplicate` deep-copies every child (and
+  the basis defaults) with id remapping.
 - **Note:** `global_tooling_pct` is the engagement default for the managed split;
   individual third-party rows may override it.
 - **Readout branding:** `brand_logo_data_url` (a base64 image data URL),
@@ -712,8 +715,10 @@ trustworthy, without inventing data.
 ### 4.11 Out-of-band data sets
 - **GlobalDefaults / Settings (PRD 5.10):** the single-row `GlobalDefaults` table
   holds operator-editable, engagement-seeded defaults — `default_tooling_pct`,
-  `default_segment` (the ground floor of the
-  pricing-basis chain, §4.1), and the operational `openrouter_model` /
+  `default_segment` (the ground floor of the pricing-basis chain, §4.1),
+  `default_ecif_roi_conservative` / `default_ecif_roi_generous` (10 / 5 — the
+  ground floor of the per-engagement ECIF ratios, §4.1), and the operational
+  `openrouter_model` /
   `sanity_check_model` (the latter an inexpensive model for the advisory
   pre-readout sanity check; blank falls back to `settings.sanity_check_model`).
   Each model also has a per-model `openrouter_web_search` / `sanity_check_web_search`

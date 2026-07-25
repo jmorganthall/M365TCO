@@ -27,6 +27,10 @@ class EngagementCreate(BaseModel):
     default_segment: Optional[str] = None
     default_term_duration: Optional[str] = None
     default_billing_plan: Optional[str] = None
+    # ECIF funding ratios. Omitted → inherit GlobalDefaults at creation ("seed,
+    # then own"); thereafter editable per engagement on the Customer Info tab.
+    ecif_roi_conservative: Optional[Decimal] = None
+    ecif_roi_generous: Optional[Decimal] = None
     notes: str = ""
     # Omitted → the create endpoint defaults it to today.
     workshop_date: Optional[date] = None
@@ -37,6 +41,8 @@ class GlobalDefaultsOut(ORMModel):
     default_segment: str
     default_term_duration: str
     default_billing_plan: str
+    default_ecif_roi_conservative: Decimal
+    default_ecif_roi_generous: Decimal
     openrouter_model: str
     openrouter_web_search: bool
     sanity_check_model: str
@@ -48,6 +54,8 @@ class GlobalDefaultsUpdate(BaseModel):
     default_segment: Optional[str] = None
     default_term_duration: Optional[str] = None
     default_billing_plan: Optional[str] = None
+    default_ecif_roi_conservative: Optional[Decimal] = None
+    default_ecif_roi_generous: Optional[Decimal] = None
     openrouter_model: Optional[str] = None
     openrouter_web_search: Optional[bool] = None
     sanity_check_model: Optional[str] = None
