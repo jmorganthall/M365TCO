@@ -574,11 +574,11 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
  .hero-split{{display:flex;flex-direction:column;gap:.7rem;margin-top:.9rem;
    padding-top:.9rem;border-top:1px solid var(--line)}}
  .hero-part{{background:#fff;border:1px solid var(--line);border-radius:8px;
-   padding:.6rem .85rem;display:flex;align-items:flex-start;gap:1rem}}
+   padding:.6rem .85rem;display:flex;align-items:center;gap:1rem}}
  .hero-part-main{{flex:1;min-width:0}}
  .part-label{{font-size:.8rem;font-weight:650;color:var(--muted)}}
  .part-value{{font-size:1.35rem;font-weight:750;margin:.1rem 0}}
- .part-pct{{flex:0 0 auto;font-size:1.9rem;font-weight:700;color:var(--muted);
+ .part-pct{{flex:0 0 auto;font-size:1.05rem;font-weight:600;color:var(--muted);
    opacity:.55;letter-spacing:-.02em;line-height:1}}
  .hero-caveat{{margin-top:.7rem;font-size:.82rem;color:var(--muted)}}
  ul.moves{{list-style:none;margin:.35rem 0 0;padding:0}}
