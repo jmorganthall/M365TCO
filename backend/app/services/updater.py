@@ -18,10 +18,25 @@ both are present.
 
 from __future__ import annotations
 
+import logging
+import re
+
 import httpx
 
 from ..config import settings
 from . import secrets
+
+_log = logging.getLogger("m365tco.updater")
+
+# Watchtower's on-demand /v1/update returns HTTP 200 even when it scans and does
+# NOT recreate anything (no newer image, a pull it couldn't do, or an update
+# already running). These markers in its response body mean "ran, changed
+# nothing" — so we don't tell the operator a restart is coming that never will.
+_NOOP_MARKERS = (
+    re.compile(r"Updated=0\b"),          # "Session done: Failed=0 Scanned=1 Updated=0"
+    re.compile(r"no new images", re.I),
+    re.compile(r"already in progress", re.I),
+)
 
 
 def _token() -> str | None:
@@ -53,29 +68,60 @@ def status() -> dict:
 def trigger() -> dict:
     """POST Watchtower's `/v1/update` to pull + recreate this container now.
 
-    Returns `{ok, detail}`. Unlike the update *check* this is NOT fail-silent — it
-    is an explicit operator action, so a misconfiguration or a Watchtower error is
-    reported back to the UI rather than swallowed."""
+    Returns `{ok, no_op, detail}`. Unlike the update *check* this is NOT
+    fail-silent — it is an explicit operator action, so a misconfiguration or a
+    Watchtower error is reported back to the UI rather than swallowed. Because
+    Watchtower answers 200 even for a no-op (nothing newer to pull, or a scan that
+    recreated nothing), the outcome is also LOGGED server-side (visible in
+    `docker logs m365tco`) and Watchtower's own response body is surfaced, so a
+    button-press that changes nothing is diagnosable instead of silent."""
     url = (settings.watchtower_url or "").rstrip("/")
     if not url:
-        return {"ok": False,
+        _log.warning("Update now: no Watchtower URL configured")
+        return {"ok": False, "no_op": False,
                 "detail": "No Watchtower URL configured — set WATCHTOWER_URL (or TCO_WATCHTOWER_URL)."}
     token = _token()
     if not token:
-        return {"ok": False,
+        _log.warning("Update now: no Watchtower API token set")
+        return {"ok": False, "no_op": False,
                 "detail": "No Watchtower API token set — add it under Settings › Secrets, "
                           "or set WATCHTOWER_TOKEN in the environment."}
+    endpoint = f"{url}/v1/update"
+    _log.info("Update now: POST %s", endpoint)  # never log the bearer token
     try:
         resp = httpx.post(
-            f"{url}/v1/update",
+            endpoint,
             headers={"Authorization": f"Bearer {token}"},
             timeout=30,
         )
     except httpx.HTTPError as exc:
-        return {"ok": False, "detail": f"Could not reach Watchtower: {exc}"}
+        _log.warning("Update now: could not reach Watchtower at %s: %s", endpoint, exc)
+        return {"ok": False, "no_op": False, "detail": f"Could not reach Watchtower: {exc}"}
+
+    # Watchtower's update run writes its result into the response body — capture it
+    # (trimmed) so the operator sees what it actually did. Truncate for the UI.
+    body = (resp.text or "").strip()
+    body_short = body if len(body) <= 500 else body[:500] + "…"
+    _log.info("Update now: Watchtower HTTP %s%s", resp.status_code,
+              f" — {body}" if body else " (empty body)")
+
     if resp.status_code == 401:
-        return {"ok": False, "detail": "Watchtower rejected the token (401) — check it matches."}
+        return {"ok": False, "no_op": False,
+                "detail": "Watchtower rejected the token (401) — check it matches "
+                          "WATCHTOWER_HTTP_API_TOKEN on the sidecar."}
     if resp.status_code >= 400:
-        return {"ok": False, "detail": f"Watchtower returned HTTP {resp.status_code}."}
-    return {"ok": True,
-            "detail": "Update triggered — the container will pull the new image and restart shortly."}
+        return {"ok": False, "no_op": False,
+                "detail": f"Watchtower returned HTTP {resp.status_code}."
+                          + (f" {body_short}" if body else "")}
+
+    no_op = any(m.search(body) for m in _NOOP_MARKERS)
+    if no_op:
+        _log.warning("Update now: Watchtower ran but updated nothing — %s", body or "(no detail)")
+        return {"ok": True, "no_op": True,
+                "detail": "Watchtower ran but found no image to update — the container "
+                          "won't restart. Confirm a newer image is published and pullable "
+                          "(check the sidecar's own log: docker logs m365tco-watchtower)."
+                          + (f" Watchtower said: {body_short}" if body else "")}
+    return {"ok": True, "no_op": False,
+            "detail": "Update triggered — the container will pull the new image and restart shortly."
+                      + (f" Watchtower: {body_short}" if body else "")}

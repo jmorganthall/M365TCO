@@ -7,8 +7,9 @@ from app.services import secrets, updater
 
 
 class _Resp:
-    def __init__(self, status_code):
+    def __init__(self, status_code, text=""):
         self.status_code = status_code
+        self.text = text
 
 
 def _set_token(value):
@@ -52,11 +53,53 @@ def test_trigger_success_calls_watchtower(monkeypatch):
 
     monkeypatch.setattr(updater.httpx, "post", fake_post)
     r = updater.trigger()
-    assert r["ok"] is True
+    assert r["ok"] is True and r["no_op"] is False
     assert seen["url"] == "http://watchtower:8080/v1/update"  # normalized, no double slash
     assert seen["auth"] == "Bearer s3cr3t"
     st = updater.status()
     assert st["configured"] is True
+
+
+def test_trigger_detects_watchtower_noop(monkeypatch):
+    """Watchtower answers 200 even when it recreated nothing. The trigger flags
+    that as a no-op (so the UI won't fake a restart) and surfaces its output."""
+    monkeypatch.setattr(settings, "watchtower_url", "http://watchtower:8080")
+    _set_token("s3cr3t")
+    monkeypatch.setattr(
+        updater.httpx, "post",
+        lambda *a, **k: _Resp(200, text="Session done: Failed=0 Scanned=1 Updated=0"),
+    )
+    r = updater.trigger()
+    assert r["ok"] is True and r["no_op"] is True
+    assert "no image to update" in r["detail"].lower()
+    assert "Updated=0" in r["detail"]          # Watchtower's own output is surfaced
+    _set_token(None)
+
+
+def test_trigger_success_surfaces_body_and_is_not_noop(monkeypatch):
+    """A real update (Updated=1) is not a no-op and promises the restart."""
+    monkeypatch.setattr(settings, "watchtower_url", "http://watchtower:8080")
+    _set_token("s3cr3t")
+    monkeypatch.setattr(
+        updater.httpx, "post",
+        lambda *a, **k: _Resp(200, text="Session done: Failed=0 Scanned=1 Updated=1"),
+    )
+    r = updater.trigger()
+    assert r["ok"] is True and r["no_op"] is False
+    assert "restart shortly" in r["detail"]
+    _set_token(None)
+
+
+def test_trigger_error_includes_watchtower_body(monkeypatch):
+    """A 4xx surfaces Watchtower's response body so the cause isn't hidden."""
+    monkeypatch.setattr(settings, "watchtower_url", "http://watchtower:8080")
+    _set_token("s3cr3t")
+    monkeypatch.setattr(
+        updater.httpx, "post", lambda *a, **k: _Resp(500, text="internal boom"),
+    )
+    r = updater.trigger()
+    assert r["ok"] is False and "500" in r["detail"] and "boom" in r["detail"]
+    _set_token(None)
 
 
 def test_token_from_env_fallback_and_store_precedence(monkeypatch):
