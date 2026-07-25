@@ -65,13 +65,26 @@ def _sku_outcomes(db: Session, engagement_id: str) -> dict[str, set[str]]:
 def required_by_persona(db: Session, eng: models.Engagement,
                         sku_outcomes: dict[str, set[str]]) -> dict[str, set[str]]:
     """Outcomes each persona must not lose by swapping: everything their current
-    Microsoft licenses deliver + their declared required capabilities."""
-    req: dict[str, set[str]] = {}
+    Microsoft licenses deliver + their declared required capabilities.
+
+    A current license tagged to specific personas contributes only to those
+    personas. An UNTAGGED license is org-wide (mirroring engine §6.2 and
+    `persona_coverage_gaps`): its outcomes land on every persona's required set,
+    so the swap never proposes moving a persona who would silently lose a
+    capability an org-wide license was providing."""
+    req: dict[str, set[str]] = {p.id: set() for p in eng.personas}
+    orgwide: set[str] = set()
     for lic in eng.current_licenses:
         key = bundles_service.resolve_bundle(db, lic.sku_reference) or (lic.sku_reference or "")
         outs = sku_outcomes.get(key, set())
-        for pid in lic.persona_ids:
-            req.setdefault(pid, set()).update(outs)
+        if lic.persona_ids:
+            for pid in lic.persona_ids:
+                req.setdefault(pid, set()).update(outs)
+        else:
+            orgwide.update(outs)      # untagged = org-wide → applies to everyone
+    if orgwide:
+        for pid in req:
+            req[pid].update(orgwide)
     for p in eng.personas:
         if p.required_outcome_ids:
             req.setdefault(p.id, set()).update(p.required_outcome_ids)

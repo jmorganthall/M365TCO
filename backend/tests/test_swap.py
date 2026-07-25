@@ -83,6 +83,25 @@ def test_swap_eligibility_requires_capability_match(client):
     assert row["eligible"] is False and row["applied"] is False
 
 
+def test_swap_capability_check_respects_orgwide_current_license(client):
+    """An UNTAGGED current license is org-wide (engine §6.2): every persona holds it
+    today. If it delivers an outcome Business Premium lacks (here PSTN dial-tone via a
+    Calling Plan), swapping any persona to Business Premium would silently drop that
+    capability — so the swap must find them ineligible even though their own tagged
+    licenses are fully BP-covered."""
+    eid, p = _setup(client)
+    # Org-wide (no persona_ids) Calling Plan → delivers PSTN Dial-Tone, which BP lacks.
+    client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "Microsoft Teams Calling Plan", "quantity_assigned": 100,
+        "unit_price_paid_annual": 120})
+    client.patch(f"/api/engagements/{eid}", json={"bp_swap_enabled": True})
+    r = client.post(f"/api/engagements/{eid}/compute").json()
+    # The org-wide PSTN capability blocks the swap — persona keeps its own target.
+    assert r["scenarios"][0]["target_sku_reference"] == "Microsoft 365 E3"
+    row = r["bp_swap"]["scenarios"][0]
+    assert row["eligible"] is False and row["applied"] is False
+
+
 def test_swap_fills_up_to_cap_and_never_breaches(client):
     """Two personas totaling 340 seats can't both fit under the 300 Business Premium
     cap. The swap fills up to the limit — the larger group (200) swaps, the 140 that
