@@ -317,6 +317,32 @@ def test_segment_inheritance_and_line_overrides(client):
     assert lic["billing_plan"] == "Monthly"
 
 
+def test_ecif_ratio_inheritance_from_global_defaults(client):
+    # Out-of-box global ECIF ratios match the per-engagement defaults (10:1 / 5:1).
+    gd = client.get("/api/admin/defaults").json()
+    assert float(gd["default_ecif_roi_conservative"]) == 10
+    assert float(gd["default_ecif_roi_generous"]) == 5
+
+    # Operator retargets the global ECIF defaults (affects only NEW engagements).
+    client.put("/api/admin/defaults",
+               json={"default_ecif_roi_conservative": 8, "default_ecif_roi_generous": 4})
+
+    # A new engagement seeds its own copy from the (new) global defaults.
+    eng = client.post("/api/engagements", json={"customer_name": "Managed Co"}).json()
+    eid = eng["id"]
+    assert float(eng["ecif_roi_conservative"]) == 8
+    assert float(eng["ecif_roi_generous"]) == 4
+
+    # The engagement owns its copy: editing it does not alter the global default.
+    eng = client.patch(f"/api/engagements/{eid}", json={"ecif_roi_conservative": 12}).json()
+    assert float(eng["ecif_roi_conservative"]) == 12
+    assert float(client.get("/api/admin/defaults").json()["default_ecif_roi_conservative"]) == 8
+
+    # Restore out-of-box globals so later tests see a clean baseline.
+    client.put("/api/admin/defaults",
+               json={"default_ecif_roi_conservative": 10, "default_ecif_roi_generous": 5})
+
+
 def test_price_sheet_tab_delimited_import(client):
     # Same data, tab-delimited (e.g. exported/round-tripped through Excel).
     header = "\t".join([

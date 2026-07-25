@@ -107,6 +107,10 @@ def create_engagement(payload: schemas.EngagementCreate, db: Session = Depends(g
         data["default_term_duration"] = gd.default_term_duration
     if data.get("default_billing_plan") is None:
         data["default_billing_plan"] = gd.default_billing_plan
+    if data.get("ecif_roi_conservative") is None:
+        data["ecif_roi_conservative"] = gd.default_ecif_roi_conservative
+    if data.get("ecif_roi_generous") is None:
+        data["ecif_roi_generous"] = gd.default_ecif_roi_generous
     if data.get("workshop_date") is None:
         data["workshop_date"] = date.today()  # default the Customer Info workshop date to today
     eng = models.Engagement(**data)

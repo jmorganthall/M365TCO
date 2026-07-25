@@ -71,6 +71,7 @@ export default function CustomerInfo({ engagement, meta, onUpdate }) {
   const savedTag = (field) => savedAt === field ? <span className="badge pos" style={{ marginLeft: 6 }}>saved</span> : null
 
   return (
+    <>
     <div className="card">
       <div className="flex-between">
         <h2 style={{ margin: 0 }}>Customer info</h2>
@@ -145,24 +146,40 @@ export default function CustomerInfo({ engagement, meta, onUpdate }) {
       </div>
 
       <div style={{ marginTop: '1rem' }}>
-        <label className="check">
-          <input type="checkbox" checked={f.managed_ms_account}
-            onChange={(e) => { setF({ ...f, managed_ms_account: e.target.checked }); commit('managed_ms_account', e.target.checked) }} />
-          <b>Managed Microsoft account</b> {savedTag('managed_ms_account')}
-        </label>
-        <p className="hint" style={{ margin: '.2rem 0 .5rem' }}>Check when the customer has a Microsoft
-          Account Team Unit (ATU) assigned. Enables the <b>Microsoft ECIF projected funding</b> card on the
-          readout — Microsoft co-investment that may fund partner services against the annual uplift in
-          Microsoft spend.</p>
-        {f.managed_ms_account && (
+        <b>Pricing basis defaults</b>
+        <p className="hint" style={{ margin: '.2rem 0 .5rem' }}>Which priced catalog variant quotes this
+          engagement's bundles and SKUs — inherited from the global defaults at creation; current-license
+          lines and scenarios can override per line. Changing these affects future quotes, not prices
+          already entered.</p>
+        <EngagementBasisEditor engagement={engagement} meta={meta} onUpdate={onUpdate} onError={setErr} />
+      </div>
+    </div>
+
+    <div className="card">
+      <h2 style={{ marginTop: 0 }}>Microsoft account</h2>
+      <label className="check">
+        <input type="checkbox" checked={f.managed_ms_account}
+          onChange={(e) => { setF({ ...f, managed_ms_account: e.target.checked }); commit('managed_ms_account', e.target.checked) }} />
+        <b>Managed Microsoft account</b> {savedTag('managed_ms_account')}
+      </label>
+      <p className="hint" style={{ margin: '.2rem 0 .5rem' }}>Check when the customer has a Microsoft
+        Account Team Unit (ATU) assigned. Adds a <b>Microsoft ECIF co-investment</b> note under the
+        readout's next steps — Microsoft may fund partner services against the annual uplift in
+        Microsoft spend.</p>
+      {f.managed_ms_account && (
+        <details style={{ marginTop: '.4rem' }}>
+          <summary className="src" style={{ cursor: 'pointer' }}>ECIF funding ratios (advanced — defaults to 10:1 / 5:1)</summary>
+          <p className="hint" style={{ margin: '.4rem 0 .5rem' }}>Microsoft may fund a share of the annual
+            Microsoft-spend uplift, expressed as an ROI ratio (N:1 → ~1/N funded). The readout presents a
+            range between these two ends. Indicative only — actual ECIF is scoped with the account team.</p>
           <div className="grid c2">
             <div>
               <label>ECIF ROI — conservative (N:1) {savedTag('ecif_roi_conservative')}</label>
               <input type="number" min="1" step="0.5" value={f.ecif_roi_conservative}
                 onChange={set('ecif_roi_conservative')}
                 onBlur={(e) => commit('ecif_roi_conservative', e.target.value)} />
-              <small className="src">Lower-funding end — Microsoft may fund ~1/{f.ecif_roi_conservative || 10} of the
-                annual Microsoft-spend uplift (typically 10:1).</small>
+              <small className="src">Lower-funding end — ~1/{f.ecif_roi_conservative || 10} of the
+                annual uplift (typically 10:1).</small>
             </div>
             <div>
               <label>ECIF ROI — generous (N:1) {savedTag('ecif_roi_generous')}</label>
@@ -173,18 +190,10 @@ export default function CustomerInfo({ engagement, meta, onUpdate }) {
                 uplift (up to 5:1).</small>
             </div>
           </div>
-        )}
-      </div>
-
-      <div style={{ marginTop: '1rem' }}>
-        <b>Pricing basis defaults</b>
-        <p className="hint" style={{ margin: '.2rem 0 .5rem' }}>Which priced catalog variant quotes this
-          engagement's bundles and SKUs — inherited from the global defaults at creation; current-license
-          lines and scenarios can override per line. Changing these affects future quotes, not prices
-          already entered.</p>
-        <EngagementBasisEditor engagement={engagement} meta={meta} onUpdate={onUpdate} onError={setErr} />
-      </div>
+        </details>
+      )}
     </div>
+    </>
   )
 }
 
