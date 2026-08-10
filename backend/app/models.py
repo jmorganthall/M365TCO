@@ -555,7 +555,16 @@ class CoverageMapEntry(Base):
     third_party_product_id: Mapped[str | None] = mapped_column(
         ForeignKey("third_party_products.id"), nullable=True
     )
-    coverage: Mapped[str] = mapped_column(SAEnum(*COVERAGE, name="coverage"), default="Full")
+    # Stored as a plain string, NOT a DB Enum. Coverage is binary — the row
+    # existing means the outcome is covered (ENGINE_SPEC: "there is no partial
+    # coverage") — so "Full" is the only marker the app ever writes. But
+    # engagements created by older versions carry legacy markers ("Partial"/"None")
+    # from when coverage was multi-valued, and a SQLAlchemy Enum raises LookupError
+    # when READING any value outside its tuple. That turned a single stale row into
+    # a 500 on every read of this table (the coverage map, the engine, exports). A
+    # String reads legacy values back harmlessly; _backfill_binary_coverage
+    # normalizes them to "Full" at startup. Do not reintroduce an Enum here.
+    coverage: Mapped[str] = mapped_column(String, default="Full")
     ai_suggested: Mapped[bool] = mapped_column(Boolean, default=False)
     ratified: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -813,7 +822,10 @@ class DefaultBundleCoverage(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     bundle_key: Mapped[str] = mapped_column(String, index=True)
     outcome_key: Mapped[str] = mapped_column(String)
-    coverage: Mapped[str] = mapped_column(SAEnum(*COVERAGE, name="default_coverage_cov"), default="Full")
+    # Plain string, not a DB Enum — same rationale as CoverageMapEntry.coverage:
+    # reading a legacy multi-value marker through an Enum raises and 500s. A String
+    # tolerates it; the startup backfill normalizes to "Full".
+    coverage: Mapped[str] = mapped_column(String, default="Full")
 
 
 class AiPrompt(Base):
