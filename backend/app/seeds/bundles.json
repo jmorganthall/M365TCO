@@ -1,5 +1,5 @@
 {
-  "version": "2026-07-bundles-v2-o365",
+  "version": "2026-08-bundles-v3-ems",
   "bundles": [
     {"key": "m365-business-basic", "name": "Microsoft 365 Business Basic", "kind": "bundle", "base": null, "sort_order": 8},
     {"key": "m365-business-standard", "name": "Microsoft 365 Business Standard", "kind": "bundle", "base": null, "sort_order": 9},
@@ -11,6 +11,8 @@
     {"key": "o365-e1", "name": "Office 365 E1", "kind": "bundle", "base": null, "sort_order": 25},
     {"key": "o365-e3", "name": "Office 365 E3", "kind": "bundle", "base": null, "sort_order": 26},
     {"key": "o365-e5", "name": "Office 365 E5", "kind": "bundle", "base": null, "sort_order": 27},
+    {"key": "ems-e3", "name": "Enterprise Mobility + Security E3", "kind": "addon", "bases": ["o365-e1", "o365-e3", "o365-e5"], "sort_order": 28},
+    {"key": "ems-e5", "name": "Enterprise Mobility + Security E5", "kind": "addon", "bases": ["o365-e1", "o365-e3", "o365-e5"], "sort_order": 29},
     {"key": "m365-e3", "name": "Microsoft 365 E3", "kind": "bundle", "base": null, "sort_order": 30},
     {"key": "e5-security", "name": "Microsoft 365 E5 Security", "kind": "addon", "base": "m365-e3", "sort_order": 31},
     {"key": "e5-compliance", "name": "Microsoft 365 E5 Compliance", "kind": "addon", "base": "m365-e3", "sort_order": 32},

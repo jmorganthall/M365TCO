@@ -150,6 +150,12 @@ _ALIASES = {
     "f1": "m365-f1", "f3": "m365-f3", "e3": "m365-e3", "e5": "m365-e5",
     "e7": "m365-e7", "business premium": "m365-business-premium",
     "o365 e1": "o365-e1", "o365 e3": "o365-e3", "o365 e5": "o365-e5",
+    # Enterprise Mobility + Security — sold standalone, commonly paired with an
+    # Office 365 base to approximate M365 E3/E5. The exact bundle names match on
+    # their own; these cover the "&"/"ems" shorthands a customer sheet might use.
+    "ems e3": "ems-e3", "ems e5": "ems-e5",
+    "enterprise mobility and security e3": "ems-e3",
+    "enterprise mobility and security e5": "ems-e5",
     "entra id p2": "entra-id-p2", "defender for endpoint p2": "defender-endpoint-p2",
     "defender for office 365 p2": "defender-office-p2", "sentinel": "sentinel",
     "teams phone": "teams-phone", "power bi pro": "power-bi-pro",

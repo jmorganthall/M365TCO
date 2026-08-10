@@ -20,13 +20,14 @@ def test_unmapped_second_license_is_flagged(client):
                           json={"name": "Non-Store Users", "headcount": 700}).json()
 
     # Two current licenses on ONE persona. O365 E3 maps to a seeded bundle; the
-    # EMS line matches no bundle at all, so its capability is invisible.
-    for sku in ("Office 365 E3", "Enterprise Mobility + Security E3"):
+    # custom line matches no bundle at all, so its capability is invisible.
+    unmapped_sku = "Acme Legacy Security Suite"
+    for sku in ("Office 365 E3", unmapped_sku):
         client.post(f"/api/engagements/{eid}/current-licenses",
                     json={"sku_reference": sku, "quantity_assigned": 700,
                           "unit_price_paid_annual": 100, "persona_ids": [persona["id"]]})
 
-    # Target them at just Office 365 E3 — the "save money" move that drops EMS.
+    # Target them at just Office 365 E3 — the "save money" move.
     client.post(f"/api/engagements/{eid}/scenarios",
                 json={"persona_id": persona["id"], "target_sku_reference": "Office 365 E3",
                       "target_unit_price_annual": 300, "in_scope": True})
@@ -35,12 +36,12 @@ def test_unmapped_second_license_is_flagged(client):
     p = next(x for x in gaps["personas"] if x["persona_id"] == persona["id"])
 
     refs = {u["sku_reference"] for u in p["unmapped_current_licenses"]}
-    assert "Enterprise Mobility + Security E3" in refs
+    assert unmapped_sku in refs
     # O365 E3 resolves to a bundle with coverage, so it is NOT flagged as unmapped.
     assert "Office 365 E3" not in refs
-    ems = next(u for u in p["unmapped_current_licenses"]
-               if u["sku_reference"] == "Enterprise Mobility + Security E3")
-    assert ems["resolves_to_bundle"] is False
+    entry = next(u for u in p["unmapped_current_licenses"]
+                 if u["sku_reference"] == unmapped_sku)
+    assert entry["resolves_to_bundle"] is False
 
 
 def test_target_dropping_a_mapped_outcome_is_flagged(client):
