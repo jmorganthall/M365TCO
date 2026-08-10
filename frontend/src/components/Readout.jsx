@@ -330,6 +330,29 @@ export default function Readout({ engagement }) {
         </div>
       )}
 
+      {(result.dropped_capability || []).length > 0 && (
+        <div className="card">
+          <h2>Capability trade-offs</h2>
+          <p className="hint">Capabilities each persona's <b>current</b> Microsoft licensing delivers
+            today that the target does <b>not</b> — the licensing being right-sized away. Right-sizing
+            can legitimately shed capability, so the savings stand, but confirm none of these is still
+            needed (or add it back with a bigger base or an add-on) so the number isn't a free win.</p>
+          {result.dropped_capability.map((d) => {
+            const target = inScope.find((s) => s.persona_id === d.persona_id)?.target_sku_reference
+            return (
+              <div key={d.persona_id} className="popcheck">
+                <b>{d.persona_name}</b> <span className="muted">({d.headcount}){target ? <> → {target}</> : null}</span>
+                <div className="pill-list" style={{ marginTop: '.35rem' }}>
+                  {d.outcomes.map((o) => (
+                    <span key={o.id} className="badge warn" title={o.description || ''}>{o.name}</span>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       {narratives && (
         <div className="card">
           <div className="flex-between">

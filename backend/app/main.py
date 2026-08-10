@@ -291,7 +291,12 @@ def _backfill_binary_coverage(db) -> None:
     from sqlalchemy import text
 
     for table in ("coverage_map_entries", "default_bundle_coverage"):
-        db.execute(text(f"UPDATE {table} SET coverage='Full' WHERE coverage<>'Full'"))
+        # `coverage <> 'Full'` is NULL-blind in SQL, so normalize NULLs too — a NULL
+        # would fail the non-optional `coverage` response field just as a legacy
+        # marker would.
+        db.execute(text(
+            f"UPDATE {table} SET coverage='Full' WHERE coverage IS NULL OR coverage<>'Full'"
+        ))
     db.commit()
 
 

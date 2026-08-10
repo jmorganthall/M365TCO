@@ -59,6 +59,12 @@ def build_narrative_payload(eng, result: dict) -> list[dict]:
         n["persona_id"]: [o["name"] for o in n.get("outcomes", [])]
         for n in (result.get("new_outcomes") or [])
     }
+    # Capabilities the move DROPS per persona — so the narrative stays honest and
+    # never sells a right-sizing as pure gain when it sheds capability.
+    dropped_by_pid = {
+        d["persona_id"]: [o["name"] for o in d.get("outcomes", [])]
+        for d in (result.get("dropped_capability") or [])
+    }
 
     out = []
     for s in result.get("scenarios", []) or []:
@@ -73,6 +79,7 @@ def build_narrative_payload(eng, result: dict) -> list[dict]:
             "target_addons": addons_by_persona.get(pid, []),
             "displaced_tools": [o.get("third_party_product_name") for o in s.get("offsets", []) or []],
             "new_outcomes": new_by_pid.get(pid, []),
+            "dropped_outcomes": dropped_by_pid.get(pid, []),
             "current_annual": s.get("current_spend_annual"),
             "target_annual": s.get("target_spend_annual"),
             "delta_annual": s.get("delta_annual"),

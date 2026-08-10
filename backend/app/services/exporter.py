@@ -177,6 +177,35 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         if new_outcome_blocks else ""
     )
 
+    # Capability trade-offs: the mirror of New outcomes — per in-scope persona, the
+    # capabilities their CURRENT Microsoft licensing delivers that the target drops.
+    # Right-sizing legitimately sheds capability, so the savings stand; this makes
+    # the trade explicit so the number is never read as a free win. Omitted entirely
+    # when nothing is dropped.
+    dropped = result.get("dropped_capability") or []
+
+    def _drop_chip(o):
+        desc = (o.get("description") or "").strip()
+        title = f" title=\"{html.escape(desc, quote=True)}\"" if desc else ""
+        return f"<span class='chip drop'{title}>{html.escape(o['name'])}</span>"
+
+    dropped_blocks = "".join(
+        f"<div class='persona-drops'><h3>{html.escape(d['persona_name'])} "
+        f"<span class='muted'>({d['headcount']}) → "
+        f"{html.escape(target_by_pid.get(d['persona_id'], ''))}</span></h3>"
+        f"<div class='chip-row'>{''.join(_drop_chip(o) for o in d['outcomes'])}</div></div>"
+        for d in dropped
+    )
+    dropped_section = (
+        "<section><h2>Capability trade-offs</h2>"
+        "<p class='sub'>Capabilities each persona's <b>current</b> Microsoft licensing "
+        "delivers today that the target does <b>not</b> — the licensing being right-sized "
+        "away. The savings above assume each is acceptable to drop; confirm none is still "
+        "needed (or add it back with a bigger base or an add-on).</p>"
+        f"{dropped_blocks}</section>"
+        if dropped_blocks else ""
+    )
+
     # Spend bridge (cost-change framing): the new target Microsoft cost, minus the
     # existing spend it retires (current Microsoft + freed-up third-party), builds
     # to the net change. The freed third-party splits into "already covered by
@@ -362,14 +391,22 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     # List-price caveat: when baseline spend rests on assumed prices, say so
     # next to the headline, not in the appendix — it builds trust, not doubt.
     assumed_n = sum(1 for lic in engagement.current_licenses if lic.source_tag == "ListPrice")
+    # When a right-sizing move sheds capability, say so AT the headline so the
+    # number is never read as a free win — the detail is in Capability trade-offs.
+    n_drop = len(result.get("dropped_capability") or [])
+    tradeoff_note = (
+        f" This includes capability trade-off{'s' if n_drop != 1 else ''} for "
+        f"{n_drop} persona{'s' if n_drop != 1 else ''} — see Capability trade-offs below."
+        if n_drop else ""
+    )
     hero_caveat = (
         f"<div class='hero-caveat'>Baseline spend uses list-price assumptions for "
         f"{assumed_n} current SKU{'s' if assumed_n != 1 else ''} — validating against "
         f"invoices is step one and may move this number. Figures assume full savings "
-        f"from day one; year one phases with contract end dates.</div>"
+        f"from day one; year one phases with contract end dates.{tradeoff_note}</div>"
         if assumed_n
         else "<div class='hero-caveat'>Figures assume full savings from day one; "
-             "year one phases with contract end dates.</div>"
+             f"year one phases with contract end dates.{tradeoff_note}</div>"
     )
     # One headline, two stacked sub-cards. The components' dollars live in the
     # cards ONLY — no equation line repeating them above.
@@ -616,7 +653,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>M365 TCO Readout — {html.escape(engagement.customer_name)}</title>
 <style>
  :root{{--primary:{primary};--accent:{accent};--pos:#127436;--neg:#b00020;
-   --ink:#1f2430;--muted:#5b6472;--line:#e5e8ee;--soft:#f6f8fb}}
+   --warn:#9a6700;--ink:#1f2430;--muted:#5b6472;--line:#e5e8ee;--soft:#f6f8fb}}
  *{{box-sizing:border-box}}
  body{{font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',sans-serif;
    margin:0;color:var(--ink);background:#fff;line-height:1.45}}
@@ -668,6 +705,10 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
  .chip{{display:inline-block;border:1px solid var(--pos);color:var(--pos);
    background:#fff;border-radius:999px;padding:.22rem .7rem;font-size:.82rem;
    font-weight:600;line-height:1.2;white-space:nowrap}}
+ .persona-drops{{background:var(--soft);border:1px solid var(--line);
+   border-left:3px solid var(--warn);border-radius:10px;padding:.7rem .95rem;margin:.7rem 0}}
+ .persona-drops h3{{margin:0 0 .45rem;font-size:1rem;color:var(--primary)}}
+ .chip.drop{{border-color:var(--warn);color:var(--warn)}}
  ul{{margin:.3rem 0}}
  footer{{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--line);
    color:var(--muted);font-size:.8rem}}
@@ -697,6 +738,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 <th>Target Microsoft/yr</th><th>Change/yr</th><th>Scope</th></tr></thead>
 <tbody>{rows_scenarios}</tbody></table></section>
 {new_outcomes_section}
+{dropped_section}
 
 <section><h2>How we get to the number</h2>
 <p class="sub">Existing annualized spend for the in-scope population, the third-party
@@ -801,6 +843,18 @@ def build_xlsx(engagement: models.Engagement, result: dict) -> bytes:
         "Eliminated renewal cycles",
         ", ".join(r["third_party_product_name"] for r in rollup["eliminated_renewal_cycles"]),
     ])
+
+    # Capability changes — the honest counterpart to the dollar savings: what each
+    # in-scope persona GAINS (new) and GIVES UP (dropped) with its target licensing,
+    # so the spreadsheet reconciles the number with the capability trade-offs.
+    wcap = wb.create_sheet("Capability changes")
+    wcap.append(["Persona", "Headcount", "Change", "Outcome"])
+    for n in result.get("new_outcomes") or []:
+        for o in n.get("outcomes", []):
+            wcap.append([n["persona_name"], n["headcount"], "Gained", o["name"]])
+    for d in result.get("dropped_capability") or []:
+        for o in d.get("outcomes", []):
+            wcap.append([d["persona_name"], d["headcount"], "Dropped", o["name"]])
 
     buf = io.BytesIO()
     wb.save(buf)

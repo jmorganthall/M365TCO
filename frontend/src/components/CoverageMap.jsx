@@ -15,9 +15,13 @@ export default function CoverageMap({ engagement, meta }) {
   const [newOutcomeDesc, setNewOutcomeDesc] = useState('')
 
   function load() {
-    api.get(`/api/engagements/${eid}/outcomes`).then(setOutcomes)
-    api.get(`/api/engagements/${eid}/third-party`).then(setProducts)
-    api.get(`/api/engagements/${eid}/coverage`).then(setCoverage)
+    // Surface failures on the essential reads. Silently swallowing them left the
+    // page looking empty ("No coverage captured" everywhere) with no explanation
+    // when a read 500'd.
+    setErr('')
+    api.get(`/api/engagements/${eid}/outcomes`).then(setOutcomes).catch((e) => setErr(e.message))
+    api.get(`/api/engagements/${eid}/third-party`).then(setProducts).catch((e) => setErr(e.message))
+    api.get(`/api/engagements/${eid}/coverage`).then(setCoverage).catch((e) => setErr(e.message))
     api.get('/api/catalog/bundles').then(setBundles).catch(() => {})
     api.get('/api/admin/ai/status').then((s) => setAiEnabled(s.enabled)).catch(() => {})
   }

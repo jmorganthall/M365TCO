@@ -4,6 +4,13 @@ import { api } from '../api'
 // Reusable $0 third party representing "covered by something out of scope".
 const OOS_NAME = 'Covered elsewhere (out of scope)'
 
+// Amber callout for the capability-honesty guards (unmapped current licensing /
+// dropped outcomes).
+const WARN_CALLOUT = {
+  margin: '.5rem 0 0', padding: '.5rem .7rem',
+  borderLeft: '3px solid var(--warn)', background: 'var(--bg)', borderRadius: 6,
+}
+
 // Coverage validation, between Scenarios and Readout. Per persona, the outcomes
 // NOT delivered today by their current Microsoft licensing or a tagged third
 // party. The operator resolves each gap using EXISTING relationships — map a
@@ -81,6 +88,50 @@ export default function CoverageCheck({ engagement, onNavigate }) {
               <span className="muted">{p.covered_of_target}/{p.target_outcome_count} target outcomes already delivered today</span>
             )}
           </div>
+
+          {/* Honesty guard #1: current licenses whose capability is unmapped, so a
+              target can silently drop them. This is the multi-license persona trap —
+              e.g. a persona on Office 365 E3 + EMS E3 where EMS maps to no bundle. */}
+          {p.unmapped_current_licenses?.length > 0 && (
+            <div style={WARN_CALLOUT}>
+              <b className="warn">⚠ Unmapped current licensing</b>
+              <div className="muted" style={{ fontSize: '.82rem', marginTop: '.25rem' }}>
+                This persona holds {p.unmapped_current_licenses.length} current Microsoft
+                license{p.unmapped_current_licenses.length > 1 ? 's' : ''} that deliver no mapped
+                capability, so their outcomes are invisible to this comparison — a smaller target
+                can drop them without it showing as a lost outcome:
+              </div>
+              <ul style={{ margin: '.3rem 0 0', paddingLeft: '1.1rem', fontSize: '.82rem' }}>
+                {p.unmapped_current_licenses.map((u) => (
+                  <li key={u.sku_reference}>
+                    <b>{u.sku_reference}</b> — {u.resolves_to_bundle
+                      ? 'a known bundle with no coverage in this engagement; add its outcomes in the Coverage map'
+                      : 'not recognized as a bundle; map the SKU in Settings → Staple bundles'}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Honesty guard #2: outcomes the current Microsoft licensing delivers that
+              the target won't — the reverse of the "new outcomes" check below. */}
+          {p.dropped_outcomes?.length > 0 && (
+            <div style={WARN_CALLOUT}>
+              <b className="warn">⚠ Target drops capability delivered today</b>
+              <div className="muted" style={{ fontSize: '.82rem', marginTop: '.25rem' }}>
+                The proposed target delivers {p.dropped_outcomes.length} fewer
+                outcome{p.dropped_outcomes.length > 1 ? 's' : ''} than this persona's current
+                Microsoft licensing. Confirm the downgrade is intended, or pick a target (or add-on)
+                that preserves {p.dropped_outcomes.length > 1 ? 'them' : 'it'}:
+              </div>
+              <div className="pill-list" style={{ marginTop: '.35rem' }}>
+                {p.dropped_outcomes.map((o) => (
+                  <span key={o.id} className="badge warn" title={o.description}>{o.name}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
           {!p.has_scenario ? (
             <p className="muted" style={{ margin: '.5rem 0 0' }}>No target scenario set — pick a target on the Scenarios tab to validate its new outcomes.</p>
           ) : p.uncovered_outcomes.length === 0 ? (
