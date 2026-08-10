@@ -497,23 +497,56 @@ def persona_coverage_gaps(db: Session, engagement_id: str) -> list[dict]:
             covered |= sku_outcomes.get(addon.bundle_id, set())
         target_by_persona[s.persona_id] = covered
 
+    def _outcome_dicts(ids):
+        return [
+            {"id": oid, "name": name_by_id.get(oid, oid),
+             "description": desc_by_id.get(oid, "")}
+            for oid in ids
+        ]
+
     personas = []
     for p in eng.personas:
         target_outcomes = target_by_persona.get(p.id, set())
-        covered_today: set[str] = set()
-        # Current Microsoft licensing: lines tagged to this persona, plus
-        # untagged (org-wide) lines that apply to everyone.
+        # Current Microsoft licensing that applies to this persona (tagged to it, or
+        # untagged = org-wide). A persona can hold SEVERAL current licenses (a
+        # many-to-one relationship); its delivered capability is the UNION of all of
+        # them. We also record any line whose SKU resolves to NO mapped capability —
+        # its outcomes are invisible to the comparison, so a smaller target can
+        # silently drop it. That is the multi-license trap: e.g. a persona on
+        # "Office 365 E3" + "Enterprise Mobility + Security E3" where EMS maps to no
+        # bundle looks fully covered by "Office 365 E3" alone, hiding the EMS loss.
+        ms_today: set[str] = set()
+        unmapped: list[dict] = []
+        seen_refs: set[str] = set()
         for lic in eng.current_licenses:
             if lic.persona_ids and p.id not in lic.persona_ids:
                 continue
-            covered_today |= sku_outcomes.get(_cover_key(db, lic.sku_reference), set())
+            outs = sku_outcomes.get(_cover_key(db, lic.sku_reference), set())
+            ms_today |= outs
+            ref = lic.sku_reference or ""
+            if not outs and ref and ref not in seen_refs:
+                seen_refs.add(ref)
+                unmapped.append({
+                    "sku_reference": ref,
+                    # True: the SKU IS a known bundle but has no ratified coverage
+                    # here (fix in the Coverage map). False: the SKU matches no
+                    # bundle at all (map it in Settings → Staple bundles).
+                    "resolves_to_bundle": bundles.resolve_bundle(db, ref) is not None,
+                })
         # Third parties per the ratified coverage map: tagged to this persona,
         # or untagged (org-wide).
+        tp_today: set[str] = set()
         for t in eng.third_party_products:
             if t.persona_ids and p.id not in t.persona_ids:
                 continue
-            covered_today |= tp_outcomes.get(t.id, set())
+            tp_today |= tp_outcomes.get(t.id, set())
+        covered_today = ms_today | tp_today
         uncovered = sorted(target_outcomes - covered_today)
+        # Capability the move would DROP: outcomes the persona's current Microsoft
+        # licensing delivers today that the proposed target won't — the reverse of
+        # `uncovered`. Surfaced so a downgrade is a confirmed choice, never a silent
+        # loss. Only meaningful once a target scenario exists.
+        dropped = sorted(ms_today - target_outcomes) if p.id in target_by_persona else []
         personas.append({
             "persona_id": p.id,
             "persona_name": p.name,
@@ -521,11 +554,10 @@ def persona_coverage_gaps(db: Session, engagement_id: str) -> list[dict]:
             "has_scenario": p.id in target_by_persona,
             "target_outcome_count": len(target_outcomes),
             "covered_of_target": len(target_outcomes & covered_today),
-            "uncovered_outcomes": [
-                {"id": oid, "name": name_by_id.get(oid, oid),
-                 "description": desc_by_id.get(oid, "")}
-                for oid in uncovered
-            ],
+            "uncovered_outcomes": _outcome_dicts(uncovered),
+            # Honesty guards for a target that delivers LESS than today (below).
+            "dropped_outcomes": _outcome_dicts(dropped),
+            "unmapped_current_licenses": unmapped,
         })
     return personas
 
