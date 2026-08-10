@@ -303,11 +303,14 @@ button.chip-btn:hover { filter: brightness(1.25); }
   .flex-between { flex-wrap: wrap; gap: .6rem; }
   .headline-xl { font-size: 2rem; }
 
-  /* Wide tables (the per-persona bridge matrix above all) scroll inside their
-     card instead of stretching the page sideways. The label column keeps a
-     sane width so it wraps in phrases, not one word per line. */
+  /* Wide read-only tables (the per-persona bridge matrix above all) scroll inside
+     their card instead of stretching the page sideways. The label column keeps a
+     sane width so it wraps in phrases, not one word per line. Line-item EDITING
+     tables opt out via .resp-table (they reflow to stacked rows below) — the
+     190px rule would otherwise balloon their tiny expand-caret column. */
   .card table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .card table td:first-child, .card table th:first-child { min-width: 190px; }
+  .card table:not(.resp-table) td:first-child,
+  .card table:not(.resp-table) th:first-child { min-width: 190px; }
 
   /* Field grids collapse to a single column. */
   .grid.c2, .grid.c3, .grid.c4 { grid-template-columns: 1fr; }
@@ -318,4 +321,40 @@ button.chip-btn:hover { filter: brightness(1.25); }
   /* Settings page: let its two-column layout stack on mobile. */
   .settings-layout { flex-direction: column; }
   .settings-nav { width: 100%; flex-direction: row; flex-wrap: wrap; position: static; }
+}
+
+/* ---- Phones: line-item editing tables reflow to stacked, labelled rows ----
+   A horizontally-scrolling data-entry table is unusable on a phone (you scroll to
+   reach a field, headers leave the screen). Below this breakpoint the tagged
+   `.resp-table`s (Personas, Current licensing, Third-party, Scenarios) become one
+   card per row: the header is dropped and each cell carries its column name from a
+   `data-label`. Read-only readout tables keep the scroll behaviour above. */
+@media (max-width: 640px) {
+  .resp-table, .resp-table tbody, .resp-table tr { display: block; }
+  .resp-table thead { display: none; }
+  .resp-table tr {
+    border: 1px solid var(--border); border-radius: 9px;
+    padding: .35rem .65rem; margin-bottom: .6rem; background: var(--panel);
+  }
+  /* A detail/expander row (empty caret cell + a colSpan cell) rides directly under
+     its row card, so drop its card chrome and the empty spacer cell. */
+  .resp-table tr.detail-row { border: none; padding: 0; margin: -.35rem 0 .6rem; }
+  .resp-table td { display: flex; align-items: center; gap: .6rem;
+    border: none; padding: .3rem 0; text-align: left; white-space: normal; }
+  .resp-table td:empty { display: none; }
+  /* Labelled cells: the column name on a fixed rail, the control filling the rest. */
+  .resp-table td[data-label]::before {
+    content: attr(data-label); flex: 0 0 8.5rem; color: var(--muted);
+    font-size: .74rem; line-height: 1.2;
+  }
+  .resp-table td[data-label] > * { flex: 1; min-width: 0; width: auto; }
+  .resp-table td[data-label] .pill-list { flex-wrap: wrap; }
+  /* Control-only cells (caret, Remove): no label rail, natural size, left-aligned. */
+  .resp-table td:not([data-label]) { justify-content: flex-start; }
+  .resp-table td:not([data-label]) > * { flex: 0 0 auto; }
+  /* The colSpan detail cell spans the whole width with no label rail. */
+  .resp-table td[colspan] { display: block; padding: .2rem 0 .1rem; }
+  /* A number input pinned to a small inline width (e.g. Headcount) should fill its
+     row on a phone instead of staying a 90px stub next to a wide label. */
+  .resp-table td[data-label] input[type="number"] { width: 100%; }
 }

@@ -62,7 +62,7 @@ export default function Personas({ engagement, meta }) {
         misses one, keeping Frontline personas off mainline bundles they don't need and vice versa.</p>
       {err && <div className="err">{err}</div>}
 
-      <table>
+      <table className="resp-table">
         <thead><tr>
           <th></th><th>Name</th><th className="num">Headcount</th>
           <th className="num">Requires</th><th></th>
@@ -75,14 +75,14 @@ export default function Personas({ engagement, meta }) {
                 <tr>
                   <td><button className="ghost sm" onClick={() => setOpen({ ...open, [p.id]: !open[p.id] })}>
                     {open[p.id] ? '▾' : '▸'}</button></td>
-                  <td><TextInput value={p.name} onCommit={(v) => update(p.id, { name: v })} /></td>
-                  <td className="num"><input type="number" value={p.headcount}
+                  <td data-label="Name"><TextInput value={p.name} onCommit={(v) => update(p.id, { name: v })} /></td>
+                  <td className="num" data-label="Headcount"><input type="number" value={p.headcount}
                     onChange={(e) => update(p.id, { headcount: Number(e.target.value) })} style={{ width: 90 }} /></td>
-                  <td className="num">{reqs.length || <span className="muted">—</span>}</td>
+                  <td className="num" data-label="Requires">{reqs.length || <span className="muted">—</span>}</td>
                   <td className="num"><button className="danger sm" onClick={() => remove(p.id)}>Remove</button></td>
                 </tr>
                 {open[p.id] && (
-                  <tr>
+                  <tr className="detail-row">
                     <td></td>
                     <td colSpan={4} style={{ background: 'var(--panel2)' }}>
                       <div className="grid c4" style={{ padding: '.2rem 0 .5rem' }}>
