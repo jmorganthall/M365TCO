@@ -29,6 +29,7 @@ def _computed_dict(db, engagement_id: str) -> dict:
     result["license_limits"] = limits.evaluate(db, engagement_id)
     result["bp_swap"] = swap.summarize(db, engagement_id, result)
     result["new_outcomes"] = compute.new_outcomes(db, engagement_id, result)
+    result["dropped_capability"] = compute.dropped_capability(db, engagement_id, result)
     return result
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
@@ -349,6 +350,7 @@ def scenario_narrative(engagement_id: str, db: Session = Depends(get_db)):
         raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
     result = result_to_dict(compute.compute_and_persist(db, engagement_id))
     result["new_outcomes"] = compute.new_outcomes(db, engagement_id, result)
+    result["dropped_capability"] = compute.dropped_capability(db, engagement_id, result)
     scenarios = narrative.build_narrative_payload(eng, result)
     if not scenarios:
         return {"narratives": [], "generated_at": None}  # nothing in scope to narrate

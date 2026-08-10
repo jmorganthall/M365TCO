@@ -577,3 +577,23 @@ def new_outcomes(db: Session, engagement_id: str, result: dict) -> list[dict]:
         for g in persona_coverage_gaps(db, engagement_id)
         if g["has_scenario"] and g["persona_id"] in in_scope and g["uncovered_outcomes"]
     ]
+
+
+def dropped_capability(db: Session, engagement_id: str, result: dict) -> list[dict]:
+    """The readout's capability-trade-off story — the mirror of `new_outcomes`: per
+    IN-SCOPE persona, the outcomes their CURRENT Microsoft licensing delivers today
+    that the proposed target will NOT. A right-sizing move can legitimately drop
+    capability (that is often the point), so the saved-dollars headline stays — but
+    it must never read as a free win. Surfacing the drop reconciles the number with
+    what the customer gives up. Personas with no drop are omitted."""
+    in_scope = {s["persona_id"] for s in result.get("scenarios", []) if s.get("in_scope")}
+    return [
+        {
+            "persona_id": g["persona_id"],
+            "persona_name": g["persona_name"],
+            "headcount": g["headcount"],
+            "outcomes": g["dropped_outcomes"],
+        }
+        for g in persona_coverage_gaps(db, engagement_id)
+        if g["has_scenario"] and g["persona_id"] in in_scope and g["dropped_outcomes"]
+    ]
