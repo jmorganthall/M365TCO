@@ -53,22 +53,22 @@ function ProductRow({ t, meta, personas, moneyUnit, update, remove }) {
     <>
       <tr>
         <td><button className="ghost sm" title="Details" onClick={() => setOpen(!open)}>{open ? '▾' : '▸'}</button></td>
-        <td><input value={t.name} style={{ minWidth: 120 }} onChange={(e) => update(t.id, { name: e.target.value })} /></td>
-        <td className="num"><NumInput value={t.raw_cost} style={{ width: 90 }}
+        <td data-label="Product"><input value={t.name} style={{ minWidth: 120 }} onChange={(e) => update(t.id, { name: e.target.value })} /></td>
+        <td className="num" data-label="Cost"><NumInput value={t.raw_cost} style={{ width: 90 }}
           onCommit={(n) => update(t.id, { raw_cost: n })} /></td>
-        <td>
+        <td data-label="Period">
           <select value={t.cost_period} onChange={(e) => update(t.id, { cost_period: e.target.value })}>
             {(meta?.cost_periods || []).map((s) => <option key={s}>{s}</option>)}
           </select>
         </td>
-        <td className="num">{money(t.effective_annual_cost, moneyUnit)}</td>
-        <td><div className="pill-list">
+        <td className="num" data-label="Effective cost">{money(t.effective_annual_cost, moneyUnit)}</td>
+        <td data-label="Details"><div className="pill-list">
           {chips.length ? chips : <span className="muted" style={{ fontSize: '.75rem' }}>unmanaged</span>}
         </div></td>
         <td className="num"><button className="danger sm" onClick={() => remove(t.id)}>Remove</button></td>
       </tr>
       {open && (
-        <tr>
+        <tr className="detail-row">
           <td></td>
           <td colSpan={6} style={{ background: 'var(--panel2)' }}>
             <div className="grid c4" style={{ padding: '.4rem 0' }}>
@@ -258,7 +258,7 @@ export default function ThirdParty({ engagement, meta, moneyUnit = 'mo' }) {
         </div>
       )}
 
-      <table>
+      <table className="resp-table">
         <thead><tr>
           <th></th><th>Product</th><th className="num">Cost</th><th>Period</th>
           <th className="num">Effective cost</th><th>Details</th><th></th>

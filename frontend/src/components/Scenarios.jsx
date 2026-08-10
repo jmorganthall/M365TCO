@@ -91,9 +91,9 @@ function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove,
     <>
       <tr>
         <td><button className="ghost sm" onClick={() => setOpen(!open)}>{open ? '▾' : '▸'}</button></td>
-        <td>{p.name}</td>
-        <td className="num">{p.headcount}</td>
-        <td>
+        <td data-label="Persona">{p.name}</td>
+        <td className="num" data-label="HC">{p.headcount}</td>
+        <td data-label="Base bundle">
           <SkuCombobox value={s.target_sku_reference} style={{ minWidth: 130 }}
             segment={effBasis.segment} term={effBasis.term} billing={effBasis.billing}
             onChange={(v) => update(s.id, { target_sku_reference: v })}
@@ -153,19 +153,19 @@ function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove,
             </div>
           )}
         </td>
-        <td className="num">{usd(effectiveNet(s) / 12)}</td>
-        <td><input type="checkbox" style={{ width: 'auto' }} checked={s.in_scope}
+        <td className="num" data-label="Net $/seat/mo">{usd(effectiveNet(s) / 12)}</td>
+        <td data-label="Scope"><input type="checkbox" style={{ width: 'auto' }} checked={s.in_scope}
           onChange={(e) => update(s.id, { in_scope: e.target.checked })} /></td>
-        <td className="num">{r ? money(r.current_spend_annual, moneyUnit) : '—'}</td>
-        <td className="num">{r ? money(r.target_spend_annual, moneyUnit) : '—'}</td>
-        <td className={`num ${r && r.delta_annual < 0 ? 'pos' : ''}`}>{r ? money(r.delta_annual, moneyUnit) : '—'}</td>
+        <td className="num" data-label="Current">{r ? money(r.current_spend_annual, moneyUnit) : '—'}</td>
+        <td className="num" data-label="Target">{r ? money(r.target_spend_annual, moneyUnit) : '—'}</td>
+        <td className={`num ${r && r.delta_annual < 0 ? 'pos' : ''}`} data-label="Delta">{r ? money(r.delta_annual, moneyUnit) : '—'}</td>
         <td className="num">
           <button className="ghost sm" onClick={onAnalyze}>⚡</button>{' '}
           <button className="danger sm" onClick={() => remove(s.id)}>Remove</button>
         </td>
       </tr>
       {open && (
-        <tr>
+        <tr className="detail-row">
           <td></td>
           <td colSpan={9} style={{ background: 'var(--panel2)' }}>
             <div className="grid c3" style={{ padding: '.4rem 0' }}>
@@ -347,7 +347,7 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
       </div>
       {err && <div className="err">{err}</div>}
 
-      <table>
+      <table className="resp-table">
         <thead><tr>
           <th></th><th>Persona</th><th className="num">HC</th><th>Base bundle</th>
           <th className="num">Net $/seat/mo</th><th>Scope</th><th className="num">Current</th>
@@ -358,7 +358,7 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
             const s = scenarioFor(p.id)
             if (!s) return (
               <tr key={p.id}>
-                <td></td><td>{p.name}</td><td className="num">{p.headcount}</td>
+                <td></td><td data-label="Persona">{p.name}</td><td className="num" data-label="HC">{p.headcount}</td>
                 <td colSpan={7}>
                   <button className="sm" onClick={() => createScenario(p.id)}>+ Create scenario</button>{' '}
                   <button className="ghost sm" onClick={() => setAnalyzePersona(p)}>⚡ Best bundle</button>

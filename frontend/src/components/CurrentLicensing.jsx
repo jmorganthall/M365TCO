@@ -119,7 +119,7 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
     <>
       <tr>
         <td><button className="ghost sm" title="Adjustments" onClick={() => setOpen(!open)}>{open ? '▾' : '▸'}</button></td>
-        <td><SkuCombobox value={l.sku_reference}
+        <td data-label="SKU"><SkuCombobox value={l.sku_reference}
           segment={basis.segment} term={basis.term} billing={basis.billing}
           onChange={(v) => update(l.id, { sku_reference: v })}
           onSelectSku={(sku) => {
@@ -142,19 +142,19 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
               update(l.id, patch)
             }
           }} /></td>
-        <td className="num"><input type="number" style={{ width: 80 }} value={l.quantity_purchased}
+        <td className="num" data-label="Qty"><input type="number" style={{ width: 80 }} value={l.quantity_purchased}
           onChange={(e) => setQty(e.target.value)} /></td>
-        <td className="num"><MonthlyPriceInput annual={effectiveAnnual(l)} style={{ width: 100 }}
+        <td className="num" data-label="Monthly $/seat"><MonthlyPriceInput annual={effectiveAnnual(l)} style={{ width: 100 }}
           onCommit={(annual) => update(l.id, l.price_override
             ? { overridden_price_annual: annual }
             : { unit_price_paid_annual: annual })} /></td>
-        <td><div className="pill-list">
+        <td data-label="Adjustments"><div className="pill-list">
           {chips.length ? chips : <span className="muted" style={{ fontSize: '.75rem' }}>fully assigned</span>}
         </div></td>
         <td className="num"><button className="danger sm" onClick={() => remove(l.id)}>Remove</button></td>
       </tr>
       {open && (
-        <tr>
+        <tr className="detail-row">
           <td></td>
           <td colSpan={5} style={{ background: 'var(--panel2)' }}>
             <div className="grid c4" style={{ padding: '.4rem 0' }}>
@@ -401,7 +401,7 @@ export default function CurrentLicensing({ engagement, meta, onUpdate }) {
         </div>
       )}
 
-      <table>
+      <table className="resp-table">
         <thead><tr>
           <th></th><th>SKU</th><th className="num">Qty</th>
           <th className="num">Monthly $/seat</th><th>Adjustments</th><th></th>
