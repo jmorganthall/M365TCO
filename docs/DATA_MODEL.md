@@ -329,6 +329,17 @@ FK, UUID PK, cascade-deleted with the engagement.
   is the add-on's **primary/canonical** base (for display and the compact seed form);
   the **full set** of bases an add-on may layer onto is the M:N `AddonEligibility`
   (§4.4d) — the primary base is always a member of that set.
+- **Overlapping coverage is allowed — bundles are not a partition.** *Enterprise
+  Mobility + Security E3/E5* are real, separately-sold SKUs customers hold standalone
+  (commonly paired with an Office 365 base to approximate *Microsoft 365 E3/E5*), so
+  they are seeded as **add-ons** (`ems-e3`/`ems-e5`, eligible for the Office 365
+  bases) whose coverage — identity SSO/MFA, device management, information protection
+  (E5 adds identity governance + cloud app security) — deliberately overlaps a base's.
+  We do **not** decompose M365 into components: a base keeps its full union coverage,
+  and a persona's delivered capability is the union of all the bundles it holds. An
+  unmodelled current license (one that resolves to no bundle) has its cost counted
+  but its outcomes mapped nowhere, so a smaller target can silently drop it — surfaced
+  by the Coverage Check honesty guards (§4.10a-quater).
 - **CRUD (slice E2-bundles):** `GET/POST/PATCH/DELETE …/catalog/bundles`, edited in
   Settings → Staple bundles (inline name/kind/base/sort + add-bundle form). Shape
   rules are enforced (a base has no parent; an add-on must point at an existing base
@@ -355,8 +366,9 @@ FK, UUID PK, cascade-deleted with the engagement.
   editable, seeded from `seeds/coverage.json` on first run (`services/seeds.py`,
   populate-if-empty — the same pattern as `DefaultOutcome`).
 - **Shape:** `bundle_key` (a `Bundle.key`), `outcome_key` (a `DefaultOutcome.key`),
-  `coverage` (always `Full` — coverage is binary, the row's existence is the signal).
-  Stable keys, not ids, so it survives reseeding and
+  `coverage` (always `Full` — coverage is binary, the row's existence is the signal;
+  a plain `String` column, not a DB `Enum`, so a legacy multi-value marker reads back
+  without raising — see §4.7). Stable keys, not ids, so it survives reseeding and
   reads like the seed file.
 - **Why it exists:** the Microsoft bundle → outcome coverage new engagements inherit
   was a static file, invisible/uneditable in the GUI. It's now a first-class table:
@@ -519,6 +531,14 @@ FK, UUID PK, cascade-deleted with the engagement.
   `ThirdParty` → hard FK `third_party_product_id`.
 - **Field ownership:** seeded (Microsoft coverage, `ratified = true`); user-entered
   or AI-proposed (third-party).
+- **`coverage` is a plain `String` column, not a DB `Enum`.** Coverage is binary —
+  the row existing means covered (there is no partial), so `"Full"` is the only value
+  written. Engagements created by older, multi-valued versions carry legacy markers
+  (`"Partial"`/`"None"`); a SQLAlchemy `Enum` raises `LookupError` when *reading* any
+  value outside its tuple, so a single stale row 500'd every read of this table (the
+  coverage map, engine, exports). A `String` reads legacy values back harmlessly;
+  `_backfill_binary_coverage` normalizes them to `"Full"` at startup. Same for
+  `DefaultBundleCoverage.coverage` (§4.4c). Do not reintroduce an `Enum` here.
 - **Provenance / gate:** `ai_suggested` + `ratified`. **Only `ratified = true`
   rows hydrate into the engine.** This is the single ratify gate.
 - **CRUD:** `GET/POST/PATCH/DELETE …/coverage`, plus the domain action
@@ -670,8 +690,10 @@ separate from the HTTP call for unit testing).
 today / what's new / value — grounded in the computed scenarios
 (`services/narrative.build_narrative_payload` — pure: persona, headcount, current
 SKUs, target bundle + add-ons, displaced third-party tools, the per-persona
-`new_outcomes` the move lights up, and the annual delta), via the editable
-`scenario_narrative` AiPrompt on the resolved main model. Returns
+`new_outcomes` the move lights up **and the `dropped_outcomes` it gives up**, and the
+annual delta), via the editable `scenario_narrative` AiPrompt on the resolved main
+model — the prompt names any dropped capability so a narrative never sells a
+right-sizing as pure gain. Returns
 `[{id, persona, today, whats_new, value, source_tag}]` on the Readout view. The result
 is **stored on the engagement** as `ScenarioNarrative` rows (persona_id +
 snapshotted persona_name, today/whats_new/value, generated_at, provenance
@@ -719,6 +741,29 @@ operator resolves it with **existing** actions only:
 This validates coverage so a future per-persona "new outcomes" report — an
 outcome is *new* iff the target delivers it and nothing delivered it today — is
 trustworthy, without inventing data.
+
+**Capability-honesty guards (derived, no new field).** A persona can hold several
+current licenses (a many-to-one relationship); its capability is the union of all of
+them. The new-outcomes check above is one-directional — it only finds what a target
+*adds* — so `persona_coverage_gaps` also returns two guards the Coverage Check renders
+as amber warnings:
+- `unmapped_current_licenses` — current Microsoft licenses applying to the persona
+  whose SKU resolves to **no** mapped capability (cost counted, outcomes invisible),
+  each flagged with whether it `resolves_to_bundle` (known bundle missing coverage →
+  fix in the Coverage map) or not (unrecognized SKU → map it in Settings → Staple
+  bundles). This is what caught the *Office 365 E3 + EMS E3* trap before EMS was
+  modelled (§4.4b).
+- `dropped_outcomes` — outcomes the persona's **current Microsoft licensing** delivers
+  that the proposed target will **not** — the reverse of `uncovered_outcomes`. A
+  downgrade becomes a confirmed choice, never a silent loss.
+
+**Readout reconciliation.** Right-sizing legitimately sheds capability, so the
+saved-dollars headline stays — but every surface that shows the savings shows the
+trade-off. `compute.dropped_capability` (the mirror of `new_outcomes`) feeds a
+**Capability trade-offs** section in the HTML readout (with a headline caveat naming
+how many personas are affected) and the in-app Readout, a **Capability changes** sheet
+in the xlsx, and the `scenario_narrative` AI payload/prompt — all derived, all omitted
+when nothing is dropped.
 
 ### 4.10b AiPrompt — editable AI instructions
 - **Identity:** `uuid` PK plus a unique `key` per AI function

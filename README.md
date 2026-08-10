@@ -146,6 +146,11 @@ The steps run along a chevron **progress stepper** at the top of an engagement:
    *covered elsewhere / out of scope* (recorded as a $0 sentinel, so it's kept
    out of cost and the new-outcome story), add a third party, or leave it as a
    genuine new outcome the target lights up. Reads existing relationships only.
+   Two amber **honesty guards** flag a target that delivers *less* than today:
+   current Microsoft licenses that map to no capability (their outcomes are
+   invisible to the comparison), and outcomes the target **drops** versus the
+   persona's current licensing — so a downgrade is a confirmed choice, not a
+   silent loss.
 6. **Readout & export** — the total-opportunity headline over the engagement's
    modeling horizon ("$X saved over 36 months", stated in words — never a sign
    next to the word savings), decomposed into ① retire duplicate tools today
@@ -155,7 +160,11 @@ The steps run along a chevron **progress stepper** at the top of an engagement:
    the Quick-wins "save today" story, per-persona
    scenarios, the **New outcomes** chips (per persona, the capabilities the
    move lights up that nothing delivers today — outcome descriptions on
-   hover, editable on the Coverage Map), the spend bridge (every line broken
+   hover, editable on the Coverage Map), the mirror-image **Capability
+   trade-offs** section (capabilities the current licensing delivers that the
+   target drops, with a headline caveat — so the saved-dollars figure is never
+   read as a free win; a **Capability changes** sheet carries both into the
+   xlsx), the spend bridge (every line broken
    down per persona: one column per in-scope persona plus a Total),
    third-party dispositions, and rollup;
    plus **License-limit** checks (Microsoft licensing caps evaluated tenant-wide —
@@ -239,6 +248,10 @@ telephony layers (Cloud PBX vs PSTN dial-tone, so Phone System vs dial-tone is
 explicit without exploding a bundle into calling/non-calling variants). The
 **bundles** are the staple SKU → Bundle spine the many priced catalog SKUs
 collapse onto; add-ons carry an eligibility set (which bases they layer onto).
+Bundle coverage sets may **overlap** — e.g. *Enterprise Mobility + Security E3/E5*
+are add-ons (eligible for the Office 365 bases) whose identity/mobility/security
+coverage overlaps a base's, so a persona holding *Office 365 E3 + EMS E3* is modelled
+by the union rather than by decomposing *Microsoft 365 E3*.
 
 ## Security
 
