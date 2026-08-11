@@ -61,6 +61,11 @@ function ProductRow({ t, meta, personas, moneyUnit, update, remove }) {
             {(meta?.cost_periods || []).map((s) => <option key={s}>{s}</option>)}
           </select>
         </td>
+        <td className="num" data-label="Covers">
+          <NumInput value={t.covered_count_override} allowEmpty style={{ width: 80 }}
+            placeholder={String(t.persona_covered_count ?? 0)}
+            onCommit={(n) => update(t.id, { covered_count_override: n })} />
+        </td>
         <td className="num" data-label="Effective cost">{money(t.effective_annual_cost, moneyUnit)}</td>
         <td data-label="Details"><div className="pill-list">
           {chips.length ? chips : <span className="muted" style={{ fontSize: '.75rem' }}>unmanaged</span>}
@@ -70,7 +75,7 @@ function ProductRow({ t, meta, personas, moneyUnit, update, remove }) {
       {open && (
         <tr className="detail-row">
           <td></td>
-          <td colSpan={6} style={{ background: 'var(--panel2)' }}>
+          <td colSpan={7} style={{ background: 'var(--panel2)' }}>
             <div className="grid c4" style={{ padding: '.4rem 0' }}>
               <div><label>Vendor</label>
                 <input value={t.vendor || ''} onChange={(e) => update(t.id, { vendor: e.target.value })} /></div>
@@ -102,17 +107,14 @@ function ProductRow({ t, meta, personas, moneyUnit, update, remove }) {
                   {personas.length === 0 && <span className="muted">No personas yet.</span>}
                 </div>
                 {overridden && <small className="src">Inactive for covers — override in effect.</small>}</div>
-              <div style={overridden ? { opacity: 0.5 } : undefined}><label>Covers — derived</label>
+              <div style={overridden ? { opacity: 0.5 } : undefined}><label>Covers — derived from personas</label>
                 <div className="muted" style={{ paddingTop: '.35rem', textDecoration: overridden ? 'line-through' : 'none' }}>{t.persona_covered_count}</div>
-                <small className="src">{overridden ? 'Not in effect — the override below wins.' : "Sum of the selected personas' headcounts."}</small></div>
-              <div><label>Covers override</label>
-                <NumInput value={t.covered_count_override} allowEmpty
-                  placeholder={String(t.persona_covered_count ?? 0)}
-                  onCommit={(n) => update(t.id, { covered_count_override: n })} />
-                <small className="src">Optional — wins over the derived value (e.g. the product covers more users than the personas). Blank = derived.</small></div>
+                <small className="src">{overridden
+                  ? 'Not in effect — the Covers value on the row wins.'
+                  : "Sum of the selected personas' headcounts — the default when Covers on the row is left blank."}</small></div>
               <div><label>Covers · Effective cost · per unit</label>
                 <div className="muted" style={{ paddingTop: '.35rem' }}>{t.covered_count} · {money(t.effective_annual_cost, moneyUnit)} · {money(t.per_unit_annual_cost, moneyUnit)}</div>
-                <small className="src">Derived from personas/override, cost, and managed split.</small></div>
+                <small className="src">Covers is set on the row (blank = the persona-derived value); effective cost and per-unit follow from it, the cost, and the managed split.</small></div>
             </div>
           </td>
         </tr>
@@ -261,7 +263,7 @@ export default function ThirdParty({ engagement, meta, moneyUnit = 'mo' }) {
       <table className="resp-table">
         <thead><tr>
           <th></th><th>Product</th><th className="num">Cost</th><th>Period</th>
-          <th className="num">Effective cost</th><th>Details</th><th></th>
+          <th className="num">Covers</th><th className="num">Effective cost</th><th>Details</th><th></th>
         </tr></thead>
         <tbody>
           {items.map((t) => (
@@ -282,9 +284,10 @@ export default function ThirdParty({ engagement, meta, moneyUnit = 'mo' }) {
           <select value={form.cost_period} onChange={(e) => setForm({ ...form, cost_period: e.target.value })}>
             {(meta?.cost_periods || []).map((s) => <option key={s}>{s}</option>)}
           </select></div>
-        <div><label>Covers override (optional)</label>
-          <input type="number" value={form.covered_count_override} placeholder="from personas"
-            onChange={(e) => setForm({ ...form, covered_count_override: e.target.value })} /></div>
+        <div><label>Covers</label>
+          <input type="number" value={form.covered_count_override} placeholder="blank = from personas"
+            onChange={(e) => setForm({ ...form, covered_count_override: e.target.value })} />
+          <small className="src">Seats the tool covers — drives displacement $. Blank derives it from tagged personas.</small></div>
         <div><label><input type="checkbox" style={{ width: 'auto', marginRight: 6 }}
           checked={form.is_managed} onChange={(e) => setForm({ ...form, is_managed: e.target.checked })} />Managed (tool + management)</label></div>
         <div><label>Tooling % override</label>
