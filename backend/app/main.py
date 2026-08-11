@@ -255,6 +255,7 @@ async def lifespan(_app: FastAPI):
         _backfill_binary_coverage(db)
         _backfill_new_default_outcomes(db)
         _backfill_process_automation_coverage(db)
+        _backfill_endpoint_protection_coverage(db)
         _retire_split_outcomes(db)  # drop split-away outcomes from the global library
         _reconcile_catalog_provenance(db)
     finally:
@@ -334,6 +335,47 @@ def _backfill_process_automation_coverage(db) -> None:
             db.add(models.DefaultBundleCoverage(
                 bundle_key=bundle_key, outcome_key="process-automation",
                 coverage="Full"))
+            changed = True
+    if changed:
+        db.commit()
+
+
+# Base suites that deliver endpoint protection but predated that mapping in the
+# global template, keyed to the exact endpoint outcome each entitles:
+#   Endpoint Protection (EPP, next-gen AV) — Microsoft Defender Antivirus is in
+#   Windows Enterprise E3 (so every M365 suite that licenses Windows: E3/E7/F3),
+#   and Microsoft Defender for Endpoint Plan 1 has shipped in M365 E3 since 2022.
+#   Endpoint Detection & Response (EDR) — Defender for Endpoint Plan 2, so E7 (a
+#   superset of E5, which already carries both) but NOT E3 (P1 has no EDR) or F3.
+# O365 (no Windows/Defender) and Business Basic/Standard are correctly excluded.
+_ENDPOINT_COVERAGE_BACKFILL = (
+    ("m365-e3", "endpoint-protection"),
+    ("m365-f3", "endpoint-protection"),
+    ("m365-e7", "endpoint-protection"),
+    ("m365-e7", "endpoint-edr"),
+)
+
+
+def _backfill_endpoint_protection_coverage(db) -> None:
+    """Additive migration: add the endpoint outcomes above to the global default
+    coverage of the base suites that entitle them. Targets an explicit (bundle,
+    outcome) list and inserts only missing rows, so operator edits to other coverage
+    are untouched. Global template only — existing engagements keep their copied
+    coverage (edited in the GUI per the seed rules). No-op on a fresh DB (normal
+    seeding already has it). Idempotent."""
+    from sqlalchemy import select
+
+    from . import models
+
+    existing = db.execute(select(models.DefaultBundleCoverage)).scalars().all()
+    if not existing:
+        return  # fresh DB — seed_default_coverage already wrote the new rows
+    have = {(c.bundle_key, c.outcome_key) for c in existing}
+    changed = False
+    for bundle_key, outcome_key in _ENDPOINT_COVERAGE_BACKFILL:
+        if (bundle_key, outcome_key) not in have:
+            db.add(models.DefaultBundleCoverage(
+                bundle_key=bundle_key, outcome_key=outcome_key, coverage="Full"))
             changed = True
     if changed:
         db.commit()

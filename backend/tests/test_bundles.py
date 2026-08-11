@@ -246,10 +246,12 @@ def test_default_coverage_seeds_and_editing_affects_new_engagements_only(client)
     the template new engagements inherit — edits never touch existing engagements."""
     lib = client.get("/api/admin/default-coverage").json()
     assert lib, "default coverage library should seed from coverage.json"
-    # E3 covers Identity (Core) by default; it does NOT cover endpoint EPP/EDR.
+    # E3 covers Identity (Core) and Endpoint Protection (EPP — Defender for Endpoint
+    # P1 ships in M365 E3) by default, but NOT endpoint EDR (that's P2/E5).
     e3 = [r for r in lib if r["bundle_key"] == "m365-e3"]
     assert any(r["outcome_key"] == "identity-sso" for r in e3)
-    assert not any(r["outcome_key"] == "endpoint-protection" for r in e3)
+    assert any(r["outcome_key"] == "endpoint-protection" for r in e3)
+    assert not any(r["outcome_key"] == "endpoint-edr" for r in e3)
 
     # Engagement A, created BEFORE the edit.
     a = client.post("/api/engagements", json={"customer_name": "Before"}).json()
