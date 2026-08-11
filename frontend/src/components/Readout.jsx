@@ -554,6 +554,11 @@ export default function Readout({ engagement }) {
                   <span className={`badge ${d.disposition === 'FullyEliminated' ? 'pos' : d.disposition === 'PartiallyReduced' ? 'warn' : 'muted'}`}>
                     {d.disposition}
                   </span>
+                  {d.covered_count === 0 && (
+                    <span className="badge warn" style={{ marginLeft: 4 }}
+                      title="Covered population not set — seats and savings stay 0 until you set covers (or a covered-count override) on the Third-party tab">
+                      covers not set</span>
+                  )}
                 </td>
                 <td className="num">{d.displaced_users} / {d.covered_count}</td>
                 <td className="num">{d.residual_count}</td>

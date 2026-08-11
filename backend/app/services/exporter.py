@@ -101,16 +101,31 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     ]
     disp_section = ""
     if disp_rows_src:
-        rows_disp = "".join(
-            f"<tr><td>{html.escape(d['third_party_product_name'])}</td>"
-            f"<td>{_action.get(d['disposition'], d['disposition'])}</td>"
-            f"<td class='num'>{min(d['displaced_users'], d['covered_count'])}</td>"
-            f"<td class='num'>{d['residual_count']}</td>"
-            f"<td class='num'>{_usd(d['residual_annual_cost'])}</td>"
-            f"<td>{'Managed service (' + _pct(d['tooling_pct']) + ' tooling share counted)' if d['is_managed'] else 'Direct license'}</td>"
-            f"<td>{html.escape(d['override_reason']) if d['override'] != 'None' else ''}</td></tr>"
-            for d in disp_rows_src
-        )
+        def _disp_note(d):
+            # A product whose covered population is unset can't have seats or dollars
+            # quantified — the target covers its outcomes (so it reads FullyEliminated),
+            # but the seats/savings are 0 until the operator sets covers. Say that
+            # plainly instead of printing a bare, contradictory "0 seats retired".
+            if not d["covered_count"]:
+                return "Covered population not set — set covers to quantify seats and savings"
+            return html.escape(d["override_reason"]) if d["override"] != "None" else ""
+
+        def _disp_row(d):
+            covers0 = not d["covered_count"]
+            seats_retired = "—" if covers0 else min(d["displaced_users"], d["covered_count"])
+            seats_kept = "—" if covers0 else d["residual_count"]
+            basis = ("Managed service (" + _pct(d["tooling_pct"]) + " tooling share counted)"
+                     if d["is_managed"] else "Direct license")
+            return (
+                f"<tr><td>{html.escape(d['third_party_product_name'])}</td>"
+                f"<td>{_action.get(d['disposition'], d['disposition'])}</td>"
+                f"<td class='num'>{seats_retired}</td>"
+                f"<td class='num'>{seats_kept}</td>"
+                f"<td class='num'>{_usd(d['residual_annual_cost'])}</td>"
+                f"<td>{basis}</td>"
+                f"<td>{_disp_note(d)}</td></tr>"
+            )
+        rows_disp = "".join(_disp_row(d) for d in disp_rows_src)
         disp_section = (
             "<section><h2>Third-party tools — what happens to each</h2>"
             "<table><thead><tr><th>Product</th><th>Action</th><th>Seats retired</th>"
