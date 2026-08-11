@@ -77,9 +77,16 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     has_third_party = bool(dispositions)
     managed_any = any(d["is_managed"] for d in dispositions)
 
+    # Composed target name (base bundle + add-ons), attached per scenario by
+    # compute.attach_target_labels — so the readout shows the whole target, not just
+    # the base. Falls back to the base for older snapshots without the field.
+    def _tlabel(s):
+        return s.get("target_label") or s["target_sku_reference"]
+    target_label_by_persona = {s["persona_id"]: _tlabel(s) for s in result["scenarios"]}
+
     rows_scenarios = "".join(
         f"<tr><td>{html.escape(s['persona_name'])}</td>"
-        f"<td>{html.escape(s['target_sku_reference'])}</td>"
+        f"<td>{html.escape(_tlabel(s))}</td>"
         f"<td>{s['headcount']}</td>"
         f"<td class='num'>{_usd(s['current_spend_annual'])}</td>"
         f"<td class='num'>{_usd(s['target_spend_annual'])}</td>"
@@ -166,7 +173,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     # Omitted entirely when there is nothing new.
     new_outcomes = result.get("new_outcomes") or []
     target_by_pid = {
-        s["persona_id"]: s["target_sku_reference"]
+        s["persona_id"]: _tlabel(s)
         for s in result.get("scenarios", []) if s.get("in_scope")
     }
 
@@ -253,7 +260,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     if cols:
         ths = "".join(
             f"<th class='num'>{html.escape(s['persona_name'])} "
-            f"<small>→ {html.escape(s['target_sku_reference'])}</small></th>"
+            f"<small>→ {html.escape(_tlabel(s))}</small></th>"
             for s in cols
         )
         bridge_head = f"<thead><tr><th></th>{ths}<th class='num'>Total</th></tr></thead>"
@@ -365,7 +372,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     move_items = "".join(
         f"<li>{_moves_amount(s.get('move_incremental_delta_annual', s['delta_annual']))}"
         f"<span class='move-desc'><b>{html.escape(s['persona_name'])}</b> ({s['headcount']}) → "
-        f"<b>{html.escape(s['target_sku_reference'])}</b></span></li>"
+        f"<b>{html.escape(_tlabel(s))}</b></span></li>"
         for s in in_scope
     )
     # Share of the total each lever contributes. The two are the two parts of one
@@ -569,7 +576,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         for lic in engagement.current_licenses if lic.price_override
     ] + [
         f"<li>{html.escape(persona_name.get(s.persona_id, 'Persona'))} → "
-        f"{html.escape(s.target_sku_reference)}: "
+        f"{html.escape(target_label_by_persona.get(s.persona_id, s.target_sku_reference))}: "
         f"{_override_note(float(s.composed_list_annual), float(s.effective_net_annual))}</li>"
         for s in engagement.scenarios if s.price_override
     ]
@@ -780,7 +787,7 @@ def build_xlsx(engagement: models.Engagement, result: dict) -> bytes:
     )
     for s in result["scenarios"]:
         ws.append([
-            s["persona_name"], s["target_sku_reference"], s["headcount"],
+            s["persona_name"], s.get("target_label") or s["target_sku_reference"], s["headcount"],
             s["in_scope"], s["current_spend_annual"], s["target_spend_annual"],
             s["delta_annual"], s["current_microsoft_annual"],
             s["current_third_party_offset_annual"],

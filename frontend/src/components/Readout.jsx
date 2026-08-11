@@ -296,7 +296,7 @@ export default function Readout({ engagement }) {
           <tbody>
             {result.scenarios.map((s) => (
               <tr key={s.scenario_id} style={{ opacity: s.in_scope ? 1 : 0.5 }}>
-                <td>{s.persona_name}</td><td>{s.target_sku_reference}</td><td className="num">{s.headcount}</td>
+                <td>{s.persona_name}</td><td>{s.target_label || s.target_sku_reference}</td><td className="num">{s.headcount}</td>
                 <td className="num">{usd(s.current_spend_annual)}</td>
                 <td className="num">{usd(s.target_spend_annual)}</td>
                 <td className={`num ${s.delta_annual < 0 ? 'pos' : ''}`}>{usd(s.delta_annual)}</td>
@@ -315,7 +315,8 @@ export default function Readout({ engagement }) {
             Validate coverage on the Coverage Check step; ✨ Business narratives drafts why each
             matters for this customer.</p>
           {result.new_outcomes.map((n) => {
-            const target = inScope.find((s) => s.persona_id === n.persona_id)?.target_sku_reference
+            const ts = inScope.find((s) => s.persona_id === n.persona_id)
+            const target = ts?.target_label || ts?.target_sku_reference
             return (
               <div key={n.persona_id} className="popcheck">
                 <b>{n.persona_name}</b> <span className="muted">({n.headcount}){target ? <> → {target}</> : null}</span>
@@ -338,7 +339,8 @@ export default function Readout({ engagement }) {
             can legitimately shed capability, so the savings stand, but confirm none of these is still
             needed (or add it back with a bigger base or an add-on) so the number isn't a free win.</p>
           {result.dropped_capability.map((d) => {
-            const target = inScope.find((s) => s.persona_id === d.persona_id)?.target_sku_reference
+            const ts = inScope.find((s) => s.persona_id === d.persona_id)
+            const target = ts?.target_label || ts?.target_sku_reference
             return (
               <div key={d.persona_id} className="popcheck">
                 <b>{d.persona_name}</b> <span className="muted">({d.headcount}){target ? <> → {target}</> : null}</span>
@@ -434,7 +436,7 @@ export default function Readout({ engagement }) {
                     <th></th>
                     {cols.map((s) => (
                       <th key={s.scenario_id} className="num">{s.persona_name}{' '}
-                        <small className="muted">→ {s.target_sku_reference}</small></th>
+                        <small className="muted">→ {s.target_label || s.target_sku_reference}</small></th>
                     ))}
                     <th className="num">Total</th>
                   </tr>
@@ -668,7 +670,7 @@ function MoveSummary({ scenarios, horizon = 1 }) {
               {v < 0 ? usd0(v) : v > 0 ? `(${usd0(v)})` : '$0'}
             </span>
             <span className="move-desc">
-              <b>{s.persona_name}</b> ({s.headcount}) → <b>{s.target_sku_reference}</b>
+              <b>{s.persona_name}</b> ({s.headcount}) → <b>{s.target_label || s.target_sku_reference}</b>
             </span>
           </li>
         )

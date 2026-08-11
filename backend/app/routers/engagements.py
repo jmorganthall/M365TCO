@@ -30,6 +30,7 @@ def _computed_dict(db, engagement_id: str) -> dict:
     result["bp_swap"] = swap.summarize(db, engagement_id, result)
     result["new_outcomes"] = compute.new_outcomes(db, engagement_id, result)
     result["dropped_capability"] = compute.dropped_capability(db, engagement_id, result)
+    compute.attach_target_labels(db, engagement_id, result)
     return result
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
