@@ -597,3 +597,30 @@ def dropped_capability(db: Session, engagement_id: str, result: dict) -> list[di
         for g in persona_coverage_gaps(db, engagement_id)
         if g["has_scenario"] and g["persona_id"] in in_scope and g["dropped_outcomes"]
     ]
+
+
+def attach_target_labels(db: Session, engagement_id: str, result: dict) -> dict:
+    """Enrich each scenario dict with the COMPOSED target name — base bundle **+**
+    add-ons ("Office 365 E3 + Enterprise Mobility + Security E3") — so every display
+    shows the whole target, not just the base. The engine composes coverage and
+    price from base + add-ons but carries only the base name (`target_sku_reference`);
+    the add-on names live on the DB scenario. A Business-Premium-swapped scenario is
+    substituted wholesale (its engine target differs from the DB base), so its own
+    add-ons don't apply — it's labelled by the swapped target alone. In place; also
+    returned for convenience."""
+    eng = db.get(models.Engagement, engagement_id)
+    if eng is None:
+        return result
+    bundle_name = {b.id: b.name for b in bundles.list_bundles(db)}
+    addons_by_persona = {
+        s.persona_id: [bundle_name.get(a.bundle_id, a.bundle_id) for a in s.addons]
+        for s in eng.scenarios
+    }
+    base_by_persona = {s.persona_id: s.target_sku_reference for s in eng.scenarios}
+    for sr in result.get("scenarios", []) or []:
+        pid = sr.get("persona_id")
+        swapped = pid in base_by_persona and sr.get("target_sku_reference") != base_by_persona[pid]
+        addons = [] if swapped else addons_by_persona.get(pid, [])
+        sr["target_addons"] = addons
+        sr["target_label"] = (sr.get("target_sku_reference") or "") + "".join(f" + {a}" for a in addons)
+    return result
