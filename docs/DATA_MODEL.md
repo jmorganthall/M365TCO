@@ -492,9 +492,13 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Covers is derived:** `covered_count` = the combined headcount of the tagged
   personas (§4.6a), unless the operator sets `covered_count_override`, which
   always wins (e.g. the product covers more users than the tagged personas;
-  blank/NULL = derived). The GUI shows the derived sum read-only in the line-item
-  expander with the override next to it; the persisted `covered_count` stays the
-  single effective value the engine and exports read.
+  blank/NULL = derived). **Covers is a primary (core) field on the line-item row**
+  — because it drives the whole displacement economics — editing it sets
+  `covered_count_override`, with the persona-derived sum shown as the placeholder
+  (so a blank/unset covered population is visible at input, not buried). The
+  expander keeps the read-only derivation detail (persona sum, per-unit). The
+  persisted `covered_count` stays the single effective value the engine and
+  exports read.
 - **Write-normalization:** `_normalize_third_party()` in `routers/entities.py` —
   the single place that: annualizes (`×12` if monthly), applies the managed split
   (`effective = annual × tooling_pct` when managed, else `annual`), derives
