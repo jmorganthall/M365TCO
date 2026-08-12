@@ -258,7 +258,6 @@ async def lifespan(_app: FastAPI):
         _backfill_endpoint_protection_coverage(db)
         _backfill_coverage_corrections(db)
         _retire_split_outcomes(db)  # drop split-away outcomes from the global library
-        _retire_epm_from_e3_e5(db)  # EPM is an Intune Suite add-on, not in E3/E5
         _reconcile_catalog_provenance(db)
     finally:
         db.close()
@@ -383,14 +382,18 @@ def _backfill_endpoint_protection_coverage(db) -> None:
         db.commit()
 
 
-# Additive licensing corrections to the default coverage (never removals — see
-# _RETIRED_COVERAGE_PAIRS for those): E5's security cousins that under-covered it,
-# and E7's full build-out. Point corrections are explicit; E7's set is taken from
-# the seed (the source of truth) so it stays a superset of E5 + the AI outcomes.
+# Additive licensing corrections to the default coverage: E5's security cousins
+# that under-covered it, E7's full build-out, and the Intune Suite (Endpoint
+# Privilege Management) that Microsoft folded into M365 E3/E5 — re-added here so a
+# deployment that ran the earlier (mistaken) EPM retirement gets it back. Point
+# corrections are explicit; E7's set is taken from the seed (the source of truth)
+# so it stays a superset of E5 + the AI outcomes.
 _COVERAGE_CORRECTIONS = (
     ("f5-security", "threat-vuln-management"),        # Defender for Endpoint P2 has TVM
     ("m365-business-premium", "threat-vuln-management"),  # Defender for Business has TVM
     ("m365-f1", "device-management"),                 # F1 includes Intune (MDM/MAM)
+    ("m365-e3", "endpoint-privilege-management"),     # Intune Suite EPM now in M365 E3
+    ("m365-e5", "endpoint-privilege-management"),     # Intune Suite EPM now in M365 E5
 )
 
 
@@ -421,36 +424,6 @@ def _backfill_coverage_corrections(db) -> None:
             changed = True
     if changed:
         db.commit()
-
-
-# Coverage pairs retired from the global template because they were licensing-
-# inaccurate: Endpoint Privilege Management is a Microsoft Intune Suite add-on,
-# NOT included in Microsoft 365 E3 or E5 — mapping it there falsely displaced a
-# third-party EPM tool on an E3/E5 move. The subtractive mirror of the additive
-# coverage backfills, by explicit (bundle, outcome) list.
-_RETIRED_COVERAGE_PAIRS = (
-    ("m365-e3", "endpoint-privilege-management"),
-    ("m365-e5", "endpoint-privilege-management"),
-)
-
-
-def _retire_epm_from_e3_e5(db) -> None:
-    """Targeted retirement migration: drop the retired coverage pairs above from the
-    GLOBAL default template by explicit key list, so operator-added coverage is never
-    touched. Existing engagements keep their copied coverage (recreate, or remove EPM
-    from E3/E5 in the Coverage map, to adopt). Idempotent; no-op on a fresh DB
-    (seeded without these pairs)."""
-    from sqlalchemy import and_, delete, or_
-
-    from . import models
-
-    conds = [
-        and_(models.DefaultBundleCoverage.bundle_key == bk,
-             models.DefaultBundleCoverage.outcome_key == ok)
-        for bk, ok in _RETIRED_COVERAGE_PAIRS
-    ]
-    db.execute(delete(models.DefaultBundleCoverage).where(or_(*conds)))
-    db.commit()
 
 
 def _backfill_new_default_outcomes(db) -> None:

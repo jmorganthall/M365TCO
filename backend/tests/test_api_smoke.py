@@ -516,10 +516,10 @@ def test_stale_classification_cleared_when_naturally_fully_eliminated(client):
     assert d["residual_intent"] == "None"
 
 
-def test_endpoint_privilege_management_seeded_but_not_on_a_base_suite(client):
-    """Endpoint Privilege Management ships in the seed library as an outcome, but NO
-    base suite delivers it — EPM is a Microsoft Intune Suite add-on, not included in
-    M365 E3 or E5. (It stays an outcome a third-party EPM tool can deliver.)"""
+def test_endpoint_privilege_management_seeded_and_covered(client):
+    """Endpoint Privilege Management ships in the seed library and maps to Microsoft
+    365 E3 and E5 (and E7): Microsoft folded the Intune Suite — which includes EPM —
+    into those suites."""
     eng = client.post("/api/engagements", json={"customer_name": "EPM Co"}).json()
     eid = eng["id"]
     outcomes = client.get(f"/api/engagements/{eid}/outcomes").json()
@@ -529,7 +529,9 @@ def test_endpoint_privilege_management_seeded_but_not_on_a_base_suite(client):
     coverage = client.get(f"/api/engagements/{eid}/coverage").json()
     ms_rows = [c for c in coverage
                if c["product_kind"] == "MicrosoftSku" and c["outcome_id"] == epm["id"]]
-    assert ms_rows == []  # no Microsoft bundle covers EPM
+    bundles = {b["id"]: b["key"] for b in client.get("/api/catalog/bundles").json()}
+    covered_by = {bundles.get(c["bundle_id"], c["microsoft_sku_reference"]) for c in ms_rows}
+    assert {"m365-e3", "m365-e5"} <= covered_by
 
 
 def test_update_outcomes_full_overwrite_to_global_defaults(client):
