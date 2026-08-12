@@ -256,25 +256,26 @@ def test_default_coverage_seeds_and_editing_affects_new_engagements_only(client)
     # Engagement A, created BEFORE the edit.
     a = client.post("/api/engagements", json={"customer_name": "Before"}).json()
 
-    # Add Identity (Core) to E7 (seeded with EMPTY coverage) in the default library
-    # — a throwaway pairing so the shared default library isn't left mutated.
+    # Add Analytics & BI to Office 365 E1 (a pairing it does NOT cover by default —
+    # O365 E1 has no Power BI Pro) in the default library — a throwaway edit so the
+    # shared default library isn't left mutated.
     r = client.post("/api/admin/default-coverage",
-                    json={"bundle_key": "m365-e7", "outcome_key": "identity-sso", "coverage": "Full"})
+                    json={"bundle_key": "o365-e1", "outcome_key": "analytics-bi", "coverage": "Full"})
     assert r.status_code == 201
     added_id = r.json()["id"]
 
     # Engagement B, created AFTER the edit.
     b = client.post("/api/engagements", json={"customer_name": "After"}).json()
 
-    def e7_covers_identity(eid):
+    def e1_covers_bi(eid):
         cov = client.get(f"/api/engagements/{eid}/coverage").json()
-        ident = _outcome(client, eid, "identity-sso")
+        bi = _outcome(client, eid, "analytics-bi")
         return any(c["product_kind"] == "MicrosoftSku"
-                   and c["microsoft_sku_reference"] == "Microsoft 365 E7"
-                   and c["outcome_id"] == ident["id"] for c in cov)
+                   and c["microsoft_sku_reference"] == "Office 365 E1"
+                   and c["outcome_id"] == bi["id"] for c in cov)
 
-    assert e7_covers_identity(b["id"]) is True    # inherited the edit
-    assert e7_covers_identity(a["id"]) is False   # existing engagement untouched
+    assert e1_covers_bi(b["id"]) is True    # inherited the edit
+    assert e1_covers_bi(a["id"]) is False   # existing engagement untouched
 
     # Restore the shared default library (don't leak state into other tests).
     assert client.delete(f"/api/admin/default-coverage/{added_id}").status_code == 204
@@ -547,10 +548,10 @@ def test_identity_and_chat_retirement_migration(client):
 
 
 def test_default_coverage_validation_and_crud(client):
-    # Operate on a throwaway entry (E7 has empty seed coverage) so no seed row is
-    # mutated for other tests.
+    # Operate on a throwaway pairing O365 E1 does NOT cover by default (no Sentinel /
+    # SIEM), so no real seed row is mutated for other tests.
     created = client.post("/api/admin/default-coverage",
-                          json={"bundle_key": "m365-e7", "outcome_key": "chat-meetings"})
+                          json={"bundle_key": "o365-e1", "outcome_key": "siem"})
     assert created.status_code == 201
     entry = created.json()
     assert entry["coverage"] == "Full"  # coverage is binary — stored as the single marker
@@ -558,7 +559,7 @@ def test_default_coverage_validation_and_crud(client):
     assert client.post("/api/admin/default-coverage",
                        json={"bundle_key": "nope", "outcome_key": "identity-access"}).status_code == 422
     assert client.post("/api/admin/default-coverage",
-                       json={"bundle_key": "m365-e7", "outcome_key": "nope"}).status_code == 422
+                       json={"bundle_key": "o365-e1", "outcome_key": "nope"}).status_code == 422
     # Duplicate pair rejected.
     dup = client.post("/api/admin/default-coverage",
                       json={"bundle_key": entry["bundle_key"], "outcome_key": entry["outcome_key"]})

@@ -256,7 +256,9 @@ async def lifespan(_app: FastAPI):
         _backfill_new_default_outcomes(db)
         _backfill_process_automation_coverage(db)
         _backfill_endpoint_protection_coverage(db)
+        _backfill_coverage_corrections(db)
         _retire_split_outcomes(db)  # drop split-away outcomes from the global library
+        _retire_epm_from_e3_e5(db)  # EPM is an Intune Suite add-on, not in E3/E5
         _reconcile_catalog_provenance(db)
     finally:
         db.close()
@@ -379,6 +381,76 @@ def _backfill_endpoint_protection_coverage(db) -> None:
             changed = True
     if changed:
         db.commit()
+
+
+# Additive licensing corrections to the default coverage (never removals — see
+# _RETIRED_COVERAGE_PAIRS for those): E5's security cousins that under-covered it,
+# and E7's full build-out. Point corrections are explicit; E7's set is taken from
+# the seed (the source of truth) so it stays a superset of E5 + the AI outcomes.
+_COVERAGE_CORRECTIONS = (
+    ("f5-security", "threat-vuln-management"),        # Defender for Endpoint P2 has TVM
+    ("m365-business-premium", "threat-vuln-management"),  # Defender for Business has TVM
+    ("m365-f1", "device-management"),                 # F1 includes Intune (MDM/MAM)
+)
+
+
+def _backfill_coverage_corrections(db) -> None:
+    """Additive migration: apply the licensing corrections above, plus E7's full
+    coverage (the E5 outcome set + the AI outcomes), inserting only missing (bundle,
+    outcome) rows so operator edits are untouched. E7's target is read from the seed
+    so it tracks E5 automatically. Global template only — existing engagements keep
+    their copied coverage (edited in the GUI). No-op on a fresh DB; idempotent."""
+    from sqlalchemy import select
+
+    from . import models
+    from .services import seeds as seeds_service
+
+    existing = db.execute(select(models.DefaultBundleCoverage)).scalars().all()
+    if not existing:
+        return  # fresh DB — seed_default_coverage already wrote the rows
+    have = {(c.bundle_key, c.outcome_key) for c in existing}
+    targets = list(_COVERAGE_CORRECTIONS)
+    for item in seeds_service.load_coverage()["bundles"]:
+        if item["bundle"] == "m365-e7":
+            targets += [("m365-e7", c["outcome"]) for c in item["coverage"]]
+    changed = False
+    for bundle_key, outcome_key in targets:
+        if (bundle_key, outcome_key) not in have:
+            db.add(models.DefaultBundleCoverage(
+                bundle_key=bundle_key, outcome_key=outcome_key, coverage="Full"))
+            changed = True
+    if changed:
+        db.commit()
+
+
+# Coverage pairs retired from the global template because they were licensing-
+# inaccurate: Endpoint Privilege Management is a Microsoft Intune Suite add-on,
+# NOT included in Microsoft 365 E3 or E5 — mapping it there falsely displaced a
+# third-party EPM tool on an E3/E5 move. The subtractive mirror of the additive
+# coverage backfills, by explicit (bundle, outcome) list.
+_RETIRED_COVERAGE_PAIRS = (
+    ("m365-e3", "endpoint-privilege-management"),
+    ("m365-e5", "endpoint-privilege-management"),
+)
+
+
+def _retire_epm_from_e3_e5(db) -> None:
+    """Targeted retirement migration: drop the retired coverage pairs above from the
+    GLOBAL default template by explicit key list, so operator-added coverage is never
+    touched. Existing engagements keep their copied coverage (recreate, or remove EPM
+    from E3/E5 in the Coverage map, to adopt). Idempotent; no-op on a fresh DB
+    (seeded without these pairs)."""
+    from sqlalchemy import and_, delete, or_
+
+    from . import models
+
+    conds = [
+        and_(models.DefaultBundleCoverage.bundle_key == bk,
+             models.DefaultBundleCoverage.outcome_key == ok)
+        for bk, ok in _RETIRED_COVERAGE_PAIRS
+    ]
+    db.execute(delete(models.DefaultBundleCoverage).where(or_(*conds)))
+    db.commit()
 
 
 def _backfill_new_default_outcomes(db) -> None:

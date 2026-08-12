@@ -1,5 +1,5 @@
 {
-  "version": "2026-07-seed-v6-endpoint-privilege-mgmt",
+  "version": "2026-08-seed-v7-ai-outcomes",
   "note": "Default outcome library — the initial seed for the globally-editable DefaultOutcome table. Editing the global library (Settings > Outcomes) changes the template for NEW engagements only; existing engagements keep their own copy. outcome keys are stable identifiers referenced by coverage.json. Security outcomes are split to the granularity at which Microsoft SKUs and third-party tools actually differ: Endpoint = EPP vs EDR; Email = Hygiene vs Advanced Threat Protection; Identity is split three ways — SSO/IdP (directory + single sign-on, on any tenant) vs MFA & Conditional Access (Entra P1: dynamic/adaptive auth) vs Governance (Entra P2: PIM/access reviews); plus CASB and the two telephony layers (PBX vs PSTN). Collaboration is Team Chat & Meetings (Teams vs Slack/Zoom); desktop apps and cloud storage are their own outcomes.",
   "outcomes": [
     {
@@ -116,6 +116,16 @@
       "key": "endpoint-privilege-management",
       "name": "Endpoint Privilege Management",
       "description": "Just-in-time elevation and admin-rights removal on endpoints — standard users run approved elevated tasks without holding local admin."
+    },
+    {
+      "key": "ai-assistant",
+      "name": "AI Assistant",
+      "description": "An AI assistant embedded across the productivity apps — chat, drafting, summarization, and grounded Q&A over the user's own content and the web (e.g. a Microsoft 365 Copilot-class experience)."
+    },
+    {
+      "key": "ai-agentic-governance",
+      "name": "AI Agentic Governance",
+      "description": "Governance, security, and lifecycle management of AI agents — agent identity and access, data-loss and oversight controls, and management of assistant/autonomous agents across the tenant."
     }
   ]
 }
