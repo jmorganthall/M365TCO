@@ -628,6 +628,54 @@ def test_analyze_bundles_recommends_max_savings_no_gap():
     assert res[0].recommended is True
 
 
+def test_analyze_bundles_caps_credit_at_the_tools_covered_population():
+    """A recommendation is a promise about what the engine will compute once it is
+    applied, so the optimizer credits displacement by the ENGINE's rule (6.3a):
+    capped at the seats the tool actually covers. Crediting headcount x per-unit
+    would claim 4x the tool's whole cost for a 200-person persona on a 50-seat
+    tool — savings that vanish the moment the operator acts on them."""
+    tool = ThirdPartyProduct(
+        id="p", name="P", annual_cost=D("30000"), covered_count=50,
+        delivered_outcome_ids=frozenset({A}),
+    )
+    res = analyze_bundles(
+        headcount=200,
+        current_microsoft_annual=D("0"),
+        required_outcome_ids=frozenset({A}),
+        current_capability_outcome_ids=frozenset({A}),
+        candidates=[CandidateBundle("E5", frozenset({A, B}), D("60"))],
+        third_party_products=[tool],
+    )
+    # 50 covered seats x $600/seat/yr = the tool's whole $30,000 — never more.
+    assert res[0].third_party_offset_annual == D("30000.00")
+    assert res[0].delta_annual == D("-18000.00")   # 200 x 60 target − 30,000 offset
+
+
+def test_analyze_bundles_ignores_tools_another_persona_holds():
+    """Same rule as 6.3a: a tool tagged to other personas is not this persona's to
+    retire. Crediting it would recommend a move whose savings belong to someone
+    else — and which the engine will refuse to reproduce."""
+    theirs = ThirdPartyProduct(
+        id="theirs", name="Theirs", annual_cost=D("30000"), covered_count=100,
+        delivered_outcome_ids=frozenset({A}), persona_ids=frozenset({"other"}),
+    )
+    mine = ThirdPartyProduct(
+        id="mine", name="Mine", annual_cost=D("10000"), covered_count=100,
+        delivered_outcome_ids=frozenset({A}), persona_ids=frozenset({"me"}),
+    )
+    res = analyze_bundles(
+        headcount=100,
+        current_microsoft_annual=D("0"),
+        required_outcome_ids=frozenset({A}),
+        current_capability_outcome_ids=frozenset({A}),
+        candidates=[CandidateBundle("E5", frozenset({A, B}), D("60"))],
+        third_party_products=[theirs, mine],
+        persona_id="me",
+    )
+    assert res[0].displaced_product_ids == ["mine"]
+    assert res[0].third_party_offset_annual == D("10000.00")
+
+
 def test_analyze_bundles_seat_cap_excludes_over_cap_business_from_recommendation():
     # Two gapless, priced candidates. "Business" is the biggest saver but is a
     # seat-capped family; "Enterprise" is not capped. With only 50 Business seats

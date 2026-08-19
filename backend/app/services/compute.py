@@ -274,6 +274,10 @@ def analyze_persona_bundles(
             covered_count=tp.covered_count, is_managed=tp.is_managed,
             tooling_pct=_dec(tp.tooling_pct),
             delivered_outcome_ids=frozenset(tp_outcomes.get(tp.id, set())),
+            # The tags matter here exactly as they do in the engine: without them
+            # the optimizer would credit this persona for a tool a DIFFERENT
+            # persona holds (ENGINE_SPEC 6.3a).
+            persona_ids=frozenset(tp.persona_ids),
         )
         for tp in eng.third_party_products
     ]
@@ -353,6 +357,7 @@ def analyze_persona_bundles(
         persona.headcount, current_ms, frozenset(required),
         frozenset(current_capability), candidates, third_party,
         cap_headroom_by_reference=cap_headroom_by_reference,
+        persona_id=persona.id,
     )
 
     def names(ids):

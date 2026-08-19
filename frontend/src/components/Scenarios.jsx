@@ -137,16 +137,22 @@ function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove,
               ) : swapRow.reason === 'no_savings' ? (
                 <span className="badge muted" title="Business Premium costs the same or more than this persona's own target, so the swap wouldn't save">
                   eligible · no BP saving</span>
+              ) : swapRow.reason === 'price_unknown' ? (
+                <span className="badge warn" title="No Business Premium price in the loaded catalog at this engagement's basis, so the swap can't prove a saving — import a price list or set the BP price">
+                  eligible · BP price unknown</span>
               ) : swapRow.reason === 'opted_out' ? (
                 <span className="badge muted">swap opted out{' '}
                   <button className="ghost sm" style={{ marginLeft: 4, padding: '0 .3rem' }}
                     onClick={() => update(s.id, { bp_swap_optout: false })}>re-include</button>
                 </span>
-              ) : swapRow.eligible ? (
+              ) : swapRow.opted_out ? (
                 <span className="badge muted">swap opted out{' '}
                   <button className="ghost sm" style={{ marginLeft: 4, padding: '0 .3rem' }}
                     onClick={() => update(s.id, { bp_swap_optout: false })}>re-include</button>
                 </span>
+              ) : swapRow.eligible ? (
+                <span className="badge muted" title="Eligible for Business Premium, but the swap did not apply it — see the banner above for why">
+                  eligible · not applied</span>
               ) : (
                 <span className="muted" title="Business Premium doesn't cover every outcome this persona requires">not BP-eligible</span>
               )}
@@ -237,6 +243,34 @@ function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove,
       )}
     </>
   )
+}
+
+// Turn the swap's machine-readable `inert_reason` into the operator's next step.
+// Every branch names something the user can actually do — an explanation that
+// ends in a shrug is no better than the silence it replaces.
+function inertExplanation(bp) {
+  const cap = bp.cap
+  switch (bp.inert_reason) {
+    case 'no_bp_bundle':
+      return 'No Business Premium bundle is defined in the catalog — add it under Settings → Staple bundles.'
+    case 'price_unknown':
+      return "No Business Premium price in the loaded catalog at this engagement's pricing basis, so no saving can be proven. Import a price list, or set the price on the bundle."
+    case 'no_scenarios':
+      return 'No in-scope scenarios to swap — put at least one persona in scope.'
+    case 'all_ineligible':
+      return "Business Premium doesn't cover every outcome these personas require today, so swapping would drop a capability. Expand a persona to see what it requires."
+    case 'all_no_savings':
+      return "Business Premium costs the same or more than every persona's own target, so there is nothing to save."
+    case 'all_opted_out':
+      return 'Every eligible persona has opted out — re-include one in the table below.'
+    case 'all_capped':
+      return `Every eligible persona is larger than the ${cap ? cap.max : 300}-seat Business Premium cap, so none can move as a whole group`
+        + `${bp.stranded_seats ? ` (${bp.stranded_seats.toLocaleString()} seats turned away` : ''}`
+        + `${bp.stranded_seats && cap ? `, ${cap.headroom_remaining.toLocaleString()} seats of headroom unused)` : bp.stranded_seats ? ')' : ''}`
+        + '. The swap moves whole personas, so to use the cap, split a persona into a smaller Business Premium group.'
+    default:
+      return 'No persona met all of: eligible, not opted out, cheaper on Business Premium, and small enough for the cap.'
+  }
 }
 
 export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
@@ -345,6 +379,15 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
           )}
         </span>
       </div>
+      {/* An enabled swap that changes nothing must SAY so. Silence here is what
+          makes the feature look broken: the box is ticked, the totals don't move,
+          and nothing on screen explains why. */}
+      {swapEnabled && result?.bp_swap?.inert_reason && (
+        <div className="warn-box" style={{ margin: '.4rem 0' }}>
+          <b>The swap is on but changed nothing.</b>{' '}
+          {inertExplanation(result.bp_swap)}
+        </div>
+      )}
       {err && <div className="err">{err}</div>}
 
       <table className="resp-table">

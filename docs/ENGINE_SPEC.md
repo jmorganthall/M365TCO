@@ -188,7 +188,14 @@ is a legitimate positive (cost-increase) delta.
 > covered set is the union (base ∪ chosen add-ons) and its price is the sum, so a
 > recommendation reads as "E3 + E5 Security" rather than a single line. The
 > displacement test and linear-by-user offset are unchanged and applied to the
-> composed covered set. The **required** set (what a candidate must cover or show a
+> composed covered set — **including the engine's limits on that offset**: credit
+> goes only to tools this persona HOLDS (`persona_ids`, §6.3a) and only for the
+> seats the tool covers (`min(headcount, covered_count) × per_unit`). A
+> recommendation is a promise about what the engine will compute once the operator
+> applies it, so any credit the engine would not repeat is a number that evaporates
+> on contact. (Both limits were missing until the service sweep caught them:
+> unbounded `headcount × per_unit` credit made a bundle read as saving $181,120
+> where applying it yielded $91,120.) The **required** set (what a candidate must cover or show a
 > gap) is the union of the outcomes the persona's current Microsoft licenses deliver
 > **and** the persona's declared required capabilities (`PersonaRequirement`, the
 > Personas tab) — so a needed capability with no current license still forces a gap.
@@ -415,6 +422,36 @@ then asserts the properties below on every result. ~1.27M engagements:
 | `disposition-displaced` | displaced users = the displacing personas' headcount |
 | `current-ms-conservation` | attributed Microsoft spend never exceeds actual licence spend |
 | `order-dependence` | shuffling the input lists changes no output |
+
+The two decision surfaces above the engine — recommend-a-path and the Business
+Premium swap — get the same treatment in `backend/tests/sweep_services.py`, built
+through the HTTP API so a violation is one a user can hit:
+
+    cd backend && python -m tests.sweep_services            # the full space
+    cd backend && python -m tests.sweep_services --level ci # the slice every test run does
+
+| Invariant | Claim |
+| --- | --- |
+| `opt-engine-agreement` | applying a recommendation yields the delta it advertised |
+| `opt-offset-cap` / `opt-offset-phantom` | never credit more than a tool costs, nor credit nothing displaced |
+| `opt-persona-attribution` | only tools this persona holds |
+| `opt-recommend-eligible` / `opt-recommend-best` | the recommendation is eligible, and the best eligible |
+| `swap-never-worse` | a swap applied because it saves never raises the net |
+| `swap-eligibility` / `swap-optout` | applied ⇒ eligible and not opted out |
+| `swap-cap-respected` | never commit more seats than the cap allows |
+| `swap-strand-disclosed` | personas the cap turns away are reported, not dropped |
+| `swap-inert-explained` | an enabled swap that changes nothing says why |
+
+> Why the swap discloses rather than auto-fills: it moves **whole personas**,
+> because a persona is the unit of licensing in this model (one persona, one
+> scenario, one target). A persona larger than the 300-seat Business cap can
+> therefore never fit, and at enterprise scale every persona may exceed it — the
+> feature is then correctly inert. Filling the leftover seats would mean splitting
+> a persona, which is a decision about the customer's own population and belongs to
+> the operator (and, per the data architecture, to a real first-class Persona rather
+> than a hidden sub-population invented by the math). What the swap owes the
+> operator is the number and the next step: `inert_reason`, `stranded_seats`, and
+> the unused headroom, surfaced in the Scenarios tab.
 
 These are claims about reality, not about the code: when one fails, the engine is
 wrong until proven otherwise. Two over-credits were found this way and fixed in
