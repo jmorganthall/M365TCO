@@ -35,6 +35,63 @@ def _setup(client, headcount=2518):
     return eid, p
 
 
+def test_carve_preview_reports_exactly_what_would_be_copied(client):
+    """The GUI warns before carving, and the warning is built from this — so it
+    lists what the carve would ACTUALLY copy rather than a frontend guess that can
+    drift from the endpoint's behaviour."""
+    eid, parent = _setup(client)
+    outcomes = client.get(f"/api/engagements/{eid}/outcomes").json()
+    desktop = next(o for o in outcomes if o["seed_key"] == "desktop-software")
+    client.patch(f"/api/engagements/{eid}/personas/{parent['id']}",
+                 json={"required_outcome_ids": [desktop["id"]]})
+    client.post(f"/api/engagements/{eid}/third-party", json={
+        "name": "Okta", "raw_cost": 50000, "persona_ids": [parent["id"]]})
+
+    pv = client.get(f"/api/engagements/{eid}/personas/{parent['id']}/carve-preview").json()
+    assert pv["persona_name"] == "Property Ops" and pv["headcount"] == 2518
+    assert pv["current_licenses"] == ["Office 365 E3"]
+    assert pv["third_party_tools"] == ["Okta"]
+    assert pv["required_capabilities"] == [desktop["name"]]
+    assert pv["has_scenario"] is True
+    assert pv["scenario_target"] == "Microsoft 365 E3"
+
+
+def test_carve_preview_shows_an_empty_baseline_as_empty(client):
+    """Carving before the baseline is entered copies nothing — the operator's cue
+    that they are too early. The preview must say so rather than imply inheritance
+    that will not happen."""
+    eid = client.post("/api/engagements", json={"customer_name": "Early Co"}).json()["id"]
+    p = client.post(f"/api/engagements/{eid}/personas",
+                    json={"name": "KW", "headcount": 500}).json()
+
+    pv = client.get(f"/api/engagements/{eid}/personas/{p['id']}/carve-preview").json()
+    assert pv["current_licenses"] == []
+    assert pv["third_party_tools"] == []
+    assert pv["required_capabilities"] == []
+    assert pv["has_scenario"] is False and pv["scenario_target"] == ""
+
+
+def test_carve_preview_matches_what_carving_actually_copies(client):
+    """The promise and the act must agree: everything the preview lists is what the
+    carve-out ends up holding."""
+    eid, parent = _setup(client)
+    client.post(f"/api/engagements/{eid}/third-party", json={
+        "name": "Okta", "raw_cost": 50000, "persona_ids": [parent["id"]]})
+    pv = client.get(f"/api/engagements/{eid}/personas/{parent['id']}/carve-preview").json()
+
+    child = client.post(f"/api/engagements/{eid}/personas/{parent['id']}/carve",
+                        json={"seats": 300}).json()
+
+    got_licences = sorted(l["sku_reference"] for l in
+                          client.get(f"/api/engagements/{eid}/current-licenses").json()
+                          if child["id"] in l["persona_ids"])
+    got_tools = sorted(t["name"] for t in
+                       client.get(f"/api/engagements/{eid}/third-party").json()
+                       if child["id"] in t["persona_ids"])
+    assert got_licences == pv["current_licenses"]
+    assert got_tools == pv["third_party_tools"]
+
+
 def test_carve_onto_a_different_plan_is_priced_as_that_plan(client):
     """A carve-out onto Business Premium must be quoted at Business Premium's rate.
     Inheriting the parent's $/seat would put an E3 price on a BP row — a number on

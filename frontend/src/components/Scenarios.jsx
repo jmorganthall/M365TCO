@@ -43,7 +43,7 @@ const pctOffList = (s) => {
 // base price, discount, term/payment model, and add-on bundles (composed) in
 // the expander. Term/billing default to the engagement's pricing basis; a
 // line-level selection requotes the composed target from the catalog.
-function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove, onAnalyze, parentName }) {
+function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove, onAnalyze, onCarve, parentName }) {
   const [open, setOpen] = useState(false)
   // The last SETTLED target pick (not the live typed text) — "changed SKU"
   // means a genuinely different product, which re-seeds the $/seat/mo.
@@ -141,7 +141,13 @@ function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove,
         <td className="num" data-label="Target">{r ? money(r.target_spend_annual, moneyUnit) : '—'}</td>
         <td className={`num ${r && r.delta_annual < 0 ? 'pos' : ''}`} data-label="Delta">{r ? money(r.delta_annual, moneyUnit) : '—'}</td>
         <td className="num">
-          <button className="ghost sm" onClick={onAnalyze}>⚡</button>{' '}
+          <button className="ghost sm" title="Best bundle" onClick={onAnalyze}>⚡</button>{' '}
+          {onCarve && (
+            <>
+              <button className="ghost sm" title="Move part of this persona onto a different plan"
+                onClick={onCarve}>Carve…</button>{' '}
+            </>
+          )}
           <button className="danger sm" onClick={() => remove(s.id)}>Remove</button>
         </td>
       </tr>
@@ -220,6 +226,95 @@ function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove,
   )
 }
 
+// Carving belongs HERE, not on the Personas tab: a carve-out copies the parent's
+// licensing, tools and required capabilities as they stand at that moment. Carve
+// before the baseline is entered and it copies nothing — and nothing added later
+// follows it. By the Scenarios step those inputs are in, and the operator is
+// looking at targets, which is when "part of this group should go elsewhere"
+// actually occurs to them.
+function CarvePanel({ eid, persona, bundles, onDone, onCancel }) {
+  const [preview, setPreview] = useState(null)
+  const [form, setForm] = useState({ seats: '', name: '', target_sku_reference: '' })
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    // The warning is built from what the server would actually copy, so it can
+    // never drift from the behaviour it describes.
+    api.get(`/api/engagements/${eid}/personas/${persona.id}/carve-preview`)
+      .then(setPreview).catch((e) => setErr(e.message))
+  }, [eid, persona.id])
+
+  const seats = Number(form.seats) || 0
+  const remaining = Math.max(persona.headcount - seats, 0)
+  const valid = seats > 0 && seats < persona.headcount
+
+  async function submit() {
+    setBusy(true)
+    setErr('')
+    try {
+      await api.post(`/api/engagements/${eid}/personas/${persona.id}/carve`, {
+        seats, name: form.name.trim(), target_sku_reference: form.target_sku_reference,
+      })
+      onDone()
+    } catch (e) { setErr(e.message); setBusy(false) }
+  }
+
+  const copied = preview && [
+    preview.current_licenses.length && `current licensing (${preview.current_licenses.join(', ')})`,
+    preview.third_party_tools.length && `third-party tools (${preview.third_party_tools.join(', ')})`,
+    preview.required_capabilities.length && `required capabilities (${preview.required_capabilities.join(', ')})`,
+  ].filter(Boolean)
+
+  return (
+    <div style={{ padding: '.4rem 0' }}>
+      <div className="warn-box" style={{ marginBottom: '.6rem' }}>
+        <b>A carve-out becomes an independent persona.</b>{' '}
+        {preview && (copied.length
+          ? <>It starts as a copy of <b>{persona.name}</b>'s {copied.join(', ')} — taken as they
+            stand right now. From then on the two are <b>separate</b>: editing one does not
+            change the other, and anything you add later has to be tagged to both.</>
+          : <>Right now <b>{persona.name}</b> has no current licensing, third-party tools or
+            required capabilities recorded, so the carve-out would copy <b>nothing</b> — and
+            anything you add later would land on {persona.name} alone. Finish the baseline
+            first unless you mean to model this group from scratch.</>)}
+        {preview && !preview.has_scenario && (
+          <> <b>{persona.name} has no target scenario yet</b>, so the carve-out would have no
+            future state until you give it one.</>)}
+      </div>
+
+      <div className="grid c4">
+        <div><label>Seats to carve out</label>
+          <input type="number" value={form.seats} placeholder="300" autoFocus
+            onChange={(e) => setForm({ ...form, seats: e.target.value })} />
+          <small className="src">
+            Moved out of <b>{persona.name}</b>, leaving <b>{remaining.toLocaleString()}</b>.
+            Total headcount is unchanged.
+          </small></div>
+        <div><label>Their target plan</label>
+          <select value={form.target_sku_reference}
+            onChange={(e) => setForm({ ...form, target_sku_reference: e.target.value })}>
+            <option value="">Same as {persona.name}</option>
+            {bundles.map((b) => <option key={b.id || b.name} value={b.name}>{b.name}</option>)}
+          </select>
+          <small className="src">Quoted from the catalog at this engagement's basis.</small></div>
+        <div style={{ gridColumn: 'span 2' }}><label>Name</label>
+          <input value={form.name}
+            placeholder={`${persona.name} — ${form.target_sku_reference || 'carve-out'}`}
+            onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+      </div>
+
+      {err && <div className="err">{err}</div>}
+      <div className="toolbar" style={{ marginTop: '.3rem' }}>
+        <button onClick={submit} disabled={!valid || busy}>
+          {busy ? 'Carving…' : `Carve out ${seats ? seats.toLocaleString() + ' seats' : ''}`}
+        </button>
+        <button className="ghost" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  )
+}
+
 export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
   const eid = engagement.id
   const [personas, setPersonas] = useState([])
@@ -228,6 +323,7 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
   const [result, setResult] = useState(null)
   const [err, setErr] = useState('')
   const [analyzePersona, setAnalyzePersona] = useState(null)
+  const [carvePersona, setCarvePersona] = useState(null)
   const [capEnabled, setCapEnabled] = useState(!!engagement.business_cap_enabled)
 
   function load() {
@@ -323,10 +419,24 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
               </tr>
             )
             return (
-              <ScenarioRow key={p.id} p={p} s={s} r={resultFor(s.id)} bundles={bundles} basis={basis}
-                meta={meta} moneyUnit={moneyUnit} update={update} remove={remove}
-                onAnalyze={() => setAnalyzePersona(p)}
-                parentName={personas.find((x) => x.id === p.parent_persona_id)?.name} />
+              <React.Fragment key={p.id}>
+                <ScenarioRow p={p} s={s} r={resultFor(s.id)} bundles={bundles} basis={basis}
+                  meta={meta} moneyUnit={moneyUnit} update={update} remove={remove}
+                  onAnalyze={() => setAnalyzePersona(p)}
+                  onCarve={p.parent_persona_id ? null
+                    : () => setCarvePersona(carvePersona?.id === p.id ? null : p)}
+                  parentName={personas.find((x) => x.id === p.parent_persona_id)?.name} />
+                {carvePersona?.id === p.id && (
+                  <tr className="detail-row">
+                    <td></td>
+                    <td colSpan={9} style={{ background: 'var(--panel2)' }}>
+                      <CarvePanel eid={eid} persona={p} bundles={bundles}
+                        onCancel={() => setCarvePersona(null)}
+                        onDone={() => { setCarvePersona(null); load(); compute() }} />
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             )
           })}
         </tbody>
