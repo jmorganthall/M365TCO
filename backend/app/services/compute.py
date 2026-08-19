@@ -485,20 +485,47 @@ def persona_coverage_gaps(db: Session, engagement_id: str) -> list[dict]:
     bundles' ratified coverage, tagged-or-org-wide lines) plus third parties
     whose ratified coverage applies to the persona. Derived, persists nothing.
     Serves both the Coverage Check step (as gaps to resolve) and the readout's
-    New-outcomes section (whatever remains unresolved is genuinely new)."""
+    New-outcomes section (whatever remains unresolved is genuinely new).
+
+    Alongside the gaps it returns the guards that say when the comparison itself
+    cannot be trusted: `unmapped_current_licenses` (cost counted, capability
+    invisible), `unmapped_target`/`target_unmapped` (the target contributes no
+    ratified coverage, so it can neither add nor drop anything) and
+    `org_wide_current_licenses` (untagged lines counted for every persona are
+    what make the target look redundant)."""
     eng = db.get(models.Engagement, engagement_id)
     sku_outcomes = _ratified_sku_outcomes(db, engagement_id)
     tp_outcomes = _ratified_thirdparty_outcomes(db, engagement_id)
     name_by_id = {o.id: o.name for o in eng.outcomes}
     desc_by_id = {o.id: o.description or "" for o in eng.outcomes}
 
-    # Outcomes each persona's proposed scenario (base target + add-ons) delivers.
+    # Outcomes each persona's proposed scenario (base target + add-ons) delivers,
+    # plus the references it draws that coverage from. Keeping the references is
+    # what lets an UNMAPPED target (a SKU with no ratified coverage here) be
+    # reported as a data gap instead of reading as "delivers nothing" — which
+    # would silently empty the New-outcomes story and invent a full-capability drop.
+    bundle_name = {b.id: b.name for b in bundles.list_bundles(db)}
     target_by_persona: dict[str, set[str]] = {}
+    target_refs_by_persona: dict[str, list[dict]] = {}
     for s in eng.scenarios:
-        covered = set(sku_outcomes.get(_cover_key(db, s.target_sku_reference), set()))
-        for addon in s.addons:
-            covered |= sku_outcomes.get(addon.bundle_id, set())
+        refs = [{
+            "reference": s.target_sku_reference or "",
+            "key": _cover_key(db, s.target_sku_reference),
+            # True: a known bundle whose coverage is missing here (fix in the
+            # Coverage map). False: the SKU matches no bundle at all (map it in
+            # Settings -> Staple bundles). Add-ons are bundle-keyed by construction.
+            "resolves_to_bundle": bundles.resolve_bundle(db, s.target_sku_reference) is not None,
+        }]
+        refs += [
+            {"reference": bundle_name.get(a.bundle_id, a.bundle_id),
+             "key": a.bundle_id, "resolves_to_bundle": True}
+            for a in s.addons
+        ]
+        covered: set[str] = set()
+        for r in refs:
+            covered |= sku_outcomes.get(r["key"], set())
         target_by_persona[s.persona_id] = covered
+        target_refs_by_persona[s.persona_id] = refs
 
     def _outcome_dicts(ids):
         return [
@@ -518,24 +545,36 @@ def persona_coverage_gaps(db: Session, engagement_id: str) -> list[dict]:
         # silently drop it. That is the multi-license trap: e.g. a persona on
         # "Office 365 E3" + "Enterprise Mobility + Security E3" where EMS maps to no
         # bundle looks fully covered by "Office 365 E3" alone, hiding the EMS loss.
-        ms_today: set[str] = set()
+        # Tagged and untagged (org-wide) coverage is tracked separately: an untagged
+        # line counts for EVERY persona, which is deliberately conservative but can
+        # make a persona look like it already holds what the target adds. Knowing
+        # which coverage came from an untagged line is what lets the readout say so.
+        ms_tagged: set[str] = set()
+        ms_org_wide: set[str] = set()
         unmapped: list[dict] = []
+        org_wide_by_ref: dict[str, set[str]] = {}
         seen_refs: set[str] = set()
         for lic in eng.current_licenses:
             if lic.persona_ids and p.id not in lic.persona_ids:
                 continue
             outs = sku_outcomes.get(_cover_key(db, lic.sku_reference), set())
-            ms_today |= outs
             ref = lic.sku_reference or ""
+            if lic.persona_ids:
+                ms_tagged |= outs
+            else:
+                ms_org_wide |= outs
+                if outs and ref:
+                    org_wide_by_ref.setdefault(ref, set()).update(outs)
             if not outs and ref and ref not in seen_refs:
                 seen_refs.add(ref)
                 unmapped.append({
                     "sku_reference": ref,
                     # True: the SKU IS a known bundle but has no ratified coverage
                     # here (fix in the Coverage map). False: the SKU matches no
-                    # bundle at all (map it in Settings → Staple bundles).
+                    # bundle at all (map it in Settings -> Staple bundles).
                     "resolves_to_bundle": bundles.resolve_bundle(db, ref) is not None,
                 })
+        ms_today = ms_tagged | ms_org_wide
         # Third parties per the ratified coverage map: tagged to this persona,
         # or untagged (org-wide).
         tp_today: set[str] = set()
@@ -545,11 +584,32 @@ def persona_coverage_gaps(db: Session, engagement_id: str) -> list[dict]:
             tp_today |= tp_outcomes.get(t.id, set())
         covered_today = ms_today | tp_today
         uncovered = sorted(target_outcomes - covered_today)
+        # The target references that contribute NO ratified coverage. With all of
+        # them unmapped there is nothing to compare against, so the capability
+        # story is a data gap, not a finding.
+        target_refs = target_refs_by_persona.get(p.id, [])
+        unmapped_target = [
+            {"reference": r["reference"], "resolves_to_bundle": r["resolves_to_bundle"]}
+            for r in target_refs if not sku_outcomes.get(r["key"]) and r["reference"]
+        ]
+        target_unmapped = bool(target_refs) and not target_outcomes
         # Capability the move would DROP: outcomes the persona's current Microsoft
         # licensing delivers today that the proposed target won't — the reverse of
         # `uncovered`. Surfaced so a downgrade is a confirmed choice, never a silent
-        # loss. Only meaningful once a target scenario exists.
-        dropped = sorted(ms_today - target_outcomes) if p.id in target_by_persona else []
+        # loss. Only meaningful once a target scenario exists AND that target has
+        # ratified coverage — an unmapped target would otherwise "drop" everything.
+        dropped = (
+            sorted(ms_today - target_outcomes)
+            if p.id in target_by_persona and not target_unmapped else []
+        )
+        # Which untagged (org-wide) lines actually decide the "nothing new" verdict:
+        # the lines covering target outcomes that NOTHING tagged to this persona
+        # covers. These are the lines to persona-tag before the value story can be
+        # trusted — an untagged line that changes no verdict is not named.
+        decisive = (target_outcomes & ms_org_wide) - ms_tagged - tp_today
+        org_wide_decisive = sorted(
+            ref for ref, outs in org_wide_by_ref.items() if outs & decisive
+        )
         personas.append({
             "persona_id": p.id,
             "persona_name": p.name,
@@ -561,25 +621,71 @@ def persona_coverage_gaps(db: Session, engagement_id: str) -> list[dict]:
             # Honesty guards for a target that delivers LESS than today (below).
             "dropped_outcomes": _outcome_dicts(dropped),
             "unmapped_current_licenses": unmapped,
+            # Honesty guards for a comparison that cannot be trusted: a target with
+            # no ratified coverage, and current coverage attributed org-wide.
+            "unmapped_target": unmapped_target,
+            "target_unmapped": target_unmapped,
+            "org_wide_current_licenses": org_wide_decisive,
         })
     return personas
 
 
+def _no_new_capability_reason(gap: dict) -> tuple[str, str]:
+    """Why an in-scope persona gained NOTHING — a code plus the sentence every
+    surface prints. An empty New-outcomes list has three very different meanings
+    (unmappable target, coverage attributed org-wide, genuinely nothing new) and
+    printing none of them is how the section silently disappears."""
+    if gap["target_unmapped"]:
+        refs = ", ".join(r["reference"] for r in gap["unmapped_target"]) or "the target"
+        fix = (
+            "add its outcomes in the Coverage map"
+            if all(r["resolves_to_bundle"] for r in gap["unmapped_target"])
+            else "map the SKU to a bundle in Settings → Staple bundles, then map its outcomes"
+        )
+        return "target_unmapped", (
+            f"No capability comparison is possible: the target ({refs}) has no ratified "
+            f"coverage in this engagement, so nothing can be shown as gained or given up "
+            f"here — {fix}."
+        )
+    if gap["org_wide_current_licenses"]:
+        refs = ", ".join(gap["org_wide_current_licenses"])
+        return "covered_org_wide", (
+            "Nothing new: everything the target delivers already counts as delivered today "
+            f"— partly from current licence line(s) ({refs}) carrying no persona tag, so they "
+            "count for every persona. Tag them on the Current licensing tab for a per-persona "
+            "value story."
+        )
+    return "covered_today", (
+        "Nothing new: the target delivers no outcome this persona's current licensing "
+        "(and its mapped third-party tools) does not already deliver."
+    )
+
+
 def new_outcomes(db: Session, engagement_id: str, result: dict) -> list[dict]:
     """The readout's New-outcomes story: per IN-SCOPE persona, the outcomes the
-    move lights up that nothing they hold today delivers. Personas with nothing
-    new are omitted (the readout never prints an empty block)."""
+    move lights up that nothing they hold today delivers. EVERY in-scope persona
+    with a target is listed — one with nothing new carries `empty_reason` /
+    `empty_reason_text` saying why (unmappable target, coverage attributed
+    org-wide, or genuinely nothing new). Silence is not an answer: an omitted
+    persona is indistinguishable from a lost section, and the three reasons mean
+    very different things (two are data to fix, one is a real finding)."""
     in_scope = {s["persona_id"] for s in result.get("scenarios", []) if s.get("in_scope")}
-    return [
-        {
+    out = []
+    for g in persona_coverage_gaps(db, engagement_id):
+        if not g["has_scenario"] or g["persona_id"] not in in_scope:
+            continue
+        reason, reason_text = (
+            (None, "") if g["uncovered_outcomes"] else _no_new_capability_reason(g)
+        )
+        out.append({
             "persona_id": g["persona_id"],
             "persona_name": g["persona_name"],
             "headcount": g["headcount"],
             "outcomes": g["uncovered_outcomes"],
-        }
-        for g in persona_coverage_gaps(db, engagement_id)
-        if g["has_scenario"] and g["persona_id"] in in_scope and g["uncovered_outcomes"]
-    ]
+            "empty_reason": reason,
+            "empty_reason_text": reason_text,
+        })
+    return out
 
 
 def dropped_capability(db: Session, engagement_id: str, result: dict) -> list[dict]:
@@ -588,7 +694,9 @@ def dropped_capability(db: Session, engagement_id: str, result: dict) -> list[di
     that the proposed target will NOT. A right-sizing move can legitimately drop
     capability (that is often the point), so the saved-dollars headline stays — but
     it must never read as a free win. Surfacing the drop reconciles the number with
-    what the customer gives up. Personas with no drop are omitted."""
+    what the customer gives up. Personas with no drop are omitted, as is a target
+    with no ratified coverage at all (nothing to compare — that is a data gap,
+    reported as the New-outcomes reason, not a capability loss)."""
     in_scope = {s["persona_id"] for s in result.get("scenarios", []) if s.get("in_scope")}
     return [
         {

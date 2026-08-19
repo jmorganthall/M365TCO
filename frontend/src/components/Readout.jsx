@@ -312,19 +312,30 @@ export default function Readout({ engagement }) {
           <h2>New outcomes</h2>
           <p className="hint">Capabilities each persona gains with the target licensing that
             nothing they hold today delivers — the value the move adds beyond the cost story.
-            Validate coverage on the Coverage Check step; ✨ Business narratives drafts why each
-            matters for this customer.</p>
+            Every in-scope persona is listed; one with nothing new says why. Validate coverage on
+            the Coverage Check step; ✨ Business narratives drafts why each matters for this
+            customer.</p>
           {result.new_outcomes.map((n) => {
             const ts = inScope.find((s) => s.persona_id === n.persona_id)
             const target = ts?.target_label || ts?.target_sku_reference
             return (
               <div key={n.persona_id} className="popcheck">
                 <b>{n.persona_name}</b> <span className="muted">({n.headcount}){target ? <> → {target}</> : null}</span>
-                <div className="pill-list" style={{ marginTop: '.35rem' }}>
-                  {n.outcomes.map((o) => (
-                    <span key={o.id} className="badge pos" title={o.description || ''}>{o.name}</span>
-                  ))}
-                </div>
+                {n.outcomes.length > 0 ? (
+                  <div className="pill-list" style={{ marginTop: '.35rem' }}>
+                    {n.outcomes.map((o) => (
+                      <span key={o.id} className="badge pos" title={o.description || ''}>{o.name}</span>
+                    ))}
+                  </div>
+                ) : (
+                  /* Nothing new is a finding with three very different causes — print
+                     the reason rather than an empty row, so a data gap (unmapped target,
+                     untagged licensing) is never mistaken for a lost section. */
+                  <p className={n.empty_reason === 'covered_today' ? 'muted' : 'warn'}
+                     style={{ margin: '.35rem 0 0', fontSize: '.85rem' }}>
+                    {n.empty_reason_text}
+                  </p>
+                )}
               </div>
             )
           })}
