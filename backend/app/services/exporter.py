@@ -194,9 +194,12 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         if n["outcomes"]:
             body = f"<div class='chip-row'>{''.join(_outcome_chip(o) for o in n['outcomes'])}</div>"
         else:
-            # No chips is a RESULT, never a blank: say which of the three reasons
-            # it is, so an empty list is never read as a missing section.
-            body = f"<p class='sub none'>{html.escape(n.get('empty_reason_text') or '')}</p>"
+            # No chips is a RESULT, never a blank: name the value the move DOES
+            # deliver (tools consolidated, spend right-sized) and say plainly that
+            # the functional outcomes are unchanged. This is the customer-facing
+            # phrasing — operator fix-it instructions stay in the app and the xlsx.
+            note = n.get("empty_reason_customer_text") or n.get("empty_reason_text") or ""
+            body = f"<p class='sub none'>{html.escape(note)}</p>"
         return head + body + "</div>"
 
     new_outcome_blocks = "".join(_new_outcome_block(n) for n in new_outcomes)
@@ -204,7 +207,8 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         "<section><h2>New outcomes</h2>"
         "<p class='sub'>Capabilities each persona gains with the target licensing that "
         "nothing they hold today delivers — the value the move adds beyond the cost story. "
-        "Every in-scope persona is listed; one with nothing new says why.</p>"
+        "Every in-scope persona is listed: where the move consolidates rather than adds, it "
+        "says so.</p>"
         f"{new_outcome_blocks}</section>"
         if new_outcome_blocks else ""
     )

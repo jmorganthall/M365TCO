@@ -59,6 +59,15 @@ def build_narrative_payload(eng, result: dict) -> list[dict]:
         n["persona_id"]: [o["name"] for o in n.get("outcomes", [])]
         for n in (result.get("new_outcomes") or [])
     }
+    # When a persona gains nothing, the honest story is the consolidation one — the
+    # tools the move retires, the vendor/contract/audit surface it shrinks and the
+    # spend it frees. Ground the model in that sentence so `whats_new` never has to
+    # choose between inventing capability and reading as a shortfall.
+    value_note_by_pid = {
+        n["persona_id"]: n.get("empty_reason_customer_text") or ""
+        for n in (result.get("new_outcomes") or [])
+        if not n.get("outcomes")
+    }
     # Capabilities the move DROPS per persona — so the narrative stays honest and
     # never sells a right-sizing as pure gain when it sheds capability.
     dropped_by_pid = {
@@ -79,6 +88,7 @@ def build_narrative_payload(eng, result: dict) -> list[dict]:
             "target_addons": addons_by_persona.get(pid, []),
             "displaced_tools": [o.get("third_party_product_name") for o in s.get("offsets", []) or []],
             "new_outcomes": new_by_pid.get(pid, []),
+            "no_new_outcomes_note": value_note_by_pid.get(pid, ""),
             "dropped_outcomes": dropped_by_pid.get(pid, []),
             "current_annual": s.get("current_spend_annual"),
             "target_annual": s.get("target_spend_annual"),
