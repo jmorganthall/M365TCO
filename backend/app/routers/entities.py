@@ -150,6 +150,61 @@ def update_persona(engagement_id: str, persona_id: str, payload: schemas.Persona
     return row
 
 
+@router.get("/personas/{persona_id}/carve-preview",
+            response_model=schemas.PersonaCarvePreviewOut)
+def carve_preview(engagement_id: str, persona_id: str, db: Session = Depends(get_db)):
+    """What carving this persona would copy, so the GUI can say so before it happens.
+
+    Read from the same associations `carve_persona` copies — a warning that is
+    derived separately from the behaviour it describes is a warning that will
+    eventually lie."""
+    _require_engagement(db, engagement_id)
+    persona = db.get(models.Persona, persona_id)
+    if persona is None or persona.engagement_id != engagement_id:
+        raise HTTPException(404, "Persona not found")
+
+    licences = [
+        lic.sku_reference or "(unnamed line)"
+        for lic in db.execute(
+            select(models.CurrentMicrosoftLicense).where(
+                models.CurrentMicrosoftLicense.engagement_id == engagement_id
+            )
+        ).scalars()
+        if persona_id in lic.persona_ids
+    ]
+    tools = [
+        tp.name or "(unnamed tool)"
+        for tp in db.execute(
+            select(models.ThirdPartyProduct).where(
+                models.ThirdPartyProduct.engagement_id == engagement_id
+            )
+        ).scalars()
+        if persona_id in tp.persona_ids
+    ]
+    outcome_names = {
+        o.id: o.name for o in db.execute(
+            select(models.Outcome).where(models.Outcome.engagement_id == engagement_id)
+        ).scalars()
+    }
+    scenario = db.execute(
+        select(models.PersonaScenario).where(
+            models.PersonaScenario.persona_id == persona_id
+        )
+    ).scalars().first()
+
+    return schemas.PersonaCarvePreviewOut(
+        persona_name=persona.name,
+        headcount=persona.headcount,
+        current_licenses=sorted(licences),
+        third_party_tools=sorted(tools),
+        required_capabilities=sorted(
+            outcome_names.get(oid, oid) for oid in persona.required_outcome_ids
+        ),
+        scenario_target=(scenario.target_sku_reference if scenario else ""),
+        has_scenario=scenario is not None,
+    )
+
+
 @router.post("/personas/{persona_id}/carve", response_model=schemas.PersonaOut,
              status_code=201)
 def carve_persona(engagement_id: str, persona_id: str, payload: schemas.PersonaCarveIn,

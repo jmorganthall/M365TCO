@@ -205,6 +205,28 @@ class PersonaOut(ORMModel):
     required_outcome_ids: list[str] = []
 
 
+class PersonaCarvePreviewOut(BaseModel):
+    """What carving this persona would actually copy, right now.
+
+    The GUI warns the operator before they carve, and a warning is only worth
+    showing if it is true — so the preview is generated from the same associations
+    the carve itself copies, rather than re-derived in the frontend where it could
+    drift. It also makes the sequencing problem self-evident: carve before the
+    baseline is entered and this lists nothing, which is the operator's cue that
+    they are too early."""
+
+    persona_name: str
+    headcount: int
+    # Human-readable names of what the carve-out would inherit.
+    current_licenses: list[str] = []
+    third_party_tools: list[str] = []
+    required_capabilities: list[str] = []
+    # The parent's target, which the carve-out starts from (blank = no scenario yet,
+    # so the carve-out would have no future state until one is set).
+    scenario_target: str = ""
+    has_scenario: bool = False
+
+
 class PersonaCarveIn(BaseModel):
     """Carve `seats` out of a persona into a child persona with its own target.
 

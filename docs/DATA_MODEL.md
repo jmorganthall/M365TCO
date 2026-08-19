@@ -230,6 +230,21 @@ linked to the first by `parent_persona_id`:
   edit or delete it like any other persona.
 - **No nesting:** carving a carve-out is rejected (422), because two levels of
   lineage make "where did these seats come from" ambiguous.
+- **Where the action lives — the Scenarios tab, not Personas.** A carve copies the
+  parent's associations *as they stand at that moment*, so carving during baseline
+  entry copies an empty set and everything added afterwards lands on the parent
+  alone. By the Scenarios step the licensing, tools and coverage map are in, and the
+  operator is choosing targets — which is when "part of this group should go
+  elsewhere" actually arises. The Personas tab keeps the lineage *display* (a
+  carve-out renders under its parent) and points at Scenarios for the action.
+- **The warning is derived, not written.** `GET …/personas/{id}/carve-preview`
+  returns the licence lines, tools and required capabilities the carve would copy,
+  by name, read from the same associations `carve` copies. The GUI renders that into
+  a plain-English warning before the operator commits: what it inherits, and that
+  the two are independent from then on. When the preview is empty it says so —
+  "would copy nothing" is the operator's signal that they are carving too early. A
+  warning derived separately from the behaviour it describes is one that eventually
+  lies, so it is generated from the behaviour itself.
 - **Invariants:** conservation of population, of today's spend, and of third-party
   covers across a carve — plus reversibility — are enforced by
   `backend/tests/sweep_services.py` and mutation-tested.

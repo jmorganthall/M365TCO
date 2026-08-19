@@ -136,10 +136,14 @@ The steps run along a chevron **progress stepper** at the top of an engagement:
    **eligibility** rule — e.g. F5 Security only onto F3), so the picker only
    offers valid add-ons. When only PART of a persona should move to a different
    plan — e.g. 300 of 2,518 onto Business Premium, which the tenant caps at 300
-   seats — **carve out** those seats on the Personas tab: it creates a child
-   persona with its own target, inheriting the parent's current licensing, tools
-   and required capabilities, shown indented under the persona the seats came from.
-   The seats move, so the population and today's spend are unchanged.
+   seats — **carve out** those seats from the persona's row here: it creates a
+   child persona with its own target, inheriting the parent's current licensing,
+   tools and required capabilities, shown indented under the persona the seats came
+   from. The seats move, so the population and today's spend are unchanged. The
+   action lives on this tab (not Personas) because a carve-out copies those
+   associations as they stand — before the baseline is entered there is nothing to
+   copy — and the GUI states exactly what it will inherit, and that the two become
+   independent, before you commit.
 5. **Coverage Check** — per-persona validation, scoped to the outcomes the
    persona's **proposed target scenario** would deliver (the *new-outcome*
    candidates) that aren't delivered today by their current licensing or a
