@@ -113,7 +113,53 @@ export default function CoverageCheck({ engagement, onNavigate }) {
             </div>
           )}
 
-          {/* Honesty guard #2: outcomes the current Microsoft licensing delivers that
+          {/* Honesty guard #2: a target that maps to no ratified coverage at all. It
+              can neither add nor drop anything, so the whole capability story for this
+              persona is a data gap — the New-outcomes readout would otherwise be blank. */}
+          {p.target_unmapped && (
+            <div style={WARN_CALLOUT}>
+              <b className="warn">⚠ Target has no mapped capability</b>
+              <div className="muted" style={{ fontSize: '.82rem', marginTop: '.25rem' }}>
+                The proposed target delivers no mapped outcome in this engagement, so nothing
+                can be compared — this persona shows no new outcomes and no trade-off:
+              </div>
+              <ul style={{ margin: '.3rem 0 0', paddingLeft: '1.1rem', fontSize: '.82rem' }}>
+                {p.unmapped_target.map((u) => (
+                  <li key={u.reference}>
+                    <b>{u.reference}</b> — {u.resolves_to_bundle
+                      ? 'a known bundle with no coverage in this engagement; add its outcomes in the Coverage map'
+                      : 'not recognized as a bundle; map the SKU in Settings → Staple bundles'}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Honesty guard #3: untagged current licensing counts for EVERY persona, so
+              a line someone else holds can make this persona's target look redundant. */}
+          {p.org_wide_current_licenses?.length > 0 && (
+            <div style={WARN_CALLOUT}>
+              <b className="warn">⚠ Current licensing counted org-wide</b>
+              <div className="muted" style={{ fontSize: '.82rem', marginTop: '.25rem' }}>
+                {p.org_wide_current_licenses.length} current licence
+                line{p.org_wide_current_licenses.length > 1 ? 's' : ''} carr
+                {p.org_wide_current_licenses.length > 1 ? 'y' : 'ies'} no persona tag, so
+                {p.org_wide_current_licenses.length > 1 ? ' they count' : ' it counts'} for
+                every persona — and{' '}
+                {p.org_wide_current_licenses.length > 1 ? 'they are' : 'it is'} what makes
+                outcomes of this persona's target look already delivered. Tag{' '}
+                {p.org_wide_current_licenses.length > 1 ? 'them' : 'it'} on the Current
+                licensing tab for a per-persona value story:
+              </div>
+              <div className="pill-list" style={{ marginTop: '.35rem' }}>
+                {p.org_wide_current_licenses.map((ref) => (
+                  <span key={ref} className="badge warn">{ref}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Honesty guard #4: outcomes the current Microsoft licensing delivers that
               the target won't — the reverse of the "new outcomes" check below. */}
           {p.dropped_outcomes?.length > 0 && (
             <div style={WARN_CALLOUT}>
@@ -134,6 +180,10 @@ export default function CoverageCheck({ engagement, onNavigate }) {
 
           {!p.has_scenario ? (
             <p className="muted" style={{ margin: '.5rem 0 0' }}>No target scenario set — pick a target on the Scenarios tab to validate its new outcomes.</p>
+          ) : p.target_unmapped ? (
+            /* Nothing to validate — the target maps to no capability at all (guard above),
+               which is a data gap, not a clean bill of health. */
+            <p className="muted" style={{ margin: '.5rem 0 0' }}>Nothing to validate until the target's capability is mapped.</p>
           ) : p.uncovered_outcomes.length === 0 ? (
             <p className="pos" style={{ margin: '.5rem 0 0' }}>✓ Every outcome the target delivers is already accounted for.</p>
           ) : (

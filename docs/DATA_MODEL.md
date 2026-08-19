@@ -800,7 +800,28 @@ as amber warnings:
   modelled (§4.4b).
 - `dropped_outcomes` — outcomes the persona's **current Microsoft licensing** delivers
   that the proposed target will **not** — the reverse of `uncovered_outcomes`. A
-  downgrade becomes a confirmed choice, never a silent loss.
+  downgrade becomes a confirmed choice, never a silent loss. Empty when the target
+  itself is unmapped (below): a target that delivers no *mapped* outcome would
+  otherwise appear to drop the persona's entire capability.
+- `unmapped_target` / `target_unmapped` — the target references (base bundle and
+  add-ons) that contribute **no** ratified coverage, each flagged with
+  `resolves_to_bundle` exactly as above. With every reference unmapped there is
+  nothing to compare, so the persona's capability story is a **data gap**, not a
+  finding — no new outcomes, no drop.
+- `org_wide_current_licenses` — the **untagged** current licence lines that decide a
+  "nothing new" verdict. An untagged line is org-wide (it counts for every persona,
+  the deliberately conservative reading of §6.3a), so a line another persona actually
+  holds can make this persona's target look fully redundant. Naming the lines is what
+  points the operator at the fix: tag them.
+
+**No silently-empty capability story.** `compute.new_outcomes` lists **every**
+in-scope persona that has a target, not only those with something new. A persona
+with nothing new carries `empty_reason` ∈ {`target_unmapped`, `covered_org_wide`,
+`covered_today`} and the `empty_reason_text` every surface prints — the HTML
+readout (a muted note in place of the chips), the in-app Readout, and a `None` row
+on the xlsx **Capability changes** sheet. The three causes mean very different
+things — two are data to fix, one is a real finding — and printing none of them is
+indistinguishable from the section having disappeared.
 
 **Readout reconciliation.** Right-sizing legitimately sheds capability, so the
 saved-dollars headline stays — but every surface that shows the savings shows the

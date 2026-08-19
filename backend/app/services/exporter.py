@@ -184,17 +184,27 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         title = f" title=\"{html.escape(desc, quote=True)}\"" if desc else ""
         return f"<span class='chip'{title}>{html.escape(o['name'])}</span>"
 
-    new_outcome_blocks = "".join(
-        f"<div class='persona-outcomes'><h3>{html.escape(n['persona_name'])} "
-        f"<span class='muted'>({n['headcount']}) → "
-        f"{html.escape(target_by_pid.get(n['persona_id'], ''))}</span></h3>"
-        f"<div class='chip-row'>{''.join(_outcome_chip(o) for o in n['outcomes'])}</div></div>"
-        for n in new_outcomes
-    )
+    def _new_outcome_block(n):
+        cls = "persona-outcomes" if n["outcomes"] else "persona-outcomes none"
+        head = (
+            f"<div class='{cls}'><h3>{html.escape(n['persona_name'])} "
+            f"<span class='muted'>({n['headcount']}) → "
+            f"{html.escape(target_by_pid.get(n['persona_id'], ''))}</span></h3>"
+        )
+        if n["outcomes"]:
+            body = f"<div class='chip-row'>{''.join(_outcome_chip(o) for o in n['outcomes'])}</div>"
+        else:
+            # No chips is a RESULT, never a blank: say which of the three reasons
+            # it is, so an empty list is never read as a missing section.
+            body = f"<p class='sub none'>{html.escape(n.get('empty_reason_text') or '')}</p>"
+        return head + body + "</div>"
+
+    new_outcome_blocks = "".join(_new_outcome_block(n) for n in new_outcomes)
     new_outcomes_section = (
         "<section><h2>New outcomes</h2>"
         "<p class='sub'>Capabilities each persona gains with the target licensing that "
-        "nothing they hold today delivers — the value the move adds beyond the cost story.</p>"
+        "nothing they hold today delivers — the value the move adds beyond the cost story. "
+        "Every in-scope persona is listed; one with nothing new says why.</p>"
         f"{new_outcome_blocks}</section>"
         if new_outcome_blocks else ""
     )
@@ -723,6 +733,8 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
  .persona-outcomes{{background:var(--soft);border:1px solid var(--line);
    border-left:3px solid var(--pos);border-radius:10px;padding:.7rem .95rem;margin:.7rem 0}}
  .persona-outcomes h3{{margin:0 0 .45rem;font-size:1rem;color:var(--primary)}}
+ .persona-outcomes.none{{border-left-color:var(--muted)}}
+ .persona-outcomes p.none{{margin:0}}
  .chip-row{{display:flex;flex-wrap:wrap;gap:.4rem}}
  .chip{{display:inline-block;border:1px solid var(--pos);color:var(--pos);
    background:#fff;border-radius:999px;padding:.22rem .7rem;font-size:.82rem;
@@ -874,6 +886,11 @@ def build_xlsx(engagement: models.Engagement, result: dict) -> bytes:
     for n in result.get("new_outcomes") or []:
         for o in n.get("outcomes", []):
             wcap.append([n["persona_name"], n["headcount"], "Gained", o["name"]])
+        if not n.get("outcomes"):
+            # A persona that gains nothing still gets a row carrying WHY — the
+            # sheet accounts for every in-scope persona, blanks explain nothing.
+            wcap.append([n["persona_name"], n["headcount"], "None",
+                         n.get("empty_reason_text") or ""])
     for d in result.get("dropped_capability") or []:
         for o in d.get("outcomes", []):
             wcap.append([d["persona_name"], d["headcount"], "Dropped", o["name"]])
