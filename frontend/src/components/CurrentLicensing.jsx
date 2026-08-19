@@ -53,6 +53,9 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
   const notInCatalog = catalog.length && (l.sku_reference || '').trim() && !matchSku(catalog, l.sku_reference, basis)
   // Show the basis on the row when a line overrides the engagement default.
   const overridden = l.segment || l.term_duration || l.billing_plan
+  // Entitlement scope: a per-user line entitles its assigned seats and no more;
+  // a tenant-wide line entitles the whole population it applies to.
+  const tenantWide = l.coverage_scope === 'TenantWide'
   const off = pctOffList(l)
   const chips = []
   if (notInCatalog) chips.push(<span key="c" className="badge warn" title="No matching SKU in the imported price list">⚠ not in catalog</span>)
@@ -61,10 +64,17 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
     <span key="ov" className="badge" title={`Custom price · list ${usd(listAnnual(l))}/seat/yr`}>
       override{off > 0 ? ` −${pct(off)}` : ''}</span>)
   if (overridden) chips.push(<span key="basis" className="badge muted" title="Pricing basis overrides the engagement default">{basis.segment} · {basis.term}</span>)
+  // A tenant-wide line entitles EVERY user it applies to, regardless of the seat
+  // count — the only kind of line that can make a whole persona redundant for a
+  // duplicate tool. Say so on the row: it is load-bearing for quick wins.
+  if (tenantWide) chips.push(
+    <span key="tw" className="badge" title="Tenant-wide entitlement: covers every user this line applies to, whatever the seat count. Quick wins credit the full population.">tenant-wide</span>)
   tagNames.forEach((n, i) => chips.push(<span key={`p${i}`} className="badge muted">{n}</span>))
   // No persona tag → the engine treats the line as an org-wide pool (spread
   // across all personas that have a scenario). Say so, so it never looks lost.
-  if (tagIds.length === 0) chips.push(<span key="orgwide" className="badge muted" title="Not tagged to a persona — counted org-wide across all scenario personas by headcount. Expand ▸ to tag specific personas.">applies org-wide</span>)
+  if (tagIds.length === 0) chips.push(<span key="orgwide" className="badge muted" title={tenantWide
+    ? 'Not tagged to a persona — cost is spread across all scenario personas by headcount, and the entitlement covers every user. Expand ▸ to tag specific personas.'
+    : `Not tagged to a persona — cost is spread across all scenario personas by headcount, but only ${l.quantity_assigned} per-user seats are entitled. Expand ▸ to tag personas or mark the line tenant-wide.`}>applies org-wide</span>)
 
   const togglePersona = (pid) => {
     const next = tagIds.includes(pid) ? tagIds.filter((x) => x !== pid) : [...tagIds, pid]
@@ -184,6 +194,17 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
                   {personas.length === 0 && <span className="muted">No personas yet.</span>}
                 </div>
                 <small className="src">Tag one or more. Cost splits across the tagged personas by headcount.</small></div>
+              <div><label>Entitlement scope</label>
+                <select value={tenantWide ? 'TenantWide' : 'PerUser'}
+                  onChange={(e) => update(l.id, { coverage_scope: e.target.value })}>
+                  <option value="PerUser">Per-user seats</option>
+                  <option value="TenantWide">Tenant-wide (all users)</option>
+                </select>
+                <small className="src">
+                  {tenantWide
+                    ? <>Covers <b>every user</b> this line applies to, whatever the seat count.</>
+                    : <>Entitles <b>{l.quantity_assigned}</b> seats — untagged means those seats aren't attributed to a persona, not that everyone holds one. Caps how much a duplicate tool counts as redundant today.</>}
+                </small></div>
             </div>
             <div className="grid c4" style={{ padding: '.4rem 0' }}>
               <div><label>Segment</label>

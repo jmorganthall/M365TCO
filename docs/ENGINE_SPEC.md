@@ -289,25 +289,56 @@ both USES the tool and already HOLDS a current license covering all its outcomes
 covering licensing would assert savings the customer can't realize — retiring it
 would strand the personas who actually use it.
 
+**Seats are finite.** A covering line credits only the seats it actually
+entitles, per its `coverage_scope`:
+
+- `PerUser` (the default) — a per-seat purchase entitling exactly
+  `quantity_assigned` seats. Leaving such a line **untagged** means the operator
+  did not attribute those seats to a persona; it does **not** mean every user
+  holds one. Its seats are one finite pool the tool's personas draw from, never
+  replicated to each. (46 untagged Microsoft 365 E3 seats cannot make 3,150
+  people redundant for a third-party MFA tool.)
+- `TenantWide` — a tenant-level entitlement covering the whole population it
+  applies to (its tagged personas, or everyone when untagged), whatever the seat
+  count on the line. Only a tenant-wide line can make a whole persona redundant.
+
 ```
 covering_lines(product) = current lines L whose covered_outcome_ids ⊇ product.delivered_outcome_ids
+entitled(L, P)  = P.headcount            if L.coverage_scope = TenantWide
+                  else L.quantity_assigned
 
 for product with delivered_outcome_ids ≠ ∅ and covering_lines non-empty:
     if product.persona_ids:                       # TAGGED tool → per-persona overlap
-        untagged_covers = any covering line is untagged (org-wide)
-        displaced_today = Σ over persona P in product.persona_ids of
-            min(P.headcount,
-                P.headcount               if untagged_covers          # org-wide line covers everyone
-                else Σ quantity_assigned of covering lines tagged to P)
+        tenant_wide_covers_all = any covering line that is UNTAGGED and TenantWide
+        untagged_pool          = Σ quantity_assigned of UNTAGGED PerUser covering lines
+        held(P)  = min(P.headcount,
+                       P.headcount        if tenant_wide_covers_all
+                       else Σ entitled(L, P) over covering lines L tagged to P)
+        displaced_today = Σ held(P) over persona P in product.persona_ids
+                          + min(untagged_pool, Σ (P.headcount − held(P)))
         displaced_today = min(product.covered_count, displaced_today)
     else:                                          # UNTAGGED tool → org-wide (legacy)
-        covered_pop     = Σ quantity_assigned of covering_lines
+        covered_pop     = Σ over covering lines L of
+                            (headcount of the personas L applies to, or every persona
+                             when L is untagged)   if L.coverage_scope = TenantWide
+                            else L.quantity_assigned
         displaced_today = min(product.covered_count, covered_pop)
 
     credited_annual = displaced_today * product.per_unit_annual_cost   # effective basis
     residual_today  = covered_count - displaced_today
 quick_win_savings_annual = Σ credited_annual over quick-win products (credited > 0)
 ```
+
+The unattributed pool is applied as a single `min(pool, Σ unmet)` fill rather
+than allocated persona by persona, so the total never depends on persona order
+and no seat is credited twice.
+
+> `coverage_scope` governs **seat counts**, not which personas can see a
+> capability. The capability views (persona coverage gaps, the Business Premium
+> swap's "must not lose" set, §6.2's org-wide cost pool) still treat an untagged
+> line as org-wide — those guards are deliberately conservative: over-counting
+> there withholds a move, while over-counting seats here would assert savings the
+> customer cannot realize.
 
 Quick wins are surfaced as their own readout section and as the "save today"
 headline. In the spend bridge, each freed third-party product is tagged

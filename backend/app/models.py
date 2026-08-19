@@ -37,6 +37,13 @@ COVERAGE = ("Full",)
 DISPOSITIONS = ("FullyEliminated", "PartiallyReduced", "Unchanged")
 OVERRIDES = ("None", "ForceFullElimination")
 RESIDUAL_INTENTS = ("None", "IntendedOutOfScope")
+# How many seats a current-licensing line entitles (ENGINE_SPEC 6.10). "PerUser"
+# (the default) = a per-seat purchase entitling exactly `quantity_assigned`
+# seats; leaving such a line untagged means the operator did not attribute those
+# seats to a persona, NOT that every user holds one. "TenantWide" = a
+# tenant-level entitlement covering the whole population it applies to,
+# whatever the seat count on the line.
+COVERAGE_SCOPES = ("PerUser", "TenantWide")
 TERM_DURATIONS = ("P1M", "P1Y", "P3Y")
 BILLING_PLANS = ("Monthly", "Annual", "Triennial")
 # Customer segments as they appear in the Microsoft price sheet's `Segment`
@@ -402,6 +409,14 @@ class CurrentMicrosoftLicense(Base):
     price_override: Mapped[bool] = mapped_column(Boolean, default=False)
     overridden_price_annual: Mapped[float | None] = mapped_column(
         Numeric(14, 4), nullable=True
+    )
+    # How many seats this line entitles — the difference between "everyone in the
+    # tenant has this" and "we bought N seats and never said who holds them".
+    # Read by the quick-win seat math (ENGINE_SPEC 6.10), which must never credit
+    # more redundant seats than the customer actually holds: a 46-seat untagged
+    # per-user line covers 46 people, not the whole org.
+    coverage_scope: Mapped[str] = mapped_column(
+        SAEnum(*COVERAGE_SCOPES, name="coverage_scope"), default="PerUser"
     )
     # Pricing basis for THIS line. NULL = inherit the engagement default (which
     # itself inherits the global default). Set = this line overrides it. These

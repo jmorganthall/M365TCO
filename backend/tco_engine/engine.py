@@ -14,6 +14,7 @@ from typing import Optional
 
 from .models import (
     Coverage,
+    CoverageScope,
     Disposition,
     Engagement,
     Override,
@@ -220,6 +221,16 @@ def _product_applies_to_persona(product: ThirdPartyProduct, persona_id: str) -> 
     return not product.persona_ids or persona_id in product.persona_ids
 
 
+def _entitled_population(line, personas: dict[str, Persona]) -> int:
+    """Headcount a TENANT_WIDE line entitles: the personas it is tagged to, or
+    every persona when it is untagged (a true org-wide entitlement)."""
+    if line.persona_ids:
+        return sum(
+            personas[pid].headcount for pid in line.persona_ids if pid in personas
+        )
+    return sum(p.headcount for p in personas.values())
+
+
 def compute(engagement: Engagement) -> EngineResult:
     personas: dict[str, Persona] = {p.id: p for p in engagement.personas}
 
@@ -310,29 +321,58 @@ def compute(engagement: Engagement) -> EngineResult:
 
         if product.persona_ids:
             # Per-persona overlap: a tagged persona is redundant for this tool up
-            # to the covering seats it actually holds — its own tagged covering
-            # lines, or its full headcount when an untagged (org-wide) line covers
-            # everyone.
-            untagged_covers = any(not line.persona_ids for line in covering_lines)
+            # to the covering SEATS it actually holds. A line's coverage_scope
+            # says how many seats that is — a TENANT_WIDE line entitles everyone
+            # it applies to, a PER_USER line entitles exactly its assigned seats.
+            # An UNTAGGED per-user line is unattributed, not universal: its seats
+            # are one finite pool the tagged personas draw from, never replicated
+            # to each (46 org-wide E3 seats cannot make 3,150 people redundant).
+            tenant_wide_covers_all = any(
+                not line.persona_ids
+                and line.coverage_scope is CoverageScope.TENANT_WIDE
+                for line in covering_lines
+            )
+            untagged_pool = sum(
+                line.quantity_assigned
+                for line in covering_lines
+                if not line.persona_ids
+                and line.coverage_scope is CoverageScope.PER_USER
+            )
             displaced_today = 0
+            unmet = 0  # headcount the personas' OWN covering seats don't reach
             for pid in product.persona_ids:
                 p = personas.get(pid)
                 if p is None:
                     continue
-                if untagged_covers:
+                if tenant_wide_covers_all:
                     covering_seats = p.headcount
                 else:
                     covering_seats = sum(
-                        line.quantity_assigned
+                        p.headcount
+                        if line.coverage_scope is CoverageScope.TENANT_WIDE
+                        else line.quantity_assigned
                         for line in covering_lines
                         if pid in line.persona_ids
                     )
-                displaced_today += min(p.headcount, covering_seats)
+                held = min(p.headcount, covering_seats)
+                displaced_today += held
+                unmet += p.headcount - held
+            # The unattributed pool fills remaining need. Summing the fill (rather
+            # than allocating persona by persona) keeps the total independent of
+            # persona order while never crediting a seat twice.
+            displaced_today += min(untagged_pool, unmet)
             displaced_today = min(product.covered_count, displaced_today)
         else:
             # Untagged tool (org-wide): no persona attribution possible, so the
-            # covering population is every covering line's assigned seats.
-            covered_pop = sum(line.quantity_assigned for line in covering_lines)
+            # covering population is each covering line's entitled seats — its
+            # assigned seats, or the full population it applies to when the line
+            # is tenant-wide.
+            covered_pop = sum(
+                _entitled_population(line, personas)
+                if line.coverage_scope is CoverageScope.TENANT_WIDE
+                else line.quantity_assigned
+                for line in covering_lines
+            )
             displaced_today = min(product.covered_count, covered_pop)
 
         credited = _money(Decimal(displaced_today) * product.per_unit_annual_cost)

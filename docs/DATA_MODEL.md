@@ -461,6 +461,19 @@ FK, UUID PK, cascade-deleted with the engagement.
   Current Licensing chip and the readout appendix. This supersedes the old
   annotation-only `discount_pct`, which never drove spend — **retired** (dropped
   via `_RETIRED_COLUMNS`).
+- **Entitlement scope (first-class):** `coverage_scope` — `PerUser` (default) or
+  `TenantWide`. It answers "how many seats does this line actually entitle?": a
+  per-user line entitles exactly `quantity_assigned` seats, a tenant-wide line
+  entitles the whole population it applies to whatever the seat count. Leaving a
+  per-user line untagged means those seats were never attributed to a persona —
+  **not** that every user holds one, which is why an untagged 46-seat line can no
+  longer credit a duplicate tool for thousands of redundant seats (ENGINE_SPEC
+  6.10). Reader: the quick-win seat math. GUI surface: the line's expander
+  (Entitlement scope picker, with the seat count spelled out) plus a `tenant-wide`
+  chip on the row and the Data Inspector. It does **not** change cost
+  distribution or the capability/gap views — an untagged line is still an
+  org-wide cost pool (ENGINE_SPEC 6.2) and still counts as capability the move
+  must not silently drop.
 - **Retired:** a per-line `price_basis` enum (EA/CSP/MCA-E/… contract-vehicle
   disclosure) was removed — never collected in practice, never used in any
   calculation, and its only output was an "Unknown" placeholder on the readout

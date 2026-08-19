@@ -21,6 +21,21 @@ class Coverage(str, Enum):
     PARTIAL = "Partial"
 
 
+class CoverageScope(str, Enum):
+    """How many seats a current license line actually entitles.
+
+    PER_USER — the line is a per-seat purchase: it entitles exactly its
+    `quantity_assigned` seats, whoever holds them. Being untagged means the
+    operator did not attribute those seats to a persona; it does NOT mean
+    everyone has one.
+    TENANT_WIDE — a tenant-level entitlement that applies to every user it
+    covers regardless of the seat count on the line.
+    """
+
+    PER_USER = "PerUser"
+    TENANT_WIDE = "TenantWide"
+
+
 class Disposition(str, Enum):
     FULLY_ELIMINATED = "FullyEliminated"
     PARTIALLY_REDUCED = "PartiallyReduced"
@@ -50,6 +65,12 @@ class CurrentLicenseLine:
     unit_price_paid_annual: Decimal
     sku_reference: str = ""
     persona_ids: tuple[str, ...] = ()
+    # How many seats this line entitles (§6.10). PER_USER (the default) means
+    # `quantity_assigned` seats and no more — an untagged per-user line is
+    # unattributed, not held by everyone. TENANT_WIDE means the whole population
+    # the line applies to. Read by the quick-win seat math, which must never
+    # credit more redundant seats than the customer actually holds.
+    coverage_scope: CoverageScope = CoverageScope.PER_USER
     # Outcomes this existing license already delivers (its bundle's ratified
     # coverage). Drives quick-win detection: a third-party product whose outcomes
     # are all already covered here is a duplicate the customer can drop today.
