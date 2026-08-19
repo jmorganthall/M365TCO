@@ -71,12 +71,20 @@ def analyze_bundles(
     candidates: list[CandidateBundle],
     third_party_products: list[ThirdPartyProduct],
     cap_headroom_by_reference: dict[str, int] | None = None,
+    persona_id: str = "",
 ) -> list[BundleAnalysis]:
     """`cap_headroom_by_reference` maps a candidate's `sku_reference` to the seats
     still available under a tenant cap its bundle family shares (e.g. all Business
     references → the seats left under the 300 cap). A candidate whose reference is in
     the map and whose `headcount` exceeds that headroom is flagged `cap_limited` and
-    excluded from the recommendation. Omit (or pass empty) for no cap awareness."""
+    excluded from the recommendation. Omit (or pass empty) for no cap awareness.
+
+    `persona_id` is the persona being analyzed. Third-party credit follows the
+    engine's rules exactly (§6.3a) — a tool is only creditable to a persona that
+    HOLDS it, and only for the seats it actually covers — because a recommendation
+    is a promise about what the engine will compute once the operator applies it.
+    An analysis that credits more than the engine will is a number that evaporates
+    the moment it is acted on."""
     caps = cap_headroom_by_reference or {}
     results: list[BundleAnalysis] = []
 
@@ -84,11 +92,20 @@ def analyze_bundles(
         offset = Decimal("0")
         displaced: list[str] = []
         for p in third_party_products:
+            # Same applicability rule as the engine (6.3a): a tool tagged to other
+            # personas is not this persona's to retire.
+            if p.persona_ids and persona_id not in p.persona_ids:
+                continue
             # Same displacement test as the engine (6.6).
             if p.delivered_outcome_ids and p.delivered_outcome_ids.issubset(
                 c.covered_outcome_ids
             ):
-                offset += Decimal(headcount) * p.per_unit_annual_cost
+                # Same cap as the engine (6.3a): a move can only retire seats the
+                # product actually covers, so credit is capped at its covered
+                # population — never headcount × per-unit unbounded, which would
+                # credit more than the tool costs.
+                units = min(headcount, p.covered_count)
+                offset += Decimal(units) * p.per_unit_annual_cost
                 displaced.append(p.id)
 
         offset = _money(offset)

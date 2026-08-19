@@ -17,6 +17,16 @@ save is skipped (`no_savings`). The result is always a plan you can buy: the swa
 never proposes more than 300 Business Premium seats, and never renders the impossible
 "everyone on Business Premium over the cap" state.
 
+WHOLE personas is the load-bearing word. A persona is the unit of licensing here —
+one persona, one scenario, one target — so a persona LARGER than the cap can never
+fit, and at enterprise scale every persona may exceed it. An enabled swap is then
+correctly inert, and that is precisely when it looks broken: the toggle is on, the
+TCO does not move, and nothing explains it. So an inert swap reports WHY
+(`inert_reason`), how many seats the cap turned away (`stranded_seats`), and how
+much headroom went unused — the operator's lever being to split a persona into a
+smaller Business Premium group, which is a decision about their own population and
+belongs to a real Persona object, not to a sub-population this module invents.
+
 Nothing is persisted — the swap set is a pure derived computation over existing
 first-class data (Engagement/PersonaScenario toggles, the coverage map, the priced
 catalog, and the LicenseLimit spine), recomputed every compute. This module is the
@@ -247,6 +257,28 @@ def applies(eng: models.Engagement, ctx: dict, scenario: models.PersonaScenario)
     return scenario.id in ctx.get("swapped_ids", set())
 
 
+def _inert_reason(eng: models.Engagement, ctx: dict, rows: list[dict]) -> str:
+    """Why an enabled swap applied to nobody: the single most actionable cause.
+
+    Ordered from "the feature cannot run" to "the feature ran and declined", so
+    the operator is told the thing they can actually fix. Empty when the swap did
+    apply to someone (nothing to explain)."""
+    if any(r["applied"] for r in rows):
+        return ""
+    if ctx["bp"] is None:
+        return "no_bp_bundle"
+    if ctx["bp_price"] <= 0:
+        return "price_unknown"
+    in_scope = [r for r in rows if r["reason"] != "out_of_scope"]
+    if not in_scope:
+        return "no_scenarios"
+    reasons = {r["reason"] for r in in_scope}
+    for candidate in ("capped", "no_savings", "opted_out", "ineligible"):
+        if candidate in reasons:
+            return f"all_{candidate}"
+    return "none_applied"
+
+
 def summarize(db: Session, engagement_id: str, result: dict) -> dict:
     """The Business Premium swap view for the readout: per-scenario eligibility /
     opt-out / applied, plus the aggregate swapped-user count and combined annual
@@ -260,7 +292,7 @@ def summarize(db: Session, engagement_id: str, result: dict) -> dict:
     headcount = {p.id: p.headcount for p in eng.personas}
     delta_by_scenario = {s["scenario_id"]: s for s in result.get("scenarios", [])}
 
-    rows, swapped_users, swap_delta = [], 0, 0.0
+    rows, swapped_users, swap_delta, stranded_seats = [], 0, 0.0, 0
     for s in eng.scenarios:
         is_eligible = eligible(ctx, s.persona_id)
         is_applied = applies(eng, ctx, s)
@@ -281,10 +313,25 @@ def summarize(db: Session, engagement_id: str, result: dict) -> dict:
         if is_applied and s.in_scope:
             swapped_users += headcount.get(s.persona_id, 0)
             swap_delta += float(delta_by_scenario.get(s.id, {}).get("delta_annual", 0.0))
+        elif reason == "capped":
+            # Eligible and saving, but the persona doesn't fit the remaining cap.
+            # These seats are the unrealized opportunity — see `inert_reason`.
+            stranded_seats += headcount.get(s.persona_id, 0)
 
     return {
         "enabled": eng.bp_swap_enabled,
         "bp_available": ctx["bp"] is not None,
+        # Why an ENABLED swap changed nothing. A feature that silently does
+        # nothing is indistinguishable from a broken one, so the reason is
+        # first-class output the GUI must show rather than something the operator
+        # has to infer from an unchanged total.
+        "inert_reason": _inert_reason(eng, ctx, rows) if eng.bp_swap_enabled else "",
+        # Seats the cap turned away: eligible, saving, but the persona is larger
+        # than the headroom. The swap moves WHOLE personas (a persona is the unit
+        # of licensing in this model), so a persona bigger than the cap can never
+        # fit — splitting it into a smaller Business-Premium persona is the
+        # operator action that unlocks these seats.
+        "stranded_seats": stranded_seats,
         "bp_price_known": ctx["bp_price"] > 0,
         "bp_name": ctx["bp"].name if ctx["bp"] is not None else "Microsoft 365 Business Premium",
         "eligible_count": sum(1 for r in rows if r["eligible"]),

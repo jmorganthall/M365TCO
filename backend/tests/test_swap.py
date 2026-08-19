@@ -153,3 +153,74 @@ def test_swap_skips_when_no_saving(client):
     assert r["scenarios"][0]["target_sku_reference"] == "Microsoft 365 E3"  # not swapped
     row = r["bp_swap"]["scenarios"][0]
     assert row["eligible"] is True and row["applied"] is False and row["reason"] == "no_savings"
+
+
+def test_swap_says_why_it_did_nothing_when_every_persona_exceeds_the_cap(client):
+    """The reported symptom: at real scale the box is ticked and the TCO doesn't
+    move. The swap moves WHOLE personas, so a persona larger than the 300-seat cap
+    can never fit — and with every persona over the cap, an enabled swap is inert.
+    That must be stated, with the seats it turned away and the seats left unused,
+    not left for the operator to infer from an unchanged total."""
+    eid, _ = _setup(client, headcount=2518)
+    client.post(f"/api/engagements/{eid}/personas", json={"name": "Corp", "headcount": 632})
+    p2 = client.get(f"/api/engagements/{eid}/personas").json()[-1]
+    client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "Office 365 E3", "quantity_assigned": 632,
+        "unit_price_paid_annual": 432, "persona_ids": [p2["id"]]})
+    client.post(f"/api/engagements/{eid}/scenarios", json={
+        "persona_id": p2["id"], "target_sku_reference": "Microsoft 365 E3",
+        "target_unit_price_annual": 432, "in_scope": True})
+
+    before = client.post(f"/api/engagements/{eid}/compute").json()
+    client.patch(f"/api/engagements/{eid}", json={"bp_swap_enabled": True})
+    after = client.post(f"/api/engagements/{eid}/compute").json()
+
+    # The TCO genuinely does not move — the honest outcome at this scale.
+    assert (after["rollup"]["net_tco_delta_annual"]
+            == before["rollup"]["net_tco_delta_annual"])
+    sw = after["bp_swap"]
+    assert sw["enabled"] is True and sw["swapped_count"] == 0
+    # ...and the app says so, in terms the operator can act on.
+    assert sw["inert_reason"] == "all_capped"
+    assert sw["stranded_seats"] == 3150            # 2518 + 632 turned away
+    assert sw["cap"]["headroom_remaining"] == 300  # all of it unused
+    assert sw["capped_count"] == 2
+
+
+def test_inert_reason_names_the_single_actionable_cause():
+    """`inert_reason` is what the GUI shows when an enabled swap changes nothing.
+
+    The price-unknown case is real but only reachable before any pricing catalog
+    is imported (the lookup deliberately falls back across bases once one is
+    loaded), so the decision function is exercised directly here rather than
+    through a session whose catalog other tests have already populated.
+    """
+    from decimal import Decimal
+
+    from app.services.swap import _inert_reason
+
+    class _Eng:
+        pass
+
+    def reason(rows, bp=object(), price=Decimal("264")):
+        return _inert_reason(_Eng(), {"bp": bp, "bp_price": price}, rows)
+
+    applied = [{"applied": True, "reason": "applied"}]
+    capped = [{"applied": False, "reason": "capped"}]
+    mixed = [{"applied": False, "reason": "capped"},
+             {"applied": False, "reason": "ineligible"}]
+
+    # Nothing to explain when the swap actually did something.
+    assert reason(applied) == ""
+    # The feature cannot run at all — reported ahead of any per-persona reason.
+    assert reason(capped, bp=None) == "no_bp_bundle"
+    assert reason(capped, price=Decimal("0")) == "price_unknown"
+    assert reason([]) == "no_scenarios"
+    assert reason([{"applied": False, "reason": "out_of_scope"}]) == "no_scenarios"
+    # Per-persona causes, most actionable first: a capped persona can be split or
+    # opted out today; "ineligible" is a capability fact, not a lever.
+    assert reason(capped) == "all_capped"
+    assert reason(mixed) == "all_capped"
+    assert reason([{"applied": False, "reason": "no_savings"}]) == "all_no_savings"
+    assert reason([{"applied": False, "reason": "opted_out"}]) == "all_opted_out"
+    assert reason([{"applied": False, "reason": "ineligible"}]) == "all_ineligible"
