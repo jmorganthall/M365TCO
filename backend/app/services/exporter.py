@@ -7,6 +7,26 @@ conditional — the third-party dispositions, the "what this retires" call-outs,
 the tooling-split / forced-elimination notes appear only when they apply, rather
 than being printed as "None". The xlsx export keeps the full QA detail (including
 the population check). Deck/one-pager generation is a later AI-assisted feature.
+
+**Language contract.** Every string here is read by the customer, across four very
+different outcomes — they save, they consolidate, they pay more and get more, or
+they pay more and get nothing new — and the wording has to hold up in all four:
+
+- *Nothing is written for us.* No operator instructions ("set covers", "tag them
+  on the Current licensing tab", "map the SKU in Settings"), no engine enums, no
+  internal shorthand. Those belong in the app and the xlsx; the readout says what
+  is true and what we will do about it.
+- *Spending more is a decision, not an error.* An increase is never red and never
+  bare "added cost": it is a licensing **investment** when the move buys capability
+  the readout can name, and plain added spend when it doesn't. The same rule
+  governs the headline word, the hero label and the timing caveat.
+- *A saving is never sold as free.* Capability given up rides next to the number
+  (the headline caveat plus the trade-offs section), and a move that adds no new
+  outcome is told as the consolidation it is — tools retired, contracts and audit
+  surface gone — not as a shortfall (`compute._consolidation_story`).
+- *No contradictions, no placeholders.* "0 retirement targets", "Retire fully · 0
+  seats", "$0.00 remains", a 625% share — each is a line that costs the document
+  its credibility, so every one of them is phrased for its own case.
 """
 
 from __future__ import annotations
@@ -91,7 +111,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         f"<td class='num'>{_usd(s['current_spend_annual'])}</td>"
         f"<td class='num'>{_usd(s['target_spend_annual'])}</td>"
         f"<td class='num {'pos' if s['delta_annual'] < 0 else ''}'>{_usd(s['delta_annual'])}</td>"
-        f"<td>{'In scope' if s['in_scope'] else 'Excluded'}</td></tr>"
+        f"<td>{'In scope' if s['in_scope'] else 'Not in scope'}</td></tr>"
         for s in result["scenarios"]
     )
 
@@ -114,7 +134,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
             # but the seats/savings are 0 until the operator sets covers. Say that
             # plainly instead of printing a bare, contradictory "0 seats retired".
             if not d["covered_count"]:
-                return "Covered population not set — set covers to quantify seats and savings"
+                return "Covered user count not yet provided — seats and savings not quantified"
             return html.escape(d["override_reason"]) if d["override"] != "None" else ""
 
         def _disp_row(d):
@@ -236,8 +256,8 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         "<section><h2>Capability trade-offs</h2>"
         "<p class='sub'>Capabilities each persona's <b>current</b> Microsoft licensing "
         "delivers today that the target does <b>not</b> — the licensing being right-sized "
-        "away. The savings above assume each is acceptable to drop; confirm none is still "
-        "needed (or add it back with a bigger base or an add-on).</p>"
+        "away. The figures above assume each of these is acceptable to give up; confirm none "
+        "is still needed (a larger base bundle or an add-on brings it back).</p>"
         f"{dropped_blocks}</section>"
         if dropped_blocks else ""
     )
@@ -309,7 +329,8 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 
     delta_word = (
         f"{_usd0(delta)}/yr saved" if delta < 0
-        else f"{_usd0(delta)}/yr added" if delta > 0 else "no net change"
+        else f"{_usd0(delta)}/yr additional investment" if delta > 0
+        else "no net change"
     )
     delta_cells = "".join(
         f"<td class='num {'pos' if s['delta_annual'] < 0 else ''}'><b>{_usd(s['delta_annual'])}</b></td>"
@@ -319,7 +340,8 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         f"<tr><td>Target Microsoft licensing (new per-persona bundles)</td>"
         + _cells([s["target_spend_annual"] for s in cols], target_ms)
         + "</tr>"
-        f"<tr><td>Less: existing Microsoft licensing retired (current assigned)</td>"
+        f"<tr><td>Less: existing Microsoft licensing retired "
+        f"<span class='muted'>(the seats you pay for today)</span></td>"
         + _cells([s["current_microsoft_annual"] for s in cols], existing_ms,
                  negate=True, cls="pos")
         + "</tr>"
@@ -327,7 +349,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
                        "(the quick wins — no licensing change required)",
                        already, "redundant_today_annual")
         + _freed_group("further seats on those tools retired by the move",
-                       "(covered only once the target lands)",
+                       "(covered once the target licensing is in place)",
                        already, "move_unlocked_annual")
         + _freed_group("third-party newly retired by the move",
                        "(capability arrives with the target)",
@@ -346,9 +368,9 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     if abs(bridged_today - qw_check) >= 0.005:
         bridge_note = (
             f"<p class='sub'>A further {_usd(qw_check - bridged_today)}/yr of quick-win "
-            f"savings sits outside this bridge — tools retirable today that no persona "
-            f"move touches. See Quick wins above; the two together make the total "
-            f"opportunity in the headline.</p>"
+            f"savings sits outside this bridge — tools you can retire today without any "
+            f"licensing change, on top of the moves below. See Quick wins above; the two "
+            f"together make the headline figure.</p>"
         )
 
     # Hero block (Section 6.8a decomposition): the headline splits into the two
@@ -365,12 +387,30 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     moves_value = -move_incr  # positive = the moves save money
     total_opportunity = qw_total + moves_value  # positive = total saved / yr
 
+    # Does the move actually buy capability? (Any in-scope persona with a
+    # newly-lit outcome.) It decides whether an increase is an investment or
+    # simply added spend — we say one only when the readout can show the other.
+    buys_capability = any(
+        n.get("outcomes") for n in (result.get("new_outcomes") or [])
+    )
     if total_opportunity > 0:
         head_word, head_cls = f"saved over {months} months", "pos"
     elif total_opportunity < 0:
-        head_word, head_cls = f"added cost over {months} months", ""
+        head_word = (
+            f"invested over {months} months" if buys_capability
+            else f"added over {months} months"
+        )
+        head_cls = ""
     else:
         head_word, head_cls = "no net change", ""
+    # The framing label follows the direction too: "Total opportunity" over a
+    # number that is a net increase is the kind of line a CFO stops reading at.
+    hero_label = (
+        "Total opportunity" if total_opportunity > 0
+        else ("Net licensing investment" if buys_capability else "Net change in licensing spend")
+        if total_opportunity < 0
+        else "Net change"
+    )
 
     def _moves_amount(v):
         # Number first, like card ①, no words: finance notation. Positive plain
@@ -389,12 +429,22 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         f"<b>{html.escape(_tlabel(s))}</b></span></li>"
         for s in in_scope
     )
+    any_move_costs = any(
+        (s.get("move_incremental_delta_annual", s["delta_annual"]) or 0) > 0 for s in in_scope
+    )
+    moves_legend = (
+        "<div class='moves-legend'>Figures in parentheses are an increase in licensing "
+        "spend for that persona"
+        + (" — ① less these gives the headline figure." if qw_total > 0 else ".")
+        + "</div>"
+        if any_move_costs else ""
+    )
     # Share of the total each lever contributes. The two are the two parts of one
     # number (total = quick wins + moves), so the moves' share is the complement
     # of the quick-win share — they always sum to 100%, never 99/101 from
     # independent rounding. Shown only when the total is a net saving; on a net
     # cost, a "share of a negative" reads as nonsense, so it's suppressed.
-    show_pct = total_opportunity > 0
+    show_pct = total_opportunity > 0 and qw_total > 0 and moves_value > 0
     qw_pct = round(qw_total / total_opportunity * 100) if show_pct else 0
     moves_pct = 100 - qw_pct
     # A share that opposes the total (the move is a net investment) renders in
@@ -419,7 +469,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         f"<div class='hero-part'>"
         f"<div class='hero-part-main'><div class='part-label'>"
         f"{'② ' if part_today else ''}Move each persona to right-sized licensing</div>"
-        + (f"<ul class='moves'>{move_items}</ul>" if in_scope else "")
+        + (f"<ul class='moves'>{move_items}</ul>{moves_legend}" if in_scope else "")
         + "</div>"
         + _pct_html(moves_pct)
         + "</div>"
@@ -431,25 +481,37 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     # number is never read as a free win — the detail is in Capability trade-offs.
     n_drop = len(result.get("dropped_capability") or [])
     tradeoff_note = (
-        f" This includes capability trade-off{'s' if n_drop != 1 else ''} for "
-        f"{n_drop} persona{'s' if n_drop != 1 else ''} — see Capability trade-offs below."
+        f" This includes capability trade-offs for {n_drop} "
+        f"persona{'s' if n_drop != 1 else ''} — see Capability trade-offs below."
         if n_drop else ""
+    )
+    # An increase that buys capability says so AT the headline: the number and
+    # what it purchases belong in the same breath, or the number reads alone.
+    buys_note = (
+        " The added spend buys the capabilities listed under New outcomes below."
+        if total_opportunity < 0 and buys_capability else ""
+    )
+    # "Full savings from day one" is the wrong phrase over a net increase.
+    timing_note = (
+        "Figures assume full savings from day one; year one phases with contract end dates."
+        if total_opportunity > 0
+        else "Figures assume the full-year effect from day one; year one phases with "
+             "contract end dates."
     )
     hero_caveat = (
         f"<div class='hero-caveat'>Baseline spend uses list-price assumptions for "
         f"{assumed_n} current SKU{'s' if assumed_n != 1 else ''} — validating against "
-        f"invoices is step one and may move this number. Figures assume full savings "
-        f"from day one; year one phases with contract end dates.{tradeoff_note}</div>"
+        f"invoices is step one and may move this number. {timing_note}"
+        f"{buys_note}{tradeoff_note}</div>"
         if assumed_n
-        else "<div class='hero-caveat'>Figures assume full savings from day one; "
-             f"year one phases with contract end dates.{tradeoff_note}</div>"
+        else f"<div class='hero-caveat'>{timing_note}{buys_note}{tradeoff_note}</div>"
     )
     # One headline, two stacked sub-cards. The components' dollars live in the
     # cards ONLY — no equation line repeating them above.
     hero_sub = f"{_usd0(total_opportunity)} per year"
     hero = (
         f"<section class='hero'>"
-        f"<div class='hero-label'>Total opportunity <span class='hero-note'>"
+        f"<div class='hero-label'>{hero_label} <span class='hero-note'>"
         f"· all figures over {months} months · quick wins + licensing moves</span></div>"
         f"<div class='headline {head_cls}'>{_usd0(total_opportunity * horizon)} "
         f"<span class='headline-word'>{head_word}</span></div>"
@@ -477,11 +539,21 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
             + "</li>"
             for t in fully_elim
         )
-        elim_parts.append(f"<p><b>Tools fully eliminated:</b></p><ul>{items}</ul>")
-    if has_third_party:
+        n_full = len(fully_elim)
         elim_parts.append(
+            f"<p><b>Tools retired in full:</b></p><ul>{items}</ul>"
+            f"<p class='sub'>That is {n_full} fewer tool{'s' if n_full != 1 else ''} to "
+            f"renew, integrate, secure and audit each year — consolidation onto licensing "
+            f"you already pay for, alongside the dollars above.</p>"
+        )
+    if has_third_party:
+        residual = rollup["residual_third_party_cost_annual"]
+        elim_parts.append(
+            "<p><b>No third-party spend remains after the move</b> — every tool in scope "
+            "is retired in full.</p>"
+            if not residual else
             f"<p><b>Third-party spend that remains after the move:</b> "
-            f"{_usd(rollup['residual_third_party_cost_annual'])}/yr "
+            f"{_usd(residual)}/yr "
             f"<span class='muted'>(reduced seats plus tools kept as-is)</span></p>"
         )
     elim_section = (
@@ -544,7 +616,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         f"<p><b>Target pricing basis:</b> {html.escape(engagement.default_segment or 'Commercial')} · "
         f"{html.escape(_term_label.get(engagement.default_term_duration or 'P1Y', engagement.default_term_duration or 'P1Y'))} · "
         f"{html.escape(engagement.default_billing_plan or 'Monthly')} billing — catalog price "
-        f"unless an operator-entered price overrides a line.</p>"
+        f"unless a negotiated price is recorded for a line.</p>"
     )
     if managed_any:
         tooling_overrides = [
@@ -570,8 +642,8 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
             for d in overrides
         )
         appendix_parts.append(
-            "<p><b>Assumed full elimination</b> (savings asserted on users the target does "
-            f"not automatically displace):</p><ul>{items}</ul>"
+            "<p><b>Assumed full retirement</b> (savings counted for users the target does "
+            f"not automatically displace, for the reason given):</p><ul>{items}</ul>"
         )
     # Price overrides — the customer pays a negotiated rate that differs from the
     # catalog list on some lines. Disclose each with its implied % off list so the
@@ -605,7 +677,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
     soft_label = {
         "ListPrice": "list price assumed",
         "Estimate": "estimate",
-        "AISuggestedUnconfirmed": "AI-suggested, unconfirmed",
+        "AISuggestedUnconfirmed": "suggested by the tool, pending confirmation",
     }
     soft_inputs = (
         [(p.name, "persona", p.source_tag) for p in engagement.personas
@@ -622,8 +694,8 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
             for name, kind, tag in soft_inputs
         )
         appendix_parts.append(
-            "<p><b>Inputs carried as assumptions</b> (tagged, not customer-stated "
-            f"or invoiced):</p><ul>{items}</ul>"
+            "<p><b>Inputs carried as assumptions</b> (not yet confirmed against your "
+            f"own figures or invoices):</p><ul>{items}</ul>"
         )
     appendix_section = (
         f"<section><h2>Assumptions &amp; sources</h2>{''.join(appendix_parts)}</section>"
@@ -649,21 +721,36 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         cons = _fmt_ratio(engagement.ecif_roi_conservative)
         gen = _fmt_ratio(engagement.ecif_roi_generous)
         fund_step = (
-            "<li><b>Fund.</b> As a managed account (a Microsoft Account Team Unit is "
-            f"assigned), this move lifts annual Microsoft spend by {_usd0(uplift)}/yr. "
-            "Per standard Microsoft investment ROI, that uplift is estimated to unlock a "
-            f"one-time ECIF fund of roughly {_usd0(ecif_low)}–{_usd0(ecif_high)} "
-            f"(≈ 1/{cons}–1/{gen} of the annual uplift) — used to accelerate or de-friction "
-            "pre-sales (assessment, discovery, design) and post-sales (implementation, "
-            "migration) work. Indicative only; scope with the Microsoft account team.</li>"
+            "<li><b>Fund.</b> Because a Microsoft account team is assigned to you, the "
+            f"{_usd0(uplift)}/yr increase in Microsoft spend this move represents can attract "
+            "Microsoft co-investment. Per standard Microsoft investment ROI, it is estimated "
+            f"to unlock a one-time fund of roughly {_usd0(ecif_low)}–{_usd0(ecif_high)} "
+            f"(≈ 1/{cons}–1/{gen} of the annual increase) — applied to assessment, design, "
+            "implementation and migration work, so less of the transition lands on your "
+            "budget. Indicative only; scope it with your Microsoft account team.</li>"
         )
+    validate_step = (
+        "<li><b>Validate.</b> Confirm current licensing counts and third-party invoices, "
+        f"and pull contract end dates for the {n_retire} tool{'s' if n_retire != 1 else ''} "
+        "being retired — this converts the assumptions above into an invoice-verified "
+        "business case.</li>"
+        if n_retire else
+        "<li><b>Validate.</b> Confirm current licensing counts and the prices actually "
+        "paid — this converts the assumptions above into an invoice-verified business "
+        "case.</li>"
+    )
+    sequence_step = (
+        "<li><b>Sequence.</b> Co-term each retirement against its renewal date into a "
+        "phased schedule. The figures here assume the full-year effect from day one; "
+        "year one phases in.</li>"
+        if n_retire else
+        "<li><b>Sequence.</b> Time each persona's move to its licensing anniversary. The "
+        "figures here assume the full-year effect from day one; year one phases in.</li>"
+    )
     next_steps_section = (
         "<section><h2>Recommended next steps</h2><ol>"
-        "<li><b>Validate.</b> Confirm current licensing counts and third-party invoices, "
-        f"and pull contract end dates for the {n_retire} retirement target{'s' if n_retire != 1 else ''} "
-        "— this converts the assumptions above into an invoice-verified business case.</li>"
-        "<li><b>Sequence.</b> Co-term each retirement against its renewal date into a "
-        "phased savings schedule. The figures here assume full savings from day one; year one phases in.</li>"
+        + validate_step
+        + sequence_step
         + fund_step +
         "<li><b>Decide.</b> A 30-day validation sprint converts this readout into an "
         "invoice-verified, phased business case.</li></ol>"
@@ -737,6 +824,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
  .persona-outcomes{{background:var(--soft);border:1px solid var(--line);
    border-left:3px solid var(--pos);border-radius:10px;padding:.7rem .95rem;margin:.7rem 0}}
  .persona-outcomes h3{{margin:0 0 .45rem;font-size:1rem;color:var(--primary)}}
+ .moves-legend{{color:var(--muted);font-size:.8rem;margin:.35rem 0 0}}
  .persona-outcomes.none{{border-left-color:var(--muted)}}
  .persona-outcomes p.none{{margin:0}}
  .chip-row{{display:flex;flex-wrap:wrap;gap:.4rem}}
@@ -771,7 +859,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 {quick_win_section}
 
 <section><h2>Per-persona scenarios</h2>
-<table><thead><tr><th>Persona</th><th>Target SKU</th><th>Headcount</th>
+<table><thead><tr><th>Persona</th><th>Target licensing</th><th>Headcount</th>
 <th>Current total spend/yr<br><small>(Microsoft + attributed third-party)</small></th>
 <th>Target Microsoft/yr</th><th>Change/yr</th><th>Scope</th></tr></thead>
 <tbody>{rows_scenarios}</tbody></table></section>
@@ -781,7 +869,7 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 <section><h2>How we get to the number</h2>
 <p class="sub">Existing annualized spend for the in-scope population, the third-party
 tooling those users free up when they move, and the target Microsoft licensing —
-building to the net TCO delta, with each line broken down per persona.</p>
+building to the net change per year, with each line broken down per persona.</p>
 <table class="bridge">{bridge_head}<tbody>{bridge_rows}</tbody></table>{bridge_note}</section>
 {disp_section}
 {elim_section}

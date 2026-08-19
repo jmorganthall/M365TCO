@@ -637,7 +637,7 @@ def _money(value) -> str:
     return f"${abs(float(value or 0)):,.0f}"
 
 
-def _consolidation_story(scenario: dict) -> str:
+def _consolidation_story(scenario: dict, *, customer: bool = False) -> str:
     """What a move that adds no NEW capability is still worth, in this persona's own
     numbers: the third-party tools it folds into the target licensing (fewer vendors,
     contracts and audit surfaces) and the annual spend change. Grounded, never
@@ -671,8 +671,14 @@ def _consolidation_story(scenario: dict) -> str:
         )
     if not tools and delta > 0:
         # No consolidation and no saving: there is no value story to lead with, so
-        # don't invent one — say the outcomes are unchanged and the cost is up.
+        # don't invent one — say the outcomes are unchanged and the cost is up. The
+        # next move ("drop this persona from scope") is the SA's call to make, not a
+        # line a customer should read in a document prepared for them.
         return (
+            f"No new functional outcomes for this persona, and the target costs "
+            f"{_money(delta)}/yr more than what they hold today — one to confirm "
+            f"together before it lands in the plan."
+            if customer else
             f"No new functional outcomes for this persona, and the target costs "
             f"{_money(delta)}/yr more than what they hold today — worth revisiting the "
             f"target, or keeping this persona out of scope."
@@ -728,9 +734,12 @@ def _no_new_capability_reason(gap: dict, scenario: dict) -> tuple[str, str, str]
             f"today — partly from current licence line(s) ({refs}) carrying no persona tag, so "
             "they count for every persona. Tag them on the Current licensing tab for a "
             "per-persona value story."
-        ), _consolidation_story(scenario)
-    story = _consolidation_story(scenario)
-    return "covered_today", story, story
+        ), _consolidation_story(scenario, customer=True)
+    return (
+        "covered_today",
+        _consolidation_story(scenario),
+        _consolidation_story(scenario, customer=True),
+    )
 
 
 def new_outcomes(db: Session, engagement_id: str, result: dict) -> list[dict]:
