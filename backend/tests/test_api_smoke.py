@@ -241,7 +241,11 @@ def test_readout_delta_sign_and_color_convention(client):
     r2 = client.post(f"/api/engagements/{e2}/compute").json()
     assert r2["rollup"]["net_tco_delta_annual"] == 50000.0  # positive = cost increase
     html2 = client.get(f"/api/engagements/{e2}/readout.html").text
-    assert "added cost over 36 months" in html2
+    # The target lights up capability this persona has nothing for today, so the
+    # increase is framed as an investment rather than as flat "added cost" — and
+    # never in red: spending more is a decision, not an error.
+    assert "invested over 36 months" in html2
+    assert "Net licensing investment" in html2
     assert "headline neg" not in html2            # increase is neutral, not red
 
 

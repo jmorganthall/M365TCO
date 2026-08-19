@@ -41,7 +41,9 @@ def test_html_readout_explains_zero_covers_instead_of_contradicting(client):
     html = client.get(f"/api/engagements/{eid}/readout.html").text
     assert "Third-party tools — what happens to each" in html
     assert "Retire fully" in html
-    assert "Covered population not set" in html
+    assert "Covered user count not yet provided" in html
+    # …and never as an instruction to the customer to go and fix our input.
+    assert "set covers" not in html
 
 
 def test_covers_set_still_shows_the_seat_count(client):

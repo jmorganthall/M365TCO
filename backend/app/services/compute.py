@@ -630,11 +630,88 @@ def persona_coverage_gaps(db: Session, engagement_id: str) -> list[dict]:
     return personas
 
 
-def _no_new_capability_reason(gap: dict) -> tuple[str, str]:
-    """Why an in-scope persona gained NOTHING — a code plus the sentence every
-    surface prints. An empty New-outcomes list has three very different meanings
-    (unmappable target, coverage attributed org-wide, genuinely nothing new) and
-    printing none of them is how the section silently disappears."""
+def _money(value) -> str:
+    """Whole-dollar money in the readout's own convention (unsigned — the sentence
+    around it says the direction). Matches `exporter._usd0` so a figure phrased in
+    a sentence never disagrees with the same figure in a table."""
+    return f"${abs(float(value or 0)):,.0f}"
+
+
+def _consolidation_story(scenario: dict, *, customer: bool = False) -> str:
+    """What a move that adds no NEW capability is still worth, in this persona's own
+    numbers: the third-party tools it folds into the target licensing (fewer vendors,
+    contracts and audit surfaces) and the annual spend change. Grounded, never
+    boilerplate — every clause comes from the computed scenario, and the framing
+    follows the facts: consolidation when tools actually retire, right-sizing when
+    the spend actually falls, and a plain flag when the move does neither (a claim
+    of "consolidation value" next to a cost increase is exactly the kind of sentence
+    a customer stops trusting the rest of the readout for)."""
+    tools = [
+        o["third_party_product_name"]
+        for o in scenario.get("offsets", []) or []
+        if float(o.get("credited_offset_annual") or 0) > 0
+    ]
+    delta = float(scenario.get("delta_annual") or 0)
+    n = len(tools)
+    parts = []
+    if tools:
+        named = ", ".join(tools[:4]) + (f" and {n - 4} more" if n > 4 else "")
+        plural = n != 1
+        parts.append(
+            f"{n} third-party tool{'s' if plural else ''} ({named}) "
+            f"fold{'' if plural else 's'} into the target licensing, so there "
+            f"{'are' if plural else 'is'} {n} fewer vendor{'s' if plural else ''}, "
+            f"contract{'s' if plural else ''} and integration{'s' if plural else ''} "
+            f"to renew, secure and audit"
+        )
+    if delta < 0:
+        parts.append(
+            f"the same capability costs {_money(delta)}/yr less"
+            if not tools else f"and {_money(delta)}/yr less to run"
+        )
+    if not tools and delta > 0:
+        # No consolidation and no saving: there is no value story to lead with, so
+        # don't invent one — say the outcomes are unchanged and the cost is up. The
+        # next move ("drop this persona from scope") is the SA's call to make, not a
+        # line a customer should read in a document prepared for them.
+        return (
+            f"No new functional outcomes for this persona, and the target costs "
+            f"{_money(delta)}/yr more than what they hold today — one to confirm "
+            f"together before it lands in the plan."
+            if customer else
+            f"No new functional outcomes for this persona, and the target costs "
+            f"{_money(delta)}/yr more than what they hold today — worth revisiting the "
+            f"target, or keeping this persona out of scope."
+        )
+    if not parts:
+        return (
+            "No new functional outcomes, no tools consolidated and no change in spend — "
+            "this persona is already on the right licensing; the case for moving them has "
+            "to come from standardizing the estate, not from this scenario."
+        )
+    lead = "consolidation" if tools else "right-sizing"
+    tail = (
+        f" The move itself adds {_money(delta)}/yr in licensing." if tools and delta > 0 else ""
+    )
+    return (
+        f"No new functional outcomes for this persona — the value here is {lead}, not "
+        f"added capability: " + ", ".join(parts) + f".{tail}"
+    )
+
+
+def _no_new_capability_reason(gap: dict, scenario: dict) -> tuple[str, str, str]:
+    """Why an in-scope persona gained NOTHING — a code plus two sentences: the
+    operator's (with the fix, for the app and the QA spreadsheet) and the
+    customer's (for the customer-facing HTML readout, which must never print
+    internal instructions). An empty New-outcomes list has three very different
+    meanings — an unmappable target and coverage attributed org-wide are data to
+    fix, "nothing new" is a real finding — and printing none of them is how the
+    section silently disappears.
+
+    "Nothing new" is not a failure of the move and is never phrased as one: a
+    consolidation play delivers its value by retiring tools and spend, and the
+    honest line is that the functional outcomes stay the same while the vendor,
+    contract and audit surface shrinks."""
     if gap["target_unmapped"]:
         refs = ", ".join(r["reference"] for r in gap["unmapped_target"]) or "the target"
         fix = (
@@ -646,36 +723,46 @@ def _no_new_capability_reason(gap: dict) -> tuple[str, str]:
             f"No capability comparison is possible: the target ({refs}) has no ratified "
             f"coverage in this engagement, so nothing can be shown as gained or given up "
             f"here — {fix}."
+        ), (
+            f"Capability comparison for this persona is still being confirmed against the "
+            f"target ({refs}) — the cost story below stands on its own."
         )
     if gap["org_wide_current_licenses"]:
         refs = ", ".join(gap["org_wide_current_licenses"])
         return "covered_org_wide", (
-            "Nothing new: everything the target delivers already counts as delivered today "
-            f"— partly from current licence line(s) ({refs}) carrying no persona tag, so they "
-            "count for every persona. Tag them on the Current licensing tab for a per-persona "
-            "value story."
-        )
-    return "covered_today", (
-        "Nothing new: the target delivers no outcome this persona's current licensing "
-        "(and its mapped third-party tools) does not already deliver."
+            "Nothing new to show: everything the target delivers already counts as delivered "
+            f"today — partly from current licence line(s) ({refs}) carrying no persona tag, so "
+            "they count for every persona. Tag them on the Current licensing tab for a "
+            "per-persona value story."
+        ), _consolidation_story(scenario, customer=True)
+    return (
+        "covered_today",
+        _consolidation_story(scenario),
+        _consolidation_story(scenario, customer=True),
     )
 
 
 def new_outcomes(db: Session, engagement_id: str, result: dict) -> list[dict]:
     """The readout's New-outcomes story: per IN-SCOPE persona, the outcomes the
     move lights up that nothing they hold today delivers. EVERY in-scope persona
-    with a target is listed — one with nothing new carries `empty_reason` /
-    `empty_reason_text` saying why (unmappable target, coverage attributed
-    org-wide, or genuinely nothing new). Silence is not an answer: an omitted
-    persona is indistinguishable from a lost section, and the three reasons mean
-    very different things (two are data to fix, one is a real finding)."""
+    with a target is listed — one with nothing new carries `empty_reason` plus
+    `empty_reason_text` (operator-facing, with the fix) and
+    `empty_reason_customer_text` (what the customer-facing readout prints).
+    Silence is not an answer: an omitted persona is indistinguishable from a lost
+    section, and the reasons mean very different things (two are data to fix, one
+    is a real finding — a consolidation play whose value is the tools and spend it
+    retires, stated as such rather than as a shortfall)."""
     in_scope = {s["persona_id"] for s in result.get("scenarios", []) if s.get("in_scope")}
+    scenario_by_pid = {
+        s["persona_id"]: s for s in result.get("scenarios", []) or [] if s.get("in_scope")
+    }
     out = []
     for g in persona_coverage_gaps(db, engagement_id):
         if not g["has_scenario"] or g["persona_id"] not in in_scope:
             continue
-        reason, reason_text = (
-            (None, "") if g["uncovered_outcomes"] else _no_new_capability_reason(g)
+        reason, reason_text, customer_text = (
+            (None, "", "") if g["uncovered_outcomes"]
+            else _no_new_capability_reason(g, scenario_by_pid.get(g["persona_id"], {}))
         )
         out.append({
             "persona_id": g["persona_id"],
@@ -684,6 +771,7 @@ def new_outcomes(db: Session, engagement_id: str, result: dict) -> list[dict]:
             "outcomes": g["uncovered_outcomes"],
             "empty_reason": reason,
             "empty_reason_text": reason_text,
+            "empty_reason_customer_text": customer_text,
         })
     return out
 

@@ -312,9 +312,9 @@ export default function Readout({ engagement }) {
           <h2>New outcomes</h2>
           <p className="hint">Capabilities each persona gains with the target licensing that
             nothing they hold today delivers — the value the move adds beyond the cost story.
-            Every in-scope persona is listed; one with nothing new says why. Validate coverage on
-            the Coverage Check step; ✨ Business narratives drafts why each matters for this
-            customer.</p>
+            Every in-scope persona is listed: where the move consolidates rather than adds, it says
+            so. Validate coverage on the Coverage Check step; ✨ Business narratives drafts why each
+            matters for this customer.</p>
           {result.new_outcomes.map((n) => {
             const ts = inScope.find((s) => s.persona_id === n.persona_id)
             const target = ts?.target_label || ts?.target_sku_reference
@@ -330,7 +330,10 @@ export default function Readout({ engagement }) {
                 ) : (
                   /* Nothing new is a finding with three very different causes — print
                      the reason rather than an empty row, so a data gap (unmapped target,
-                     untagged licensing) is never mistaken for a lost section. */
+                     untagged licensing) is never mistaken for a lost section. A move that
+                     consolidates rather than adds reads as the consolidation story it is
+                     (the same sentence the customer readout prints); the two data gaps
+                     read as amber, because they are the SA's to fix. */
                   <p className={n.empty_reason === 'covered_today' ? 'muted' : 'warn'}
                      style={{ margin: '.35rem 0 0', fontSize: '.85rem' }}>
                     {n.empty_reason_text}

@@ -30,7 +30,7 @@ def test_readout_minimal_omits_internal_and_inapplicable_sections(client):
     assert "what happens to each" not in html       # no third-party tools
     assert "What this retires" not in html           # nothing eliminated
     assert "Tooling split" not in html               # no managed tools
-    assert "Assumed full elimination" not in html
+    assert "Assumed full retirement" not in html
     assert ">None<" not in html
     # The customer-facing core is present, and the persona/math pulled in.
     assert "Per-persona scenarios" in html
@@ -62,7 +62,7 @@ def test_readout_conditionals_show_when_managed_and_eliminated(client):
     assert "Population check" not in html
     assert "Third-party tools — what happens to each" in html
     assert "What this retires" in html
-    assert "Tools fully eliminated" in html and "Okta" in html
+    assert "Tools retired in full" in html and "Okta" in html
     assert "Tooling split" in html          # a managed tool exists
     assert "50%" in html                     # the per-line tooling override is surfaced
 
@@ -103,8 +103,13 @@ def test_readout_breaks_bridge_down_per_persona(client):
     # The hero: a 36-month headline (annual delta × default 3-year horizon) over
     # one compact move line per persona with its own signed annual delta. This
     # engagement has no current Microsoft spend, so the move is honestly a cost
-    # increase: Sales +40k/yr (60k target − 20k freed Okta), Engineering +10k.
-    assert "added cost over 36 months" in html
+    # increase — and because it lights up new capability (below), the headline
+    # frames it as an investment rather than as flat "added cost":
+    # Sales +40k/yr (60k target − 20k freed Okta), Engineering +10k.
+    assert "invested over 36 months" in html
+    assert "Net licensing investment" in html
+    # …and says, next to the number, what the increase buys.
+    assert "buys the capabilities listed under New outcomes" in html
     assert "$150,000" in html                        # 3 × 50,000, unsigned + words
     assert "$50,000 per year" in html
     # Hero figures share one horizon (3yr): components sum to the headline.

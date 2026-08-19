@@ -167,8 +167,9 @@ The steps run along a chevron **progress stepper** at the top of an engagement:
    scenarios, the **New outcomes** chips (per persona, the capabilities the
    move lights up that nothing delivers today — outcome descriptions on
    hover, editable on the Coverage Map; every in-scope persona is listed, and
-   one with nothing new says why — unmapped target, licensing counted org-wide
-   because it carries no persona tag, or genuinely nothing new), the mirror-image **Capability
+   one with nothing new says why — and when the move is a consolidation play,
+   what it *does* deliver: the tools it folds in, the vendor/contract/audit
+   surface it shrinks and the spend it frees), the mirror-image **Capability
    trade-offs** section (capabilities the current licensing delivers that the
    target drops, with a headline caveat — so the saved-dollars figure is never
    read as a free win; a **Capability changes** sheet carries both into the

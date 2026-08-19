@@ -735,8 +735,9 @@ separate from the HTTP call for unit testing).
 today / what's new / value — grounded in the computed scenarios
 (`services/narrative.build_narrative_payload` — pure: persona, headcount, current
 SKUs, target bundle + add-ons, displaced third-party tools, the per-persona
-`new_outcomes` the move lights up **and the `dropped_outcomes` it gives up**, and the
-annual delta), via the editable `scenario_narrative` AiPrompt on the resolved main
+`new_outcomes` the move lights up **and the `dropped_outcomes` it gives up**, the
+`no_new_outcomes_note` carrying the consolidation story when the move adds no new
+outcome, and the annual delta), via the editable `scenario_narrative` AiPrompt on the resolved main
 model — the prompt names any dropped capability so a narrative never sells a
 right-sizing as pure gain. Returns
 `[{id, persona, today, whats_new, value, source_tag}]` on the Readout view. The result
@@ -817,11 +818,25 @@ as amber warnings:
 **No silently-empty capability story.** `compute.new_outcomes` lists **every**
 in-scope persona that has a target, not only those with something new. A persona
 with nothing new carries `empty_reason` ∈ {`target_unmapped`, `covered_org_wide`,
-`covered_today`} and the `empty_reason_text` every surface prints — the HTML
-readout (a muted note in place of the chips), the in-app Readout, and a `None` row
-on the xlsx **Capability changes** sheet. The three causes mean very different
-things — two are data to fix, one is a real finding — and printing none of them is
-indistinguishable from the section having disappeared.
+`covered_today`} and two sentences: `empty_reason_text` (operator-facing, carrying
+the fix — the in-app Readout, the `None` row on the xlsx **Capability changes**
+sheet) and `empty_reason_customer_text` (what the customer-facing HTML readout
+prints, which must never contain internal instructions). The three causes mean
+very different things — two are data to fix, one is a real finding — and printing
+none of them is indistinguishable from the section having disappeared.
+
+**"Nothing new" is a consolidation story, not a shortfall.** Most moves that light
+up no new outcome still earn their place: they retire third-party tools onto
+licensing the customer already pays for, shrink the vendor / contract / audit
+surface and right-size the spend. `compute._consolidation_story` writes that
+sentence from the persona's OWN computed scenario — the tools with a credited
+offset (named), and `delta_annual` — so the framing follows the facts rather than
+a template: *consolidation* when tools actually retire, *right-sizing* when the
+spend actually falls, and a plain "costs more, consolidates nothing — revisit the
+target" when it does neither. The functional outcomes being unchanged is always
+stated as fact, never sold around. The same sentence is passed to the AI narrative
+as `no_new_outcomes_note` (§4.10a-ter) so `whats_new` neither invents capability
+nor writes the persona off.
 
 **Readout reconciliation.** Right-sizing legitimately sheds capability, so the
 saved-dollars headline stays — but every surface that shows the savings shows the
