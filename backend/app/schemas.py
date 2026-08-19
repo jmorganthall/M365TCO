@@ -146,7 +146,6 @@ class EngagementUpdate(BaseModel):
     brand_primary_color: Optional[str] = None
     brand_accent_color: Optional[str] = None
     notes: Optional[str] = None
-    bp_swap_enabled: Optional[bool] = None
     business_cap_enabled: Optional[bool] = None
     managed_ms_account: Optional[bool] = None
     ecif_roi_conservative: Optional[Decimal] = None
@@ -173,7 +172,6 @@ class EngagementOut(ORMModel):
     brand_primary_color: str
     brand_accent_color: str
     notes: str
-    bp_swap_enabled: bool
     business_cap_enabled: bool = False
     managed_ms_account: bool = False
     ecif_roi_conservative: Decimal = Decimal("10")
@@ -201,7 +199,27 @@ class PersonaOut(ORMModel):
     headcount: int
     description: str
     source_tag: str
+    # Set on a carved-out persona: the persona its seats came from. System-derived
+    # (written by the carve action), read-only in the GUI, and shown as lineage.
+    parent_persona_id: Optional[str] = None
     required_outcome_ids: list[str] = []
+
+
+class PersonaCarveIn(BaseModel):
+    """Carve `seats` out of a persona into a child persona with its own target.
+
+    The seats MOVE: the parent's headcount drops by `seats`, so the engagement's
+    total population is unchanged. The child inherits the parent's associations
+    (current-licence tags, third-party tags, required outcomes) because those
+    people hold exactly what they held a moment ago — only their future-state
+    target differs."""
+
+    seats: int
+    # Defaults to "<parent> — <target>" when blank, so the split reads as itself.
+    name: str = ""
+    # The child's future-state target. Blank = inherit the parent scenario's.
+    target_sku_reference: str = ""
+    target_unit_price_annual: Optional[Decimal] = None
 
 
 # ---- Outcome ----
@@ -352,7 +370,6 @@ class ScenarioIn(BaseModel):
     price_override: bool = False
     overridden_price_annual: Optional[Decimal] = None
     in_scope: bool = True
-    bp_swap_optout: bool = False
     # Line-level quoting basis; None inherits the engagement default.
     term_duration: Optional[str] = None
     billing_plan: Optional[str] = None
@@ -366,7 +383,6 @@ class ScenarioUpdate(BaseModel):
     price_override: Optional[bool] = None
     overridden_price_annual: Optional[Decimal] = None
     in_scope: Optional[bool] = None
-    bp_swap_optout: Optional[bool] = None
     # Changing either requotes the composed target from the catalog.
     term_duration: Optional[str] = None
     billing_plan: Optional[str] = None
@@ -382,7 +398,6 @@ class ScenarioOut(ORMModel):
     price_override: bool = False
     overridden_price_annual: Optional[Decimal] = None
     in_scope: bool
-    bp_swap_optout: bool
     term_duration: Optional[str]
     billing_plan: Optional[str]
     addons: list[ScenarioAddonOut]

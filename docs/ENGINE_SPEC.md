@@ -154,19 +154,16 @@ current_spend_annual = current_microsoft + offset
 # this: net = overridden_price_annual — a negotiated net rate on the same composed
 # target (the discount is ignored while the override is on).
 # target_covered_outcome_ids is the union across base + add-ons.
-# Business Premium swap (data layer): when the engagement's BP swap is active for a
-# scenario (inherited, not opted out, Business Premium covers every outcome the persona
-# requires, the swap actually saves, and the seat fits under the 300-seat Business cap
-# — services/swap fills up to the limit, most-saving personas first), the hydrator
-# substitutes the EFFECTIVE target with Business Premium (its covered outcomes + catalog
-# price × (1 - discount)) before the engine runs. The engine math below is unchanged —
-# it consumes whichever target the data layer resolved.
-# The eligibility "requires" set mirrors the org-wide rule (6.2): a persona must not
-# lose any outcome delivered by its TAGGED current licenses, by any UNTAGGED (org-wide)
-# current license — which every persona holds — or by its declared PersonaRequirements.
-# So an org-wide Calling Plan (PSTN dial-tone, which BP lacks) makes every persona
-# ineligible, exactly as it would show as a coverage gap; the swap never silently drops
-# a capability an org-wide license was providing (services/swap.required_by_persona).
+# There is NO target substitution in the data layer: what the engine costs for a
+# scenario is the target on that scenario, which is the target the operator sees on
+# the row. A persona only PART of which should move to a different plan is carved
+# into a child persona with its own scenario (Persona.parent_persona_id,
+# DATA_MODEL 4.2b) — the seats move, the child inherits the parent's licences, tools
+# and requirements, and this math is unchanged because a carve-out is just another
+# persona. (This replaced an automatic Business Premium swap that substituted the
+# effective target for whole personas under the 300-seat Business cap; because a
+# persona is the licensing unit, any persona over 300 could never move, so on a real
+# engagement the feature was inert.)
 target_spend_annual  = persona.headcount * scenario.target_unit_price_annual
 delta_annual         = target_spend_annual - current_spend_annual   # +cost / -saving
 ```
@@ -354,7 +351,7 @@ does not exist, so the error is always toward **under**-crediting.
 
 > `coverage_scope` governs **seat counts**, not which personas can see a
 > capability. The capability views (persona coverage gaps, the Business Premium
-> swap's "must not lose" set, §6.2's org-wide cost pool) still treat an untagged
+> §6.2's org-wide cost pool) still treat an untagged
 > line as org-wide — those guards are deliberately conservative: over-counting
 > there withholds a move, while over-counting seats here would assert savings the
 > customer cannot realize.
@@ -424,7 +421,7 @@ then asserts the properties below on every result. ~1.27M engagements:
 | `order-dependence` | shuffling the input lists changes no output |
 
 The two decision surfaces above the engine — recommend-a-path and the Business
-Premium swap — get the same treatment in `backend/tests/sweep_services.py`, built
+carve-out — get the same treatment in `backend/tests/sweep_services.py`, built
 through the HTTP API so a violation is one a user can hit:
 
     cd backend && python -m tests.sweep_services            # the full space
@@ -436,22 +433,25 @@ through the HTTP API so a violation is one a user can hit:
 | `opt-offset-cap` / `opt-offset-phantom` | never credit more than a tool costs, nor credit nothing displaced |
 | `opt-persona-attribution` | only tools this persona holds |
 | `opt-recommend-eligible` / `opt-recommend-best` | the recommendation is eligible, and the best eligible |
-| `swap-never-worse` | a swap applied because it saves never raises the net |
-| `swap-eligibility` / `swap-optout` | applied ⇒ eligible and not opted out |
-| `swap-cap-respected` | never commit more seats than the cap allows |
-| `swap-strand-disclosed` | personas the cap turns away are reported, not dropped |
-| `swap-inert-explained` | an enabled swap that changes nothing says why |
+| `carve-population-conserved` | carving moves seats, it never mints or loses them |
+| `carve-parent-reduced` / `carve-seats-moved` | the parent loses exactly what the child gains |
+| `carve-current-spend-conserved` / `carve-covers-conserved` | today's bill and tool coverage are untouched |
+| `carve-inherits-associations` | the child holds the licences, tools and requirements those people already held |
+| `carve-spend-splits` | ...so today's spend splits between them, rather than the carved seats reading as holding nothing |
+| `carve-lineage` / `carve-has-scenario` / `carve-target-applied` | the child records its origin and has a real, costed future state |
+| `carve-undo-restores` / `carve-bounded` | deleting the child puts the seats back; carving a whole persona is refused |
 
-> Why the swap discloses rather than auto-fills: it moves **whole personas**,
-> because a persona is the unit of licensing in this model (one persona, one
-> scenario, one target). A persona larger than the 300-seat Business cap can
-> therefore never fit, and at enterprise scale every persona may exceed it — the
-> feature is then correctly inert. Filling the leftover seats would mean splitting
-> a persona, which is a decision about the customer's own population and belongs to
-> the operator (and, per the data architecture, to a real first-class Persona rather
-> than a hidden sub-population invented by the math). What the swap owes the
-> operator is the number and the next step: `inert_reason`, `stranded_seats`, and
-> the unused headroom, surfaced in the Scenarios tab.
+> Why a carve-out and not an automatic swap: the engagement used to carry a
+> "swap eligible personas to Business Premium" toggle that substituted the
+> effective target for whole personas, filling the 300-seat Business cap. A persona
+> is the licensing unit, so a persona larger than the cap could never move — and at
+> enterprise scale every persona exceeds it, making the toggle inert on exactly the
+> engagements it was meant to help, silently. Carving says the same thing as data
+> the engine already costs: 300 seats become a child persona targeting Business
+> Premium, the seats move out of the parent, and the cap counts them like any other
+> scenario. The invariants above are conservation laws over that operation, and each
+> one is mutation-tested — the guard has been shown to fail when the behaviour it
+> protects is removed.
 
 These are claims about reality, not about the code: when one fails, the engine is
 wrong until proven otherwise. Two over-credits were found this way and fixed in

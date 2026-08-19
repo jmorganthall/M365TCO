@@ -53,6 +53,7 @@ _LABELS = {
     "residual_annual_cost": "Residual $/yr", "displaced_users": "Displaced users",
     "disposition": "Disposition", "residual_count": "Residual units", "headcount": "Headcount",
     "is_custom": "Custom", "seed_key": "Seed key",
+    "parent_persona_id": "Carved from",
 }
 
 
@@ -90,7 +91,7 @@ def _registry():
     return [
         {"cls": models.Persona, "type": "Persona", "label": "Personas",
          "desc": "Population segments. Headcount drives per-persona spend and cost allocation.",
-         "primary": ["name", "headcount"], "extra": []},
+         "primary": ["name", "headcount"], "extra": ["parent_persona_id"]},
         {"cls": models.Outcome, "type": "Outcome", "label": "Outcomes",
          "desc": "Capability buckets copied from the default library (plus custom).",
          "primary": ["name", "is_custom"], "extra": []},
@@ -155,7 +156,7 @@ def inspect_engagement(db: Session, eng: models.Engagement) -> dict:
         if key == "persona_ids":
             names = [personas.get(v, f"{v} — missing") for v in value]
             return {"label": ", ".join(names) or "—", "ok": all(v in personas for v in value)}
-        if key in ("persona_id",):
+        if key in ("persona_id", "parent_persona_id"):
             return {"label": personas.get(value, f"{value} — missing"), "ok": value in personas}
         if key == "outcome_id":
             return {"label": outcomes.get(value, f"{value} — missing"), "ok": value in outcomes}
