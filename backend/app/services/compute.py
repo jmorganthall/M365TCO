@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from tco_engine import (
     CandidateBundle,
+    CoverageScope,
     CurrentLicenseLine,
     Engagement as EngEngagement,
     Override,
@@ -104,6 +105,10 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
             unit_price_paid_annual=lic.effective_unit_price_annual,
             sku_reference=lic.sku_reference,
             persona_ids=tuple(lic.persona_ids),
+            # How many seats this line entitles — per-seat purchase vs tenant-wide
+            # entitlement. Drives how many seats a duplicate tool can be credited
+            # as redundant today (ENGINE_SPEC 6.10).
+            coverage_scope=CoverageScope(lic.coverage_scope or "PerUser"),
             # What this existing license already delivers (its bundle's ratified
             # coverage), for quick-win duplicate detection.
             covered_outcome_ids=frozenset(

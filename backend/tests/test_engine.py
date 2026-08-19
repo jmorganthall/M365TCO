@@ -15,6 +15,7 @@ import pytest
 from tco_engine import (
     CandidateBundle,
     Coverage,
+    CoverageScope,
     CurrentLicenseLine,
     Disposition,
     Engagement,
@@ -33,6 +34,9 @@ D = Decimal
 IDENTITY = "identity-mfa"
 EMAIL_SEC = "email-security"
 ENDPOINT = "endpoint-mgmt"
+# A second identity outcome, so a test can model the real split: Office 365
+# delivers SSO but not Conditional Access, which needs Entra P1.
+MFA = "identity-conditional-access"
 
 
 def _engagement(personas, products, scenarios, current=None):
@@ -886,6 +890,119 @@ def test_quick_win_requires_same_persona_holds_covering_license():
     ))
     assert res.rollup.quick_wins == []
     assert res.rollup.quick_win_savings_annual == D("0.00")
+
+
+def test_untagged_per_user_line_credits_only_its_assigned_seats():
+    """An UNTAGGED per-user line is unattributed, not universal: 46 org-wide E3
+    seats cannot make 3,150 tool users redundant today. The credit is capped at
+    the seats the line actually entitles (ENGINE_SPEC 6.10)."""
+    ops = Persona(id="ops", name="Operations", headcount=2518)
+    cor = Persona(id="cor", name="Corporate", headcount=632)
+    # Office 365 E3 covers SSO but NOT MFA/Conditional Access -> not a covering line.
+    o365 = CurrentLicenseLine(
+        quantity_assigned=2518, unit_price_paid_annual=D("327.60"),
+        covered_outcome_ids=frozenset({IDENTITY}), persona_ids=("ops",),
+    )
+    # 46 seats of a SKU that does cover it, entered org-wide (untagged, per-user).
+    m365e3 = CurrentLicenseLine(
+        quantity_assigned=46, unit_price_paid_annual=D("491.40"),
+        covered_outcome_ids=frozenset({IDENTITY, MFA}), persona_ids=(),
+    )
+    okta_mfa = ThirdPartyProduct(
+        id="okta-mfa", name="Okta (MFA)", annual_cost=D("211100.90"),
+        covered_count=3150, delivered_outcome_ids=frozenset({MFA}),
+        persona_ids=frozenset({"ops", "cor"}),
+    )
+    res = compute(Engagement(
+        id="e", personas=[ops, cor], third_party_products=[okta_mfa],
+        scenarios=[], current_licenses=[o365, m365e3],
+    ))
+    q = res.rollup.quick_wins[0]
+    assert q.displaced_today == 46            # the 46 entitled seats, not 3150
+    assert q.residual_today == 3104
+    # 46 x (211100.90 / 3150) = 3082.74 — not the whole $211k.
+    assert q.credited_annual == D("3082.74")
+
+
+def test_tenant_wide_line_covers_every_user_it_applies_to():
+    """A TenantWide line is a tenant-level entitlement: it covers the whole
+    population it applies to, whatever seat count the line carries. That is the
+    only kind of untagged line that can make a whole persona redundant."""
+    ops = Persona(id="ops", name="Operations", headcount=2518)
+    cor = Persona(id="cor", name="Corporate", headcount=632)
+    entra = CurrentLicenseLine(
+        quantity_assigned=46, unit_price_paid_annual=D("72.00"),
+        covered_outcome_ids=frozenset({IDENTITY, MFA}), persona_ids=(),
+        coverage_scope=CoverageScope.TENANT_WIDE,
+    )
+    okta_mfa = ThirdPartyProduct(
+        id="okta-mfa", name="Okta (MFA)", annual_cost=D("211100.90"),
+        covered_count=3150, delivered_outcome_ids=frozenset({MFA}),
+        persona_ids=frozenset({"ops", "cor"}),
+    )
+    res = compute(Engagement(
+        id="e", personas=[ops, cor], third_party_products=[okta_mfa],
+        scenarios=[], current_licenses=[entra],
+    ))
+    q = res.rollup.quick_wins[0]
+    assert q.displaced_today == 3150          # 2518 + 632, the full population
+    assert q.credited_annual == D("211100.90")
+
+
+def test_untagged_per_user_pool_fills_unmet_need_once():
+    """The unattributed seats are ONE pool, not a per-persona allowance: 100
+    untagged seats across two 500-strong personas credit 100 seats in total, and
+    only where the personas' own tagged coverage falls short."""
+    a = Persona(id="a", name="A", headcount=500)
+    b = Persona(id="b", name="B", headcount=500)
+    tagged_a = CurrentLicenseLine(
+        quantity_assigned=400, unit_price_paid_annual=D("380"),
+        covered_outcome_ids=frozenset({IDENTITY}), persona_ids=("a",),
+    )
+    pool = CurrentLicenseLine(
+        quantity_assigned=100, unit_price_paid_annual=D("380"),
+        covered_outcome_ids=frozenset({IDENTITY}), persona_ids=(),
+    )
+    okta = ThirdPartyProduct(
+        id="okta", name="Okta", annual_cost=D("100000"), covered_count=1000,
+        delivered_outcome_ids=frozenset({IDENTITY}),
+        persona_ids=frozenset({"a", "b"}),
+    )
+    res = compute(Engagement(
+        id="e", personas=[a, b], third_party_products=[okta],
+        scenarios=[], current_licenses=[tagged_a, pool],
+    ))
+    q = res.rollup.quick_wins[0]
+    assert q.displaced_today == 500           # 400 tagged + 100 from the shared pool
+    assert q.residual_today == 500
+
+
+def test_tenant_wide_untagged_tool_uses_the_population_not_the_seat_count():
+    """For an UNTAGGED tool the covering population is each line's entitled
+    seats — a tenant-wide line contributes the whole headcount it applies to,
+    a per-user line only its assigned seats."""
+    kw = Persona(id="kw", name="All Employees", headcount=250)
+    tenant = CurrentLicenseLine(
+        quantity_assigned=10, unit_price_paid_annual=D("72.00"),
+        covered_outcome_ids=frozenset({IDENTITY}), persona_ids=(),
+        coverage_scope=CoverageScope.TENANT_WIDE,
+    )
+    okta = ThirdPartyProduct(
+        id="okta", name="Okta", annual_cost=D("45000"), covered_count=250,
+        delivered_outcome_ids=frozenset({IDENTITY}),
+    )
+    res = compute(Engagement(
+        id="e", personas=[kw], third_party_products=[okta],
+        scenarios=[], current_licenses=[tenant],
+    ))
+    assert res.rollup.quick_wins[0].displaced_today == 250
+
+    per_user = replace(tenant, coverage_scope=CoverageScope.PER_USER)
+    res2 = compute(Engagement(
+        id="e", personas=[kw], third_party_products=[okta],
+        scenarios=[], current_licenses=[per_user],
+    ))
+    assert res2.rollup.quick_wins[0].displaced_today == 10
 
 
 def test_quick_win_credits_the_persona_that_holds_its_own_coverage():

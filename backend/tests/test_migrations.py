@@ -45,6 +45,33 @@ def test_reconcile_is_noop_on_current_schema(tmp_path):
     assert "signed_in_user" in cols
 
 
+def test_backfills_coverage_scope_on_existing_license_rows(tmp_path):
+    """`coverage_scope` decides how many seats a line entitles for quick wins, so
+    a legacy row must land on the safe default (PerUser = its assigned seats),
+    never NULL — a NULL would read as "no scope" for the seat math."""
+    eng = create_engine(f"sqlite:///{tmp_path}/legacy.db")
+    with eng.begin() as c:
+        c.execute(text(
+            "CREATE TABLE current_microsoft_licenses ("
+            "id VARCHAR PRIMARY KEY, engagement_id VARCHAR, sku_reference VARCHAR, "
+            "quantity_assigned INTEGER)"
+        ))
+        c.execute(text(
+            "INSERT INTO current_microsoft_licenses "
+            "(id, engagement_id, sku_reference, quantity_assigned) "
+            "VALUES ('l1', 'e1', 'Microsoft 365 E3', 46)"
+        ))
+
+    _auto_add_missing_columns(eng)
+
+    with eng.connect() as c:
+        row = c.execute(text(
+            "SELECT coverage_scope, quantity_assigned FROM current_microsoft_licenses"
+        )).one()
+    assert row[0] == "PerUser"
+    assert row[1] == 46
+
+
 def test_drops_retired_price_basis_column(tmp_path):
     """A legacy DB carries current_microsoft_licenses.price_basis as NOT NULL with
     no server default — after retirement the ORM never writes it, so it must be

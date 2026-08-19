@@ -244,6 +244,9 @@ class CurrentLicenseIn(BaseModel):
     segment: Optional[str] = None
     term_duration: Optional[str] = None
     billing_plan: Optional[str] = None
+    # How many seats the line entitles: "PerUser" (quantity_assigned seats) or
+    # "TenantWide" (the whole population it applies to).
+    coverage_scope: str = "PerUser"
     # Personas this line applies to (many-to-many tags).
     persona_ids: list[str] = []
     source_tag: str = "CustomerStated"
@@ -260,6 +263,7 @@ class CurrentLicenseOut(ORMModel):
     segment: Optional[str]
     term_duration: Optional[str]
     billing_plan: Optional[str]
+    coverage_scope: str = "PerUser"
     persona_ids: list[str]
     source_tag: str
 

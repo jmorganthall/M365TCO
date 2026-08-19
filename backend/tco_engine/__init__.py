@@ -11,6 +11,7 @@ algorithm against the same model and should reproduce these numbers exactly.
 
 from .models import (
     Coverage,
+    CoverageScope,
     Disposition,
     Override,
     ResidualIntent,
@@ -37,6 +38,7 @@ from .optimizer import (
 
 __all__ = [
     "Coverage",
+    "CoverageScope",
     "Disposition",
     "Override",
     "ResidualIntent",
