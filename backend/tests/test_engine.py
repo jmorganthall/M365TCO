@@ -1005,6 +1005,82 @@ def test_tenant_wide_untagged_tool_uses_the_population_not_the_seat_count():
     assert res2.rollup.quick_wins[0].displaced_today == 10
 
 
+def test_shared_line_seats_are_one_pool_not_an_allowance_per_persona():
+    """A per-user line tagged to SEVERAL personas is 25 seats shared between
+    them, not 25 seats each. Crediting both personas in full would retire 50
+    seats of a duplicate tool the customer never covered."""
+    p1 = Persona(id="p1", name="P1", headcount=100)
+    p2 = Persona(id="p2", name="P2", headcount=50)
+    shared = CurrentLicenseLine(
+        quantity_assigned=25, unit_price_paid_annual=D("380"),
+        covered_outcome_ids=frozenset({IDENTITY}), persona_ids=("p1", "p2"),
+    )
+    okta = ThirdPartyProduct(
+        id="okta", name="Okta", annual_cost=D("15000"), covered_count=150,
+        delivered_outcome_ids=frozenset({IDENTITY}),
+        persona_ids=frozenset({"p1", "p2"}),
+    )
+    res = compute(Engagement(
+        id="e", personas=[p1, p2], third_party_products=[okta],
+        scenarios=[], current_licenses=[shared],
+    ))
+    q = res.rollup.quick_wins[0]
+    assert q.displaced_today == 25            # the seats that exist, not 2 x 25
+    assert q.credited_annual == D("2500.00")  # 25 x (15000 / 150)
+
+
+def test_dedicated_seats_are_allocated_before_an_org_wide_pool():
+    """Allocation is most-specific-first: a persona's own tagged line fills it
+    before the unattributed org-wide pool is drawn on, so the pool is left for
+    the personas that have nothing of their own. 400 tagged + 100 org-wide
+    covers 500 of the 1,000 seats — never 600."""
+    a = Persona(id="a", name="A", headcount=500)
+    b = Persona(id="b", name="B", headcount=500)
+    dedicated = CurrentLicenseLine(
+        quantity_assigned=400, unit_price_paid_annual=D("380"),
+        covered_outcome_ids=frozenset({IDENTITY}), persona_ids=("a",),
+    )
+    org_wide = CurrentLicenseLine(
+        quantity_assigned=100, unit_price_paid_annual=D("380"),
+        covered_outcome_ids=frozenset({IDENTITY}), persona_ids=(),
+    )
+    okta = ThirdPartyProduct(
+        id="okta", name="Okta", annual_cost=D("100000"), covered_count=1000,
+        delivered_outcome_ids=frozenset({IDENTITY}),
+        persona_ids=frozenset({"a", "b"}),
+    )
+    for lines in ([dedicated, org_wide], [org_wide, dedicated]):  # order must not matter
+        res = compute(Engagement(
+            id="e", personas=[a, b], third_party_products=[okta],
+            scenarios=[], current_licenses=lines,
+        ))
+        assert res.rollup.quick_wins[0].displaced_today == 500
+
+
+def test_untagged_tool_is_credited_per_persona_not_by_raw_seat_count():
+    """An UNTAGGED tool is org-wide, so it is scored against the personas that
+    exist — not against whatever seat count the covering lines carry. 200 seats
+    held by one 100-strong persona cannot make 200 people redundant."""
+    p1 = Persona(id="p1", name="P1", headcount=100)
+    p2 = Persona(id="p2", name="P2", headcount=50)
+    lic = CurrentLicenseLine(
+        quantity_assigned=200, unit_price_paid_annual=D("380"),
+        covered_outcome_ids=frozenset({IDENTITY}), persona_ids=("p1",),
+    )
+    okta = ThirdPartyProduct(
+        id="okta", name="Okta", annual_cost=D("20000"), covered_count=200,
+        delivered_outcome_ids=frozenset({IDENTITY}),
+    )
+    res = compute(Engagement(
+        id="e", personas=[p1, p2], third_party_products=[okta],
+        scenarios=[], current_licenses=[lic],
+    ))
+    q = res.rollup.quick_wins[0]
+    # Only P1 holds covering licensing; P2 (and the 50 unmodelled seats) do not.
+    assert q.displaced_today == 100
+    assert q.residual_today == 100
+
+
 def test_quick_win_credits_the_persona_that_holds_its_own_coverage():
     """When the tool-using persona DOES hold covering licensing, it is a real
     quick win for that persona's overlap — capped at the covering seats it holds
