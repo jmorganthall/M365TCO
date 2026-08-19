@@ -302,36 +302,48 @@ entitles, per its `coverage_scope`:
   applies to (its tagged personas, or everyone when untagged), whatever the seat
   count on the line. Only a tenant-wide line can make a whole persona redundant.
 
+Seats are therefore **allocated**, not summed. Entitled seats are matched
+against the headcount of the personas that actually use the tool, and each seat
+is spent once — a line shared by several personas is one pool, not a full
+allowance for each.
+
 ```
 covering_lines(product) = current lines L whose covered_outcome_ids ⊇ product.delivered_outcome_ids
-entitled(L, P)  = P.headcount            if L.coverage_scope = TenantWide
-                  else L.quantity_assigned
+population(product)     = product.persona_ids, or every persona when untagged (org-wide)
+applies(L, product)     = L.persona_ids ∩ population, or population when L is untagged
 
 for product with delivered_outcome_ids ≠ ∅ and covering_lines non-empty:
-    if product.persona_ids:                       # TAGGED tool → per-persona overlap
-        tenant_wide_covers_all = any covering line that is UNTAGGED and TenantWide
-        untagged_pool          = Σ quantity_assigned of UNTAGGED PerUser covering lines
-        held(P)  = min(P.headcount,
-                       P.headcount        if tenant_wide_covers_all
-                       else Σ entitled(L, P) over covering lines L tagged to P)
-        displaced_today = Σ held(P) over persona P in product.persona_ids
-                          + min(untagged_pool, Σ (P.headcount − held(P)))
-        displaced_today = min(product.covered_count, displaced_today)
-    else:                                          # UNTAGGED tool → org-wide (legacy)
-        covered_pop     = Σ over covering lines L of
-                            (headcount of the personas L applies to, or every persona
-                             when L is untagged)   if L.coverage_scope = TenantWide
-                            else L.quantity_assigned
-        displaced_today = min(product.covered_count, covered_pop)
+    unmet(P) = P.headcount for each P in population(product)
 
+    # 1. Tenant-wide entitlements cover their whole population outright.
+    for L in covering_lines where L.coverage_scope = TenantWide:
+        unmet(P) = 0 for each P in applies(L, product)
+
+    # 2. Per-user seats are finite pools, MOST SPECIFIC FIRST: order by
+    #    (|L.persona_ids|, sorted L.persona_ids), untagged lines last.
+    for L in covering_lines where L.coverage_scope = PerUser, in that order:
+        seats = max(L.quantity_assigned, 0)
+        for P in sorted(applies(L, product)):
+            take   = min(seats, unmet(P));  unmet(P) −= take;  seats −= take
+
+    displaced_today = min(product.covered_count,
+                          Σ (P.headcount − unmet(P)) over P in population(product))
     credited_annual = displaced_today * product.per_unit_annual_cost   # effective basis
     residual_today  = covered_count - displaced_today
 quick_win_savings_annual = Σ credited_annual over quick-win products (credited > 0)
 ```
 
-The unattributed pool is applied as a single `min(pool, Σ unmet)` fill rather
-than allocated persona by persona, so the total never depends on persona order
-and no seat is credited twice.
+Ordering the pools most-specific-first means a persona's own dedicated line
+fills it before an org-wide pool is drawn on, leaving the pool for personas that
+have nothing of their own; sorting by persona id makes the result independent of
+input order. Where tag sets overlap without nesting, this greedy pass can leave
+a seat unplaced that a perfect matching would use — it never places a seat that
+does not exist, so the error is always toward **under**-crediting.
+
+> There is one path for tagged and untagged tools alike. An untagged (org-wide)
+> tool is scored against every persona, exactly as if tagged to all of them —
+> never against the raw seat count of covering lines, which would credit a
+> persona that holds nothing because a different line has spare seats.
 
 > `coverage_scope` governs **seat counts**, not which personas can see a
 > capability. The capability views (persona coverage gaps, the Business Premium
@@ -371,3 +383,42 @@ Knowledge Workers displace it.
 - Persona offset credited = `450 * 100 = $45,000`.
 - Renewal **not** eliminated (partial). This case is covered by the unit tests in
   `backend/tests/test_engine.py`.
+
+## Invariants — how the math is verified (not by examples)
+
+Worked examples check the cases someone thought of. The failure mode they miss
+is structural: an over-credit that only appears when a particular tagging shape
+meets a particular seat count. `backend/tests/sweep.py` enumerates that space —
+1 to 3 personas; licence lines tagged to **any** subset (including none =
+org-wide), at seat counts below / at / above the population they apply to,
+per-user or tenant-wide, covering or not; tools tagged to any subset, at covered
+counts below / at / above their population, managed or not; and each persona's
+scenario absent / in-scope displacing / in-scope non-displacing / out-of-scope —
+then asserts the properties below on every result. ~1.27M engagements:
+
+    cd backend && python -m tests.sweep            # the full space (~4 min)
+    cd backend && python -m tests.sweep --level ci # the slice every test run does
+
+| Invariant | Claim |
+| --- | --- |
+| `bridge` | `net = target_MS − existing_MS − existing_3P` (§6.8) |
+| `headline-decomposition` | `net = move value − free-today` (§6.8a) |
+| `delta-sum` | the in-scope scenario deltas sum to the net |
+| `quick-win-total` | the credited quick wins sum to the headline |
+| `qw-seat-bounds` / `qw-residual` | `0 ≤ displaced ≤ covered`; residual is the remainder |
+| `qw-population` | never more redundant seats than people who use the tool |
+| `qw-entitlement` | never more redundant seats than the covering licences entitle |
+| `qw-credit-cap` / `freed-cap` | credit never exceeds what the tool costs |
+| `freed-split` | free-today + move-unlocked = credited, both ≥ 0 |
+| `freed-free-today` | the "free today" portion never exceeds the quick win |
+| `offset-units` / `offset-dollars` | allocated units/dollars stay within the covered population and cost |
+| `disposition-displaced` | displaced users = the displacing personas' headcount |
+| `current-ms-conservation` | attributed Microsoft spend never exceeds actual licence spend |
+| `order-dependence` | shuffling the input lists changes no output |
+
+These are claims about reality, not about the code: when one fails, the engine is
+wrong until proven otherwise. Two over-credits were found this way and fixed in
+§6.10 — a per-user line tagged to several personas granting each of them its full
+`quantity_assigned`, and an untagged tool credited from raw covering-seat counts
+regardless of who held them. Any change to the math must leave the sweep clean;
+`backend/tests/test_engine_invariants.py` fails the build otherwise.

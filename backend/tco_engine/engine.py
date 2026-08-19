@@ -221,14 +221,62 @@ def _product_applies_to_persona(product: ThirdPartyProduct, persona_id: str) -> 
     return not product.persona_ids or persona_id in product.persona_ids
 
 
-def _entitled_population(line, personas: dict[str, Persona]) -> int:
-    """Headcount a TENANT_WIDE line entitles: the personas it is tagged to, or
-    every persona when it is untagged (a true org-wide entitlement)."""
-    if line.persona_ids:
-        return sum(
-            personas[pid].headcount for pid in line.persona_ids if pid in personas
-        )
-    return sum(p.headcount for p in personas.values())
+def _quick_win_seats(
+    product: ThirdPartyProduct,
+    covering_lines: list,
+    personas: dict[str, Persona],
+) -> int:
+    """Section 6.10: how many of a tool's seats the CURRENT licensing already
+    covers — the seats retirable today, with no move.
+
+    Seats are finite and personal. Each covering line entitles seats — its whole
+    population when TENANT_WIDE, exactly its assigned seats when PER_USER — and
+    those seats are matched against the headcount of the personas that actually
+    USE the tool (its tags, or everyone when it is untagged). A seat is never
+    counted twice: a per-user line shared by several personas is ONE pool, not a
+    full allowance for each, and an untagged line is unattributed seats, not a
+    universal entitlement.
+
+    Per-user pools are allocated most-specific-first (fewest personas, then by
+    persona id), so a persona's own dedicated line fills it before an org-wide
+    pool is drawn on, and the result never depends on input order. With tag sets
+    that overlap without nesting, this greedy pass can leave a seat unplaced that
+    a perfect matching would use; it never places a seat that does not exist, so
+    the error is always toward under-crediting.
+    """
+    pop = sorted(
+        pid for pid in (product.persona_ids or personas.keys()) if pid in personas
+    )
+    if not pop:
+        return 0
+    # Headcount not yet shown to hold covering licensing.
+    unmet = {pid: personas[pid].headcount for pid in pop}
+
+    def applies_to(line) -> list[str]:
+        """The tool-using personas this line covers (an untagged line is org-wide)."""
+        return sorted(pid for pid in (line.persona_ids or pop) if pid in unmet)
+
+    for line in covering_lines:
+        if line.coverage_scope is CoverageScope.TENANT_WIDE:
+            for pid in applies_to(line):
+                unmet[pid] = 0
+
+    per_user = sorted(
+        (l for l in covering_lines if l.coverage_scope is CoverageScope.PER_USER),
+        # Untagged lines reach everyone, so they sort last (len(pop) + 1).
+        key=lambda l: (len(l.persona_ids) or len(pop) + 1, sorted(l.persona_ids)),
+    )
+    for line in per_user:
+        seats = max(line.quantity_assigned, 0)
+        for pid in applies_to(line):
+            if seats <= 0:
+                break
+            take = min(seats, unmet[pid])
+            unmet[pid] -= take
+            seats -= take
+
+    covered = sum(personas[pid].headcount for pid in pop) - sum(unmet.values())
+    return min(product.covered_count, covered)
 
 
 def compute(engagement: Engagement) -> EngineResult:
@@ -319,61 +367,7 @@ def compute(engagement: Engagement) -> EngineResult:
         if not covering_lines:
             continue
 
-        if product.persona_ids:
-            # Per-persona overlap: a tagged persona is redundant for this tool up
-            # to the covering SEATS it actually holds. A line's coverage_scope
-            # says how many seats that is — a TENANT_WIDE line entitles everyone
-            # it applies to, a PER_USER line entitles exactly its assigned seats.
-            # An UNTAGGED per-user line is unattributed, not universal: its seats
-            # are one finite pool the tagged personas draw from, never replicated
-            # to each (46 org-wide E3 seats cannot make 3,150 people redundant).
-            tenant_wide_covers_all = any(
-                not line.persona_ids
-                and line.coverage_scope is CoverageScope.TENANT_WIDE
-                for line in covering_lines
-            )
-            untagged_pool = sum(
-                line.quantity_assigned
-                for line in covering_lines
-                if not line.persona_ids
-                and line.coverage_scope is CoverageScope.PER_USER
-            )
-            displaced_today = 0
-            unmet = 0  # headcount the personas' OWN covering seats don't reach
-            for pid in product.persona_ids:
-                p = personas.get(pid)
-                if p is None:
-                    continue
-                if tenant_wide_covers_all:
-                    covering_seats = p.headcount
-                else:
-                    covering_seats = sum(
-                        p.headcount
-                        if line.coverage_scope is CoverageScope.TENANT_WIDE
-                        else line.quantity_assigned
-                        for line in covering_lines
-                        if pid in line.persona_ids
-                    )
-                held = min(p.headcount, covering_seats)
-                displaced_today += held
-                unmet += p.headcount - held
-            # The unattributed pool fills remaining need. Summing the fill (rather
-            # than allocating persona by persona) keeps the total independent of
-            # persona order while never crediting a seat twice.
-            displaced_today += min(untagged_pool, unmet)
-            displaced_today = min(product.covered_count, displaced_today)
-        else:
-            # Untagged tool (org-wide): no persona attribution possible, so the
-            # covering population is each covering line's entitled seats — its
-            # assigned seats, or the full population it applies to when the line
-            # is tenant-wide.
-            covered_pop = sum(
-                _entitled_population(line, personas)
-                if line.coverage_scope is CoverageScope.TENANT_WIDE
-                else line.quantity_assigned
-                for line in covering_lines
-            )
-            displaced_today = min(product.covered_count, covered_pop)
+        displaced_today = _quick_win_seats(product, covering_lines, personas)
 
         credited = _money(Decimal(displaced_today) * product.per_unit_annual_cost)
         if credited <= 0:
