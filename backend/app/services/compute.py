@@ -28,7 +28,7 @@ from tco_engine import (
 from tco_engine.engine import EngineResult
 
 from .. import models
-from . import bundles, limits, seeds, swap
+from . import bundles, limits, seeds
 
 
 def _dec(value) -> Decimal:
@@ -142,27 +142,20 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
 
     # Compose each scenario's future state = base bundle + add-on bundles: union
     # the covered outcomes, sum the list prices, then apply the discount to yield
-    # the net per-seat price the engine consumes. When the engagement's Business
-    # Premium swap is active for a scenario (inherited, not opted out, capability-
-    # eligible), the effective target is substituted with Business Premium.
-    swap_ctx = swap.compute_context(db, eng)
+    # the net per-seat price the engine consumes. There is no target substitution
+    # here any more: a persona that should move to a different plan says so on its
+    # own scenario, and a persona only PART of which should move is carved into a
+    # child persona with its own scenario (Persona.parent_persona_id). What the
+    # engine costs is therefore always what the operator can see on the row.
     scenarios = []
     for s in eng.scenarios:
-        if swap.applies(eng, swap_ctx, s):
-            bp = swap_ctx["bp"]
-            covered = set(swap_ctx["bp_covered"])
-            # A swap substitutes Business Premium wholesale; the persona's own price
-            # override doesn't apply to a target it isn't on.
-            net_price = swap_ctx["bp_price"] * (Decimal("1") - _dec(s.target_discount_pct))
-            target_ref = bp.name
-        else:
-            covered = set(sku_outcomes.get(_cover_key(db, s.target_sku_reference), set()))
-            for addon in s.addons:
-                covered |= sku_outcomes.get(addon.bundle_id, set())
-            # Net = the override when the scenario overrides list, else
-            # (base + add-ons) × (1 − discount).
-            net_price = s.effective_net_annual
-            target_ref = s.target_sku_reference
+        covered = set(sku_outcomes.get(_cover_key(db, s.target_sku_reference), set()))
+        for addon in s.addons:
+            covered |= sku_outcomes.get(addon.bundle_id, set())
+        # Net = the override when the scenario overrides list, else
+        # (base + add-ons) × (1 − discount).
+        net_price = s.effective_net_annual
+        target_ref = s.target_sku_reference
         scenarios.append(EngScenario(
             id=s.id,
             persona_id=s.persona_id,

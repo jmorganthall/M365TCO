@@ -110,11 +110,6 @@ class Engagement(Base):
     brand_logo_data_url: Mapped[str] = mapped_column(Text, default="")
     brand_primary_color: Mapped[str] = mapped_column(String, default="")
     brand_accent_color: Mapped[str] = mapped_column(String, default="")
-    # Engagement-level "swap eligible users to Microsoft 365 Business Premium to
-    # save" toggle. When on, every capability-eligible scenario INHERITS the swap
-    # unless that persona opts out (PersonaScenario.bp_swap_optout). The 300-seat
-    # cap (LicenseLimit) bounds it. User-entered.
-    bp_swap_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     # Engagement-level "respect the Microsoft 365 Business seat cap in best-bundle
     # recommendations" toggle. When on, the optimizer is given the remaining headroom
     # under each max_total_seats LicenseLimit (300 for Business) net of seats already
@@ -172,6 +167,19 @@ class Persona(Base):
     name: Mapped[str] = mapped_column(String)
     headcount: Mapped[int] = mapped_column(Integer, default=0)
     description: Mapped[str] = mapped_column(Text, default="")
+    # Lineage for a CARVED-OUT persona: the persona these seats were taken from.
+    # A carve-out MOVES seats (the parent's headcount drops by the same number),
+    # so the engagement's total population is unchanged and no downstream consumer
+    # has to know not to double-count. NULL for an ordinary persona.
+    #
+    # This is what makes a partial move modellable at all: the licensing model's
+    # unit is the persona (one persona, one scenario, one target), so "300 of
+    # these 2,518 people go to Business Premium" IS a second persona — and the
+    # link is what keeps it legible as part of the original rather than an
+    # unexplained group that appeared next to it.
+    parent_persona_id: Mapped[str | None] = mapped_column(
+        ForeignKey("personas.id"), nullable=True, index=True
+    )
     source_tag: Mapped[str] = _source_tag_col()
 
     engagement: Mapped[Engagement] = relationship(back_populates="personas")
@@ -609,10 +617,6 @@ class PersonaScenario(Base):
         Numeric(14, 4), nullable=True
     )
     in_scope: Mapped[bool] = mapped_column(Boolean, default=True)
-    # Per-persona opt-OUT of the engagement's Business Premium swap (the inheritance
-    # override). False = inherit the engagement default; True = keep this persona's
-    # own target even when the engagement swap is on. User-entered.
-    bp_swap_optout: Mapped[bool] = mapped_column(Boolean, default=False)
     # Line-level quoting basis (term × billing plan): NULL inherits the
     # engagement's defaults. Changing either requotes the composed target from
     # the catalog at the new basis (prices stay hand-editable afterward).

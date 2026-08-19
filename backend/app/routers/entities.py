@@ -150,11 +150,143 @@ def update_persona(engagement_id: str, persona_id: str, payload: schemas.Persona
     return row
 
 
+@router.post("/personas/{persona_id}/carve", response_model=schemas.PersonaOut,
+             status_code=201)
+def carve_persona(engagement_id: str, persona_id: str, payload: schemas.PersonaCarveIn,
+                  db: Session = Depends(get_db)):
+    """Carve seats out of a persona into a child persona with its own target.
+
+    This is how a PARTIAL move is modelled. The licensing unit here is the persona
+    — one persona, one scenario, one target — so "300 of these 2,518 people move to
+    Business Premium" is a second persona, not a hidden split inside the first.
+    Making it a real Persona means every downstream consumer (spend allocation,
+    quick wins, seat caps, coverage gaps, the readout) costs it correctly with no
+    special-casing, and the operator can edit it like any other.
+
+    The seats MOVE, they are not copied: the parent's headcount drops by the same
+    number, so the engagement's population is conserved. The child inherits the
+    parent's current-licence tags, third-party tags and required outcomes, because
+    those people hold exactly what they held a moment ago — only their target
+    differs. Deleting the child returns its seats to the parent.
+    """
+    _require_engagement(db, engagement_id)
+    parent = db.get(models.Persona, persona_id)
+    if parent is None or parent.engagement_id != engagement_id:
+        raise HTTPException(404, "Persona not found")
+    if parent.parent_persona_id is not None:
+        raise HTTPException(
+            422, "Carve from the original persona, not from a carve-out — nested "
+                 "splits would make the lineage ambiguous.")
+    seats = int(payload.seats or 0)
+    if seats <= 0:
+        raise HTTPException(422, "Carve out at least one seat.")
+    if seats >= parent.headcount:
+        raise HTTPException(
+            422, f"{parent.name} has {parent.headcount} seats — carving {seats} would "
+                 f"leave nothing behind. To move everyone, change this persona's "
+                 f"target instead.")
+
+    parent_scenario = db.execute(
+        select(models.PersonaScenario).where(
+            models.PersonaScenario.persona_id == parent.id
+        )
+    ).scalars().first()
+
+    target_ref = (payload.target_sku_reference or "").strip() or (
+        parent_scenario.target_sku_reference if parent_scenario else "")
+    name = (payload.name or "").strip() or (
+        f"{parent.name} — {target_ref}" if target_ref else f"{parent.name} — carve-out")
+
+    child = models.Persona(
+        engagement_id=engagement_id, name=name, headcount=seats,
+        description=parent.description, source_tag=parent.source_tag,
+        parent_persona_id=parent.id,
+    )
+    db.add(child)
+    db.flush()
+
+    # The carved seats leave the parent — population conserved, no double-count.
+    parent.headcount -= seats
+
+    # Inherit what these people already have. Tags are per-persona associations, so
+    # the child needs its own rows; a current-licence line's cost then splits across
+    # parent + child by headcount exactly as it did across the whole group before.
+    for link in parent.requirement_links:
+        db.add(models.PersonaRequirement(persona_id=child.id, outcome_id=link.outcome_id))
+    for lic in db.execute(
+        select(models.CurrentLicensePersona).where(
+            models.CurrentLicensePersona.persona_id == parent.id
+        )
+    ).scalars().all():
+        db.add(models.CurrentLicensePersona(
+            current_license_id=lic.current_license_id, persona_id=child.id))
+    for tp in db.execute(
+        select(models.ThirdPartyPersona).where(
+            models.ThirdPartyPersona.persona_id == parent.id
+        )
+    ).scalars().all():
+        db.add(models.ThirdPartyPersona(
+            third_party_product_id=tp.third_party_product_id, persona_id=child.id))
+
+    # The child needs a scenario or it contributes no future state. Copy the
+    # parent's quoting basis so only the target differs.
+    if parent_scenario is not None:
+        price = payload.target_unit_price_annual
+        if price is None:
+            price = parent_scenario.target_unit_price_annual
+        child_scenario = models.PersonaScenario(
+            engagement_id=engagement_id, persona_id=child.id,
+            target_sku_reference=target_ref,
+            target_unit_price_annual=price,
+            target_discount_pct=parent_scenario.target_discount_pct,
+            term_duration=parent_scenario.term_duration,
+            billing_plan=parent_scenario.billing_plan,
+            in_scope=parent_scenario.in_scope,
+        )
+        # A carve-out onto a DIFFERENT plan must be priced as that plan. Inheriting
+        # the parent's $/seat would quote Business Premium at the E3 rate and put a
+        # number on the readout that no one could buy — so requote from the catalog
+        # at this engagement's basis, exactly as changing a target elsewhere does.
+        # (An explicit price in the request always wins; an uncatalogued target
+        # keeps the inherited figure rather than dropping to a silent zero.)
+        if (payload.target_unit_price_annual is None
+                and target_ref != parent_scenario.target_sku_reference):
+            db.add(child_scenario)
+            _requote_scenario(db, db.get(models.Engagement, engagement_id), child_scenario)
+        else:
+            db.add(child_scenario)
+        # Deliberately NOT copied: the parent's price override. That was a
+        # negotiated rate for the parent's target, and this persona is on a
+        # different one — carrying it over would quote a discount nobody agreed.
+
+    db.flush()
+    # Third-party covers derive from tagged personas' headcounts. Parent + child now
+    # sum to what the parent alone was, so covers are unchanged — recompute so that
+    # stays true rather than merely likely.
+    _renormalize_third_party_covers(db, engagement_id)
+    db.commit()
+    db.refresh(child)
+    return child
+
+
 @router.delete("/personas/{persona_id}", status_code=204)
 def delete_persona(engagement_id: str, persona_id: str, db: Session = Depends(get_db)):
     row = db.get(models.Persona, persona_id)
     if row is None or row.engagement_id != engagement_id:
         raise HTTPException(404, "Persona not found")
+    # Deleting a carve-out returns its seats to the persona they came from —
+    # otherwise undoing a split would quietly shrink the customer's population.
+    if row.parent_persona_id:
+        parent = db.get(models.Persona, row.parent_persona_id)
+        if parent is not None:
+            parent.headcount += row.headcount
+    # A parent's carve-outs are no longer attached to anything; keep them as
+    # standalone personas (their seats are real people) rather than deleting
+    # someone's population as a side effect.
+    for child in db.execute(
+        select(models.Persona).where(models.Persona.parent_persona_id == row.id)
+    ).scalars().all():
+        child.parent_persona_id = None
     db.delete(row)
     # Derived third-party covers no longer count this persona's headcount.
     _renormalize_third_party_covers(db, engagement_id)

@@ -14,20 +14,18 @@ from .. import models, schemas
 from ..config import settings
 from ..db import get_db
 from ..services import (
-    ai, ai_prompts, compute, defaults, exporter, limits, narrative, sanity, seeds, swap,
+    ai, ai_prompts, compute, defaults, exporter, limits, narrative, sanity, seeds,
 )
 from ..services.serialize import result_to_dict
 
 
 def _computed_dict(db, engagement_id: str) -> dict:
     """The serialized engine result plus the tenant-wide license-limit evaluation
-    (§ services/limits), the Business Premium swap summary (§ services/swap),
-    and the per-persona new-outcomes story (§ services/compute) — so every
-    readout consumer (compute, HTML/xlsx export, snapshot) carries the guardrail
-    check, the swap story, and the value story, and none is hidden."""
+    (§ services/limits) and the per-persona new-outcomes story (§ services/compute)
+    — so every readout consumer (compute, HTML/xlsx export, snapshot) carries the
+    guardrail check and the value story, and none is hidden."""
     result = result_to_dict(compute.compute_and_persist(db, engagement_id))
     result["license_limits"] = limits.evaluate(db, engagement_id)
-    result["bp_swap"] = swap.summarize(db, engagement_id, result)
     result["new_outcomes"] = compute.new_outcomes(db, engagement_id, result)
     result["dropped_capability"] = compute.dropped_capability(db, engagement_id, result)
     compute.attach_target_labels(db, engagement_id, result)
@@ -184,6 +182,14 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
         db.flush()
         persona_map[p.id] = np.id
 
+    # Carve-out lineage, mapped to the new personas (a second pass, because a
+    # child may be created before its parent). Without this a duplicated
+    # engagement would lose the link between a split and what it was split from.
+    for p in src.personas:
+        if p.parent_persona_id and p.id in persona_map:
+            child = db.get(models.Persona, persona_map[p.id])
+            child.parent_persona_id = persona_map.get(p.parent_persona_id)
+
     outcome_map: dict[str, str] = {}
     for o in src.outcomes:
         no = models.Outcome(
@@ -257,7 +263,6 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
             price_override=s.price_override,
             overridden_price_annual=s.overridden_price_annual,
             in_scope=s.in_scope,
-            bp_swap_optout=s.bp_swap_optout,
             term_duration=s.term_duration, billing_plan=s.billing_plan,
         )
         # Bundle ids are global, so add-ons carry across unchanged.

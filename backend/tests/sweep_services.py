@@ -10,11 +10,13 @@ do it.
 
     optimizer   "this bundle saves $X"  →  applying it must save $X. Otherwise
                 recommend-a-path recommends a path to a number that evaporates.
-    swap        "the swap saves money"  →  turning it on must never raise the net
-                and must respect the seat cap it exists to honor. Where the cap
-                turns personas away, the swap must SAY so — an enabled feature
-                that moves no number and explains nothing is indistinguishable
-                from a broken one, which is how its defects went unnoticed.
+    carve-out   "move 300 of these 2,518 people onto another plan"  →  carving
+                must MOVE seats, never mint or lose them. It changes the future
+                state only: the population, what the customer pays today, and what
+                their tools cover are all identical either side of a carve, and
+                deleting the carve-out puts the seats back. (This replaced the
+                automatic Business Premium swap, which moved whole personas under
+                a 300-seat cap and so could never fire on a persona over 300.)
 
 Cases are built through the HTTP API — the same surface the GUI uses — so a
 violation here is a violation a user can hit. Run the full space directly:
@@ -30,15 +32,25 @@ from decimal import Decimal
 
 D = Decimal
 
-# A minimal priced catalog. Business Premium is the cheap plan the swap wants to
-# move people onto; the E-plans are progressively dearer, as in the real sheet.
+# A minimal priced catalog: Business Premium is the cheap plan a carve-out moves
+# people onto, the E-plans progressively dearer, as in the real sheet.
+#
+# The sheet's listed price is the price for its TermDuration, so a P1Y row lists
+# the ANNUAL per-seat figure (services/pricesheet._annualize) — not the monthly
+# one. Listing monthly numbers here would price Business Premium at $22/year and
+# make every comparison in this sweep meaningless.
 CATALOG_CSV = """ProductTitle,ProductId,SkuId,SkuTitle,TermDuration,BillingPlan,Market,Currency,UnitPrice,ERP Price,Segment,EffectiveStartDate,EffectiveEndDate,LastUpdatedDate
-Microsoft 365 Business Premium,P1,S1,Microsoft 365 Business Premium,P1Y,Monthly,US,USD,17.60,22.00,Commercial,2026-01-01,,2026-01-01
-Microsoft 365 E3,P2,S1,Microsoft 365 E3,P1Y,Monthly,US,USD,32.76,40.95,Commercial,2026-01-01,,2026-01-01
-Microsoft 365 E5,P3,S1,Microsoft 365 E5,P1Y,Monthly,US,USD,45.60,57.00,Commercial,2026-01-01,,2026-01-01
-Office 365 E3,P4,S1,Office 365 E3,P1Y,Monthly,US,USD,21.84,27.30,Commercial,2026-01-01,,2026-01-01
-Office 365 E1,P5,S1,Office 365 E1,P1Y,Monthly,US,USD,8.40,10.50,Commercial,2026-01-01,,2026-01-01
+Microsoft 365 Business Premium,P1,S1,Microsoft 365 Business Premium,P1Y,Monthly,US,USD,211.20,264.00,Commercial,2026-01-01,,2026-01-01
+Microsoft 365 E3,P2,S1,Microsoft 365 E3,P1Y,Monthly,US,USD,393.12,491.40,Commercial,2026-01-01,,2026-01-01
+Microsoft 365 E5,P3,S1,Microsoft 365 E5,P1Y,Monthly,US,USD,547.20,684.00,Commercial,2026-01-01,,2026-01-01
+Office 365 E3,P4,S1,Office 365 E3,P1Y,Monthly,US,USD,262.08,327.60,Commercial,2026-01-01,,2026-01-01
+Office 365 E1,P5,S1,Office 365 E1,P1Y,Monthly,US,USD,100.80,126.00,Commercial,2026-01-01,,2026-01-01
 """
+
+
+# Business Premium's annual ERP in the catalog above (22.00/mo x 12) — what a
+# carve-out onto Business Premium must be priced at.
+BP_ANNUAL = D("264")
 
 
 def load_catalog(client) -> None:
@@ -51,12 +63,19 @@ def load_catalog(client) -> None:
 # --------------------------------------------------------------------------
 
 def build_case(client, *, headcounts, tool_covered, tool_personas, tool_outcome,
-               target_sku, swap_on, cap_on):
+               target_sku, cap_on):
     """One engagement through the public API. Returns its dict shape."""
     eid = client.post("/api/engagements", json={"customer_name": "Sweep"}).json()["id"]
+    outcomes = client.get(f"/api/engagements/{eid}/outcomes").json()
+    # Give the first persona a declared requirement, so a carve-out that failed to
+    # inherit requirements (and would then be recommended a plan that drops a
+    # needed capability) is actually reachable by the sweep.
+    desktop = next((o["id"] for o in outcomes if o["seed_key"] == "desktop-software"), None)
     people = [
-        client.post(f"/api/engagements/{eid}/personas",
-                    json={"name": f"P{i + 1}", "headcount": hc}).json()
+        client.post(f"/api/engagements/{eid}/personas", json={
+            "name": f"P{i + 1}", "headcount": hc,
+            "required_outcome_ids": [desktop] if (i == 0 and desktop) else [],
+        }).json()
         for i, hc in enumerate(headcounts)
     ]
     for p in people:
@@ -71,7 +90,6 @@ def build_case(client, *, headcounts, tool_covered, tool_personas, tool_outcome,
             "name": "Tool", "raw_cost": 30000, "cost_period": "Annual",
             "covered_count_override": tool_covered,
             "persona_ids": [people[i]["id"] for i in tool_personas]}).json()
-        outcomes = client.get(f"/api/engagements/{eid}/outcomes").json()
         out = next((o for o in outcomes if o["seed_key"] == tool_outcome), None)
         if out:
             client.post(f"/api/engagements/{eid}/coverage", json={
@@ -85,14 +103,15 @@ def build_case(client, *, headcounts, tool_covered, tool_personas, tool_outcome,
             "target_unit_price_annual": 491.40, "in_scope": True}).json()
         for p in people
     ]
-    client.patch(f"/api/engagements/{eid}",
-                 json={"bp_swap_enabled": swap_on, "business_cap_enabled": cap_on})
+    client.patch(f"/api/engagements/{eid}", json={"business_cap_enabled": cap_on})
     return {"eid": eid, "personas": people, "tool": tool, "scenarios": scenarios}
 
 
 def iter_cases(client, level: str = "full"):
     headcount_sets = (
-        [(200, 60), (2518, 632)] if level == "ci"
+        # The single-persona case matters in CI too: it is the one where the
+        # optimizer's claim can be checked against the engine directly.
+        [(250,), (200, 60), (2518, 632)] if level == "ci"
         else [(200,), (250,), (400,), (200, 60), (400, 250), (2518, 632), (50, 30, 20)]
     )
     # (covered_count, personas the tool is tagged to) — including a tool tagged to
@@ -111,16 +130,15 @@ def iter_cases(client, level: str = "full"):
                 continue
             for outcome in outcomes:
                 for target in targets:
-                    for swap_on in (False, True):
-                        for cap_on in (False, True):
-                            label = (
-                                f"hc={hcs} tool=({covered},{tool_pids}) out={outcome} "
-                                f"target={target} swap={swap_on} cap={cap_on}"
-                            )
-                            yield label, build_case(
-                                client, headcounts=hcs, tool_covered=covered,
-                                tool_personas=tool_pids, tool_outcome=outcome,
-                                target_sku=target, swap_on=swap_on, cap_on=cap_on)
+                    for cap_on in (False, True):
+                        label = (
+                            f"hc={hcs} tool=({covered},{tool_pids}) out={outcome} "
+                            f"target={target} cap={cap_on}"
+                        )
+                        yield label, build_case(
+                            client, headcounts=hcs, tool_covered=covered,
+                            tool_personas=tool_pids, tool_outcome=outcome,
+                            target_sku=target, cap_on=cap_on)
 
 
 # --------------------------------------------------------------------------
@@ -212,72 +230,143 @@ def check_optimizer_agrees_with_engine(client, case) -> list[str]:
     return bad
 
 
-def check_swap(client, case) -> list[str]:
-    """The swap must save money, respect the cap, and use the headroom it has."""
-    eid = case["eid"]
-    bad: list[str] = []
+def check_carve_out(client, case) -> list[str]:
+    """Carving seats out of a persona must MOVE them, not mint or lose them.
 
-    result = client.post(f"/api/engagements/{eid}/compute").json()
-    summary = result.get("bp_swap") or {}
-    if not summary.get("enabled"):
+    A carve-out changes the FUTURE state only — which plan some of these people
+    end up on. Everything about today is untouched: the same people exist, they
+    hold the same licences, and their tools cover the same seats. If any of that
+    drifts, the split has quietly rewritten the customer's baseline, and every
+    saving measured against it is wrong.
+    """
+    eid = case["eid"]
+    parent = case["personas"][0]
+    bad: list[str] = []
+    if parent["headcount"] < 2:
         return bad
 
-    net_on = D(str(result["rollup"]["net_tco_delta_annual"]))
-    client.patch(f"/api/engagements/{eid}", json={"bp_swap_enabled": False})
-    try:
-        net_off = D(str(client.post(f"/api/engagements/{eid}/compute")
-                        .json()["rollup"]["net_tco_delta_annual"]))
-    finally:
-        client.patch(f"/api/engagements/{eid}", json={"bp_swap_enabled": True})
+    def totals():
+        personas = client.get(f"/api/engagements/{eid}/personas").json()
+        result = client.post(f"/api/engagements/{eid}/compute").json()
+        tools = client.get(f"/api/engagements/{eid}/third-party").json()
+        licences = client.get(f"/api/engagements/{eid}/current-licenses").json()
+        return {
+            "headcount": sum(p["headcount"] for p in personas),
+            "covers": {t["id"]: t["covered_count"] for t in tools},
+            "current_ms": D(str(result["rollup"]["existing_microsoft_annual"])),
+            "personas": personas,
+            "licences": licences,
+            "tools": tools,
+            # Per-persona current spend: the total being right is not enough — the
+            # carved people must still be shown holding what they hold.
+            "by_persona": {
+                sc["persona_id"]: D(str(sc["current_microsoft_annual"]))
+                for sc in result["scenarios"]
+            },
+        }
 
-    rows = summary.get("scenarios", [])
-    applied = [r for r in rows if r["applied"]]
+    def tags_for(state, persona_id):
+        """Everything this persona is associated with today."""
+        return (
+            {l["id"] for l in state["licences"] if persona_id in (l["persona_ids"] or [])},
+            {t["id"] for t in state["tools"] if persona_id in (t["persona_ids"] or [])},
+            set(next((p["required_outcome_ids"] or [])
+                     for p in state["personas"] if p["id"] == persona_id)),
+        )
 
-    # 1. A swap is applied only because it saves — so it must never cost more.
-    #    (delta = new − old: a larger number is worse.)
-    if applied and net_on > net_off + D("0.02"):
-        bad.append(f"swap-never-worse: swapping raised the net from {net_off} to {net_on}")
+    before = totals()
+    seats = max(1, min(300, parent["headcount"] // 3))
+    resp = client.post(f"/api/engagements/{eid}/personas/{parent['id']}/carve",
+                       json={"seats": seats, "target_sku_reference": "Microsoft 365 Business Premium"})
+    if resp.status_code != 201:
+        return [f"carve-accepted: carving {seats} of {parent['headcount']} was rejected "
+                f"({resp.status_code}: {resp.text[:120]})"]
+    child = resp.json()
+    after = totals()
 
-    # 2. Applied ⇒ eligible and not opted out.
-    for r in applied:
-        if not r["eligible"]:
-            bad.append(f"swap-eligibility: applied to ineligible {r['persona_name']}")
-        if r["opted_out"]:
-            bad.append(f"swap-optout: applied to opted-out {r['persona_name']}")
+    # 1. The seats moved: same people, split differently.
+    if after["headcount"] != before["headcount"]:
+        bad.append(f"carve-population-conserved: headcount {before['headcount']} → "
+                   f"{after['headcount']}")
+    if child["headcount"] != seats:
+        bad.append(f"carve-seats-moved: asked for {seats}, child has {child['headcount']}")
+    new_parent = next(p for p in after["personas"] if p["id"] == parent["id"])
+    if new_parent["headcount"] != parent["headcount"] - seats:
+        bad.append(f"carve-parent-reduced: parent {parent['headcount']} → "
+                   f"{new_parent['headcount']}, expected {parent['headcount'] - seats}")
 
-    # 3. The swap exists to honor the seat cap — it must not exceed it.
-    cap = summary.get("cap")
-    if cap and cap["committed_seats"] > cap["max"]:
-        bad.append(f"swap-cap-respected: committed {cap['committed_seats']} > cap {cap['max']}")
+    # 2. Lineage is recorded, so the split stays attributable.
+    if child.get("parent_persona_id") != parent["id"]:
+        bad.append("carve-lineage: child does not point at the persona it came from")
 
-    # 4. Cap headroom the swap cannot use must be DISCLOSED, not silently
-    #    abandoned. The swap moves whole personas (a persona is the unit of
-    #    licensing in this model), so a persona larger than the cap can never fit
-    #    — filling the remaining seats would mean splitting a persona, which is an
-    #    operator decision about their own population, not something the math may
-    #    invent. What the math owes the operator is the number and the next step.
-    stranded = [r for r in rows if r["reason"] == "capped"]
-    if stranded:
-        if not summary.get("stranded_seats"):
-            bad.append("swap-strand-disclosed: personas turned away by the cap but "
-                       "stranded_seats not reported")
-        if cap is None:
-            bad.append("swap-strand-disclosed: personas capped with no cap reported")
+    # 3. Today is unchanged — the carve-out inherits what these people hold, so
+    #    current spend and tool coverage cannot move.
+    if after["current_ms"] != before["current_ms"]:
+        bad.append(f"carve-current-spend-conserved: current Microsoft spend "
+                   f"{before['current_ms']} → {after['current_ms']}")
+    if after["covers"] != before["covers"]:
+        bad.append(f"carve-covers-conserved: third-party covers {before['covers']} → "
+                   f"{after['covers']}")
 
-    # 5. Every non-applied row carries a reason a user can act on.
-    for r in rows:
-        if not r["applied"] and not r["reason"]:
-            bad.append(f"swap-reason-given: {r['persona_name']} not swapped with no reason")
+    # 4. The carve-out inherits what these people hold. Without this they look
+    #    like a population with no licensing: their delta reads as pure new cost
+    #    and the coverage check reports capability they actually have today.
+    parent_tags = tags_for(after, parent["id"])
+    child_tags = tags_for(after, child["id"])
+    if child_tags != parent_tags:
+        bad.append(
+            f"carve-inherits-associations: child holds licences/tools/requirements "
+            f"{child_tags} but the persona it came from holds {parent_tags}"
+        )
 
-    # 6. An ENABLED swap that applies to nobody must say why. A feature that is on,
-    #    moves no number, and explains nothing is indistinguishable from a broken
-    #    one — which is exactly how this defect was found.
-    if not applied and not summary.get("inert_reason"):
-        bad.append("swap-inert-explained: swap enabled, nothing applied, no reason given")
+    # 5. ...so current spend SPLITS between them by headcount, rather than the
+    #    carved seats dropping to zero and the parent keeping the whole bill.
+    old_hc = D(parent["headcount"])
+    before_parent = before["by_persona"].get(parent["id"])
+    if before_parent and old_hc:
+        expect_child = (before_parent * D(seats) / old_hc).quantize(D("0.01"))
+        got_child = after["by_persona"].get(child["id"], D("0")).quantize(D("0.01"))
+        if abs(got_child - expect_child) > D("0.02"):
+            bad.append(
+                f"carve-spend-splits: carved {seats} of {old_hc} seats should carry "
+                f"{expect_child} of current spend, carries {got_child}"
+            )
 
-    # 7. A swap that applies to nobody must change nothing.
-    if not applied and net_on != net_off:
-        bad.append(f"swap-no-op: no scenario swapped but the net moved {net_off} → {net_on}")
+    # 6. The carve-out is a real, costed persona — not a label.
+    scenarios = client.get(f"/api/engagements/{eid}/scenarios").json()
+    child_scenario = next((x for x in scenarios if x["persona_id"] == child["id"]), None)
+    if child_scenario is None:
+        bad.append("carve-has-scenario: carve-out has no scenario, so it has no future state")
+    else:
+        if child_scenario["target_sku_reference"] != "Microsoft 365 Business Premium":
+            bad.append(f"carve-target-applied: child targets "
+                       f"{child_scenario['target_sku_reference']!r}, not what was asked for")
+        # Priced AS the plan it moved to. Inheriting the parent's $/seat would quote
+        # Business Premium at the E3 rate — a number on the readout nobody could buy.
+        got = D(str(child_scenario["target_unit_price_annual"]))
+        if got != BP_ANNUAL:
+            bad.append(f"carve-target-priced: child targets Business Premium at {got}/seat/yr, "
+                       f"but the catalog price is {BP_ANNUAL}")
+
+    # 7. Undo puts the seats back. A split you cannot reverse is a trap.
+    client.delete(f"/api/engagements/{eid}/personas/{child['id']}")
+    restored = totals()
+    if restored["headcount"] != before["headcount"]:
+        bad.append(f"carve-undo-restores: headcount after undo {restored['headcount']} "
+                   f"!= {before['headcount']}")
+    if restored["covers"] != before["covers"]:
+        bad.append(f"carve-undo-restores: covers after undo {restored['covers']} "
+                   f"!= {before['covers']}")
+    if restored["current_ms"] != before["current_ms"]:
+        bad.append(f"carve-undo-restores: current spend after undo "
+                   f"{restored['current_ms']} != {before['current_ms']}")
+
+    # 8. Carving everyone is refused — it would leave an empty persona behind, and
+    #    "move the whole group" is just editing this persona's target.
+    whole = client.post(f"/api/engagements/{eid}/personas/{parent['id']}/carve",
+                        json={"seats": new_parent["headcount"] + seats})
+    if whole.status_code == 201:
+        bad.append("carve-bounded: carving the entire persona was allowed")
 
     return bad
 
@@ -297,8 +386,8 @@ def run(client=None, level: str = "full") -> dict:
     total = 0
     for label, case in iter_cases(client, level):
         total += 1
-        problems = check_swap(client, case)
-        problems += check_optimizer(client, case)
+        problems = check_optimizer(client, case)
+        problems += check_carve_out(client, case)
         if len(case["personas"]) == 1:
             problems += check_optimizer_agrees_with_engine(client, case)
         for p in problems:

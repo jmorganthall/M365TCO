@@ -43,7 +43,7 @@ const pctOffList = (s) => {
 // base price, discount, term/payment model, and add-on bundles (composed) in
 // the expander. Term/billing default to the engagement's pricing basis; a
 // line-level selection requotes the composed target from the catalog.
-function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove, onAnalyze, swapEnabled, swapRow }) {
+function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove, onAnalyze, parentName }) {
   const [open, setOpen] = useState(false)
   // The last SETTLED target pick (not the live typed text) — "changed SKU"
   // means a genuinely different product, which re-seeds the $/seat/mo.
@@ -89,9 +89,20 @@ function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove,
 
   return (
     <>
-      <tr>
+      {/* A carve-out is tinted and labelled with its origin here too, so its
+          target reads in the context of the persona the seats came from. */}
+      <tr className={parentName ? 'carve-row' : undefined}>
         <td><button className="ghost sm" onClick={() => setOpen(!open)}>{open ? '▾' : '▸'}</button></td>
-        <td data-label="Persona">{p.name}</td>
+        <td data-label="Persona">
+          {parentName && <span className="carve-elbow" aria-hidden="true">└ </span>}
+          {p.name}
+          {parentName && (
+            <div className="pill-list" style={{ marginTop: 3 }}>
+              <span className="badge muted" title={`Carved out of ${parentName}`}>
+                from {parentName}</span>
+            </div>
+          )}
+        </td>
         <td className="num" data-label="HC">{p.headcount}</td>
         <td data-label="Base bundle">
           <SkuCombobox value={s.target_sku_reference} style={{ minWidth: 130 }}
@@ -120,42 +131,6 @@ function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove,
             <div className="pill-list" style={{ marginTop: 3 }}>
               <span className="badge" title={`Custom net price · list ${usd(composedList(s))}/seat/yr`}>
                 override{off > 0 ? ` −${pct(off)}` : ''}</span>
-            </div>
-          )}
-          {swapEnabled && swapRow && (
-            <div style={{ marginTop: 3, fontSize: '.74rem' }}>
-              {swapRow.applied ? (
-                <span className="badge pos">
-                  → Business Premium (swap)
-                  <button className="ghost sm" style={{ marginLeft: 4, padding: '0 .3rem' }}
-                    title="Keep this persona's own target instead"
-                    onClick={() => update(s.id, { bp_swap_optout: true })}>opt out</button>
-                </span>
-              ) : swapRow.reason === 'capped' ? (
-                <span className="badge neg" title="Eligible, but the 300-seat Business Premium cap is already full — free room by opting a larger group out">
-                  eligible · over 300 cap</span>
-              ) : swapRow.reason === 'no_savings' ? (
-                <span className="badge muted" title="Business Premium costs the same or more than this persona's own target, so the swap wouldn't save">
-                  eligible · no BP saving</span>
-              ) : swapRow.reason === 'price_unknown' ? (
-                <span className="badge warn" title="No Business Premium price in the loaded catalog at this engagement's basis, so the swap can't prove a saving — import a price list or set the BP price">
-                  eligible · BP price unknown</span>
-              ) : swapRow.reason === 'opted_out' ? (
-                <span className="badge muted">swap opted out{' '}
-                  <button className="ghost sm" style={{ marginLeft: 4, padding: '0 .3rem' }}
-                    onClick={() => update(s.id, { bp_swap_optout: false })}>re-include</button>
-                </span>
-              ) : swapRow.opted_out ? (
-                <span className="badge muted">swap opted out{' '}
-                  <button className="ghost sm" style={{ marginLeft: 4, padding: '0 .3rem' }}
-                    onClick={() => update(s.id, { bp_swap_optout: false })}>re-include</button>
-                </span>
-              ) : swapRow.eligible ? (
-                <span className="badge muted" title="Eligible for Business Premium, but the swap did not apply it — see the banner above for why">
-                  eligible · not applied</span>
-              ) : (
-                <span className="muted" title="Business Premium doesn't cover every outcome this persona requires">not BP-eligible</span>
-              )}
             </div>
           )}
         </td>
@@ -245,34 +220,6 @@ function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove,
   )
 }
 
-// Turn the swap's machine-readable `inert_reason` into the operator's next step.
-// Every branch names something the user can actually do — an explanation that
-// ends in a shrug is no better than the silence it replaces.
-function inertExplanation(bp) {
-  const cap = bp.cap
-  switch (bp.inert_reason) {
-    case 'no_bp_bundle':
-      return 'No Business Premium bundle is defined in the catalog — add it under Settings → Staple bundles.'
-    case 'price_unknown':
-      return "No Business Premium price in the loaded catalog at this engagement's pricing basis, so no saving can be proven. Import a price list, or set the price on the bundle."
-    case 'no_scenarios':
-      return 'No in-scope scenarios to swap — put at least one persona in scope.'
-    case 'all_ineligible':
-      return "Business Premium doesn't cover every outcome these personas require today, so swapping would drop a capability. Expand a persona to see what it requires."
-    case 'all_no_savings':
-      return "Business Premium costs the same or more than every persona's own target, so there is nothing to save."
-    case 'all_opted_out':
-      return 'Every eligible persona has opted out — re-include one in the table below.'
-    case 'all_capped':
-      return `Every eligible persona is larger than the ${cap ? cap.max : 300}-seat Business Premium cap, so none can move as a whole group`
-        + `${bp.stranded_seats ? ` (${bp.stranded_seats.toLocaleString()} seats turned away` : ''}`
-        + `${bp.stranded_seats && cap ? `, ${cap.headroom_remaining.toLocaleString()} seats of headroom unused)` : bp.stranded_seats ? ')' : ''}`
-        + '. The swap moves whole personas, so to use the cap, split a persona into a smaller Business Premium group.'
-    default:
-      return 'No persona met all of: eligible, not opted out, cheaper on Business Premium, and small enough for the cap.'
-  }
-}
-
 export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
   const eid = engagement.id
   const [personas, setPersonas] = useState([])
@@ -281,7 +228,6 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
   const [result, setResult] = useState(null)
   const [err, setErr] = useState('')
   const [analyzePersona, setAnalyzePersona] = useState(null)
-  const [swapEnabled, setSwapEnabled] = useState(!!engagement.bp_swap_enabled)
   const [capEnabled, setCapEnabled] = useState(!!engagement.business_cap_enabled)
 
   function load() {
@@ -301,14 +247,7 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
 
   const scenarioFor = (pid) => scenarios.find((s) => s.persona_id === pid)
   const resultFor = (sid) => result?.scenarios.find((r) => r.scenario_id === sid)
-  const swapFor = (sid) => result?.bp_swap?.scenarios?.find((x) => x.scenario_id === sid)
 
-  async function toggleSwap(on) {
-    setSwapEnabled(on)  // optimistic
-    setErr('')
-    try { await api.patch(`/api/engagements/${eid}`, { bp_swap_enabled: on }); compute() }
-    catch (e) { setErr(e.message); setSwapEnabled(!on) }
-  }
   async function toggleCap(on) {
     setCapEnabled(on)  // optimistic
     setErr('')
@@ -363,31 +302,6 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
         plus optional add-ons (E5 Security, etc.) — the engine unions their outcomes and sums
         their prices; a discount applies to the total. Prices are per-seat monthly.</p>
 
-      <div className="popcheck" style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '.4rem', margin: 0 }}>
-          <input type="checkbox" checked={swapEnabled} onChange={(e) => toggleSwap(e.target.checked)} />
-          <b>Swap eligible personas down to Business Premium to save</b>
-        </label>
-        <span className="muted" style={{ fontSize: '.8rem' }}>
-          Moves the most-saving eligible personas onto Business Premium up to the 300-seat cap — changes
-          Target &amp; Delta below; deselect per persona in the table.
-          {swapEnabled && result?.bp_swap && (
-            <> · <b>{result.bp_swap.swapped_count}</b> swapped ({result.bp_swap.swapped_users} users),
-              combined delta <b className={result.bp_swap.swap_delta_annual < 0 ? 'pos' : ''}>{money(result.bp_swap.swap_delta_annual, moneyUnit)}</b>
-              {result.bp_swap.cap && <> · {result.bp_swap.cap.committed_seats} of {result.bp_swap.cap.max} BP seats</>}
-              {result.bp_swap.capped_count > 0 && <> · <b className="neg">{result.bp_swap.capped_count}</b> eligible over cap</>}</>
-          )}
-        </span>
-      </div>
-      {/* An enabled swap that changes nothing must SAY so. Silence here is what
-          makes the feature look broken: the box is ticked, the totals don't move,
-          and nothing on screen explains why. */}
-      {swapEnabled && result?.bp_swap?.inert_reason && (
-        <div className="warn-box" style={{ margin: '.4rem 0' }}>
-          <b>The swap is on but changed nothing.</b>{' '}
-          {inertExplanation(result.bp_swap)}
-        </div>
-      )}
       {err && <div className="err">{err}</div>}
 
       <table className="resp-table">
@@ -412,7 +326,7 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
               <ScenarioRow key={p.id} p={p} s={s} r={resultFor(s.id)} bundles={bundles} basis={basis}
                 meta={meta} moneyUnit={moneyUnit} update={update} remove={remove}
                 onAnalyze={() => setAnalyzePersona(p)}
-                swapEnabled={swapEnabled} swapRow={swapFor(s.id)} />
+                parentName={personas.find((x) => x.id === p.parent_persona_id)?.name} />
             )
           })}
         </tbody>

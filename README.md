@@ -134,10 +134,12 @@ The steps run along a chevron **progress stepper** at the top of an engagement:
 4. **Scenarios** — a base target bundle **+** composable add-ons per persona.
    Add-ons are constrained to the bases they may layer onto (the composition
    **eligibility** rule — e.g. F5 Security only onto F3), so the picker only
-   offers valid add-ons. An engagement-level **"swap eligible users to Business
-   Premium to save"** toggle proposes moving every *capability-eligible* persona
-   (Business Premium covers everything they require) onto Business Premium, with a
-   per-persona opt-out — bounded by the Business seat cap below.
+   offers valid add-ons. When only PART of a persona should move to a different
+   plan — e.g. 300 of 2,518 onto Business Premium, which the tenant caps at 300
+   seats — **carve out** those seats on the Personas tab: it creates a child
+   persona with its own target, inheriting the parent's current licensing, tools
+   and required capabilities, shown indented under the persona the seats came from.
+   The seats move, so the population and today's spend are unchanged.
 5. **Coverage Check** — per-persona validation, scoped to the outcomes the
    persona's **proposed target scenario** would deliver (the *new-outcome*
    candidates) that aren't delivered today by their current licensing or a
@@ -169,8 +171,8 @@ The steps run along a chevron **progress stepper** at the top of an engagement:
    third-party dispositions, and rollup;
    plus **License-limit** checks (Microsoft licensing caps evaluated tenant-wide —
    e.g. Microsoft 365 Business Basic/Standard/Premium share a 300-seat maximum,
-   shown as an over/under badge across current + future state), the **Business
-   Premium swap** savings line, advisory **AI sanity check** + **business
+   shown as an over/under badge across current + future state), advisory
+   **AI sanity check** + **business
    narratives** (stored per persona, hand-editable on the Readout — an edit
    re-tags the row from AI draft to human-asserted), per-engagement **readout
    branding** (logo + theme colors), and HTML / xlsx export.

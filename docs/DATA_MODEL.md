@@ -97,7 +97,7 @@ erDiagram
 The global **rules layer over the Bundle spine** — `Bundle`, `AddonEligibility`
 (§4.4d), `LicenseLimit` + `LicenseLimitMember` (§4.4e) — is not engagement-owned;
 it is global, seeded, and editable, and it is evaluated *for* an engagement at
-compute time (limit checks, the Business Premium swap §4.8b) without persisting
+compute time (limit checks) without persisting
 per-engagement state.
 
 Solid lines are hard foreign keys with cascade delete. **Dotted lines are soft
@@ -118,7 +118,7 @@ FK, UUID PK, cascade-deleted with the engagement.
   `modeling_horizon_years` (multiplies the annual delta into the readout
   headline, e.g. 3 → "36-month savings"; the engine itself stays annualized),
   `notes`, `global_tooling_pct`, `default_segment`,
-  `default_term_duration`, `default_billing_plan`, `bp_swap_enabled`,
+  `default_term_duration`, `default_billing_plan`,
   `business_cap_enabled`, `managed_ms_account`, the ECIF ROI ratios
   `ecif_roi_conservative` / `ecif_roi_generous`, the readout
   branding `brand_logo_data_url` / `brand_primary_color` / `brand_accent_color`,
@@ -139,9 +139,6 @@ FK, UUID PK, cascade-deleted with the engagement.
   for display and later as grounding for the AI business-narrative research. They
   are typed fields on the aggregate root, not a separate object, because they are
   strictly 1:1 with the engagement.
-- **Note:** `bp_swap_enabled` is the engagement-level "swap eligible users to
-  Business Premium to save" toggle (§4.8b). Each eligible scenario inherits it
-  unless the persona opts out.
 - **Note:** `managed_ms_account` marks a customer with a Microsoft Account Team
   Unit (ATU) assigned. When set, the readout adds an advisory **Microsoft ECIF
   co-investment** note under *Recommended next steps* (the Fund step) — a
@@ -181,7 +178,7 @@ FK, UUID PK, cascade-deleted with the engagement.
   **GlobalDefaults → Engagement → line item** — that selects which priced
   catalog variant a picked SKU or quoted bundle resolves to. All three are
   copied from GlobalDefaults on creation and editable on the Customer Info tab.
-  The same basis drives recommend-a-path, the BP swap, and price autofill
+  The same basis drives recommend-a-path and price autofill
   (`services/bundles.catalog_price_row` — deterministic: ratified SKU→Bundle
   rows first, then tolerant title match, ranked segment → term → billing plan →
   plainest title, $0/trial rows last). A Nonprofit customer sets
@@ -194,13 +191,48 @@ FK, UUID PK, cascade-deleted with the engagement.
 
 ### 4.2 Persona
 - **Identity:** `uuid`. **Scope:** engagement-scoped.
-- **Field ownership:** user-entered (`name`, `headcount`, `description`); provenance (`source_tag`).
-- **CRUD:** `GET/POST/PATCH/DELETE /api/engagements/{eid}/personas`.
+- **Field ownership:** user-entered (`name`, `headcount`, `description`); provenance
+  (`source_tag`); system-derived lineage (`parent_persona_id`, written by the carve
+  action below and read-only in the GUI).
+- **CRUD:** `GET/POST/PATCH/DELETE /api/engagements/{eid}/personas`, plus
+  `POST …/personas/{id}/carve`.
 - **Relationships:** referenced by `PersonaScenario.persona_id` and optionally
   `CurrentMicrosoftLicense.persona_id`. **Required capabilities** via
-  `PersonaRequirement` (§4.2a).
+  `PersonaRequirement` (§4.2a). **Self-reference** via `parent_persona_id` — the
+  persona a carve-out's seats came from.
 - **GUI surface:** the Personas tab is an expandable line-item — core fields up top,
-  an expander of required-capability toggles.
+  an expander of required-capability toggles. A carve-out renders indented directly
+  beneath its parent, tinted, with a `carved from <parent>` chip; the parent shows
+  how many seats now sit in carve-outs. The Scenarios tab tints and labels the same
+  rows, so the split is legible wherever its money appears.
+
+### 4.2b Carve-out — modelling a PARTIAL move
+The licensing unit in this model is the persona: one persona, one scenario, one
+target. So "300 of these 2,518 people move to Business Premium" cannot be said
+inside a single persona without inventing a sub-population that no object owns.
+`POST …/personas/{id}/carve` says it with real data instead — a second Persona,
+linked to the first by `parent_persona_id`:
+- **Seats MOVE, they are not copied.** The parent's `headcount` drops by exactly the
+  carved seats, so the engagement's population is conserved and no consumer has to
+  know not to double-count. Deleting a carve-out returns its seats to the parent;
+  deleting a *parent* leaves its carve-outs standing as ordinary personas (their
+  seats are real people, not an artifact of the link).
+- **The child inherits what those people already hold** — the parent's
+  current-licence tags, third-party tags and `PersonaRequirement`s — because a
+  moment ago they were the same population. Only the future target differs. A line's
+  cost therefore splits across parent + child by headcount (§6.2), so today's bill is
+  unchanged and the carved seats never read as a population holding nothing. The
+  parent's price *override* is deliberately not copied: it was a negotiated rate for
+  a target this persona is not on.
+- **Nothing is special-cased downstream.** The carve-out is an ordinary Persona with
+  an ordinary Scenario, so spend allocation, quick wins, coverage gaps, seat caps and
+  the readout all cost it correctly with no new code paths — and the operator can
+  edit or delete it like any other persona.
+- **No nesting:** carving a carve-out is rejected (422), because two levels of
+  lineage make "where did these seats come from" ambiguous.
+- **Invariants:** conservation of population, of today's spend, and of third-party
+  covers across a carve — plus reversibility — are enforced by
+  `backend/tests/sweep_services.py` and mutation-tested.
 
 ### 4.2a PersonaRequirement — a persona's required capabilities
 - **Identity:** `uuid` plus a unique `(persona_id, outcome_id)`. **Scope:**
@@ -572,17 +604,16 @@ FK, UUID PK, cascade-deleted with the engagement.
   via `target_sku_reference`; **add-on bundles** via `ScenarioAddon` (§4.8a).
 - **Field ownership:** user-entered (`target_sku_reference` + `target_unit_price_annual`
   = the base bundle & its list price, `target_discount_pct`, the price-override pair
-  below, `in_scope`, `bp_swap_optout`, `term_duration`/`billing_plan`); **engine-output
+  below, `in_scope`, `term_duration`/`billing_plan`); **engine-output
   cache** (`current_spend_annual`, `target_spend_annual`, `delta_annual`).
 - **Price override (first-class):** `price_override` (bool) + `overridden_price_annual`
   — the same mechanism as the current line (§4.5), applied to the composed **net**
   target. The base SKU + add-ons are unchanged, but the customer pays a negotiated
   net $/seat/yr. `effective_net_annual` = the override when on, else
   `(base + add-ons) × (1 − discount)`; the override **supersedes** the discount
-  (which stays available when the override is off) and is what the engine and the
-  BP-swap saving test consume. The "% off list" badge is measured against
-  `composed_list_annual` (base + add-ons, pre-discount). A swap to Business Premium
-  substitutes wholesale, so the persona's own override doesn't apply to it.
+  (which stays available when the override is off) and is what the engine consumes.
+  The "% off list" badge is measured against `composed_list_annual` (base + add-ons,
+  pre-discount).
 - **Line-level quoting basis:** `term_duration` / `billing_plan` (NULL = inherit
   the engagement defaults — the bottom tier of the §4.1 hierarchy). Changing
   either on a PATCH **requotes** the base bundle and every add-on from the
@@ -590,17 +621,13 @@ FK, UUID PK, cascade-deleted with the engagement.
   afterward, and a quote that finds nothing (price 0) never clobbers a manual
   price. Prices are stored annualized (the engine's canonical unit); the GUI
   edits and displays per-seat **monthly** ($/yr ÷ 12) as the human-facing unit.
-- **`bp_swap_optout`** is the per-persona override of the engagement's Business
-  Premium swap (§4.8b): `false` = inherit the engagement default, `true` = keep this
-  persona's own target even when the swap is on.
 - **Composition:** future state = base bundle **+** add-ons. The hydrator unions the
   covered outcomes and sums the list prices, then applies the discount → the net
   `target_unit_price_annual` the engine consumes (ENGINE_SPEC 6.2/6.3). The engine
   carries only the base name (`target_sku_reference`); for **display**,
   `compute.attach_target_labels` composes the full `target_label` (base + add-on
   names, e.g. *Office 365 E3 + Enterprise Mobility + Security E3*) onto each result
-  scenario, so every readout/export names the whole target, not just the base. A
-  Business-Premium-swapped scenario (§4.8b) is labelled by the swapped target alone.
+  scenario, so every readout/export names the whole target, not just the base.
 - **CRUD:** `GET/POST/PATCH/DELETE …/scenarios` (`addons` on the body reconciles the
   set). Toggling `in_scope` and calling `compute` triggers a **total** recompute.
 
@@ -613,41 +640,22 @@ FK, UUID PK, cascade-deleted with the engagement.
   the base is rejected (422), so a scenario can never compose an impossible pairing
   (e.g. F5 Security onto E3). The Scenarios tab only offers eligible add-ons.
 
-### 4.8b Business Premium swap (derived, persists nothing)
-The actionable side of the Business seat cap (§4.4e). Two first-class fields drive
-it — `Engagement.bp_swap_enabled` (the engagement default) and
-`PersonaScenario.bp_swap_optout` (the per-persona override) — an **inheritance
-model**: turning the swap on at the engagement makes every *eligible* scenario
-inherit it unless that persona opts out. There is **no new object** — the effect is
-a pure computation over existing first-class data (`services/swap.py`):
-- **Eligibility is by capability:** Business Premium must cover every outcome the
-  persona requires today (the outcomes its current Microsoft licenses deliver ∪ its
-  declared `PersonaRequirement`s). Swapping therefore never drops a capability. It
-  is *not* keyed to the persona's current SKU.
-- **Fills up to the limit:** Business Premium is capped at 300 seats/tenant (the
-  `m365-business-seat-cap` LicenseLimit, §4.4e). The swap does not blindly move every
-  eligible persona — it greedily fills the cap's **future-state headroom** with the
-  most-saving eligible personas first (whole personas, biggest per-seat saving first),
-  and leaves the overflow on their own target (reported `capped`). A candidate whose
-  Business Premium price wouldn't beat its own target is skipped (`no_savings`), and if
-  Business Premium can't be priced the swap is inert (`price_unknown`). The result is
-  always a buyable plan — the swap never proposes more than 300 Business Premium seats.
-- **Effect:** when the swap applies, the engine hydrator substitutes the scenario's
-  **effective target** with Business Premium (its covered outcomes + catalog price ×
-  `(1 − discount)`) — the persona's own `target_sku_reference` is left intact, so
-  opting out reverts with no data loss. The swap is a declared, GUI-visible transform
-  (like the ratify gate or the managed split), not a shadow write.
-- **Cap coupling:** a swapped scenario's effective target is Business Premium, so it
-  counts against the §4.4e Business cap — `services/limits` and the hydrator share
-  the same `swap.applies` decision, so the guardrail and the action never disagree.
-  Because the swap fills *up to* the cap, the future plan can no longer breach it via
-  the swap; the guardrail still flags a breach from current licenses or non-swap
-  targets that independently exceed 300.
-- **Surface:** the compute/readout response carries `bp_swap` (per-scenario
-  eligible/opted-out/applied + a `reason`, aggregate swapped-user and `capped_count`,
-  combined delta, and the `cap` committed-seats/headroom). The Scenarios tab shows the
-  engagement toggle, per-persona opt-out, and per-row markers (over-cap / no-saving /
-  ineligible); the Readout shows the aggregate savings line. No hidden data.
+### 4.8b Business Premium swap — RETIRED (superseded by the carve-out, §4.2b)
+An engagement toggle (`bp_swap_enabled`) plus a per-persona opt-out
+(`bp_swap_optout`) used to redirect capability-eligible scenarios onto Business
+Premium, filling the 300-seat tenant cap (§4.4e) with the most-saving personas.
+
+It moved **whole personas**. Because a persona is the licensing unit, any persona
+larger than 300 could never fit — and at enterprise scale every persona exceeds it,
+so the toggle could not change a single number on a real engagement. Worse, it did
+so silently: the box was ticked, the TCO did not move, and nothing explained why.
+
+The carve-out (§4.2b) expresses the same intent as data the engine already costs:
+carve 300 seats into a child persona targeting Business Premium. Both columns are
+retired via `_RETIRED_COLUMNS` and physically dropped; `services/swap.py` and the
+`bp_swap` compute-response block are gone. The seat cap is unchanged and now counts
+a carve-out's seats like any other scenario — no swap-specific branch in
+`services/limits`.
 
 ### 4.9 ProductDisposition — split ownership, by design
 This is the canonical example of the field-ownership rule, because one row mixes
@@ -869,15 +877,13 @@ The global library is never mutated by workshop edits — this is the
 3. **Persist back** only engine-output fields (scenario spend cache + disposition
    outputs), preserving operator-owned fields.
 4. The readout routes then append the **license-limit evaluation**
-   (`services/limits.evaluate`, §4.4e) as `license_limits`, the **Business
-   Premium swap summary** (`services/swap.summarize`, §4.8b) as `bp_swap`, and
+   (`services/limits.evaluate`, §4.4e) as `license_limits` and
    the per-persona **new-outcomes story** (`services/compute.new_outcomes` —
    the Coverage Check computation reused: outcomes the in-scope target lights
    up that nothing delivers today) as `new_outcomes` — all derived, persisting
    nothing, riding on every readout consumer (compute, HTML/xlsx export,
    snapshot). `new_outcomes` also grounds the AI business-narrative prompt
-   ("why these capabilities matter for this persona at this customer"). The
-   swap also shapes step 1's hydration (effective target).
+   ("why these capabilities matter for this persona at this customer").
 5. The readout surfaces (Readout tab, HTML export) render the spend bridge and
    the headline move summary **per persona** purely from the serialized
    per-scenario fields (`target_spend_annual`, `current_microsoft_annual`,

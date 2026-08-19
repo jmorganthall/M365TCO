@@ -98,6 +98,14 @@ _RETIRED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("global_defaults", "default_modeling_horizon_years"),
     ("third_party_products", "commitment_term_months"),  # collected, never read
     ("price_sync_settings", "redirect_uri"),             # never referenced at all
+    # The automatic Business Premium swap, retired in favour of the persona
+    # carve-out. The swap moved WHOLE personas under a 300-seat tenant cap, so any
+    # persona larger than 300 could never move — at enterprise scale the toggle
+    # could not change a single number. Carving N seats into a child persona
+    # (Persona.parent_persona_id) expresses the same intent as real, visible data
+    # the engine already knows how to cost, so these two toggles are dead weight.
+    ("engagements", "bp_swap_enabled"),
+    ("persona_scenarios", "bp_swap_optout"),
 )
 
 
