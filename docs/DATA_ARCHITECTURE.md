@@ -1,5 +1,7 @@
 # Data Architecture Law: Everything Is a First-Class Object
 
+> **Being replaced.** The agreed target data model is [`TARGET_SCHEMA.md`](TARGET_SCHEMA.md). This document still describes the current code and stays accurate until each part of the target lands; new schema work must match the target.
+
 > Bad data architecture is what happens when data lives *outside* of first-class
 > objects. Minimize that data as aggressively as you can. This document is the law;
 > [`DATA_MODEL.md`](DATA_MODEL.md) is the detailed model that obeys it.

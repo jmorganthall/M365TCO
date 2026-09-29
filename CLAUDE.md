@@ -24,6 +24,14 @@ file to build that check.
 
 ## Data architecture (the law)
 
+**A data-model rebuild is agreed and in progress.** `docs/TARGET_SCHEMA.md` is the
+contract for it: every schema change must match it, and a change that needs to
+deviate updates that document first, in its own reviewed PR. Until each part lands,
+the documents below still describe the current code. Two of its rules apply to all
+new work now: **no design may assume a single user**, and **code never rewrites
+what a person entered** (a default is stored as `NULL`, never written back as the
+resolved value).
+
 Everything is a first-class object; minimize data that lives outside one. Read
 and obey `docs/DATA_ARCHITECTURE.md` and `docs/DATA_MODEL.md`; `docs/DATA_MAP.md`
 charts how the first-class objects connect and how the engine traverses them:

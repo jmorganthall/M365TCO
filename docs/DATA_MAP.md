@@ -1,5 +1,7 @@
 # Data map — how the first-class objects connect
 
+> **Being replaced.** The agreed target data model is [`TARGET_SCHEMA.md`](TARGET_SCHEMA.md). This document still describes the current code and stays accurate until each part of the target lands; new schema work must match the target.
+
 The model rests on four first-class objects — **Persona**, **Outcome**,
 **Bundle/SKU**, **Scenario** — plus two spend-source objects and a priced
 catalog. This map shows every edge in the real schema (`backend/app/models.py`)

@@ -1,5 +1,7 @@
 # Data Model & First-Class Data Sets
 
+> **Being replaced.** The agreed target data model is [`TARGET_SCHEMA.md`](TARGET_SCHEMA.md). This document still describes the current code and stays accurate until each part of the target lands; new schema work must match the target.
+
 This is the canonical reference for every first-class data set in the M365 TCO
 Tool, the relationships between them, and the **repeatable module contract** that
 each one obeys. The goal is the one stated by the practice: build robust data
