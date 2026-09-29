@@ -19,8 +19,12 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
 
+    # Published on the host's loopback only by default: the app has no sign-in
+    # yet, so it is reachable only from the host itself. Set M365TCO_BIND_ADDRESS
+    # to 0.0.0.0 (or one host IP) to open it to the network — trusted internal
+    # networks only.
     ports:
-      - "${M365TCO_WEB_PORT:-8080}:8000"
+      - "${M365TCO_BIND_ADDRESS:-127.0.0.1}:${M365TCO_WEB_PORT:-8080}:8000"
 
     environment:
       # --- Persistence (paths inside the container; /data is the mounted volume) ---
@@ -33,7 +37,9 @@ services:
       TCO_MASTER_SECRET: "${TCO_MASTER_SECRET}"
 
       # --- Operational config (sensible defaults; override via .env) ---
-      TCO_CORS_ORIGINS: "${TCO_CORS_ORIGINS:-*}"
+      # Empty = no CORS (the UI is served by the app itself, same origin). Set
+      # only for a front end hosted on another origin.
+      TCO_CORS_ORIGINS: "${TCO_CORS_ORIGINS:-}"
       TCO_OPENROUTER_MODEL: "${TCO_OPENROUTER_MODEL:-anthropic/claude-3.5-sonnet}"
       # Where the app reaches Watchtower's HTTP API for the in-app "Update now"
       # button. Defaults to the compose sidecar below; point WATCHTOWER_URL at a

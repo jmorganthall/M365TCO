@@ -9,6 +9,9 @@ export default function CoverageMap({ engagement, meta }) {
   const [bundles, setBundles] = useState([])
   const [aiEnabled, setAiEnabled] = useState(false)
   const [bulkBusy, setBulkBusy] = useState(false)
+  // Per-product AI suggest in flight (tpId -> true), so a repeat click can't
+  // fire a duplicate call for the same product.
+  const [suggesting, setSuggesting] = useState({})
   const [err, setErr] = useState('')
   const [msg, setMsg] = useState('')
   const [newOutcome, setNewOutcome] = useState('')
@@ -111,7 +114,9 @@ export default function CoverageMap({ engagement, meta }) {
     try { await api.del(`/api/engagements/${eid}/coverage/${id}`); load() } catch (e) { setErr(e.message) }
   }
   async function aiSuggest(tpId) {
+    if (bulkBusy || suggesting[tpId]) return
     setErr(''); setMsg('')
+    setSuggesting((s) => ({ ...s, [tpId]: true }))
     try {
       const res = await api.post(`/api/admin/engagements/${eid}/ai/suggest-coverage`, { third_party_product_id: tpId })
       load()
@@ -119,9 +124,12 @@ export default function CoverageMap({ engagement, meta }) {
         const name = products.find((p) => p.id === tpId)?.name || 'Product'
         setMsg(`${name}: no correlation — the AI matched it to no outcomes.`)
       }
-    } catch (e) { setErr(e.message) }
+    } catch (e) { setErr(e.message) } finally {
+      setSuggesting((s) => { const next = { ...s }; delete next[tpId]; return next })
+    }
   }
   async function aiSuggestAll() {
+    if (bulkBusy) return
     setErr(''); setMsg(''); setBulkBusy(true)
     try {
       const res = await api.post(`/api/admin/engagements/${eid}/ai/suggest-coverage-all`)
@@ -179,7 +187,8 @@ export default function CoverageMap({ engagement, meta }) {
           <h2 style={{ margin: 0 }}>Third-party coverage</h2>
           {aiEnabled && products.length > 0 && (
             <button className="ghost sm" onClick={aiSuggestAll}
-              disabled={bulkBusy || products.every((tp) => tpEntries(tp.id).length > 0)}>
+              disabled={bulkBusy || Object.keys(suggesting).length > 0
+                || products.every((tp) => tpEntries(tp.id).length > 0)}>
               {bulkBusy
                 ? 'Suggesting…'
                 : `✨ AI suggest all (${products.filter((tp) => tpEntries(tp.id).length === 0).length} unmapped)`}
@@ -196,7 +205,12 @@ export default function CoverageMap({ engagement, meta }) {
           <div key={tp.id} className="card" style={{ background: 'var(--panel2)' }}>
             <div className="flex-between">
               <b>{tp.name}</b>
-              {aiEnabled && <button className="ghost sm" onClick={() => aiSuggest(tp.id)}>✨ AI suggest coverage</button>}
+              {aiEnabled && (
+                <button className="ghost sm" onClick={() => aiSuggest(tp.id)}
+                  disabled={bulkBusy || !!suggesting[tp.id]}>
+                  {suggesting[tp.id] ? 'Suggesting…' : '✨ AI suggest coverage'}
+                </button>
+              )}
             </div>
             <div className="pill-list" style={{ margin: '.5rem 0' }}>
               {tpEntries(tp.id).map((c) => (
@@ -211,6 +225,7 @@ export default function CoverageMap({ engagement, meta }) {
             </div>
             <AddCoverageRow outcomes={outcomes}
               existing={tpEntries(tp.id).map((c) => c.outcome_id)}
+              disabled={bulkBusy}
               onAdd={(oid) => addCoverage(tp.id, oid)} />
           </div>
         ))}
@@ -244,6 +259,7 @@ export default function CoverageMap({ engagement, meta }) {
             </div>
             <AddCoverageRow outcomes={outcomes}
               existing={bundleEntries(b).map((c) => c.outcome_id)}
+              disabled={bulkBusy}
               onAdd={(oid) => addBundleCoverage(b.name, oid)} />
           </div>
         ))}
@@ -297,18 +313,21 @@ export default function CoverageMap({ engagement, meta }) {
   )
 }
 
-function AddCoverageRow({ outcomes, existing, onAdd }) {
+// `disabled` holds manual adds while "AI suggest all" is running.
+function AddCoverageRow({ outcomes, existing, onAdd, disabled = false }) {
   const available = outcomes.filter((o) => !existing.includes(o.id))
   const [oid, setOid] = useState('')
   return (
     <div className="toolbar">
       <div style={{ flex: 2 }}>
-        <select value={oid} onChange={(e) => setOid(e.target.value)}>
+        <select value={oid} disabled={disabled} onChange={(e) => setOid(e.target.value)}>
           <option value="">+ add outcome…</option>
           {available.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
         </select>
       </div>
-      <button className="sm" disabled={!oid} onClick={() => { onAdd(oid); setOid('') }}>Add</button>
+      <button className="sm" disabled={disabled || !oid}
+        title={disabled ? 'Wait for "AI suggest all" to finish' : undefined}
+        onClick={() => { onAdd(oid); setOid('') }}>Add</button>
     </div>
   )
 }

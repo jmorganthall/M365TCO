@@ -269,15 +269,27 @@ async def lifespan(_app: FastAPI):
         timer.cancel()
 
 
+def _cors_options(cors_origins: str) -> dict | None:
+    """CORSMiddleware options for the configured origins, or None for no CORS.
+
+    The UI is same-origin (served by this app; Vite proxies /api in dev), so the
+    default is no CORS at all. A wildcard origin never allows credentials."""
+    origins = [o.strip() for o in (cors_origins or "").split(",") if o.strip()]
+    if not origins:
+        return None
+    return {
+        "allow_origins": origins,
+        "allow_credentials": "*" not in origins,
+        "allow_methods": ["*"],
+        "allow_headers": ["*"],
+    }
+
+
 app = FastAPI(title="M365 TCO Tool", version="1.0.0", lifespan=lifespan)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[o.strip() for o in settings.cors_origins.split(",")],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+_cors = _cors_options(settings.cors_origins)
+if _cors:
+    app.add_middleware(CORSMiddleware, **_cors)
 
 app.include_router(engagements.router)
 app.include_router(entities.router)

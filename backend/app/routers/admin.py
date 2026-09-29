@@ -318,22 +318,21 @@ def _outcome_dicts(db: Session, engagement_id: str) -> list[dict]:
     return [{"id": o.id, "name": o.name, "description": o.description} for o in outcomes]
 
 
-def _suggest_and_persist(
-    db, engagement_id, tp, outcome_dicts, instructions, model, web_search=False
-) -> list[dict]:
-    """Ask the model for tp's coverage and write unratified rows, skipping any
+def _persist_suggestions(db, engagement_id, tp_id, suggestions) -> list[dict]:
+    """Write a product's AI suggestions as unratified rows, skipping any
     product+outcome that already has an entry. Flushes but does not commit — the
-    caller commits so a bulk run is one transaction. Returns the created rows."""
-    suggestions = ai.suggest_coverage(
-        tp.name, outcome_dicts, instructions=instructions, model=model, web_search=web_search
-    )
+    caller commits straight away. Returns the created rows.
+
+    Call this only AFTER the model has answered, never before or around the call:
+    SQLite has a single writer, so a pending write held across a slow model call
+    locks every other write (e.g. a manual coverage add) out of the database."""
     created = []
     for s in suggestions:
         existing = db.execute(
             select(models.CoverageMapEntry).where(
                 models.CoverageMapEntry.engagement_id == engagement_id,
                 models.CoverageMapEntry.product_kind == "ThirdParty",
-                models.CoverageMapEntry.third_party_product_id == tp.id,
+                models.CoverageMapEntry.third_party_product_id == tp_id,
                 models.CoverageMapEntry.outcome_id == s["outcome_id"],
             )
         ).scalar_one_or_none()
@@ -341,7 +340,7 @@ def _suggest_and_persist(
             continue
         row = models.CoverageMapEntry(
             engagement_id=engagement_id, outcome_id=s["outcome_id"],
-            product_kind="ThirdParty", third_party_product_id=tp.id,
+            product_kind="ThirdParty", third_party_product_id=tp_id,
             coverage=s["coverage"], ai_suggested=True, ratified=False,
         )
         db.add(row)
@@ -365,14 +364,18 @@ def suggest_coverage(
         raise HTTPException(404, "Third-party product not found")
     if not ai.is_enabled():
         raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
+    outcome_dicts = _outcome_dicts(db, engagement_id)
+    instructions = ai_prompts.get_instructions(db, "coverage_suggest")
+    model, web_search = _resolved_model(db), _main_web_search(db)
+    # Only the model call is reported as an AI failure; DB errors surface as such.
     try:
-        created = _suggest_and_persist(
-            db, engagement_id, tp, _outcome_dicts(db, engagement_id),
-            ai_prompts.get_instructions(db, "coverage_suggest"), _resolved_model(db),
-            _main_web_search(db),
+        suggestions = ai.suggest_coverage(
+            tp.name, outcome_dicts, instructions=instructions, model=model,
+            web_search=web_search,
         )
     except Exception as exc:  # network/model errors surface cleanly
         raise HTTPException(502, f"AI suggestion failed: {exc}")
+    created = _persist_suggestions(db, engagement_id, tp.id, suggestions)
     db.commit()
     return {"suggestions": created}
 
@@ -405,18 +408,30 @@ def suggest_coverage_all(engagement_id: str, db: Session = Depends(get_db)):
     instructions = ai_prompts.get_instructions(db, "coverage_suggest")
     model = _resolved_model(db)
     web_search = _main_web_search(db)
+    # Plain values up front: the per-product commit/rollback below expires ORM
+    # objects, and an error message must not need a DB round-trip.
+    todo = [(tp.id, tp.name) for tp in unmapped]
     created_total, results, errors = 0, [], []
-    for tp in unmapped:
+    for tp_id, tp_name in todo:
+        # Each product is its own transaction: the model call runs with NO pending
+        # write (SQLite has one writer; a write held across a slow call locks the
+        # rest of the app out), then that product's rows are written and committed
+        # at once. On any failure roll back — a failed flush leaves the session
+        # unusable until then — record it, and carry on with the next product.
         try:
-            created = _suggest_and_persist(
-                db, engagement_id, tp, outcome_dicts, instructions, model, web_search
+            suggestions = ai.suggest_coverage(
+                tp_name, outcome_dicts, instructions=instructions, model=model,
+                web_search=web_search,
             )
-            created_total += len(created)
-            # created == 0 means the model found no correlation for this product.
-            results.append({"name": tp.name, "created": len(created)})
+            created = _persist_suggestions(db, engagement_id, tp_id, suggestions)
+            db.commit()
         except Exception as exc:  # one bad product must not abort the rest
-            errors.append(f"{tp.name}: {exc}")
-    db.commit()
+            db.rollback()
+            errors.append(f"{tp_name}: {exc}")
+            continue
+        created_total += len(created)
+        # created == 0 means the model found no correlation for this product.
+        results.append({"name": tp_name, "created": len(created)})
     return {
         "products_processed": len(results),
         "suggestions_created": created_total,

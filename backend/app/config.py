@@ -28,8 +28,12 @@ class Settings(BaseSettings):
     # read-only/empty and AI assist is disabled gracefully.
     master_secret: str | None = None
 
-    # CORS origins for the React dev/prod front end.
-    cors_origins: str = "*"
+    # Comma-separated origins allowed to call the API cross-origin (CORS).
+    # Empty (the default) adds no CORS headers at all: the built UI is served by
+    # this same app and the Vite dev server proxies /api, so neither needs CORS.
+    # Set only for a front end hosted on a different origin. "*" is honoured but
+    # never with credentials.
+    cors_origins: str = ""
 
     # OpenRouter model used for coverage suggestions (key comes from secret store).
     openrouter_model: str = "anthropic/claude-3.5-sonnet"
