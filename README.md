@@ -97,6 +97,38 @@ The same image runs unchanged. Set `TCO_DATABASE_URL` to a managed Postgres
 (`postgresql+psycopg://…`), mount durable storage at `TCO_DATA_DIR`, and
 optionally back the secret store with Azure Key Vault.
 
+### Before/after export
+
+Before an upgrade that could move the numbers (a data-model change, an engine
+change, a catalog refresh), export every engagement's engine inputs, engine outputs
+and headline; after the upgrade, export again and diff the two. The export is
+strictly read-only (it opens the database read-only and refuses any write) and
+reads one consistent snapshot in a few seconds, so run it while nobody is editing.
+The file contains customer data — keep it with the instance's other data.
+
+```bash
+# Before the upgrade: export inside the running container and copy the file out
+# (recreating the container discards its /tmp, so copy it out first).
+docker compose exec m365tco python -m app.tools.baseline export --out /tmp/before.json
+docker compose cp m365tco:/tmp/before.json ./before.json
+
+# After the upgrade:
+docker compose exec m365tco python -m app.tools.baseline export --out /tmp/after.json
+docker compose cp m365tco:/tmp/after.json ./after.json
+
+# Diff, inside the container...
+docker compose cp ./before.json m365tco:/tmp/before.json
+docker compose exec m365tco python -m app.tools.baseline diff /tmp/before.json /tmp/after.json --out /tmp/report.md
+docker compose cp m365tco:/tmp/report.md ./report.md
+# ...or from backend/ in a checkout (diff needs only the Python standard library):
+python -m app.tools.baseline diff ../before.json ../after.json --out ../report.md
+```
+
+The report opens with a per-engagement summary — headline before → after, how many
+numbers changed, whether the engagement's inputs changed, and a cause hint (input,
+catalog or calculation change) — then lists every changed number by JSON path with
+before, after and delta. Add `--fail-on-change` to exit 1 when anything changed.
+
 ## Local development
 
 Backend:

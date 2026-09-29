@@ -138,6 +138,9 @@ def test_no_write_only_columns():
 
     backend = pathlib.Path(__file__).resolve().parents[1]
     repo = backend.parent
+    # Operator tools (app/tools) dump rows wholesale for diagnostics; a column
+    # named there has no real reader, so they must not satisfy this check.
+    tools = backend / "app" / "tools"
     blobs = []
     for base, suffixes in (
         (backend / "app", {".py"}),
@@ -145,7 +148,8 @@ def test_no_write_only_columns():
         (repo / "frontend" / "src", {".js", ".jsx"}),
     ):
         for path in base.rglob("*"):
-            if path.suffix in suffixes and path.name not in {"models.py", "schemas.py"}:
+            if path.suffix in suffixes and path.name not in {"models.py", "schemas.py"} \
+                    and tools not in path.parents:
                 blobs.append(path.read_text(encoding="utf-8", errors="ignore"))
     blob = "\n".join(blobs)
 
