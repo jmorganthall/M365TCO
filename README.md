@@ -52,7 +52,7 @@ The image is published to GHCR (`ghcr.io/jmorganthall/m365tco:latest`) by the
 cp .env.example .env          # set TCO_MASTER_SECRET to a long random value
 
 # Pull and run the published image:
-docker compose up -d          # http://localhost:8080
+docker compose up -d          # http://localhost:8080 (this host only — see below)
 
 # …or build the same image locally instead of pulling:
 docker compose up --build -d
@@ -61,8 +61,24 @@ docker compose up --build -d
 The single image bundles the API and the built UI; all state (SQLite DB +
 encrypted `secrets.enc`) persists under `/data`.
 
+**Network exposure.** The app has **no sign-in yet**, so by default the port is
+published on the Docker host's loopback only (`127.0.0.1`) — reachable from the
+host itself and nowhere else. To reach it from other machines, set
+`M365TCO_BIND_ADDRESS` in `.env`:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `M365TCO_BIND_ADDRESS` | `127.0.0.1` | Host address the port is published on. `0.0.0.0` (all interfaces) or a single host IP exposes the app to the network — **only do this on a trusted internal network**, since anyone who can reach the port can use the app. |
+| `M365TCO_WEB_PORT` | `8080` | Host port mapped to the container's `8000`. |
+| `TCO_CORS_ORIGINS` | *(empty)* | Comma-separated origins allowed to call the API cross-origin. Empty adds no CORS headers, which is right for normal use: the UI is served by the app itself (same origin) and the dev server proxies `/api`. Set it only for a front end hosted on a different origin; a `*` wildcard is honoured but never with credentials. |
+
+Upgrading an existing install that was reachable from the LAN: set
+`M365TCO_BIND_ADDRESS=0.0.0.0` (or the host's LAN IP) and `docker compose up -d`
+again, or it will only answer on the host itself.
+
 **Unraid:** deploy via the Compose Manager plugin, or run the published image with
-host `${M365TCO_WEB_PORT:-8080}` → container `8000` and the appdata volume
+host `${M365TCO_BIND_ADDRESS:-127.0.0.1}:${M365TCO_WEB_PORT:-8080}` → container
+`8000` (see **Network exposure** above) and the appdata volume
 `${M365TCO_DATA_DIR:-/mnt/cache/appdata/m365tco}` → `/data`. All tunables are env
 vars with sane defaults (see `.env.example`); only `TCO_MASTER_SECRET` is required.
 

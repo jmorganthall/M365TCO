@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import os
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from .config import settings
@@ -17,15 +18,48 @@ class Base(DeclarativeBase):
     pass
 
 
+# How long a SQLite connection waits for another writer to finish before giving
+# up with "database is locked" (the driver default is 5s).
+SQLITE_BUSY_TIMEOUT_SECONDS = 30
+
+
+def _sqlite_in_memory(url: str) -> bool:
+    u = make_url(url)
+    return (
+        u.database in (None, "", ":memory:")
+        or u.query.get("mode") == "memory"
+        or (u.database or "").startswith("file::memory:")
+    )
+
+
 def _make_engine(url: str):
     connect_args = {}
-    if url.startswith("sqlite"):
-        connect_args = {"check_same_thread": False}
+    is_sqlite = url.startswith("sqlite")
+    if is_sqlite:
+        connect_args = {"check_same_thread": False, "timeout": SQLITE_BUSY_TIMEOUT_SECONDS}
         # Ensure the sqlite directory exists for file-based URLs.
         path = url.split("sqlite:///")[-1]
         if path and path not in (":memory:",):
             os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    return create_engine(url, connect_args=connect_args, future=True)
+    eng = create_engine(url, connect_args=connect_args, future=True)
+    if is_sqlite:
+        in_memory = _sqlite_in_memory(url)
+
+        @event.listens_for(eng, "connect")
+        def _sqlite_pragmas(dbapi_conn, _record):
+            # WAL lets readers and the single writer proceed side by side, and
+            # busy_timeout makes a writer wait for the lock instead of failing
+            # fast. WAL needs a real file, so in-memory DBs keep their default.
+            # (foreign_keys is deliberately NOT enabled here.)
+            cur = dbapi_conn.cursor()
+            try:
+                cur.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_SECONDS * 1000}")
+                if not in_memory:
+                    cur.execute("PRAGMA journal_mode=WAL")
+            finally:
+                cur.close()
+
+    return eng
 
 
 engine = _make_engine(settings.database_url)
