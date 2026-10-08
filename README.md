@@ -42,6 +42,8 @@ algorithm port; the code does not.
   algorithm.
 - [`docs/PRICE_SYNC.md`](docs/PRICE_SYNC.md) — Partner Center price-sheet
   acquisition (interactive login, no stored token) and local freshness monitoring.
+- [`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md) — the agreed design (not yet built)
+  for the guided walkthrough an account executive runs live with a customer.
 
 ## Quick start (Docker — Unraid / local)
 
