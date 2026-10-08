@@ -25,7 +25,7 @@ export default function NewEngagement({ onCreated }) {
       <div className="toolbar">
         <div style={{ flex: 2 }}>
           <label>Customer name</label>
-          <input value={name} placeholder="Acme Corp"
+          <input value={name} placeholder="Acme Corp" autoComplete="off"
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && create()} />
         </div>
