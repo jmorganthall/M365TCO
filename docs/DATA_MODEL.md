@@ -292,16 +292,10 @@ linked to the first by `parent_persona_id`:
 - **Lifecycle:** copied from `seeds/outcomes.json` on engagement creation; freely
   extended at runtime.
 
-- **`Update outcomes` (domain action):** `POST …/outcomes/sync-defaults` is a
-  **full overwrite** of the engagement's outcome list to the CURRENT global
-  library, invoked explicitly from the Coverage Map (with a destructive-action
-  confirm). Library outcomes already present (matched by `seed_key`) keep their
-  row id — coverage and persona requirements survive — with name/description
-  reset; missing library outcomes are added with default Microsoft coverage;
-  custom outcomes and retired keys are deleted with their coverage entries and
-  persona-requirement links. This is an explicit operator action — the
-  "seeding never mutates existing engagements" rule still holds for
-  migrations/startup.
+- **Library outcomes added later** arrive through the Library updates review
+  (§4.7b), one click each, with the library's coverage of them on every plan. The
+  old "Update outcomes" action (`POST …/outcomes/sync-defaults`), a full overwrite
+  that deleted custom outcomes, is **removed** (WALKTHROUGH W13).
 
 ### 4.4 MicrosoftSku — the global catalog
 - **Identity:** `uuid` PK **plus a natural key** for upsert:
@@ -708,6 +702,15 @@ Licence names.
   `DefaultBundleCoverage.coverage` (§4.4c). Do not reintroduce an `Enum` here.
 - **Provenance / gate:** `ai_suggested` + `ratified`. **Only `ratified = true`
   rows hydrate into the engine.** This is the single ratify gate.
+- **Origin (system-derived):** `source` (TARGET_SCHEMA §4.7) — `library` when
+  copied from the shared library (engagement creation, a Library updates item,
+  "use the library's list"), `engagement` when a person added it here
+  (`POST …/coverage`), NULL for rows from before it was recorded. Reader: the
+  Library updates review never offers to remove an `engagement` row. GUI surface:
+  the hover on a Microsoft coverage chip and the Data Inspector ("Origin").
+  Removing a library row by hand records a `LibraryUpdateDecision` (§4.7a) so the
+  review doesn't offer it back — the current code deletes where the contract
+  archives.
 - **CRUD:** `GET/POST/PATCH/DELETE …/coverage`, plus the domain action
   `POST …/coverage/{id}/ratify`.
 - **GUI surface (slice E2):** the Coverage map now edits **Microsoft bundle
@@ -715,6 +718,35 @@ Licence names.
   ratify) mirroring the third-party section. Adding by bundle name resolves onto the
   bundle (`bundle_id` set) via `resolve_bundle`; entries that resolve to no staple
   are surfaced under "Unmapped Microsoft references" so nothing is hidden.
+
+### 4.7a LibraryUpdateDecision — "not for this customer"
+- **Identity:** `uuid`. **Scope:** engagement-scoped (cascade-deleted with it).
+  TARGET_SCHEMA §4.7 `library_update_decisions`.
+- **Fields:** `kind` ∈ {`outcome_added`, `coverage_added`, `coverage_removed`,
+  `licence_in_library`}; the subject — `bundle_id` + `outcome_key` (the library
+  outcome's stable key) for the coverage kinds, `outcome_key` for `outcome_added`,
+  `license_id` for `licence_in_library`; `reason` ("Not for this customer", or
+  "Removed … by hand"); `decided_at`. No user identity yet (the app has none).
+- **Written by** "Not for this customer" on the review and by removing a library
+  coverage row by hand; **deleted by** Undo, or with its licence line. Duplicate
+  copies them. **Readers:** the review (hides decided items), its declined list.
+  GUI surface: the Library updates card's "declined for this customer" list, with
+  Undo.
+
+### 4.7b Library updates review (derived, persists nothing else)
+`GET …/library-updates` compares the engagement's copy with the shared library
+(`services/library_updates`) and lists each difference not yet applied or
+declined, one item per outcome, plan or licence name: `outcome_added` (a library
+outcome the engagement lacks), `coverage_added` (a plan's library outcomes the
+engagement uses but has no row for — "The library now has …" for a plan it has no
+rows for), `coverage_removed` (rows the library no longer lists, for outcomes and
+plans the library still has, never `source = engagement`), `licence_in_library` (a
+licence name answered with outcomes that the library now reads as a plan).
+`POST …/library-updates/apply`, `…/decline`, `…/apply-all` and
+`DELETE …/library-updates/decisions/{id}` act on it. Nothing changes until a person
+clicks; applying moves the numbers (a presented snapshot keeps its own). A new
+engagement has nothing waiting. Surfaces: the card on Coverage check, a notice on
+every other step while items wait, and the review's `library_update_pending` note.
 
 ### 4.8 PersonaScenario — the target-state plan
 - **Identity:** `uuid`. **Scope:** engagement-scoped. One per persona in practice.

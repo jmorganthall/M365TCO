@@ -548,56 +548,28 @@ def test_endpoint_privilege_management_seeded_and_covered(client):
     assert {"m365-e3", "m365-e5"} <= covered_by
 
 
-def test_update_outcomes_full_overwrite_to_global_defaults(client):
-    """POST …/outcomes/sync-defaults fully overwrites the engagement's outcome
-    list with the CURRENT global library: customs deleted (with their coverage
-    and persona requirements), seeded outcomes reset by seed_key (coverage
-    kept), newly-added library outcomes arrive with default MS coverage."""
+def test_update_outcomes_is_retired_and_a_new_library_outcome_is_reviewed(client):
+    """The destructive "Update outcomes" (POST …/outcomes/sync-defaults) is gone
+    (WALKTHROUGH W13). A library outcome added later arrives through the Library
+    updates review instead, and applying it leaves custom outcomes, renamed
+    outcomes and their coverage alone."""
     eng = client.post("/api/engagements", json={"customer_name": "Sync Co"}).json()
     eid = eng["id"]
-    outcomes = client.get(f"/api/engagements/{eid}/outcomes").json()
-    identity = next(o for o in outcomes if o["seed_key"] == "identity-sso")
-
-    # A custom outcome with third-party coverage and a persona requirement.
+    identity = next(o for o in client.get(f"/api/engagements/{eid}/outcomes").json()
+                    if o["seed_key"] == "identity-sso")
     custom = client.post(f"/api/engagements/{eid}/outcomes",
                          json={"name": "Custom Cap", "is_custom": True}).json()
-    kw = client.post(f"/api/engagements/{eid}/personas",
-                     json={"name": "KW", "headcount": 10,
-                           "required_outcome_ids": [custom["id"], identity["id"]]}).json()
-    tp = client.post(f"/api/engagements/{eid}/third-party",
-                     json={"name": "Okta", "raw_cost": 1000}).json()
-    for oid in (custom["id"], identity["id"]):
-        client.post(f"/api/engagements/{eid}/coverage",
-                    json={"outcome_id": oid, "product_kind": "ThirdParty",
-                          "third_party_product_id": tp["id"], "ratified": True})
-    # Drift a seeded outcome's name; add a NEW global default the engagement lacks.
-    client.patch(f"/api/engagements/{eid}/outcomes/{identity['id']}",
-                 json={"name": "Renamed Identity"})
-    new_default = client.post("/api/admin/default-outcomes",
-                              json={"name": "Brand New Cap"}).json()
+    client.patch(f"/api/engagements/{eid}/outcomes/{identity['id']}", json={"name": "Renamed Identity"})
+    assert client.post(f"/api/engagements/{eid}/outcomes/sync-defaults").status_code in (404, 405)
+    new_default = client.post("/api/admin/default-outcomes", json={"name": "Brand New Cap"}).json()
     try:
-        summary = client.post(f"/api/engagements/{eid}/outcomes/sync-defaults").json()
-        assert "Brand New Cap" in summary["added"]
-        assert "Custom Cap" in summary["removed"]
-        assert summary["updated"] >= 1  # the renamed seeded outcome was reset
-
-        after = client.get(f"/api/engagements/{eid}/outcomes").json()
-        names = {o["name"] for o in after}
-        assert "Custom Cap" not in names and "Renamed Identity" not in names
-        assert "Brand New Cap" in names
-        # Same row id for the seeded outcome → its coverage survived.
-        kept = next(o for o in after if o["seed_key"] == "identity-sso")
-        assert kept["id"] == identity["id"]
-        cov = client.get(f"/api/engagements/{eid}/coverage").json()
-        tp_cov_outcomes = {c["outcome_id"] for c in cov if c["product_kind"] == "ThirdParty"}
-        assert identity["id"] in tp_cov_outcomes      # kept outcome's mapping survives
-        assert custom["id"] not in tp_cov_outcomes    # custom's mapping deleted
-        # Persona requirements: custom gone, seeded kept.
-        p = client.get(f"/api/engagements/{eid}/personas").json()[0]
-        assert p["required_outcome_ids"] == [identity["id"]]
-        # Idempotent: a second sync is a no-op.
-        again = client.post(f"/api/engagements/{eid}/outcomes/sync-defaults").json()
-        assert again["added"] == [] and again["removed"] == [] and again["updated"] == 0
+        items = client.get(f"/api/engagements/{eid}/library-updates").json()["items"]
+        item = next(i for i in items if i["kind"] == "outcome_added")
+        assert item["name"] == "Brand New Cap"
+        assert client.post(f"/api/engagements/{eid}/library-updates/apply", json={
+            "kind": "outcome_added", "outcome_key": item["outcome_key"]}).status_code == 204
+        names = {o["name"] for o in client.get(f"/api/engagements/{eid}/outcomes").json()}
+        assert {"Brand New Cap", "Custom Cap", "Renamed Identity"} <= names
     finally:
         # Keep the global library pristine for other tests.
         client.delete(f"/api/admin/default-outcomes/{new_default['id']}")

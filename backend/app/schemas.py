@@ -366,6 +366,14 @@ class LicenceNamePlanIn(BaseModel):
     outcome_keys: list[str] = []
 
 
+# ---- Library updates review (TARGET_SCHEMA §4.7) ----
+class LibraryUpdateIn(BaseModel):
+    kind: Literal["outcome_added", "coverage_added", "coverage_removed", "licence_in_library"]
+    outcome_key: Optional[str] = None   # outcome_added
+    bundle_id: Optional[str] = None     # coverage_added / coverage_removed
+    sku_reference: Optional[str] = None  # licence_in_library
+
+
 # ---- Coverage gap answer (TARGET_SCHEMA §4.8) ----
 class GapAnswerIn(BaseModel):
     persona_id: str
@@ -441,6 +449,8 @@ class CoverageOut(ORMModel):
     coverage: str
     ai_suggested: bool
     ratified: bool
+    # "library" | "engagement" | None (from before it was recorded) — read-only.
+    source: Optional[str] = None
 
 
 # ---- Persona scenario ----

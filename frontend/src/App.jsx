@@ -10,6 +10,7 @@ import CurrentLicensing from './components/CurrentLicensing.jsx'
 import ThirdParty from './components/ThirdParty.jsx'
 import CoverageMap from './components/CoverageMap.jsx'
 import UnknownLicences from './components/UnknownLicences.jsx'
+import LibraryUpdates from './components/LibraryUpdates.jsx'
 import FutureState from './components/FutureState.jsx'
 import CoverageCheck from './components/CoverageCheck.jsx'
 import Review from './components/Review.jsx'
@@ -82,6 +83,17 @@ export default function App() {
 
   const tab = route.view === 'engagement' ? route.tab : 'customer'
   const setTab = (k) => go(engagementPath(activeId, k))
+
+  // Library updates waiting for this engagement (WALKTHROUGH W13): a notice when
+  // it is opened, refreshed as the steps change. Applying happens on Coverage check.
+  const [libraryWaiting, setLibraryWaiting] = useState(0)
+  const [libraryTick, setLibraryTick] = useState(0)
+  useEffect(() => {
+    setLibraryWaiting(0)
+    if (!activeId) return
+    api.get(`/api/engagements/${activeId}/library-updates`)
+      .then((r) => setLibraryWaiting(r.items.length)).catch(() => {})
+  }, [activeId, tab, libraryTick])
 
   function openSettings() {
     setReturnTo((window.location.hash || '#/').replace(/^#/, '') || '/')
@@ -176,6 +188,14 @@ export default function App() {
                 })}
               </div>
 
+              {libraryWaiting > 0 && tab !== 'gaps' && (
+                <div className="library-notice">
+                  <span>{libraryWaiting} library update{libraryWaiting > 1 ? 's are' : ' is'} waiting for this
+                    engagement: the shared library changed after it was created. Nothing changes until you apply
+                    {libraryWaiting > 1 ? ' them' : ' it'}.</span>
+                  <button className="ghost sm" onClick={() => setTab('gaps')}>Review on Coverage check ›</button>
+                </div>
+              )}
               {tab !== 'data' && <StepIntro step={tab} />}
               {tab === 'customer' && <CustomerCard engagement={active} meta={meta} onUpdate={setActive} />}
               {tab === 'groups' && (
@@ -195,7 +215,8 @@ export default function App() {
               {tab === 'future' && <FutureState engagement={active} meta={meta} moneyUnit={moneyUnit} />}
               {tab === 'gaps' && (
                 <>
-                  <CoverageCheck engagement={active} onNavigate={setTab} />
+                  <CoverageCheck key={libraryTick} engagement={active} onNavigate={setTab} />
+                  <LibraryUpdates engagement={active} onChange={() => setLibraryTick((t) => t + 1)} />
                   <details className="card more">
                     <summary>Capability library for this engagement (advanced)</summary>
                     <p className="hint">The capability list and which capabilities each Microsoft plan delivers,

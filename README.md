@@ -214,8 +214,12 @@ PDF's method page also reads.
    tool that does it. Unanswered gaps are never claimed as new. Licences we can't
    read yet are listed first; every amber warning (an unread licence, a plan with
    no capabilities, licensing counted org-wide, capability a plan drops) links to
-   the step that fixes it. The engagement's capability library sits in an advanced
-   expander.
+   the step that fixes it. **Library updates** lists each change to the shared
+   library since the engagement was created (a new outcome, a plan that now
+   includes more, a licence name the library learned): *Apply*, *Not for this
+   customer* (remembered, with undo) or *Apply all* — nothing changes without a
+   click, and a notice on the other steps says how many are waiting. The
+   engagement's capability library sits in an advanced expander.
 6. **Review** — every check that works without AI, each linking to the step that
    fixes it, and what is **left out** because it wasn't answered. The optional
    **AI sanity check** is here.

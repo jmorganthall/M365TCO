@@ -89,9 +89,10 @@ tables (`DefaultOutcome`, `DefaultBundleCoverage`, `Bundle` + `AddonEligibility`
 engagement-scoped rows — an engagement owns its copy for life.
 
 - **Never mutate an existing engagement's data in a migration.** Existing
-  engagements keep the taxonomy/coverage they were created with; to adopt a change
-  the operator recreates the engagement (or edits it in the GUI). Migrations touch
-  only the global tables.
+  engagements keep the taxonomy/coverage they were created with; a change reaches
+  one only when a person applies it on the Coverage check's **Library updates** card
+  (TARGET_SCHEMA §4.7; "not for this customer" is remembered), or edits it in the
+  GUI. Migrations touch only the global tables.
 - **Adding a seeded default → add an additive startup backfill** (populate-if-empty
   seeds a fresh DB; an idempotent `_backfill_*` inserts the new rows on an
   already-seeded DB).

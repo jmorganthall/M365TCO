@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
-from ..services import bundles, compute, inspector, licence_names
+from ..services import bundles, compute, inspector, library_updates, licence_names
 
 router = APIRouter(prefix="/api/engagements/{engagement_id}", tags=["entities"])
 
@@ -391,20 +391,6 @@ def create_outcome(engagement_id: str, payload: schemas.OutcomeIn, db: Session =
     return row
 
 
-@router.post("/outcomes/sync-defaults")
-def sync_outcomes_to_defaults(engagement_id: str, db: Session = Depends(get_db)):
-    """FULL OVERWRITE of this engagement's outcome list to the CURRENT global
-    default library (the 'Update outcomes' button). Destructive: custom
-    outcomes are deleted with their coverage and persona requirements; seeded
-    outcomes reset to library names (their coverage survives); new library
-    outcomes arrive with default Microsoft coverage. The GUI confirms first.
-    Returns a summary of what changed."""
-    eng = _require_engagement(db, engagement_id)
-    from ..services import seeds as seeds_service
-
-    return seeds_service.sync_engagement_outcomes(db, eng)
-
-
 @router.patch("/outcomes/{outcome_id}", response_model=schemas.OutcomeOut)
 def update_outcome(engagement_id: str, outcome_id: str, payload: schemas.OutcomeIn, db: Session = Depends(get_db)):
     row = db.get(models.Outcome, outcome_id)
@@ -431,6 +417,7 @@ def delete_outcome(engagement_id: str, outcome_id: str, db: Session = Depends(ge
         select(models.CurrentLicenseOutcome).where(models.CurrentLicenseOutcome.outcome_id == outcome_id)
     ).scalars().all():
         db.delete(tick)
+    library_updates.record_outcome_removed_by_hand(db, row.engagement, row)
     db.delete(row)
     db.commit()
 
@@ -500,6 +487,10 @@ def delete_license(engagement_id: str, license_id: str, db: Session = Depends(ge
     row = db.get(models.CurrentMicrosoftLicense, license_id)
     if row is None or row.engagement_id != engagement_id:
         raise HTTPException(404, "License not found")
+    # A "not for this customer" about this line answers nothing once it's gone.
+    for d in db.execute(select(models.LibraryUpdateDecision).where(
+            models.LibraryUpdateDecision.license_id == license_id)).scalars().all():
+        db.delete(d)
     db.delete(row)
     db.commit()
 
@@ -616,6 +607,7 @@ def list_coverage(engagement_id: str, db: Session = Depends(get_db)):
 def create_coverage(engagement_id: str, payload: schemas.CoverageIn, db: Session = Depends(get_db)):
     _require_engagement(db, engagement_id)
     row = models.CoverageMapEntry(engagement_id=engagement_id, **payload.model_dump())
+    row.source = "engagement"  # added by a person for this customer (§4.7)
     # Resolve Microsoft SKU coverage onto its bundle so it keys the same way the
     # seeded coverage does (the SKU → Bundle → Outcomes spine).
     if row.product_kind == "MicrosoftSku" and row.bundle_id is None:
@@ -655,8 +647,63 @@ def delete_coverage(engagement_id: str, entry_id: str, db: Session = Depends(get
     row = db.get(models.CoverageMapEntry, entry_id)
     if row is None or row.engagement_id != engagement_id:
         raise HTTPException(404, "Coverage entry not found")
+    # Removing a row the library lists is this engagement's answer: the Library
+    # updates review must not offer it back (TARGET_SCHEMA §4.7).
+    library_updates.record_removed_by_hand(db, row.engagement, row)
     db.delete(row)
     db.commit()
+
+
+# ---------- Library updates review (TARGET_SCHEMA §4.7, D8) ----------
+@router.get("/library-updates")
+def list_library_updates(engagement_id: str, db: Session = Depends(get_db)):
+    """Each difference between the shared library and this engagement's copy that
+    isn't applied or declined yet, plus the remembered "not for this customer"
+    answers. A pure read: nothing changes until a person applies an item."""
+    eng = _require_engagement(db, engagement_id)
+    return {"items": library_updates.pending(db, eng),
+            "declined": library_updates.declined(eng, db)}
+
+
+def _subject(payload: schemas.LibraryUpdateIn) -> dict:
+    return payload.model_dump(exclude={"kind"})
+
+
+@router.post("/library-updates/apply", status_code=204)
+def apply_library_update(engagement_id: str, payload: schemas.LibraryUpdateIn,
+                         db: Session = Depends(get_db)):
+    eng = _require_engagement(db, engagement_id)
+    try:
+        library_updates.apply(db, eng, payload.kind, _subject(payload))
+    except LookupError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@router.post("/library-updates/apply-all")
+def apply_all_library_updates(engagement_id: str, db: Session = Depends(get_db)):
+    eng = _require_engagement(db, engagement_id)
+    return {"applied": library_updates.apply_all(db, eng)}
+
+
+@router.post("/library-updates/decline", status_code=204)
+def decline_library_update(engagement_id: str, payload: schemas.LibraryUpdateIn,
+                           db: Session = Depends(get_db)):
+    """"Not for this customer": remembered, so the item doesn't come back."""
+    eng = _require_engagement(db, engagement_id)
+    try:
+        library_updates.decline(db, eng, payload.kind, _subject(payload))
+    except LookupError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@router.delete("/library-updates/decisions/{decision_id}", status_code=204)
+def undo_library_update_decision(engagement_id: str, decision_id: str, db: Session = Depends(get_db)):
+    """Undo a "not for this customer": the item is offered again."""
+    eng = _require_engagement(db, engagement_id)
+    try:
+        library_updates.undo(db, eng, decision_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc))
 
 
 # ---------- Coverage gap answers (TARGET_SCHEMA §4.8) ----------
