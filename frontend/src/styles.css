@@ -19,8 +19,9 @@ body {
   font-size: 14px;
 }
 a { color: var(--accent); }
-/* ---- App shell: fixed left sidebar + scrollable main ---- */
-/* App chrome: a fixed top bar over a flexible body (sidebar + main). */
+/* ---- App shell: a fixed top bar over a scrollable main ---- */
+/* There is deliberately no engagement sidebar: the app runs on a shared screen,
+   so customers are found by search on the Open-engagement page instead. */
 .app-root { display: flex; flex-direction: column; height: 100vh; }
 .topbar {
   flex-shrink: 0; height: 50px; display: flex; align-items: center;
@@ -36,16 +37,6 @@ a { color: var(--accent); }
 }
 .gear:hover { color: var(--ink); border-color: var(--accent); }
 .gear.active { color: var(--ink); border-color: var(--accent); background: var(--panel2); }
-/* Hamburger: hidden on desktop (the sidebar is always visible), shown on mobile. */
-.hamburger {
-  display: none; background: transparent; border: 1px solid var(--border); color: var(--muted);
-  border-radius: 8px; width: 34px; height: 34px; font-size: 1.15rem; line-height: 1;
-  cursor: pointer; padding: 0; flex-shrink: 0;
-}
-.hamburger:hover { color: var(--ink); border-color: var(--accent); }
-/* Backdrop behind the off-canvas sidebar; only rendered (and only visible) on mobile. */
-.sidebar-backdrop { display: none; }
-
 .app-shell { display: flex; flex: 1; min-height: 0; }
 .main { flex: 1; min-width: 0; overflow-y: auto; }
 .container { max-width: 1180px; margin: 0 auto; padding: 1.2rem; }
@@ -68,48 +59,22 @@ a { color: var(--accent); }
 }
 .settings-content { flex: 1; min-width: 0; }
 
-.sidebar {
-  width: 264px; flex-shrink: 0; height: 100%; overflow-y: auto; position: sticky; top: 0;
-  background: var(--panel); border-right: 1px solid var(--border);
-  display: flex; flex-direction: column; padding: .8rem .7rem;
-}
-.side-brand { padding: .3rem .4rem .8rem; }
-.side-title { font-weight: 700; font-size: 1rem; }
-.side-sub { color: var(--muted); font-size: .76rem; }
-.side-new {
-  width: 100%; text-align: left; background: var(--panel2); border: 1px solid var(--border);
-  color: var(--ink); border-radius: 8px; padding: .5rem .6rem; margin-bottom: .8rem;
-}
-.side-new .plus { color: var(--accent); font-weight: 700; margin-right: .4rem; }
-.side-new:hover { border-color: var(--accent); }
-.side-section {
-  text-transform: uppercase; letter-spacing: .04em; font-size: .68rem;
-  color: var(--muted); padding: .2rem .4rem .3rem;
-}
-.side-list { flex: 1; overflow-y: auto; margin: 0 -.3rem; }
-.side-empty { color: var(--muted); font-size: .8rem; padding: .3rem .5rem; }
-.side-item {
-  display: flex; align-items: center; border-radius: 7px; margin: 1px .3rem;
-}
-.side-item:hover { background: var(--panel2); }
-.side-item.active { background: var(--panel2); box-shadow: inset 2px 0 0 var(--accent); }
-.side-item-name {
+/* Open-engagement picker: rows appear only after the operator types. */
+.picker-list { margin-top: .6rem; display: flex; flex-direction: column; gap: 2px; }
+.picker-item { display: flex; align-items: center; gap: .6rem; border-radius: 7px; padding: 0 .2rem; }
+.picker-item:hover { background: var(--panel2); }
+.picker-name {
   flex: 1; min-width: 0; background: transparent; border: none; color: var(--ink);
-  text-align: left; padding: .45rem .5rem; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; font-size: .86rem;
+  text-align: left; padding: .5rem .4rem; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-size: .92rem;
 }
-.side-item-actions { display: none; gap: .1rem; padding-right: .2rem; }
-.side-item:hover .side-item-actions, .side-item.active .side-item-actions { display: flex; }
-.side-item-actions button {
-  background: transparent; border: none; color: var(--muted); padding: .2rem .35rem;
-  font-size: .9rem; line-height: 1; border-radius: 5px;
+.picker-date { font-size: .76rem; white-space: nowrap; }
+.picker-actions { display: flex; gap: .1rem; }
+.picker-actions button {
+  background: transparent; border: none; color: var(--muted); padding: .2rem .4rem;
+  font-size: .95rem; line-height: 1; border-radius: 5px;
 }
-.side-item-actions button:hover { color: var(--ink); background: var(--border); }
-.side-settings {
-  margin-top: .6rem; background: transparent; border: 1px solid var(--border);
-  color: var(--muted); text-align: left; padding: .45rem .6rem;
-}
-.side-settings:hover { color: var(--ink); border-color: var(--accent); }
+.picker-actions button:hover { color: var(--ink); background: var(--border); }
 
 .welcome { padding: 1.4rem .2rem .4rem; }
 .welcome h1 { font-size: 1.5rem; margin: 0 0 .3rem; }
@@ -281,26 +246,10 @@ button.chip-btn:hover { filter: brightness(1.25); }
 }
 .unit-toggle button.on { background: var(--accent); color: #fff; }
 
-/* ---- Mobile: the sidebar becomes an off-canvas drawer ----
-   On narrow screens the fixed 264px sidebar squeezed the main content, so below
-   this breakpoint the sidebar leaves the flex flow (main goes full width) and
-   slides in over the content from the hamburger, with a tap-to-close backdrop. */
+/* ---- Narrow screens ---- */
 @media (max-width: 820px) {
-  .hamburger { display: inline-flex; align-items: center; justify-content: center; }
   .container { padding: .8rem; }
   .work-header { flex-wrap: wrap; gap: .5rem; }
-
-  .sidebar {
-    position: fixed; top: 50px; left: 0; bottom: 0; height: auto; z-index: 50;
-    width: min(84vw, 300px);
-    transform: translateX(-100%); transition: transform .22s ease;
-    box-shadow: 2px 0 16px rgba(0, 0, 0, .4);
-  }
-  .sidebar.open { transform: none; }
-  .sidebar-backdrop {
-    display: block; position: fixed; inset: 50px 0 0 0; z-index: 40;
-    background: rgba(0, 0, 0, .5);
-  }
 
   /* Progress stepper: scroll horizontally instead of wrapping into a tall column. */
   .stepper { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 3px; }
