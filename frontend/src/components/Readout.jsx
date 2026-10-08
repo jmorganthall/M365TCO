@@ -88,7 +88,8 @@ export default function Readout({ engagement }) {
         </div>
         <div className="hero-block">
           <div>
-            <TimedHeadline h={r.headline} inScope={inScope} currency={engagement.currency} />
+            <RunRateHeadline h={r.headline} inScope={inScope} currency={engagement.currency}
+              newCount={new Set((result.new_outcomes || []).flatMap((n) => (n.outcomes || []).map((o) => o.id))).size} />
           </div>
         </div>
         <div className="popcheck">
@@ -100,7 +101,7 @@ export default function Readout({ engagement }) {
       </div>
 
 
-      <TimingTable h={r.headline} />
+      <RampCard h={r.headline} />
       <UnusedLicences h={r.headline} />
 
       {r.quick_wins && r.quick_wins.length > 0 && (
@@ -489,32 +490,34 @@ function NarrativeBlock({ n, eid, onSaved, onError }) {
   )
 }
 
-// The moves under the headline: one plain line per in-scope persona, showing
-// the move's OWN value (quick-win credit stripped, so ① and ② never
-// double-count) — "Baseline (1000) → Microsoft 365 E5 (adds $22,560/yr)".
-// The headline, timed by renewals (ENGINE_SPEC 6.11) — computed once in the engine;
-// this only displays it. Savings-positive: ① duplicate spend today, ② consolidation
-// (each persona's move), ③ over-licensing. Every figure is over the same horizon,
-// each counted from the renewal that unlocks it, so the parts sum to the headline.
-function TimedHeadline({ h, inScope, currency }) {
+// The headline (ENGINE_SPEC 6.11) — computed once in the engine; this only displays
+// it. It LEADS with the run rate: what the customer saves each year once every
+// contract has renewed, made of ① duplicate spend today, ② consolidation (each
+// persona's move, its own value — quick-win credit stripped, so ① and ② never
+// double-count) and ③ over-licensing. Every figure here is per year, so the parts
+// sum to the headline. How it is reached, year by year, is the RampCard below.
+function RunRateHeadline({ h, inScope, currency, newCount }) {
   if (!h) return null
   const months = h.horizon_months
   const total = Number(h.amount) || 0
-  const dup = Number(h.duplicate_spend_amount) || 0
-  const cons = Number(h.consolidation_amount) || 0
-  const over = Number(h.overlicensing_amount) || 0
   const runRate = Number(h.run_rate_annual) || 0
-  const word = total > 0 ? `saved over ${months} months`
-    : total < 0 ? `added cost over ${months} months` : 'no net change'
-  // Shares of the total, only when every part is a saving (a share of a cost, or
+  const dup = Number(h.duplicate_spend_annual) || 0
+  const cons = Number(h.consolidation_annual) || 0
+  const over = Number(h.overlicensing_annual) || 0
+  // A cost that buys confirmed new capabilities leads with what it buys (W6).
+  const invest = runRate < 0 && newCount > 0
+  const word = runRate > 0 ? 'per year saved'
+    : invest ? `per year to gain ${newCount} new capabilit${newCount === 1 ? 'y' : 'ies'}`
+      : runRate < 0 ? 'per year added' : 'no net change per year'
+  // Shares of the run rate, only when every part is a saving (a share of a cost, or
   // a part over 100% beside one, reads as nonsense); the last shown part takes
   // the rounding remainder so they always sum to 100%.
   const parts = [['dup', dup], ['cons', cons], ['over', over]].filter(([k, v]) => k === 'cons' || v)
   const shares = {}
-  if (total > 0 && parts.every(([, v]) => v >= 0)) {
+  if (runRate > 0 && parts.every(([, v]) => v >= 0)) {
     let running = 0
     parts.forEach(([k, v], i) => {
-      const p = i === parts.length - 1 ? 100 - running : Math.round(v / total * 100)
+      const p = i === parts.length - 1 ? 100 - running : Math.round(v / runRate * 100)
       shares[k] = p; running += p
     })
   }
@@ -526,17 +529,19 @@ function TimedHeadline({ h, inScope, currency }) {
   const byPersona = {}
   for (const i of h.items || []) {
     if (i.sub_line === 'consolidation' && i.persona_id) {
-      byPersona[i.persona_id] = (byPersona[i.persona_id] || 0) + Number(i.amount)
+      byPersona[i.persona_id] = (byPersona[i.persona_id] || 0) + Number(i.annual_amount)
     }
   }
   return (
     <>
-      <div className="muted">Total opportunity · all figures over {months} months, each from its renewal · {currency} <PricingBadge /></div>
-      <div className={`headline headline-xl ${total > 0 ? 'pos' : ''}`}>
-        {usd0(total)} <span style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--muted)' }}>{word}</span>
+      <div className="muted">Total opportunity · per year, once every contract has renewed · {currency} <PricingBadge /></div>
+      <div className={`headline headline-xl ${runRate > 0 ? 'pos' : ''}`}>
+        {invest ? 'Invest ' : ''}{usd0(runRate)} <span style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--muted)' }}>{word}</span>
       </div>
-      <div className="muted">{usd0(runRate)} per year {runRate > 0 ? 'saved' : runRate < 0 ? 'added' : ''} once every contract has renewed
-        {h.assumed_dates > 0 && <> · <span className="warn">{h.assumed_dates} renewal date{h.assumed_dates === 1 ? '' : 's'} assumed</span></>}</div>
+      <div className="muted">Over {months} months: {usd0(total)} {total > 0 ? 'saved' : total < 0 ? 'added' : 'no net change'} as
+        contracts renew{reachText(h.full_run_rate_month, months) && <> · {reachText(h.full_run_rate_month, months)}</>}
+        {h.missing_dates > 0 && <> · <span className="muted">{h.missing_dates} amount{h.missing_dates === 1 ? '' : 's'} with
+          no renewal date count{h.missing_dates === 1 ? 's' : ''} from today</span></>}</div>
       {dup !== 0 && (
         <div className="popcheck hero-part" style={{ marginTop: '.5rem' }}>
           <div className="hero-part-main">{mark()}Retire duplicate tools — no licensing change:{' '}
@@ -561,6 +566,14 @@ function TimedHeadline({ h, inScope, currency }) {
   )
 }
 
+// When the full run rate is reached, in words (the engine gives the month).
+function reachText(month, months) {
+  if (month === null || month === undefined) return ''
+  if (month === 0) return 'the full run rate from day one'
+  return month < months ? `the full run rate from month ${month}`
+    : `the full run rate is reached after the ${months} months modelled`
+}
+
 function MoveSummary({ scenarios, amounts }) {
   if (!scenarios.length) {
     return <div className="muted">No in-scope scenarios yet — set a target bundle per persona on the Scenarios tab.</div>
@@ -568,7 +581,7 @@ function MoveSummary({ scenarios, amounts }) {
   return (
     <ul className="moves">
       {scenarios.map((s) => {
-        // Savings-positive, over the horizon, each part from its renewal.
+        // Savings-positive, per year at the full run rate.
         const v = Number(amounts[s.persona_id]) || 0
         return (
           <li key={s.scenario_id}>
@@ -585,8 +598,8 @@ function MoveSummary({ scenarios, amounts }) {
   )
 }
 
-// How the headline is timed: every timed amount, its start, and whether its
-// date was assumed — the engine's own items, displayed as-is.
+// How the run rate is reached: a bar per modelled year (with the running total),
+// then every timed amount behind it — the engine's own items, displayed as-is.
 const KIND_WORD = {
   quick_win: 'duplicate tool retired at its renewal',
   tool_credit: 'tool retired at its renewal',
@@ -594,32 +607,59 @@ const KIND_WORD = {
   microsoft_reduction: 'Microsoft reduction, at the Microsoft renewal',
   unused_seats: 'unused licences dropped at the Microsoft renewal',
 }
-function TimingTable({ h }) {
+function RampCard({ h }) {
   if (!h || !(h.items || []).length) return null
+  const runRate = Number(h.run_rate_annual) || 0
+  const rows = [...(h.years || []).map((y) => ({ label: `Year ${y.year}`, v: Number(y.amount), cum: Number(y.cumulative) })),
+    { label: 'Full run rate', v: runRate, cum: null }]
+  const peak = Math.max(1, ...rows.map((r) => Math.abs(r.v)))
+  const fmt = (v) => (v > 0 ? usd0(v) : v < 0 ? `(${usd0(v)})` : '$0')
+  const reach = reachText(h.full_run_rate_month, h.horizon_months)
   return (
-    <details className="card">
-      <summary style={{ cursor: 'pointer', listStyle: 'revert' }}><b>How the headline is timed</b>{' '}
-        <small className="muted">— each amount counts from its renewal to the end of the {h.horizon_months}-month horizon</small></summary>
-      <table style={{ marginTop: '.5rem' }}>
-        <thead><tr><th>Item</th><th>Starts</th><th className="num">Months</th>
-          <th className="num">Per year</th><th className="num">Over the horizon</th></tr></thead>
-        <tbody>
-          {h.items.map((i) => (
-            <tr key={i.item_key}>
-              <td>{i.label}<div className="muted" style={{ fontSize: '.78rem' }}>{KIND_WORD[i.kind]}</div></td>
-              <td>{i.timed_by || '—'}{i.date_assumed && <span className="badge warn" style={{ marginLeft: 4 }}
-                title="No renewal date was given, so one year after the workshop is assumed">assumed</span>}</td>
-              <td className="num">{i.months_counted}</td>
-              <td className={`num ${Number(i.annual_amount) > 0 ? 'pos' : ''}`}>{usd(i.annual_amount)}</td>
-              <td className={`num ${Number(i.amount) > 0 ? 'pos' : ''}`}>{usd(i.amount)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <small className="src">Savings positive, added costs negative. A missing renewal date is assumed to be
-        one year after the workshop — enter it on Customer Info (Microsoft), the licence line, or the
-        third-party tool.</small>
-    </details>
+    <div className="card">
+      <h2 style={{ marginTop: 0 }}>How the run rate is reached</h2>
+      <p className="hint">Each saving starts when the contract that holds it renews{reach ? `; ${reach}` : ''}.
+        Amounts with no renewal date count from today.</p>
+      <div className="ramp">
+        {rows.map((r) => (
+          <div key={r.label} className="ramp-row">
+            <div className="ramp-label">{r.label}</div>
+            <div className="ramp-track">
+              <div className={`ramp-bar ${r.v >= 0 ? 'pos' : ''}`} style={{ width: `${Math.round(Math.abs(r.v) / peak * 100)}%` }} />
+            </div>
+            <div className="ramp-value">
+              <span className={r.v > 0 ? 'pos' : ''}>{fmt(r.v)}</span>
+              {r.cum !== null && <div className="muted" style={{ fontSize: '.78rem' }}>running total {fmt(r.cum)}</div>}
+            </div>
+          </div>
+        ))}
+      </div>
+      <details>
+        <summary style={{ cursor: 'pointer', listStyle: 'revert' }}><b>Each amount and its renewal</b>{' '}
+          <small className="muted">— each counts from its renewal to the end of the {h.horizon_months}-month horizon</small></summary>
+        <table style={{ marginTop: '.5rem' }}>
+          <thead><tr><th>Item</th><th>Starts</th><th className="num">Months</th>
+            <th className="num">Per year</th><th className="num">Over the horizon</th></tr></thead>
+          <tbody>
+            {h.items.map((i) => (
+              <tr key={i.item_key}>
+                <td>{i.label}<div className="muted" style={{ fontSize: '.78rem' }}>{KIND_WORD[i.kind]}</div></td>
+                <td>{i.date_missing
+                  ? <span title="No renewal date was given, so it is treated as month-to-month: it counts from today">
+                      no date <span className="muted">— counted from today</span></span>
+                  : (i.timed_by || '—')}</td>
+                <td className="num">{i.months_counted}</td>
+                <td className={`num ${Number(i.annual_amount) > 0 ? 'pos' : ''}`}>{usd(i.annual_amount)}</td>
+                <td className={`num ${Number(i.amount) > 0 ? 'pos' : ''}`}>{usd(i.amount)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <small className="src">Savings positive, added costs negative. No renewal date means month-to-month
+          with no lock-in, so it counts from today — enter a date on the licence line, the agreement, or the
+          tool to time it.</small>
+      </details>
+    </div>
   )
 }
 

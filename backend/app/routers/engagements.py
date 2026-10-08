@@ -264,6 +264,7 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
             coverage_scope=lic.coverage_scope,
             renewal_date=lic.renewal_date,
             unused_seats_answer=lic.unused_seats_answer,
+            out_of_scope=lic.out_of_scope,
         )
         # Carry the persona tags across, remapped to the cloned personas.
         src_pids = lic.persona_ids or ([lic.persona_id] if lic.persona_id else [])

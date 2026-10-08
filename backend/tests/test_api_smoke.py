@@ -6,6 +6,8 @@ ORM -> engine bridge and the ratified-coverage gate work together.
 
 """client fixture is provided by conftest.py."""
 
+from datetime import date
+
 
 def test_full_workshop_flow_okta_500_vs_450(client):
     # 1. create engagement (seeds outcomes + MS coverage)
@@ -223,18 +225,23 @@ def test_readout_delta_sign_and_color_convention(client):
         "persona_id": kw["id"], "target_sku_reference": "E3", "target_unit_price_annual": 0})
     r = client.post(f"/api/engagements/{eid}/compute").json()
     assert r["rollup"]["net_tco_delta_annual"] == -30000.0  # negative = saving
-    # The reduction waits for the Microsoft renewal; with none given it is assumed
-    # a year out, so 24 of 36 months count (ENGINE_SPEC 6.11) and the readout says so.
-    html_body = client.get(f"/api/engagements/{eid}/readout.html").text
-    assert "$60,000" in html_body
-    assert "1 renewal date was not given" in html_body
-    # Renewing at the workshop, the full horizon counts.
-    client.patch(f"/api/engagements/{eid}", json={"microsoft_renewal_date": eng["workshop_date"]})
+    # The headline is the run rate, stated in words, unsigned and green.
     html_body = client.get(f"/api/engagements/{eid}/readout.html").text
     assert "headline pos" in html_body            # saving -> green
-    assert "saved over 36 months" in html_body    # horizon headline, stated in words
-    assert "$90,000" in html_body                 # 3 × 30,000, unsigned + words
+    assert "$30,000 <span class='headline-word'>per year saved" in html_body
     assert "headline neg" not in html_body        # never red
+    # The reduction waits for the Microsoft renewal; with none given it is
+    # month-to-month, so all 36 months count (ENGINE_SPEC 6.11) and the readout says so.
+    assert "Over 36 months: $90,000 saved" in html_body
+    assert "1 amount has no renewal date and counts from today" in html_body
+    # Renewing in a year, the ramp shows 24 of 36 months; the run rate is unchanged.
+    workshop = date.fromisoformat(eng["workshop_date"])
+    client.patch(f"/api/engagements/{eid}", json={
+        "microsoft_renewal_date": workshop.replace(year=workshop.year + 1).isoformat()})
+    html_body = client.get(f"/api/engagements/{eid}/readout.html").text
+    assert "$30,000 <span class='headline-word'>per year saved" in html_body
+    assert "Over 36 months: $60,000 saved" in html_body
+    assert "the full run rate from month 12" in html_body
 
     # Cost increase: expensive target.
     eng2 = client.post("/api/engagements", json={"customer_name": "Up Co"}).json()
@@ -248,7 +255,7 @@ def test_readout_delta_sign_and_color_convention(client):
     r2 = client.post(f"/api/engagements/{e2}/compute").json()
     assert r2["rollup"]["net_tco_delta_annual"] == 50000.0  # positive = cost increase
     html2 = client.get(f"/api/engagements/{e2}/readout.html").text
-    assert "added cost over 36 months" in html2
+    assert "$50,000 <span class='headline-word'>per year added" in html2
     assert "headline neg" not in html2            # increase is neutral, not red
 
 

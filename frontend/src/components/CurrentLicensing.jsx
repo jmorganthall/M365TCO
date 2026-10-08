@@ -85,6 +85,11 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
   if (tagIds.length === 0) chips.push(<span key="orgwide" className="badge muted" title={tenantWide
     ? 'Not tagged to a persona — cost is spread across all scenario personas by headcount, and the entitlement covers every user. Expand ▸ to tag specific personas.'
     : `Not tagged to a persona — cost is spread across all scenario personas by headcount, but only ${l.quantity_assigned} per-user seats are entitled. Expand ▸ to tag personas or mark the line tenant-wide.`}>applies org-wide</span>)
+  // Out of scope (TARGET_SCHEMA D23): the line stays listed but is in no number,
+  // so nothing else about it needs an answer — one chip says so.
+  const shownChips = l.out_of_scope
+    ? [<span key="oos" className="badge muted" title="Not part of this workshop: in no number. The PDF lists it.">out of scope — in no number</span>]
+    : chips
 
   const togglePersona = (pid) => {
     const next = tagIds.includes(pid) ? tagIds.filter((x) => x !== pid) : [...tagIds, pid]
@@ -137,7 +142,7 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
 
   return (
     <>
-      <tr>
+      <tr className={l.out_of_scope ? 'row-out' : ''}>
         <td><button className="ghost sm" title="Adjustments" onClick={() => setOpen(!open)}>{open ? '▾' : '▸'}</button></td>
         <td data-label="SKU"><SkuCombobox value={l.sku_reference}
           segment={basis.segment} term={basis.term} billing={basis.billing}
@@ -169,7 +174,7 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
             ? { overridden_price_annual: annual }
             : { unit_price_paid_annual: annual })} /></td>
         <td data-label="Adjustments"><div className="pill-list">
-          {chips.length ? chips : <span className="muted" style={{ fontSize: '.75rem' }}>fully assigned</span>}
+          {shownChips.length ? shownChips : <span className="muted" style={{ fontSize: '.75rem' }}>fully assigned</span>}
         </div></td>
         <td className="num"><button className="danger sm" onClick={() => remove(l.id)}>Remove</button></td>
       </tr>
@@ -239,6 +244,14 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
                 <small className="src">Only when this line renews on a different date from the
                   agreement{eng.microsoft_renewal_date ? <> ({eng.microsoft_renewal_date})</> : ''}.
                   Blank = the agreement's date.</small></div>
+              <div><label>Part of this workshop <Help k="licences.out_of_scope" /></label>
+                <label className="src" style={{ display: 'flex', alignItems: 'center', gap: '.4rem' }}>
+                  <input type="checkbox" style={{ width: 'auto' }} checked={!!l.out_of_scope}
+                    onChange={(e) => update(l.id, { out_of_scope: e.target.checked })} />
+                  Out of scope for this workshop
+                </label>
+                <small className="src">For licences no plan includes (Visio, Project, Teams Rooms…).
+                  The line stays listed but is in no number; the PDF names it.</small></div>
             </div>
             <div className="grid c4" style={{ padding: '.4rem 0' }}>
               <div><label>Segment</label>

@@ -304,6 +304,8 @@ class CurrentLicenseIn(BaseModel):
     # The customer's answer about the unused seats: "Intended" | "NotNeeded" |
     # None (not answered).
     unused_seats_answer: Optional[Literal["Intended", "NotNeeded"]] = None
+    # Not part of this workshop: in no number (TARGET_SCHEMA §4.4, D23).
+    out_of_scope: bool = False
     # Personas this line applies to (many-to-many tags).
     persona_ids: list[str] = []
     source_tag: str = "CustomerStated"
@@ -323,6 +325,7 @@ class CurrentLicenseOut(ORMModel):
     coverage_scope: str = "PerUser"
     renewal_date: Optional[date] = None
     unused_seats_answer: Optional[str] = None
+    out_of_scope: bool = False
     persona_ids: list[str]
     source_tag: str
 

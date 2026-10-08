@@ -38,7 +38,7 @@ def build_narrative_payload(eng, result: dict) -> list[dict]:
     Pure: takes the ORM engagement and the serialized compute result."""
     # Current SKUs a persona holds today, from the engagement's licenses (tags).
     skus_by_persona: dict[str, list[str]] = {}
-    for lic in eng.current_licenses:
+    for lic in eng.licenses_in_scope:
         ref = (lic.sku_reference or "").strip()
         if not ref:
             continue

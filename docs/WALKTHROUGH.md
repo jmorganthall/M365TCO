@@ -252,7 +252,8 @@ contract has renewed. It is made of three sub-lines, each also a yearly amount:
   counted anywhere.
 - Unanswered unused seats are left out.
 - When the run rate is a cost (an uplevel), the headline reads "Invest $X per year to
-  gain N new capabilities" (W6).
+  gain N new capabilities" (W6), counting the capabilities the customer confirmed are
+  new; with none confirmed, it reads "$X per year added".
 
 ### The ramp
 

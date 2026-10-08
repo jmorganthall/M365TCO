@@ -31,7 +31,7 @@ from .engine import (
     QuickWin,
     EngineResult,
 )
-from .timing import Headline, TimingItem, UnusedSeatLine, start_month
+from .timing import Headline, HeadlineYear, TimingItem, UnusedSeatLine, ramp_years, start_month
 from .optimizer import (
     analyze_bundles,
     CandidateBundle,
@@ -58,8 +58,10 @@ __all__ = [
     "QuickWin",
     "EngineResult",
     "Headline",
+    "HeadlineYear",
     "TimingItem",
     "UnusedSeatLine",
+    "ramp_years",
     "start_month",
     "analyze_bundles",
     "CandidateBundle",

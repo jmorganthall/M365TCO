@@ -123,7 +123,9 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
                 UnusedSeatsAnswer(lic.unused_seats_answer) if lic.unused_seats_answer else None
             ),
         )
-        for lic in eng.current_licenses
+        # Out-of-scope lines are not engine inputs (ENGINE_SPEC 6.2): they are in
+        # no number, today or after the move.
+        for lic in eng.licenses_in_scope
     ]
 
     third_party = []
@@ -250,7 +252,7 @@ def analyze_persona_bundles(
     # tagged to several personas; its cost is split across their combined headcount
     # (mirrors the engine's §6.2 allocation).
     hc = {p.id: p.headcount for p in eng.personas}
-    persona_lines = [l for l in eng.current_licenses if persona_id in l.persona_ids]
+    persona_lines = [l for l in eng.licenses_in_scope if persona_id in l.persona_ids]
     required: set[str] = set()
     current_ms = Decimal("0")
     for line in persona_lines:
@@ -580,7 +582,7 @@ def persona_coverage_gaps(db: Session, engagement_id: str) -> list[dict]:
         unmapped: list[dict] = []
         org_wide_by_ref: dict[str, set[str]] = {}
         seen_refs: set[str] = set()
-        for lic in eng.current_licenses:
+        for lic in eng.licenses_in_scope:
             if lic.persona_ids and p.id not in lic.persona_ids:
                 continue
             outs = sku_outcomes.get(_cover_key(db, lic.sku_reference), set())

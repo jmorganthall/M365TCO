@@ -1180,7 +1180,7 @@ def _timed(personas, products, scenarios, lines, *, horizon=3, ms_renewal=None,
     (date(2027, 3, 20), (6, date(2027, 3, 20), False)),    # after the 8th: month 6
     (date(2025, 12, 1), (2, date(2026, 12, 1), False)),    # past: next anniversary
     (date(2024, 2, 29), (5, date(2027, 2, 28), False)),    # leap day rolls to the 28th
-    (None, (12, date(2027, 10, 8), True)),                 # missing: assumed 12
+    (None, (0, None, True)),                               # missing: month-to-month
 ])
 def test_start_month_counts_whole_months_from_the_workshop(when, expected):
     assert start_month(WORKSHOP, when) == expected
@@ -1192,8 +1192,8 @@ def test_add_months_clamps_to_the_month_length():
     assert add_months(date(2026, 11, 30), 3) == date(2027, 2, 28)
 
 
-def test_no_workshop_date_assumes_every_renewal():
-    assert start_month(None, date(2027, 1, 1)) == (12, None, True)
+def test_no_workshop_date_counts_every_amount_from_day_one():
+    assert start_month(None, date(2027, 1, 1)) == (0, None, True)
 
 
 def _identity_quick_win(renewal):
@@ -1220,22 +1220,29 @@ def test_duplicate_spend_starts_at_the_tools_renewal():
     assert h.overlicensing_amount == D("0.00")
     assert h.amount == D("30000.00") and h.direction == "saved"
     (item,) = h.items
-    assert (item.kind, item.start_month, item.months_counted, item.date_assumed) == \
+    assert (item.kind, item.start_month, item.months_counted, item.date_missing) == \
         ("quick_win", 6, 30, False)
 
 
-def test_a_missing_tool_renewal_is_assumed_a_year_out():
+def test_a_missing_tool_renewal_is_month_to_month():
+    # No date = no lock-in: the tool can go now, so all 36 months count.
     kw, e3, okta = _identity_quick_win(None)
     h = _timed([kw], [okta], [], [e3])
-    assert h.duplicate_spend_amount == D("24000.00")      # 24 of 36 months
-    assert h.items[0].date_assumed and h.items[0].timed_by == "2027-10-08"
+    assert h.duplicate_spend_amount == D("36000.00")
+    (item,) = h.items
+    assert (item.start_month, item.date_missing, item.timed_by) == (0, True, None)
 
 
 def test_a_renewal_past_the_horizon_counts_nothing_but_is_listed():
     kw, e3, okta = _identity_quick_win("2028-01-08")      # month 15
     h = _timed([kw], [okta], [], [e3], horizon=1)          # 12 months
-    assert h.amount == D("0.00") and h.direction == "none"
+    # Nothing inside the horizon, but the run rate (the headline) is a saving.
+    assert h.amount == D("0.00") and h.run_rate_annual == D("12000.00")
+    assert h.direction == "saved"
     assert h.items[0].months_counted == 0 and h.items[0].start_month == 15
+    # The full run rate is reached after the modelled year, and the ramp is empty.
+    assert h.full_run_rate_month == 15
+    assert [(y.year, y.amount) for y in h.years] == [(1, D("0.00"))]
 
 
 def _upgrade_case(edr_renewal="2027-06-08", mail_renewal="2028-06-08", tools=True):
@@ -1301,13 +1308,22 @@ def test_a_microsoft_reduction_waits_for_the_latest_line_renewal():
     assert (ms.kind, ms.annual_amount, ms.start_month) == \
         ("microsoft_reduction", D("30000.00"), 9)
     assert ms.amount == D("67500.00") and ms.timed_by == "2027-07-08"
-    assert not ms.date_assumed
+    assert not ms.date_missing
 
 
-def test_a_reduction_with_no_agreement_date_assumes_a_year():
+def test_a_reduction_with_no_agreement_date_counts_from_day_one():
+    # Line a renews at month 3; line b has no date of its own and the agreement
+    # none either, so b is month-to-month (month 0). The latest of the two wins.
     h = _timed(*_reduction_case())
     (ms,) = h.items
-    assert (ms.start_month, ms.date_assumed, ms.amount) == (12, True, D("60000.00"))
+    assert (ms.start_month, ms.date_missing, ms.amount) == (3, False, D("82500.00"))
+
+
+def test_a_reduction_with_no_date_anywhere_counts_from_day_one():
+    personas, products, scenarios, (a, b) = _reduction_case()
+    h = _timed(personas, products, scenarios, [replace(a, renewal_date=None), b])
+    (ms,) = h.items
+    assert (ms.start_month, ms.date_missing, ms.amount) == (0, True, D("90000.00"))
 
 
 def test_a_lines_own_renewal_overrides_the_agreement():
@@ -1395,3 +1411,61 @@ def test_a_microsoft_increase_whose_move_retires_only_quick_wins_starts_on_day_o
     h = _timed([kw], [okta], [e5], [e3])
     ms = next(i for i in h.items if i.kind == "microsoft_increase")
     assert ms.start_month == 0
+
+
+# ---- The run rate leads; the ramp follows (6.11) ----
+
+def test_the_run_rate_and_each_sub_line_per_year():
+    h = _timed(*_upgrade_case())
+    # EDR +6,000 and mail +3,000 retired, Microsoft +24,000: −15,000 a year.
+    assert h.run_rate_annual == D("-15000.00") and h.direction == "added"
+    assert (h.duplicate_spend_annual, h.consolidation_annual, h.overlicensing_annual) == \
+        (D("0.00"), D("-15000.00"), D("0.00"))
+
+
+def test_the_ramp_splits_the_horizon_total_into_years():
+    h = _timed(*_upgrade_case())
+    # Year 1: EDR 4 months (2,000), Microsoft 4 months (−8,000).
+    # Year 2: EDR 6,000, mail 4 months (1,000), Microsoft −24,000.
+    # Year 3: the full run rate, −15,000.
+    assert [(y.year, y.amount, y.cumulative) for y in h.years] == [
+        (1, D("-6000.00"), D("-6000.00")),
+        (2, D("-17000.00"), D("-23000.00")),
+        (3, D("-15000.00"), D("-38000.00")),
+    ]
+    assert h.years[-1].cumulative == h.amount
+    assert h.full_run_rate_month == 20                    # the mail tool's renewal
+
+
+def test_ramp_years_reconcile_to_the_cent():
+    # 1,000/yr from month 1: 35 months = 2,916.67. Rounding each year on its own
+    # would give 916.67 + 1,000 + 1,000 = 2,916.67 here, but the cumulative rule
+    # guarantees it for every amount.
+    kw, e3, okta = _identity_quick_win("2026-11-08")       # month 1
+    okta = replace(okta, annual_cost=D("1000"))
+    h = _timed([kw], [okta], [], [e3])
+    assert h.amount == D("2916.67")
+    assert [y.amount for y in h.years] == [D("916.67"), D("1000.00"), D("1000.00")]
+    assert sum(y.amount for y in h.years) == h.amount
+
+
+def test_with_no_dates_the_horizon_total_is_the_run_rate_times_the_years():
+    kw, e3, okta = _identity_quick_win(None)
+    edr = ThirdPartyProduct(id="edr", name="EDR", annual_cost=D("6000"), covered_count=100,
+                            delivered_outcome_ids=frozenset({ENDPOINT}),
+                            persona_ids=frozenset({"kw"}))
+    s = PersonaScenario(id="s", persona_id="kw", target_sku_reference="E5",
+                        target_unit_price_annual=D("150"),
+                        target_covered_outcome_ids=frozenset({IDENTITY, ENDPOINT}))
+    h = _timed([kw], [okta, edr], [s], [e3])
+    assert h.full_run_rate_month == 0
+    assert h.amount == h.run_rate_annual * 3
+    assert all(y.amount == h.run_rate_annual for y in h.years)
+    assert all(i.date_missing for i in h.items)
+
+
+def test_an_empty_headline_has_no_run_rate_month():
+    h = _timed([], [], [], [])
+    assert h.run_rate_annual == D("0.00") and h.direction == "none"
+    assert h.full_run_rate_month is None
+    assert [y.amount for y in h.years] == [D("0.00")] * 3

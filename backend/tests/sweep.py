@@ -15,6 +15,9 @@ and asserts properties that must hold for EVERY case:
                     at / above the population, managed or not
   scenarios         absent / in-scope displacing / in-scope non-displacing /
                     out-of-scope, per persona
+  renewal dates     cycled across cases (not multiplied): none (month-to-month),
+                    at the workshop, mid-horizon, past (rolls forward), beyond the
+                    horizon — for the tool, the licence line and the agreement
 
 `iter_cases()` yields hydrated Engagement objects; `check(case)` runs the engine
 and returns the invariant violations. Both are importable so the pytest suite can
@@ -35,6 +38,7 @@ import itertools
 import random
 import sys
 from dataclasses import dataclass, replace
+from datetime import date
 from decimal import Decimal
 
 from tco_engine import (
@@ -52,6 +56,31 @@ OUT_A = "outcome-a"          # the outcome the tool duplicates
 OUT_B = "outcome-b"          # a second outcome, for partial-overlap cases
 
 CENT = D("0.01")
+
+# Timing (Section 6.11). Every case has a workshop date; the renewal dates are
+# cycled by case number so the ramp sees every shape without multiplying the space.
+WORKSHOP = date(2026, 10, 8)
+TOOL_RENEWALS = (None, "2026-10-08", "2027-03-20", "2025-12-01", "2028-06-08", "2030-01-01")
+LINE_RENEWALS = (None, date(2027, 1, 8), date(2029, 1, 1))
+AGREEMENT_RENEWALS = (None, date(2027, 7, 8))
+
+
+def _dated(eng: Engagement, k: int) -> Engagement:
+    """The same engagement with a workshop date and the k-th combination of renewal
+    dates (deterministic, so a failing case reproduces from its label)."""
+    return replace(
+        eng,
+        workshop_date=WORKSHOP,
+        microsoft_renewal_date=AGREEMENT_RENEWALS[k % len(AGREEMENT_RENEWALS)],
+        third_party_products=[
+            replace(t, renewal_date=TOOL_RENEWALS[k % len(TOOL_RENEWALS)])
+            for t in eng.third_party_products
+        ],
+        current_licenses=[
+            replace(l, renewal_date=LINE_RENEWALS[(k // 2 + i) % len(LINE_RENEWALS)])
+            for i, l in enumerate(eng.current_licenses)
+        ],
+    )
 
 
 # --------------------------------------------------------------------------
@@ -136,6 +165,7 @@ def iter_cases(level: str = "full"):
     )
     scopes = (CoverageScope.PER_USER, CoverageScope.TENANT_WIDE)
     managed_flags = (False,) if level == "ci" else (False, True)
+    k = 0
 
     for n in person_counts:
         people = _personas(n)
@@ -167,19 +197,20 @@ def iter_cases(level: str = "full"):
                                                 for pid, k in zip(pids, kinds)
                                             ) if s is not None
                                         ]
+                                        k += 1
                                         label = (
                                             f"n={n} lic_tags={lic_tags or '()'} qty={qty} "
                                             f"scope={scope.value} covers={sorted(covers) or '-'} "
                                             f"tool_tags={tool_tags or '()'} covered={tool_count} "
-                                            f"managed={managed} scen={kinds}"
+                                            f"managed={managed} scen={kinds} dates#{k}"
                                         )
-                                        yield Case(label, Engagement(
+                                        yield Case(label, _dated(Engagement(
                                             id="e",
                                             personas=list(people),
                                             current_licenses=[lic],
                                             third_party_products=[tool],
                                             scenarios=scenarios,
-                                        ))
+                                        ), k))
 
 
 def iter_multi_line_cases(level: str = "full"):
@@ -192,6 +223,7 @@ def iter_multi_line_cases(level: str = "full"):
     quantities = (25, 50, 100) if level == "ci" else (0, 25, 50, 100, 150, 200)
     scopes = (CoverageScope.PER_USER, CoverageScope.TENANT_WIDE)
     tool_tag_sets = (pids,) if level == "ci" else tag_sets
+    k = 0
 
     for tags_a, tags_b in itertools.product(tag_sets, repeat=2):
         for qty_a, qty_b in itertools.product(quantities, repeat=2):
@@ -202,16 +234,17 @@ def iter_multi_line_cases(level: str = "full"):
                 ]
                 for tool_tags in tool_tag_sets:
                     tool = _tool(tool_tags, 150)
+                    k += 1
                     label = (
                         f"2-line A(tags={tags_a or '()'},q={qty_a},{scope_a.value}) "
                         f"B(tags={tags_b or '()'},q={qty_b},{scope_b.value}) "
-                        f"tool_tags={tool_tags or '()'}"
+                        f"tool_tags={tool_tags or '()'} dates#{k}"
                     )
-                    yield Case(label, Engagement(
+                    yield Case(label, _dated(Engagement(
                         id="e", personas=list(people), current_licenses=lines,
                         third_party_products=[tool],
                         scenarios=[_scenario(pid, "displacing") for pid in pids],
-                    ))
+                    ), k))
 
 
 # --------------------------------------------------------------------------
@@ -379,6 +412,29 @@ def check(case: Case) -> list[str]:
                 fail("timed-bounds", f"{i.item_key}: {i.amount} over {i.months_counted} months")
             if i.amount and (i.amount > 0) != (i.annual_amount > 0):
                 fail("timed-bounds", f"{i.item_key}: sign flipped")
+            # No date means month-to-month: it counts from day one, untimed by a date.
+            if i.date_missing and (i.start_month != 0 or i.timed_by is not None):
+                fail("timed-nodate", f"{i.item_key}: no date but starts at {i.start_month}")
+        # The run rate (the headline) is its three sub-lines' yearly amounts.
+        parts = h.duplicate_spend_annual + h.consolidation_annual + h.overlicensing_annual
+        if parts != h.run_rate_annual:
+            fail("runrate-parts", f"{parts} != run rate {h.run_rate_annual}")
+        sign = "saved" if h.run_rate_annual > 0 else "added" if h.run_rate_annual < 0 else "none"
+        if h.direction != sign:
+            fail("runrate-direction", f"{h.direction} for run rate {h.run_rate_annual}")
+        # The ramp: one entry per modelled year, adding up to the horizon total,
+        # and every year after the last start is exactly the run rate.
+        if len(h.years) != h.horizon_months // 12:
+            fail("ramp-years", f"{len(h.years)} years for {h.horizon_months} months")
+        if sum((y.amount for y in h.years), D("0")) != h.amount or (
+                h.years and h.years[-1].cumulative != h.amount):
+            fail("ramp-sum", f"years {[y.amount for y in h.years]} != {h.amount}")
+        last = max((i.start_month for i in h.items), default=None)
+        if h.full_run_rate_month != last:
+            fail("ramp-full-month", f"{h.full_run_rate_month} != latest start {last}")
+        for y in h.years:
+            if last is not None and (y.year - 1) * 12 >= last and y.amount != h.run_rate_annual:
+                fail("ramp-full-year", f"year {y.year}: {y.amount} != run rate {h.run_rate_annual}")
 
     # ---- Current Microsoft spend is distributed, never invented ----
     line_total = sum(

@@ -15,14 +15,20 @@ Pure functions over the engine's own outputs. The headline has three sub-lines:
                     Microsoft renewal.
 
 Amounts are SAVINGS-positive (a positive amount is money saved; a negative one is
-money added). Month 0 is the workshop date. An item with annual amount A that
-starts at month s counts for max(0, H − s) months, H = horizon_years × 12, so it
-contributes A × months / 12, rounded to the cent. Sub-lines and the headline are
-sums of the rounded items, so every displayed total reconciles.
+money added). Month 0 is the workshop date. A missing date means month-to-month
+with no lock-in: the item starts at month 0 and is marked `date_missing`.
 
-Run-rate identity: before timing, the three sub-lines' annual amounts sum to
+The headline LEADS with the run rate: the sum of every item's annual amount, what
+the customer saves (or invests) each year once every contract has renewed. Then
+the ramp: an item with annual amount A that starts at month s counts for
+max(0, H − s) months, H = horizon_years × 12, so it contributes A × months / 12,
+rounded to the cent. Sub-lines and the horizon total are sums of the rounded
+items, and each modelled year holds the items' cumulative amounts at its end less
+those at its start, so the years always add up to the horizon total.
+
+Run-rate identity: the three sub-lines' annual amounts sum to
 quick_win_savings_annual − move_incremental_delta_annual + overlicensing — the
-untimed total opportunity the readout showed before this section existed.
+untimed total opportunity.
 """
 
 from __future__ import annotations
@@ -30,14 +36,12 @@ from __future__ import annotations
 from calendar import monthrange
 from dataclasses import dataclass, field
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 
 from .models import Engagement, UnusedSeatsAnswer
 
 CENTS = Decimal("0.01")
-# A missing renewal date is assumed to be this many months after the workshop.
-ASSUMED_RENEWAL_MONTHS = 12
 
 DUPLICATE_SPEND = "duplicate_spend"
 CONSOLIDATION = "consolidation"
@@ -45,7 +49,11 @@ OVERLICENSING = "overlicensing"
 
 
 def _money(value: Decimal) -> Decimal:
-    return Decimal(value).quantize(CENTS)
+    # Half away from zero, not the default half-to-even: then a whole year of an
+    # item (its amount through a year's end less through its start, both rounded)
+    # is exactly its annual amount, because adding a whole-cent amount of the same
+    # sign never changes which way a half cent rounds.
+    return Decimal(value).quantize(CENTS, rounding=ROUND_HALF_UP)
 
 
 @dataclass
@@ -60,7 +68,7 @@ class TimingItem:
     annual_amount: Decimal        # savings-positive, at full run-rate
     start_month: int              # month 0 = the workshop
     timed_by: Optional[str]       # ISO date the item starts (after roll-forward)
-    date_assumed: bool            # True when a missing date was assumed
+    date_missing: bool            # True when no date was given (counted from day one)
     months_counted: int
     amount: Decimal               # savings-positive, over the horizon
     persona_id: Optional[str] = None
@@ -82,15 +90,33 @@ class UnusedSeatLine:
 
 
 @dataclass
+class HeadlineYear:
+    """One modelled year of the ramp (TARGET_SCHEMA c_headline_years)."""
+
+    year: int                     # 1 … horizon_years
+    amount: Decimal               # savings-positive, this year only
+    cumulative: Decimal           # the running total at the year's end
+
+
+@dataclass
 class Headline:
     horizon_months: int
     workshop_date: Optional[str]
+    # The run rate — the headline: each year once every contract has renewed.
+    run_rate_annual: Decimal      # Σ annual amounts
+    duplicate_spend_annual: Decimal
+    consolidation_annual: Decimal
+    overlicensing_annual: Decimal
+    direction: str                # saved | added | none, from the run rate
+    # The ramp: the same items timed over the horizon.
     duplicate_spend_amount: Decimal
     consolidation_amount: Decimal
     overlicensing_amount: Decimal
-    amount: Decimal               # the sum of the three sub-lines
-    direction: str                # saved | added | none
-    run_rate_annual: Decimal      # Σ annual amounts, once everything has renewed
+    amount: Decimal               # the sum of the three sub-lines over the horizon
+    # The month from which every item counts (the latest start month); None when
+    # there is nothing to time. At or beyond the horizon = not reached in it.
+    full_run_rate_month: Optional[int]
+    years: list[HeadlineYear] = field(default_factory=list)
     items: list[TimingItem] = field(default_factory=list)
     unused_seat_lines: list[UnusedSeatLine] = field(default_factory=list)
 
@@ -111,17 +137,16 @@ def add_months(d: date, months: int) -> date:
 def start_month(workshop: Optional[date], when: Optional[date]) -> tuple[int, Optional[date], bool]:
     """The month an amount timed by `when` starts, counted from the workshop.
 
-    Returns (start_month, the date it was timed by, assumed?).
-      * A missing date (or no workshop to measure from) is assumed to be
-        ASSUMED_RENEWAL_MONTHS after the workshop.
+    Returns (start_month, the date it was timed by, no date given?).
+      * A missing date means month-to-month with no lock-in: month 0, no date.
+        So does a missing workshop date, since there is nothing to measure from.
       * A date before the workshop is a past renewal: rolled forward a year at a
         time to its next anniversary on or after the workshop.
       * Otherwise the smallest whole month m with workshop + m months ≥ the date,
         so a saving is never counted for a month before its renewal.
     """
     if workshop is None or when is None:
-        timed = add_months(workshop, ASSUMED_RENEWAL_MONTHS) if workshop else None
-        return ASSUMED_RENEWAL_MONTHS, timed, True
+        return 0, None, True
     while when < workshop:
         when = add_months(when, 12)
     m = (when.year - workshop.year) * 12 + (when.month - workshop.month)
@@ -157,14 +182,14 @@ def timed_headline(engagement: Engagement, scenario_results, quick_wins) -> Head
         if annual == 0:
             return
         if start_override is not None:
-            s, timed, assumed = start_override
+            s, timed, missing = start_override
         else:
-            s, timed, assumed = start_month(workshop, when)
+            s, timed, missing = start_month(workshop, when)
         months = max(horizon_months - s, 0)
         items.append(TimingItem(
             item_key=key, sub_line=sub_line, kind=kind, label=label,
             annual_amount=annual, start_month=s,
-            timed_by=timed.isoformat() if timed else None, date_assumed=assumed,
+            timed_by=timed.isoformat() if timed else None, date_missing=missing,
             months_counted=months,
             amount=_money(annual * Decimal(months) / Decimal(12)),
             persona_id=persona_id, third_party_product_id=product_id,
@@ -250,20 +275,48 @@ def timed_headline(engagement: Engagement, scenario_results, quick_wins) -> Head
                 f"{line.sku_reference}: {unused} unused seats",
                 value, line_renewal(line), license_id=lid)
 
-    def total(sub_line):
-        return _money(sum((i.amount for i in items if i.sub_line == sub_line), Decimal("0")))
+    def total(sub_line, attr="amount"):
+        return _money(sum((getattr(i, attr) for i in items if i.sub_line == sub_line),
+                          Decimal("0")))
 
     dup, cons, over = total(DUPLICATE_SPEND), total(CONSOLIDATION), total(OVERLICENSING)
     amount = _money(dup + cons + over)
+    run_rate = _money(sum((i.annual_amount for i in items), Decimal("0")))
     return Headline(
         horizon_months=horizon_months,
         workshop_date=workshop.isoformat() if workshop else None,
+        run_rate_annual=run_rate,
+        duplicate_spend_annual=total(DUPLICATE_SPEND, "annual_amount"),
+        consolidation_annual=total(CONSOLIDATION, "annual_amount"),
+        overlicensing_annual=total(OVERLICENSING, "annual_amount"),
+        direction="saved" if run_rate > 0 else "added" if run_rate < 0 else "none",
         duplicate_spend_amount=dup,
         consolidation_amount=cons,
         overlicensing_amount=over,
         amount=amount,
-        direction="saved" if amount > 0 else "added" if amount < 0 else "none",
-        run_rate_annual=_money(sum((i.annual_amount for i in items), Decimal("0"))),
+        full_run_rate_month=max((i.start_month for i in items), default=None),
+        years=ramp_years(items, horizon_months),
         items=items,
         unused_seat_lines=unused_lines,
     )
+
+
+def ramp_years(items: list[TimingItem], horizon_months: int) -> list[HeadlineYear]:
+    """Each modelled year's share of the timed items. An item's amount through the
+    end of a year is its annual amount × the months it has counted by then / 12,
+    rounded to the cent; a year holds the difference between its end and its start.
+    Rounding the cumulative (not each year) makes every item's years add up to its
+    own rounded amount, so the years always add up to the horizon total."""
+    def through(item: TimingItem, month: int) -> Decimal:
+        counted = min(max(month - item.start_month, 0), item.months_counted)
+        return _money(item.annual_amount * Decimal(counted) / Decimal(12))
+
+    years: list[HeadlineYear] = []
+    running = Decimal("0")
+    for y in range(1, horizon_months // 12 + 1):
+        start, end = (y - 1) * 12, y * 12
+        amount = _money(sum((through(i, end) - through(i, start) for i in items),
+                            Decimal("0")))
+        running = _money(running + amount)
+        years.append(HeadlineYear(year=y, amount=amount, cumulative=running))
+    return years

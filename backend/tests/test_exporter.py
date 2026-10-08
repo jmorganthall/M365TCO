@@ -109,17 +109,18 @@ def test_readout_breaks_bridge_down_per_persona(client):
 
     html = client.get(f"/api/engagements/{eid}/readout.html").text
 
-    # The hero: a 36-month headline (annual delta × default 3-year horizon) over
-    # one compact move line per persona with its own signed annual delta. This
-    # engagement has no current Microsoft spend, so the move is honestly a cost
-    # increase: Sales +40k/yr (60k target − 20k freed Okta), Engineering +10k.
-    assert "added cost over 36 months" in html
-    assert "$150,000" in html                        # 3 × 50,000, unsigned + words
-    assert "$50,000 per year" in html
-    # Hero figures share one horizon (3yr): components sum to the headline.
+    # The hero: the run rate (per year once every contract has renewed) over one
+    # compact move line per persona with its own annual amount. This engagement
+    # has no current Microsoft spend, so the move is honestly a cost increase:
+    # Sales +40k/yr (60k target − 20k freed Okta), Engineering +10k. With new
+    # capabilities confirmed, the headline leads with what the investment buys.
+    assert "Invest $50,000 <span class='headline-word'>per year to gain" in html
+    # Okta renews at the workshop, so the ramp is the run rate for every year.
+    assert "Over 36 months: $150,000 added" in html
+    # Hero figures are all per year: the components sum to the headline.
     # Finance notation: added expense in parentheses, black; savings plain green.
-    assert "($120,000)</span><span class='move-desc'><b>Sales</b> (100) → <b>Microsoft 365 E5</b></span>" in html
-    assert "($30,000)</span><span class='move-desc'><b>Engineering</b> (50) → <b>Microsoft 365 E3</b></span>" in html
+    assert "($40,000)</span><span class='move-desc'><b>Sales</b> (100) → <b>Microsoft 365 E5</b></span>" in html
+    assert "($10,000)</span><span class='move-desc'><b>Engineering</b> (50) → <b>Microsoft 365 E3</b></span>" in html
     # The bridge is a matrix: a column head per persona (→ its target) + Total.
     assert "Sales <small>→ Microsoft 365 E5</small>" in html
     assert "Engineering <small>→ Microsoft 365 E3</small>" in html

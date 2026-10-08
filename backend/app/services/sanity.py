@@ -39,7 +39,7 @@ def build_sanity_payload(eng, result: dict) -> dict:
             "unit_price_annual": float(l.unit_price_paid_annual or 0),
             "segment": l.segment or eng.default_segment,
         }
-        for l in eng.current_licenses
+        for l in eng.licenses_in_scope
     ]
     third_party = [
         {

@@ -136,7 +136,7 @@ def evaluate(db: Session, engagement_id: str) -> list[dict]:
         # quantity_assigned is the modeled seat count the rest of the readout uses.
         current_seats = sum(
             lic.quantity_assigned
-            for lic in eng.current_licenses
+            for lic in eng.licenses_in_scope
             if _resolve(lic.sku_reference) in mset
         )
 
@@ -212,7 +212,7 @@ def seat_cap_context(
         mset = members.get(lim.id, set())
         consumed = sum(
             lic.quantity_assigned
-            for lic in eng.current_licenses
+            for lic in eng.licenses_in_scope
             if _resolve(lic.sku_reference) in mset
         )
         for s in eng.scenarios:
