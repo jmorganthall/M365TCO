@@ -144,6 +144,7 @@ def list_bundles(engagement_id: str | None = None, db: Session = Depends(get_db)
     rows = bundles_service.list_bundles(db)
     by_id = {b.id: b for b in rows}
     elig_map = bundles_service.eligibility_map(db)
+    aliases = bundles_service.aliases_by_bundle(db)
     out = []
     for b in rows:
         eligible = sorted(elig_map.get(b.id, set()))
@@ -157,6 +158,8 @@ def list_bundles(engagement_id: str | None = None, db: Session = Depends(get_db)
             "eligible_base_ids": eligible,
             "eligible_base_names": [by_id[i].name for i in eligible if i in by_id],
             "alacarte": b.kind == "addon" and not eligible,
+            # Other names customer exports use for it (TARGET_SCHEMA §3.1).
+            "aliases": aliases.get(b.id, []),
         })
     return out
 
@@ -253,6 +256,20 @@ def set_bundle_eligibility(
     return {"addon_bundle_id": addon_id, "eligible_base_ids": ids, "alacarte": not ids}
 
 
+@router.put("/bundles/{bundle_id}/aliases")
+def set_bundle_aliases(bundle_id: str, payload: schemas.BundleAliasesIn, db: Session = Depends(get_db)):
+    """Replace a bundle's aliases — the names a customer export may use for it, so
+    a licence line typed that way finds its plan. Stored normalized (lower case,
+    single spaces); an alias belongs to one bundle (409 if another holds it)."""
+    if db.get(models.Bundle, bundle_id) is None:
+        raise HTTPException(404, "Bundle not found")
+    try:
+        aliases = bundles_service.set_bundle_aliases(db, bundle_id, payload.aliases)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+    return {"bundle_id": bundle_id, "aliases": aliases}
+
+
 @router.delete("/bundles/{bundle_id}")
 def delete_bundle(bundle_id: str, db: Session = Depends(get_db)):
     """Delete a bundle — blocked (409) while anything still references it, so a
@@ -287,8 +304,12 @@ def delete_bundle(bundle_id: str, db: Session = Depends(get_db)):
     if refs:
         raise HTTPException(409, "Cannot delete: still referenced by " + ", ".join(refs)
                             + ". Clear those references first.")
-    # An add-on owns its eligibility rows (where it is the addon) — remove them so
-    # the delete doesn't leave orphans.
+    # A bundle owns its aliases, and an add-on its eligibility rows (where it is the
+    # addon) — remove them so the delete doesn't leave orphans.
+    for a in db.execute(
+        select(models.BundleAlias).where(models.BundleAlias.bundle_id == bundle_id)
+    ).scalars().all():
+        db.delete(a)
     for e in db.execute(
         select(models.AddonEligibility).where(
             models.AddonEligibility.addon_bundle_id == bundle_id

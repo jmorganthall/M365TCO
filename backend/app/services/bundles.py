@@ -29,9 +29,9 @@ def _seed() -> dict:
 def _seed_base_keys(entry: dict) -> list[str]:
     """The base keys an add-on seed entry declares — `bases: [...]` (multi) unioned
     with the single-`base` sugar. Empty for à-la-carte add-ons and base bundles."""
-    keys = list(entry.get("bases") or [])
-    if entry.get("base"):
-        keys.append(entry["base"])
+    # The single `base` is the primary (canonical) base, so it comes first; `bases`
+    # widens eligibility (e.g. the "(no Teams)" twin of the same suite).
+    keys = ([entry["base"]] if entry.get("base") else []) + list(entry.get("bases") or [])
     # De-dup, preserve order.
     seen: set[str] = set()
     return [k for k in keys if not (k in seen or seen.add(k))]
@@ -39,8 +39,8 @@ def _seed_base_keys(entry: dict) -> list[str]:
 
 def seed_bundles(db: Session) -> None:
     """Insert any seed bundle whose key isn't present yet, then reconcile the
-    add-on → base primary link and the M:N AddonEligibility set. Never overwrites
-    operator edits to name/kind. Idempotent."""
+    add-on → base primary link, the M:N AddonEligibility set and the name aliases.
+    Never overwrites operator edits to name/kind. Idempotent."""
     by_key = {b.key: b for b in db.execute(select(models.Bundle)).scalars().all()}
     changed = False
     for b in _seed()["bundles"]:
@@ -83,6 +83,70 @@ def seed_bundles(db: Session) -> None:
                 changed = True
     if changed:
         db.commit()
+    _seed_aliases(db, by_key)
+
+
+def normalize_alias(text: str) -> str:
+    """How a licence name is compared and stored as an alias: lower case, single
+    spaces (the same normalization name resolution applies to what is typed)."""
+    return " ".join(_norm(text).split())
+
+
+def _seed_aliases(db: Session, by_key: dict) -> None:
+    """Insert each seed bundle's `aliases` that no bundle holds yet. Additive: an
+    operator's edits (an alias moved to another bundle, or removed) are kept for
+    aliases that exist; a removed seeded alias comes back on restart, as a deleted
+    seeded staple does."""
+    have = set(db.execute(select(models.BundleAlias.alias)).scalars().all())
+    changed = False
+    for b in _seed()["bundles"]:
+        row = by_key.get(b["key"])
+        if row is None:
+            continue
+        for a in b.get("aliases") or []:
+            norm = normalize_alias(a)
+            if norm and norm not in have:
+                db.add(models.BundleAlias(alias=norm, bundle_id=row.id))
+                have.add(norm)
+                changed = True
+    if changed:
+        db.commit()
+
+
+def aliases_by_bundle(db: Session) -> dict[str, list[str]]:
+    """bundle id → its aliases, sorted."""
+    out: dict[str, list[str]] = {}
+    for a in db.execute(select(models.BundleAlias)).scalars():
+        out.setdefault(a.bundle_id, []).append(a.alias)
+    return {k: sorted(v) for k, v in out.items()}
+
+
+def set_bundle_aliases(db: Session, bundle_id: str, aliases: list[str]) -> list[str]:
+    """Replace a bundle's alias set. Raises ValueError naming an alias another
+    bundle already holds (an alias belongs to exactly one bundle)."""
+    want = []
+    for a in aliases:
+        norm = normalize_alias(a)
+        if norm and norm not in want:
+            want.append(norm)
+    taken = {
+        a.alias: a.bundle_id for a in db.execute(
+            select(models.BundleAlias).where(models.BundleAlias.alias.in_(want))
+        ).scalars()
+    }
+    clash = [a for a in want if taken.get(a, bundle_id) != bundle_id]
+    if clash:
+        raise ValueError(f"Already an alias of another bundle: {', '.join(clash)}")
+    for a in db.execute(
+        select(models.BundleAlias).where(models.BundleAlias.bundle_id == bundle_id)
+    ).scalars().all():
+        if a.alias not in want:
+            db.delete(a)
+    for a in want:
+        if a not in taken:
+            db.add(models.BundleAlias(alias=a, bundle_id=bundle_id))
+    db.commit()
+    return sorted(want)
 
 
 def eligibility_map(db: Session) -> dict[str, set[str]]:
@@ -144,40 +208,25 @@ def _norm(s: str) -> str:
     return (s or "").lower().replace(" ", " ").replace("  ", " ").strip()
 
 
-# Legacy shortcodes / common aliases → bundle key, so existing scenario targets
-# and current-license references still resolve after the re-key.
-_ALIASES = {
-    "f1": "m365-f1", "f3": "m365-f3", "e3": "m365-e3", "e5": "m365-e5",
-    "e7": "m365-e7", "business premium": "m365-business-premium",
-    "o365 e1": "o365-e1", "o365 e3": "o365-e3", "o365 e5": "o365-e5",
-    # Enterprise Mobility + Security — sold standalone, commonly paired with an
-    # Office 365 base to approximate M365 E3/E5. The exact bundle names match on
-    # their own; these cover the "&"/"ems" shorthands a customer sheet might use.
-    "ems e3": "ems-e3", "ems e5": "ems-e5",
-    "enterprise mobility and security e3": "ems-e3",
-    "enterprise mobility and security e5": "ems-e5",
-    "entra id p2": "entra-id-p2", "defender for endpoint p2": "defender-endpoint-p2",
-    "defender for office 365 p2": "defender-office-p2", "sentinel": "sentinel",
-    "teams phone": "teams-phone", "power bi pro": "power-bi-pro",
-    "power automate premium": "power-automate-premium",
-}
-
-
 def resolve_bundle(db: Session, ref: str) -> str | None:
     """Resolve a free-text SKU/bundle reference to a Bundle id, or None. Tiered:
-    exact key, legacy alias, exact bundle name, then a mapped catalog SKU whose
+    exact key, a name alias (BundleAlias — the customer's own wording, e.g.
+    "Exchange Online (Plan 2)"), exact bundle name, then a mapped catalog SKU whose
     title matches. Read-only (assumes bundles are seeded)."""
     if not ref:
         return None
-    r = _norm(ref)
+    r = normalize_alias(ref)
     rows = db.execute(select(models.Bundle)).scalars().all()
     by_key = {b.key: b.id for b in rows}
     if r in by_key:
         return by_key[r]
-    if r in _ALIASES and _ALIASES[r] in by_key:
-        return by_key[_ALIASES[r]]
+    alias = db.execute(
+        select(models.BundleAlias.bundle_id).where(models.BundleAlias.alias == r)
+    ).scalar()
+    if alias:
+        return alias
     for b in rows:
-        if _norm(b.name) == r:
+        if normalize_alias(b.name) == r:
             return b.id
     like = f"%{ref}%"
     row = db.execute(

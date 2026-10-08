@@ -110,6 +110,8 @@ def test_backfill_adds_ems_to_an_already_seeded_db(client):
         if ems_ids:
             db.execute(delete(models.AddonEligibility).where(
                 models.AddonEligibility.addon_bundle_id.in_(ems_ids)))
+            db.execute(delete(models.BundleAlias).where(
+                models.BundleAlias.bundle_id.in_(ems_ids)))
         db.execute(delete(models.DefaultBundleCoverage).where(
             models.DefaultBundleCoverage.bundle_key.in_(("ems-e3", "ems-e5"))))
         for b in ems:
@@ -127,8 +129,8 @@ def test_backfill_adds_ems_to_an_already_seeded_db(client):
         cov = db.execute(select(models.DefaultBundleCoverage).where(
             models.DefaultBundleCoverage.bundle_key == "ems-e3")).scalars().all()
         assert {c.outcome_key for c in cov} == EMS_E3_OUTCOMES
-        # Eligible for the Office 365 bases.
+        # Eligible for the Office 365 bases, with and without Teams.
         elig = bundles_service.eligible_base_ids(db, bid)
-        assert len(elig) == 3
+        assert len(elig) == 6
     finally:
         db.close()

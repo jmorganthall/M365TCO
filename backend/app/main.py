@@ -247,6 +247,7 @@ async def lifespan(_app: FastAPI):
         bundles_service.seed_bundles(db)
         from .services import limits as limits_service
         limits_service.seed_license_limits(db)
+        limits_service.backfill_limit_members(db)
         _backfill_addon_eligibility(db)
         _backfill_new_bundle_coverage(db)
         _backfill_license_persona_tags(db)
@@ -406,6 +407,10 @@ _COVERAGE_CORRECTIONS = (
     ("m365-f1", "device-management"),                 # F1 includes Intune (MDM/MAM)
     ("m365-e3", "endpoint-privilege-management"),     # Intune Suite EPM now in M365 E3
     ("m365-e5", "endpoint-privilege-management"),     # Intune Suite EPM now in M365 E5
+    # Defender for Office 365 Plan 1 is in Office 365 E3 and Microsoft 365 E3 from
+    # 1 July 2026 (Defender for Office 365 service description, Microsoft Learn).
+    ("o365-e3", "email-atp"),
+    ("m365-e3", "email-atp"),
 )
 
 

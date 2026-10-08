@@ -54,6 +54,7 @@ _LABELS = {
     "is_custom": "Custom", "seed_key": "Seed key",
     "parent_persona_id": "Carved from",
     "unused_seats_answer": "Unused seats answer", "answer": "Customer's answer",
+    "out_of_scope": "Out of scope (in no number)",
 }
 
 

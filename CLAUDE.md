@@ -84,7 +84,7 @@ not the trunk).
 ## Seeds, defaults & migrations
 
 Seed files (`seeds/*.json`) are the versioned source for the global, editable
-tables (`DefaultOutcome`, `DefaultBundleCoverage`, `Bundle` + `AddonEligibility`,
+tables (`DefaultOutcome`, `DefaultBundleCoverage`, `Bundle` + `AddonEligibility` + `BundleAlias`,
 `LicenseLimit`, `AiPrompt`). On engagement creation they are **copied** into
 engagement-scoped rows — an engagement owns its copy for life.
 

@@ -110,6 +110,11 @@ class AddonEligibilityIn(BaseModel):
     base_bundle_ids: list[str] = []
 
 
+class BundleAliasesIn(BaseModel):
+    # The full set of other names this bundle goes by in customer exports.
+    aliases: list[str] = []
+
+
 class LicenseLimitIn(BaseModel):
     name: str
     limit_type: str = "max_total_seats"

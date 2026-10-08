@@ -64,9 +64,12 @@ def test_addon_eligibility_seeded_and_alacarte(client):
     by_key = {b["key"]: b for b in bundles}
 
     e3, f3 = by_key["m365-e3"]["id"], by_key["m365-f3"]["id"]
-    assert by_key["e5-security"]["eligible_base_ids"] == [e3]
+    # Each add-on is also eligible for the "(no Teams)" twin of its base suite.
+    e3nt, f3nt = by_key["m365-e3-no-teams"]["id"], by_key["m365-f3-no-teams"]["id"]
+    assert set(by_key["e5-security"]["eligible_base_ids"]) == {e3, e3nt}
+    assert by_key["e5-security"]["base_name"] == "Microsoft 365 E3"     # still the primary
     assert by_key["e5-security"]["alacarte"] is False
-    assert by_key["f5-security"]["eligible_base_ids"] == [f3]
+    assert set(by_key["f5-security"]["eligible_base_ids"]) == {f3, f3nt}
     # Teams Phone is à-la-carte (base: null) → eligible for any base.
     assert by_key["teams-phone"]["eligible_base_ids"] == []
     assert by_key["teams-phone"]["alacarte"] is True
