@@ -22,6 +22,7 @@ export default function AdminPanel({ onClose }) {
     ['catalog', '📦 SKU catalog'],
     ['bundles', '🧩 Staple bundles'],
     ['coverage', '🗺 Default coverage'],
+    ['licence-names', '🏷 Licence names'],
     ['limits', '🚦 License limits'],
     ['outcomes', '🎯 Default outcomes'],
     ['secrets', '🔑 Secrets'],
@@ -136,6 +137,8 @@ export default function AdminPanel({ onClose }) {
         {section === 'outcomes' && <DefaultOutcomes onMsg={setMsg} onErr={setErr} />}
 
         {section === 'coverage' && <DefaultCoverage onMsg={setMsg} onErr={setErr} />}
+
+        {section === 'licence-names' && <LicenceNames onMsg={setMsg} onErr={setErr} />}
 
         {section === 'limits' && <LicenseLimits onMsg={setMsg} onErr={setErr} />}
 
@@ -596,6 +599,83 @@ function DefaultCoverage({ onMsg, onErr }) {
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// Licence names answered by hand (TARGET_SCHEMA §3.4, D24): what engagements had
+// to answer on the "licences we can't read yet" card, with how many engagements
+// answered each way — never which customers. From here an admin teaches the
+// library: a name linked to a plan becomes that plan's alias; a name mapped to
+// outcomes becomes a new plan with that coverage. Derived; nothing is stored here.
+function LicenceNames({ onMsg, onErr }) {
+  const [items, setItems] = useState(null)
+  function load() {
+    api.get('/api/admin/licence-names').then(setItems).catch((e) => onErr(e.message))
+  }
+  useEffect(() => { load() }, [])
+
+  async function addAlias(name, v) {
+    try {
+      await api.post('/api/admin/licence-names/alias', { name, bundle_id: v.bundle_id })
+      onMsg(`The library now reads "${name}" as ${v.bundle_name}.`); load()
+    } catch (e) { onErr(e.message) }
+  }
+  async function addPlan(name, v) {
+    if (!confirm(`Add "${name}" to the library as a new plan delivering ${v.outcomes.join(', ')}?\n\n`
+      + 'It has no price until a catalog SKU is mapped to it (Staple bundles), and an unpriced plan is '
+      + 'never recommended. New engagements get it; existing ones are not changed.')) return
+    try {
+      await api.post('/api/admin/licence-names/plan', { name, outcome_keys: v.outcome_keys })
+      onMsg(`Added "${name}" as a new plan. Set its kind, base and catalog SKU under Staple bundles.`); load()
+    } catch (e) { onErr(e.message) }
+  }
+
+  if (items === null) return null
+  return (
+    <div className="card">
+      <h2>Licence names answered by hand</h2>
+      <p className="hint">Microsoft licence names the library couldn't read, as account executives answered
+        them in workshops, with how many engagements answered each way. Customer names are never shown.
+        Teach the library a name so the next workshop reads it by itself: <b>add it as another name</b> of
+        the plan it was linked to, or <b>add it as a new plan</b> with the outcomes it was mapped to.
+        Engagements that already answered keep their answer.</p>
+      {items.length === 0 && <p className="muted">No licence names have been answered by hand.</p>}
+      {items.length > 0 && (
+        <table>
+          <thead><tr><th>Licence name</th><th>Engagements</th><th>Answered as</th></tr></thead>
+          <tbody>
+            {items.map((it) => (
+              <tr key={it.name}>
+                <td><b>{it.name}</b>
+                  {it.library_reads_as && <div className="muted" style={{ fontSize: '.75rem' }}>
+                    The library reads it as {it.library_reads_as}</div>}</td>
+                <td>{it.engagements}</td>
+                <td>
+                  {it.variants.map((v, i) => (
+                    <div key={i} className="toolbar" style={{ gap: '.4rem', margin: '.15rem 0', alignItems: 'center' }}>
+                      <span className="grow" style={{ fontSize: '.82rem' }}>
+                        {v.kind === 'linked'
+                          ? <>Same as <b>{v.bundle_name}</b></>
+                          : <>Delivers <b>{v.outcomes.join(', ') || 'no library outcome'}</b>
+                              {v.custom_outcomes.length > 0 && <span className="muted"> + custom: {v.custom_outcomes.join(', ')}</span>}</>}
+                        <span className="muted"> · {v.engagements} engagement{v.engagements === 1 ? '' : 's'}</span>
+                      </span>
+                      {v.kind === 'linked' && v.can_add_alias && (
+                        <button className="sm ghost" onClick={() => addAlias(it.name, v)}
+                          title={`Add "${it.name}" as another name of ${v.bundle_name}`}>Add as alias</button>
+                      )}
+                      {v.kind === 'mapped' && v.can_add_plan && (
+                        <button className="sm ghost" onClick={() => addPlan(it.name, v)}>Add as a new plan</button>
+                      )}
+                    </div>
+                  ))}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }

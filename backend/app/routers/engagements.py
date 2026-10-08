@@ -265,6 +265,7 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
             renewal_date=lic.renewal_date,
             unused_seats_answer=lic.unused_seats_answer,
             out_of_scope=lic.out_of_scope,
+            bundle_id=lic.bundle_id,
         )
         # Carry the persona tags across, remapped to the cloned personas.
         src_pids = lic.persona_ids or ([lic.persona_id] if lic.persona_id else [])
@@ -272,12 +273,19 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
             mapped = persona_map.get(pid)
             if mapped:
                 nlic.persona_links.append(models.CurrentLicensePersona(persona_id=mapped))
+        # And what it was answered as delivering, remapped to the cloned outcomes.
+        for link in lic.outcome_links:
+            if link.outcome_id in outcome_map:
+                nlic.outcome_links.append(models.CurrentLicenseOutcome(
+                    outcome_id=outcome_map[link.outcome_id],
+                    ai_suggested=link.ai_suggested, ratified=link.ratified))
         db.add(nlic)
 
     for ce in src.coverage_entries:
         db.add(models.CoverageMapEntry(
             engagement_id=dst.id, outcome_id=outcome_map.get(ce.outcome_id, ce.outcome_id),
-            product_kind=ce.product_kind, microsoft_sku_reference=ce.microsoft_sku_reference,
+            product_kind=ce.product_kind, bundle_id=ce.bundle_id,
+            microsoft_sku_reference=ce.microsoft_sku_reference,
             third_party_product_id=tp_map.get(ce.third_party_product_id) if ce.third_party_product_id else None,
             coverage=ce.coverage, ai_suggested=ce.ai_suggested, ratified=ce.ratified,
         ))

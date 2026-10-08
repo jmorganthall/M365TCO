@@ -55,6 +55,7 @@ _LABELS = {
     "parent_persona_id": "Carved from",
     "unused_seats_answer": "Unused seats answer", "answer": "Customer's answer",
     "out_of_scope": "Out of scope (in no number)",
+    "outcome_ids": "Delivers (answered on Other tools)",
 }
 
 
@@ -71,7 +72,7 @@ def _kind(table: str, key: str) -> str:
         return "provenance"
     if key in _DERIVED:
         return "derived"
-    if key.endswith("_id") or key.endswith("_reference") or key == "persona_ids":
+    if key.endswith("_id") or key.endswith("_reference") or key in ("persona_ids", "outcome_ids"):
         return "reference"
     return "input"
 
@@ -101,7 +102,8 @@ def _registry():
          "desc": "What the customer holds today. Feeds the Microsoft side of current spend.",
          "primary": ["sku_reference", "quantity_assigned", "unit_price_paid_annual"],
          "extra": ["price_override", "overridden_price_annual", "coverage_scope",
-                   "persona_ids", "quantity_purchased", "unused_seats_answer", "renewal_date"]},
+                   "persona_ids", "quantity_purchased", "unused_seats_answer", "renewal_date",
+                   "outcome_ids"]},
         {"cls": models.ThirdPartyProduct, "type": "ThirdPartyProduct",
          "label": "Third-party products",
          "desc": "Non-Microsoft spend. Effective cost (managed split) feeds displacement.",
@@ -167,6 +169,9 @@ def inspect_engagement(db: Session, eng: models.Engagement) -> dict:
             return {"label": personas.get(value, f"{value} — missing"), "ok": value in personas}
         if key == "outcome_id":
             return {"label": outcomes.get(value, f"{value} — missing"), "ok": value in outcomes}
+        if key == "outcome_ids":
+            names = [outcomes.get(v, f"{v} — missing") for v in value]
+            return {"label": ", ".join(names), "ok": all(v in outcomes for v in value)}
         if key == "third_party_product_id":
             return {"label": products.get(value, f"{value} — missing"), "ok": value in products}
         if key == "bundle_id":

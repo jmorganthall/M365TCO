@@ -324,7 +324,9 @@ this engagement only (the licence the library doesn't know).
    `license_unread` is raised (§6.4).
 
 The GUI asks once per licence name and writes the same answer to every line of the
-engagement that carries that name.
+engagement that carries that name. Linking a line to a plan the engagement has no
+coverage for applies that plan's library coverage at the same click (as applying its
+Library updates items would, §4.7), with any library outcome it needs.
 
 ### 4.5 `third_party_products`
 

@@ -331,8 +331,39 @@ class CurrentLicenseOut(ORMModel):
     renewal_date: Optional[date] = None
     unused_seats_answer: Optional[str] = None
     out_of_scope: bool = False
+    # "It's the same as" this library plan, answered on the unknown-licence card
+    # (read-only here: written by PUT /licence-names/answer).
+    bundle_id: Optional[str] = None
     persona_ids: list[str]
     source_tag: str
+
+
+# ---- Licence names: the unknown-licence card (TARGET_SCHEMA §4.4, D23) ----
+class LicenceNameAnswerIn(BaseModel):
+    # The licence name as shown on the card; every line with that name is answered.
+    sku_reference: str
+    answer: Literal["same_as", "library", "out_of_scope", "clear"]
+    bundle_id: Optional[str] = None  # for same_as
+
+
+class LicenceNameOutcomeIn(BaseModel):
+    sku_reference: str
+    outcome_id: str
+    action: Literal["add", "confirm", "remove"]
+
+
+class LicenceNameRequest(BaseModel):
+    sku_reference: str
+
+
+class LicenceNameAliasIn(BaseModel):
+    name: str
+    bundle_id: str
+
+
+class LicenceNamePlanIn(BaseModel):
+    name: str
+    outcome_keys: list[str] = []
 
 
 # ---- Coverage gap answer (TARGET_SCHEMA §4.8) ----

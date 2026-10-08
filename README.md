@@ -192,8 +192,14 @@ PDF's method page also reads.
    **unused-seat answer** (kept on purpose / not needed), its own renewal date,
    **out of scope for this workshop** (for licences no plan includes, such as
    Visio: listed but in no number), per-user vs tenant-wide scope and price-basis
-   overrides.
-3. **Other tools** — each tool's cost, period, **renewal date**, **who uses it**
+   overrides. A licence the library can't read is flagged on its row, linking to
+   step 3.
+3. **Other tools** — first, **Microsoft licences we can't read yet**: each licence
+   name the library doesn't know (or this engagement has no coverage for), asked
+   once per name — *it's the same as* a library plan, *use the library's list*,
+   tick what it delivers (✨ AI suggest, confirmed like a tool's uses), or *out of
+   scope*. Until answered its cost counts but its groups' capability changes are
+   left out. Then each tool's cost, period, **renewal date**, **who uses it**
    (groups) and whether it's a **managed service**; vendor, the managed service's
    software share and a covers number in the expander. Below, **what each tool is
    used for** (✨ AI suggest pre-ticks; only confirmed uses count). A tool with no
@@ -205,9 +211,11 @@ PDF's method page also reads.
 5. **Coverage check** — for each capability a plan adds that nothing in the
    inventory delivers today, the customer's answer: *not delivered today* (a new
    outcome), *covered outside this inventory* (never costed or claimed), or map a
-   tool that does it. Unanswered gaps are never claimed as new. Amber honesty
-   guards flag unmapped licensing and capability a plan drops. The engagement's
-   capability library sits in an advanced expander.
+   tool that does it. Unanswered gaps are never claimed as new. Licences we can't
+   read yet are listed first; every amber warning (an unread licence, a plan with
+   no capabilities, licensing counted org-wide, capability a plan drops) links to
+   the step that fixes it. The engagement's capability library sits in an advanced
+   expander.
 6. **Review** — every check that works without AI, each linking to the step that
    fixes it, and what is **left out** because it wasn't answered. The optional
    **AI sanity check** is here.
@@ -229,7 +237,10 @@ The **in/out-of-scope** toggle on a scenario recomputes everything. A header
 
 **Settings** is a dedicated page (top-bar ⚙ gear) with a left-hand section nav —
 General/defaults, AI assist, Pricing sync, SKU catalog, Staple bundles, Default
-coverage, License limits, Default outcomes, and Secrets. **Staple bundles** edits
+coverage, Licence names, License limits, Default outcomes, and Secrets. **Licence
+names** lists the licence names workshops had to answer by hand, with how many
+engagements answered each way (never which customers), so an admin can add a name
+as a plan's alias or as a new plan. **Staple bundles** edits
 the SKU → Bundle spine (each add-on's eligible bases, plus a "how catalog SKUs
 bucket into bundles" rollup showing the priced variants that collapse onto each
 staple); **License limits** edits the tenant caps and which bundles share each pool.

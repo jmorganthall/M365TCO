@@ -7,7 +7,9 @@ hydrated coverage sets, so they can never feed the math.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
+from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -60,6 +62,54 @@ def _cover_key(db: Session, ref: str) -> str:
     return bundles.resolve_bundle(db, ref) or (ref or "")
 
 
+@dataclass(frozen=True)
+class LicenceReading:
+    """How a current licence line is read (TARGET_SCHEMA §4.4 "Reading a line",
+    D23): what it delivers and why. `state` is one of
+      out_of_scope  set aside — in no number, delivers nothing
+      linked        a person said "it's the same as" a library plan (bundle_id)
+      mapped        a person ticked what it delivers (CurrentLicenseOutcome)
+      named         legacy: coverage entered by hand against this exact name
+      resolved      its name resolves to a plan this engagement has coverage for
+      unread        none of those: its cost counts, but what it delivers is unknown
+    An explicit answer always wins over resolving the name, so a mapping a person
+    made keeps counting after the library later learns that name. For `unread`,
+    `bundle_id` is the plan the name or link points at when there is one (the
+    engagement just has no coverage for it yet), else None."""
+
+    state: str
+    outcomes: frozenset[str]
+    bundle_id: Optional[str] = None
+
+
+def licence_readings(db: Session, eng: models.Engagement,
+                     sku_outcomes: dict[str, set[str]] | None = None) -> dict[str, LicenceReading]:
+    """license id -> LicenceReading for every line of the engagement (out of scope
+    included). Pure read."""
+    if sku_outcomes is None:
+        sku_outcomes = _ratified_sku_outcomes(db, eng.id)
+    out: dict[str, LicenceReading] = {}
+    for lic in eng.current_licenses:
+        ref = (lic.sku_reference or "").strip()
+        own = frozenset(l.outcome_id for l in lic.outcome_links if l.ratified)
+        named = frozenset(sku_outcomes.get(ref, set())) if ref else frozenset()
+        if lic.out_of_scope:
+            reading = LicenceReading("out_of_scope", frozenset())
+        elif lic.bundle_id:
+            outs = frozenset(sku_outcomes.get(lic.bundle_id, set()))
+            reading = LicenceReading("linked" if outs else "unread", outs, lic.bundle_id)
+        elif own:
+            reading = LicenceReading("mapped", own)
+        elif named:
+            reading = LicenceReading("named", named)
+        else:
+            resolved = bundles.resolve_bundle(db, ref) if ref else None
+            outs = frozenset(sku_outcomes.get(resolved, set())) if resolved else frozenset()
+            reading = LicenceReading("resolved" if outs else "unread", outs, resolved)
+        out[lic.id] = reading
+    return out
+
+
 def _ratified_thirdparty_outcomes(db: Session, engagement_id: str) -> dict[str, set[str]]:
     """third_party_product_id -> set of outcome_ids it delivers (ratified)."""
     rows = db.execute(
@@ -83,6 +133,7 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
 
     sku_outcomes = _ratified_sku_outcomes(db, engagement_id)
     tp_outcomes = _ratified_thirdparty_outcomes(db, engagement_id)
+    readings = licence_readings(db, eng, sku_outcomes)
 
     # Operator choices persisted on disposition rows.
     disp_rows = {
@@ -110,11 +161,10 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
             # entitlement. Drives how many seats a duplicate tool can be credited
             # as redundant today (ENGINE_SPEC 6.10).
             coverage_scope=CoverageScope(lic.coverage_scope or "PerUser"),
-            # What this existing license already delivers (its bundle's ratified
-            # coverage), for quick-win duplicate detection.
-            covered_outcome_ids=frozenset(
-                sku_outcomes.get(_cover_key(db, lic.sku_reference), set())
-            ),
+            # What this existing license already delivers (how the line is read:
+            # its linked plan, its own mapped outcomes, or its name's plan), for
+            # quick-win duplicate detection. An unread line delivers nothing known.
+            covered_outcome_ids=readings[lic.id].outcomes,
             # Over-licensing and timing (ENGINE_SPEC 6.11).
             id=lic.id,
             quantity_purchased=lic.quantity_purchased or 0,
@@ -240,6 +290,7 @@ def analyze_persona_bundles(
 
     sku_outcomes = _ratified_sku_outcomes(db, engagement_id)  # ref -> {outcome_id}
     tp_outcomes = _ratified_thirdparty_outcomes(db, engagement_id)
+    readings = licence_readings(db, eng, sku_outcomes)
     outcome_names = {o.id: o.name for o in eng.outcomes}
 
     # Base bundles = full bundles (kind='bundle') with coverage; add-ons layer on.
@@ -256,7 +307,7 @@ def analyze_persona_bundles(
     required: set[str] = set()
     current_ms = Decimal("0")
     for line in persona_lines:
-        required |= sku_outcomes.get(_cover_key(db, line.sku_reference), set())
+        required |= readings[line.id].outcomes
         line_total = Decimal(line.quantity_assigned) * line.effective_unit_price_annual
         tagged = [pid for pid in line.persona_ids if pid in hc]
         tagged_hc = sum(hc[pid] for pid in tagged)
@@ -512,6 +563,7 @@ def persona_coverage_gaps(db: Session, engagement_id: str) -> list[dict]:
     eng = db.get(models.Engagement, engagement_id)
     sku_outcomes = _ratified_sku_outcomes(db, engagement_id)
     tp_outcomes = _ratified_thirdparty_outcomes(db, engagement_id)
+    readings = licence_readings(db, eng, sku_outcomes)
     name_by_id = {o.id: o.name for o in eng.outcomes}
     desc_by_id = {o.id: o.description or "" for o in eng.outcomes}
 
@@ -585,7 +637,8 @@ def persona_coverage_gaps(db: Session, engagement_id: str) -> list[dict]:
         for lic in eng.licenses_in_scope:
             if lic.persona_ids and p.id not in lic.persona_ids:
                 continue
-            outs = sku_outcomes.get(_cover_key(db, lic.sku_reference), set())
+            reading = readings[lic.id]
+            outs = set(reading.outcomes)
             ref = lic.sku_reference or ""
             if lic.persona_ids:
                 ms_tagged |= outs
@@ -593,14 +646,16 @@ def persona_coverage_gaps(db: Session, engagement_id: str) -> list[dict]:
                 ms_org_wide |= outs
                 if outs and ref:
                     org_wide_by_ref.setdefault(ref, set()).update(outs)
-            if not outs and ref and ref not in seen_refs:
-                seen_refs.add(ref)
+            # Once per licence name, compared as name resolution compares it.
+            if reading.state == "unread" and bundles.normalize_alias(ref) not in seen_refs:
+                seen_refs.add(bundles.normalize_alias(ref))
                 unmapped.append({
-                    "sku_reference": ref,
-                    # True: the SKU IS a known bundle but has no ratified coverage
-                    # here (fix in the Coverage map). False: the SKU matches no
-                    # bundle at all (map it in Settings -> Staple bundles).
-                    "resolves_to_bundle": bundles.resolve_bundle(db, ref) is not None,
+                    "sku_reference": ref or "A licence line",
+                    # True: the line names (or is linked to) a library plan that
+                    # this engagement has no coverage for — "use the library's
+                    # list". False: the library doesn't know it. Either way it is
+                    # answered on the unknown-licence card (Other tools).
+                    "resolves_to_bundle": reading.bundle_id is not None,
                 })
         ms_today = ms_tagged | ms_org_wide
         # Third parties per the ratified coverage map: tagged to this persona,
@@ -719,7 +774,17 @@ def new_outcomes(db: Session, engagement_id: str, result: dict) -> list[dict]:
         # (D21); unanswered gaps are listed as awaiting confirmation, never claimed.
         confirmed = g["confirmed_new_outcomes"]
         unconfirmed = g["unconfirmed_outcomes"]
-        if confirmed:
+        if g["unmapped_current_licenses"]:
+            # D23: a licence nobody can read leaves this group's capability changes
+            # out — what it delivers today is unknown, so a "new" capability may be
+            # one it already has (its money still counts).
+            confirmed, unconfirmed = [], []
+            refs = ", ".join(u["sku_reference"] for u in g["unmapped_current_licenses"])
+            reason, reason_text = "licence_unread", (
+                f"Capability changes are left out: what {refs} includes isn't answered "
+                f"yet, so nothing can be shown as gained or given up. Answer it on Other tools."
+            )
+        elif confirmed:
             reason, reason_text = None, ""
         elif unconfirmed:
             n = len(unconfirmed)
@@ -762,6 +827,8 @@ def dropped_capability(db: Session, engagement_id: str, result: dict) -> list[di
         }
         for g in persona_coverage_gaps(db, engagement_id)
         if g["has_scenario"] and g["persona_id"] in in_scope and g["dropped_outcomes"]
+        # A licence nobody can read leaves the group's capability changes out (D23).
+        and not g["unmapped_current_licenses"]
     ]
 
 

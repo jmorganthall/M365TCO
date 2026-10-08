@@ -498,6 +498,11 @@ class CurrentMicrosoftLicense(Base):
     # export. The line stays visible but is in no number: not today's spend, not
     # replaced by any move, delivering nothing. The PDF's method page lists it.
     out_of_scope: Mapped[bool] = mapped_column(Boolean, default=False)
+    # "It's the same as" this library plan (TARGET_SCHEMA §4.4 `bundle_key`, D23):
+    # a person's explicit link, answered on the unknown-licence card. Wins over
+    # resolving the typed name, so the customer's wording is kept and the line
+    # still reads as the plan. NULL = not linked (the name is resolved instead).
+    bundle_id: Mapped[str | None] = mapped_column(ForeignKey("bundles.id"), nullable=True)
     # DEPRECATED single-persona link. Superseded by the many-to-many persona tags
     # (CurrentLicensePersona). Kept for the one-time backfill; not read by the
     # engine or API anymore.
@@ -510,6 +515,14 @@ class CurrentMicrosoftLicense(Base):
     persona_links: Mapped[list["CurrentLicensePersona"]] = relationship(
         cascade="all, delete-orphan", back_populates="license"
     )
+    outcome_links: Mapped[list["CurrentLicenseOutcome"]] = relationship(
+        cascade="all, delete-orphan", back_populates="license"
+    )
+
+    @property
+    def outcome_ids(self) -> list[str]:
+        """What a person answered this line delivers (confirmed ticks only)."""
+        return [link.outcome_id for link in self.outcome_links if link.ratified]
 
     @property
     def persona_ids(self) -> list[str]:
@@ -551,6 +564,29 @@ class CurrentLicensePersona(Base):
 
     license: Mapped[CurrentMicrosoftLicense] = relationship(back_populates="persona_links")
 
+
+class CurrentLicenseOutcome(Base):
+    """What a licence line delivers when the library doesn't know it — "it delivers
+    these outcomes", answered for this engagement on the unknown-licence card
+    (TARGET_SCHEMA §4.4 `current_license_outcomes`, D23). Per line; the card asks
+    once per licence name and writes every line of that name. Like coverage, an
+    AI suggestion is stored unratified and counts only once a person confirms it.
+    Read only while the line has no explicit plan link (`bundle_id`)."""
+
+    __tablename__ = "current_license_outcomes"
+    __table_args__ = (
+        UniqueConstraint("license_id", "outcome_id", name="uq_current_license_outcome"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    license_id: Mapped[str] = mapped_column(
+        ForeignKey("current_microsoft_licenses.id"), index=True
+    )
+    outcome_id: Mapped[str] = mapped_column(ForeignKey("outcomes.id"))
+    ai_suggested: Mapped[bool] = mapped_column(Boolean, default=False)
+    ratified: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    license: Mapped[CurrentMicrosoftLicense] = relationship(back_populates="outcome_links")
 
 class ThirdPartyProduct(Base):
     __tablename__ = "third_party_products"

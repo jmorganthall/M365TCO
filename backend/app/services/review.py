@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from tco_engine import compute as engine_compute
 
 from .. import models
-from . import compute
+from . import bundles, compute
 
 STEP_ORDER = ["customer", "groups", "tools", "future", "gaps", "review", "summary"]
 
@@ -108,12 +108,27 @@ def review(db: Session, engagement_id: str) -> dict:
                       "not yet decided — assumed kept", "future")
 
     # ---- Capability comparison (shared with the Coverage Check) -------------
-    for g in compute.persona_coverage_gaps(db, engagement_id):
+    gaps = compute.persona_coverage_gaps(db, engagement_id)
+    # A licence nobody can read (D23): one question per licence name, answered on
+    # Other tools; until then each group holding it has its capability changes
+    # left out (its money still counts).
+    unread: dict[str, tuple[str, list[str]]] = {}
+    for g in gaps:
+        for u in g["unmapped_current_licenses"]:
+            key = bundles.normalize_alias(u["sku_reference"])
+            unread.setdefault(key, (u["sku_reference"], []))[1].append(g["persona_name"])
+    for ref, groups in unread.values():
+        check("license_unread", "tools",
+              f"What {ref} includes isn't known yet ({', '.join(groups)}). Say it's the same as a "
+              f"library plan, tick what it delivers, or set it aside as out of scope.")
+    for g in gaps:
         name = g["persona_name"]
         if g["unmapped_current_licenses"]:
-            refs = ", ".join(u["sku_reference"] for u in g["unmapped_current_licenses"])
-            check("licence_unmapped", "groups",
-                  f"{name}: {refs} isn't recognised, so what it delivers can't be compared.")
+            if g["has_scenario"]:
+                refs = ", ".join(u["sku_reference"] for u in g["unmapped_current_licenses"])
+                leave_out(f"Capability changes for {name}", f"what {refs} includes isn't answered",
+                          "tools")
+            continue
         if g["has_scenario"] and g["target_unmapped"]:
             check("target_unmapped", "future",
                   f"{name}: the future plan isn't recognised, so its capabilities can't be compared.")
@@ -131,6 +146,8 @@ def review(db: Session, engagement_id: str) -> dict:
                       "not yet confirmed as missing today", "gaps")
 
     rank = {s: i for i, s in enumerate(STEP_ORDER)}
-    checks.sort(key=lambda c: (rank.get(c["step"], 99), c["severity"] != "warn"))
+    # A licence nobody can read blanks whole groups' capability story: it leads.
+    checks.sort(key=lambda c: (c["code"] != "license_unread", rank.get(c["step"], 99),
+                               c["severity"] != "warn"))
     left_out.sort(key=lambda x: rank.get(x["step"], 99))
     return {"checks": checks, "left_out": left_out}

@@ -83,6 +83,7 @@ export default function CoverageCheck({ engagement, onNavigate }) {
         never claimed or costed; an unanswered one is left out until answered.</p>
       {err && <div className="err">{err}</div>}
       {data.personas.length === 0 && <p className="muted">No personas yet — add personas first.</p>}
+      <UnreadLicences personas={data.personas} onNavigate={onNavigate} />
 
       {data.personas.map((p) => (
         <div key={p.persona_id} className="card" style={{ background: 'var(--panel2)' }}>
@@ -93,27 +94,18 @@ export default function CoverageCheck({ engagement, onNavigate }) {
             )}
           </div>
 
-          {/* Honesty guard #1: current licenses whose capability is unmapped, so a
-              target can silently drop them. This is the multi-license persona trap —
-              e.g. a persona on Office 365 E3 + EMS E3 where EMS maps to no bundle. */}
-          {p.unmapped_current_licenses?.length > 0 && (
+          {/* Honesty guard #1: a current licence nobody can read (TARGET_SCHEMA D23).
+              What the group has today is unknown, so its capability changes are left
+              out until the licence is answered on Other tools. */}
+          {unread(p) && (
             <div style={WARN_CALLOUT}>
-              <b className="warn">⚠ Unmapped current licensing</b>
+              <b className="warn">⚠ Capability changes left out</b>
               <div className="muted" style={{ fontSize: '.82rem', marginTop: '.25rem' }}>
-                This persona holds {p.unmapped_current_licenses.length} current Microsoft
-                license{p.unmapped_current_licenses.length > 1 ? 's' : ''} that deliver no mapped
-                capability, so their outcomes are invisible to this comparison — a smaller target
-                can drop them without it showing as a lost outcome:
+                We don't know what {names(p.unmapped_current_licenses)} include
+                {p.unmapped_current_licenses.length > 1 ? '' : 's'}, so nothing can be shown as gained or
+                given up for this group. Its cost still counts.
               </div>
-              <ul style={{ margin: '.3rem 0 0', paddingLeft: '1.1rem', fontSize: '.82rem' }}>
-                {p.unmapped_current_licenses.map((u) => (
-                  <li key={u.sku_reference}>
-                    <b>{u.sku_reference}</b> — {u.resolves_to_bundle
-                      ? 'a known bundle with no coverage in this engagement; add its outcomes in the Coverage map'
-                      : 'not recognized as a bundle; map the SKU in Settings → Staple bundles'}
-                  </li>
-                ))}
-              </ul>
+              <FixLink step="tools" label="Answer it on Other tools" onNavigate={onNavigate} />
             </div>
           )}
 
@@ -131,11 +123,12 @@ export default function CoverageCheck({ engagement, onNavigate }) {
                 {p.unmapped_target.map((u) => (
                   <li key={u.reference}>
                     <b>{u.reference}</b> — {u.resolves_to_bundle
-                      ? 'a known bundle with no coverage in this engagement; add its outcomes in the Coverage map'
-                      : 'not recognized as a bundle; map the SKU in Settings → Staple bundles'}
+                      ? 'a library plan with no capabilities in this engagement: add them in the capability library below, or pick another plan'
+                      : 'not a plan the library knows: pick a library plan'}
                   </li>
                 ))}
               </ul>
+              <FixLink step="future" label="Pick the plan on Future state" onNavigate={onNavigate} />
             </div>
           )}
 
@@ -151,21 +144,21 @@ export default function CoverageCheck({ engagement, onNavigate }) {
                 {p.org_wide_current_licenses.length > 1 ? ' they count' : ' it counts'} for
                 every persona — and{' '}
                 {p.org_wide_current_licenses.length > 1 ? 'they are' : 'it is'} what makes
-                outcomes of this persona's target look already delivered. Tag{' '}
-                {p.org_wide_current_licenses.length > 1 ? 'them' : 'it'} on the Current
-                licensing tab for a per-persona value story:
+                outcomes of this persona's target look already delivered. Say which groups get{' '}
+                {p.org_wide_current_licenses.length > 1 ? 'them' : 'it'} for a per-group value story:
               </div>
               <div className="pill-list" style={{ marginTop: '.35rem' }}>
                 {p.org_wide_current_licenses.map((ref) => (
                   <span key={ref} className="badge warn">{ref}</span>
                 ))}
               </div>
+              <FixLink step="groups" label="Tag them on Groups & licences" onNavigate={onNavigate} />
             </div>
           )}
 
           {/* Honesty guard #4: outcomes the current Microsoft licensing delivers that
               the target won't — the reverse of the "new outcomes" check below. */}
-          {p.dropped_outcomes?.length > 0 && (
+          {p.dropped_outcomes?.length > 0 && !unread(p) && (
             <div style={WARN_CALLOUT}>
               <b className="warn">⚠ Target drops capability delivered today</b>
               <div className="muted" style={{ fontSize: '.82rem', marginTop: '.25rem' }}>
@@ -179,11 +172,15 @@ export default function CoverageCheck({ engagement, onNavigate }) {
                   <span key={o.id} className="badge warn" title={o.description}>{o.name}</span>
                 ))}
               </div>
+              <FixLink step="future" label="Change the plan or add-ons on Future state" onNavigate={onNavigate} />
             </div>
           )}
 
           {!p.has_scenario ? (
-            <p className="muted" style={{ margin: '.5rem 0 0' }}>No target scenario set — pick a target on the Scenarios tab to validate its new outcomes.</p>
+            <p className="muted" style={{ margin: '.5rem 0 0' }}>No future plan yet, so there is nothing to check.{' '}
+              <FixLink step="future" label="Pick one on Future state" onNavigate={onNavigate} inline /></p>
+          ) : unread(p) ? (
+            <p className="muted" style={{ margin: '.5rem 0 0' }}>Nothing to ask until its licences are answered.</p>
           ) : p.target_unmapped ? (
             /* Nothing to validate — the target maps to no capability at all (guard above),
                which is a data gap, not a clean bill of health. */
@@ -241,6 +238,41 @@ export default function CoverageCheck({ engagement, onNavigate }) {
           )}
         </div>
       ))}
+    </div>
+  )
+}
+
+const unread = (p) => p.unmapped_current_licenses?.length > 0
+const names = (list) => list.map((u) => u.sku_reference).join(', ')
+
+// Every warning on this step names its fix: a link to the step where it is answered.
+function FixLink({ step, label, onNavigate, inline = false }) {
+  return (
+    <button className="ghost sm" style={inline ? {} : { marginTop: '.4rem' }}
+      onClick={() => onNavigate?.(step)}>{label} ›</button>
+  )
+}
+
+// Shown first, and loudly (WALKTHROUGH step 5): Microsoft licences the library
+// can't read, once per name with the groups holding each, linked to their card.
+function UnreadLicences({ personas, onNavigate }) {
+  const byName = {}
+  personas.forEach((p) => (p.unmapped_current_licenses || []).forEach((u) => {
+    const key = u.sku_reference.toLowerCase().split(/\s+/).join(' ')
+    byName[key] = byName[key] || { name: u.sku_reference, groups: [] }
+    byName[key].groups.push(p.persona_name)
+  }))
+  const list = Object.values(byName)
+  if (!list.length) return null
+  return (
+    <div className="card card-loud" style={{ background: 'var(--panel2)' }}>
+      <b className="warn">⚠ {list.length} Microsoft licence{list.length > 1 ? 's' : ''} we can't read yet</b>
+      <p className="hint" style={{ margin: '.3rem 0 .4rem' }}>Until each is answered, its cost counts but the
+        capability changes of the groups holding it are left out of the report.</p>
+      <ul style={{ margin: 0, paddingLeft: '1.1rem', fontSize: '.85rem' }}>
+        {list.map((l) => <li key={l.name}><b>{l.name}</b> <span className="muted">— {l.groups.join(', ')}</span></li>)}
+      </ul>
+      <FixLink step="tools" label="Answer them on Other tools" onNavigate={onNavigate} />
     </div>
   )
 }

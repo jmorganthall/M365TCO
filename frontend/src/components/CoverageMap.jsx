@@ -320,7 +320,7 @@ export default function CoverageMap({ engagement, meta, section }) {
 }
 
 // `disabled` holds manual adds while "AI suggest all" is running.
-function AddCoverageRow({ outcomes, existing, onAdd, disabled = false }) {
+export function AddCoverageRow({ outcomes, existing, onAdd, disabled = false }) {
   const available = outcomes.filter((o) => !existing.includes(o.id))
   const [oid, setOid] = useState('')
   return (

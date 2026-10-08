@@ -42,7 +42,7 @@ const UNUSED_WORD = { '': 'not answered', Intended: 'kept on purpose', NotNeeded
 // One license line. The row shows the common case (fully assigned); the ▸
 // expander reveals the non-standard modifiers — shelfware (assigned below
 // purchased), discount, price basis, persona — so they don't clutter the row.
-function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
+function LicenseRow({ l, eng, meta, personas, catalog, update, remove, reading, onNavigate }) {
   const [open, setOpen] = useState(false)
   // The last SETTLED SKU pick (not the live typed text, which patches per
   // keystroke) — so "changed SKU" means a genuinely different product.
@@ -61,6 +61,17 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
   const tenantWide = l.coverage_scope === 'TenantWide'
   const off = pctOffList(l)
   const chips = []
+  // How the line is read (TARGET_SCHEMA D23). A licence the library can't read is
+  // answered on Other tools, never here — the flag links there.
+  if (reading?.state === 'unread') chips.push(
+    <button key="read" className="badge warn licence-flag" onClick={() => onNavigate?.('tools')}
+      title="We don't know what this licence includes, so its groups' capability changes are left out. Answer it on Other tools.">
+      ⚠ not read yet — answer on Other tools ›</button>)
+  if (reading?.state === 'linked') chips.push(
+    <span key="read" className="badge muted" title="Answered on Other tools">same as {reading.bundle_name}</span>)
+  if (reading?.state === 'mapped') chips.push(
+    <span key="read" className="badge muted" title={`Answered on Other tools: delivers ${reading.delivers.join(', ')}`}>
+      outcomes answered</span>)
   if (notInCatalog) chips.push(<span key="c" className="badge warn" title="No matching SKU in the imported price list">⚠ not in catalog</span>)
   if (!fullyAssigned) chips.push(<span key="a" className="badge warn">{l.quantity_assigned}/{l.quantity_purchased} assigned</span>)
   // Unused seats need the customer's answer before they count (or don't).
@@ -281,7 +292,7 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
   )
 }
 
-export default function CurrentLicensing({ engagement, meta, onUpdate }) {
+export default function CurrentLicensing({ engagement, meta, onUpdate, onNavigate }) {
   const base = `/api/engagements/${engagement.id}/current-licenses`
   const [items, setItems] = useState([])
   const [personas, setPersonas] = useState([])
@@ -300,9 +311,15 @@ export default function CurrentLicensing({ engagement, meta, onUpdate }) {
   const [parsing, setParsing] = useState(false)
   const [parsed, setParsed] = useState(null)
   const [catalog, setCatalog] = useState([])  // price-list SKUs, for validation
+  const [readings, setReadings] = useState({})  // line id -> its licence name's reading
 
   const load = () => {
     api.get(base).then(setItems).catch((e) => setErr(e.message))
+    api.get(`/api/engagements/${engagement.id}/licence-names`).then((names) => {
+      const byLine = {}
+      names.forEach((n) => n.line_ids.forEach((id) => { byLine[id] = n }))
+      setReadings(byLine)
+    }).catch(() => {})
     api.get(`/api/engagements/${engagement.id}/personas`).then(setPersonas)
   }
   useEffect(() => {
@@ -476,7 +493,8 @@ export default function CurrentLicensing({ engagement, meta, onUpdate }) {
         </tr></thead>
         <tbody>
           {items.map((l) => (
-            <LicenseRow key={l.id} l={l} eng={engagement} meta={meta} personas={personas} catalog={catalog} update={update} remove={remove} />
+            <LicenseRow key={l.id} l={l} eng={engagement} meta={meta} personas={personas} catalog={catalog}
+              update={update} remove={remove} reading={readings[l.id]} onNavigate={onNavigate} />
           ))}
         </tbody>
       </table>
