@@ -895,6 +895,15 @@ def build_xlsx(engagement: models.Engagement, result: dict) -> bytes:
         for o in d.get("outcomes", []):
             wcap.append([d["persona_name"], d["headcount"], "Dropped", o["name"]])
 
+    # The business case — the same stored narratives the HTML readout prints.
+    narratives = result.get("narratives") or []
+    if narratives:
+        wn = wb.create_sheet("Business case")
+        wn.append(["Persona", "Today", "What's new", "Value"])
+        for n in narratives:
+            wn.append([n.get("persona", ""), n.get("today", ""),
+                       n.get("whats_new", ""), n.get("value", "")])
+
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
