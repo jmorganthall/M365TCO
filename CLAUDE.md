@@ -27,10 +27,14 @@ file to build that check.
 **A data-model rebuild is agreed and in progress.** `docs/TARGET_SCHEMA.md` is the
 contract for it: every schema change must match it, and a change that needs to
 deviate updates that document first, in its own reviewed PR. Until each part lands,
-the documents below still describe the current code. Two of its rules apply to all
-new work now: **no design may assume a single user**, and **code never rewrites
+the documents below still describe the current code. Three of its rules apply to
+all new work now: **no design may assume a single user**, **code never rewrites
 what a person entered** (a default is stored as `NULL`, never written back as the
-resolved value).
+resolved value), and **AI is optional** (the engine and every export work with AI
+off; AI only suggests, enriches and narrates).
+
+`docs/WALKTHROUGH.md` is the agreed design for the guided walkthrough an account
+executive runs with a customer. GUI work on the workshop flow follows it.
 
 Everything is a first-class object; minimize data that lives outside one. Read
 and obey `docs/DATA_ARCHITECTURE.md` and `docs/DATA_MODEL.md`; `docs/DATA_MAP.md`

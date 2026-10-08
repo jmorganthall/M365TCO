@@ -6,9 +6,9 @@
 >
 > - The **current** screens are described by the code and by
 >   [`DATA_MODEL.md`](DATA_MODEL.md). They stay as they are until each part below lands.
-> - The data this design needs is specified by [`TARGET_SCHEMA.md`](TARGET_SCHEMA.md).
->   The additions in §12 are **not yet in that document**. They land there first, in
->   their own reviewed PR, before any code that depends on them.
+> - The data this design needs is specified by [`TARGET_SCHEMA.md`](TARGET_SCHEMA.md),
+>   which carries the additions in §12 (decisions D19–D22 and the items marked
+>   *walkthrough*).
 > - The calculation changes in §4 land in [`ENGINE_SPEC.md`](ENGINE_SPEC.md) and the
 >   engine's unit tests before any code uses them, as `CLAUDE.md` requires.
 
@@ -356,7 +356,7 @@ everything else sits in the card's expander.
 
 ---
 
-## 12. Contract changes this needs (not yet in TARGET_SCHEMA.md)
+## 12. Contract changes this needs (now in TARGET_SCHEMA.md)
 
 | Change | TARGET_SCHEMA section |
 | --- | --- |
