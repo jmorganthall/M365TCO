@@ -55,6 +55,9 @@ def test_no_invariant_violations_across_the_sweep(swept):
     "offset-units",              # allocated units never exceed the covered population
     "current-ms-conservation",   # attributed spend never exceeds actual spend
     "order-dependence",          # shuffling the inputs changes nothing
+    "timed-runrate",             # untimed, the headline is quick wins + move value
+    "timed-sum",                 # the headline is the sum of its timed items
+    "timed-bounds",              # timing shortens a saving, never stretches or flips it
 ])
 def test_named_invariant_holds(swept, invariant):
     """Name each invariant individually so a regression reports WHICH claim about

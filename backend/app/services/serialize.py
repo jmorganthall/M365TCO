@@ -123,5 +123,52 @@ def result_to_dict(result: EngineResult) -> dict:
                 "in_scope_persona_headcount": result.rollup.in_scope_persona_headcount,
                 "third_party_covered_population": result.rollup.third_party_covered_population,
             },
+            "headline": _headline(result.rollup.headline),
         },
+    }
+
+
+def _headline(h) -> dict | None:
+    """The timed headline (ENGINE_SPEC 6.11). Savings-positive throughout."""
+    if h is None:
+        return None
+    return {
+        "horizon_months": h.horizon_months,
+        "workshop_date": h.workshop_date,
+        "duplicate_spend_amount": _num(h.duplicate_spend_amount),
+        "consolidation_amount": _num(h.consolidation_amount),
+        "overlicensing_amount": _num(h.overlicensing_amount),
+        "amount": _num(h.amount),
+        "direction": h.direction,
+        "run_rate_annual": _num(h.run_rate_annual),
+        "assumed_dates": sum(1 for i in h.items if i.date_assumed),
+        "items": [
+            {
+                "item_key": i.item_key,
+                "sub_line": i.sub_line,
+                "kind": i.kind,
+                "label": i.label,
+                "annual_amount": _num(i.annual_amount),
+                "start_month": i.start_month,
+                "timed_by": i.timed_by,
+                "date_assumed": i.date_assumed,
+                "months_counted": i.months_counted,
+                "amount": _num(i.amount),
+                "persona_id": i.persona_id,
+                "third_party_product_id": i.third_party_product_id,
+                "license_id": i.license_id,
+            }
+            for i in h.items
+        ],
+        "unused_seat_lines": [
+            {
+                "license_id": u.license_id,
+                "sku_reference": u.sku_reference,
+                "unused_seats": u.unused_seats,
+                "unit_price_annual": _num(u.unit_price_annual),
+                "annual_value": _num(u.annual_value),
+                "answer": u.answer,
+            }
+            for u in h.unused_seat_lines
+        ],
     }

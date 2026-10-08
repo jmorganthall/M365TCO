@@ -15,6 +15,7 @@ from .models import (
     Disposition,
     Override,
     ResidualIntent,
+    UnusedSeatsAnswer,
     CurrentLicenseLine,
     Persona,
     ThirdPartyProduct,
@@ -30,6 +31,7 @@ from .engine import (
     QuickWin,
     EngineResult,
 )
+from .timing import Headline, TimingItem, UnusedSeatLine, start_month
 from .optimizer import (
     analyze_bundles,
     CandidateBundle,
@@ -42,6 +44,7 @@ __all__ = [
     "Disposition",
     "Override",
     "ResidualIntent",
+    "UnusedSeatsAnswer",
     "CurrentLicenseLine",
     "Persona",
     "ThirdPartyProduct",
@@ -54,6 +57,10 @@ __all__ = [
     "FreedThirdParty",
     "QuickWin",
     "EngineResult",
+    "Headline",
+    "TimingItem",
+    "UnusedSeatLine",
+    "start_month",
     "analyze_bundles",
     "CandidateBundle",
     "BundleAnalysis",

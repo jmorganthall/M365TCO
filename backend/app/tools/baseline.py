@@ -375,6 +375,16 @@ def _headline(engagement_row, rollup) -> dict:
             "annual": decimal_str(xlsx_annual),
             "over_horizon": decimal_str(xlsx_annual * horizon),
         },
+        # The timed headline every readout now shows (ENGINE_SPEC 6.11).
+        "timed": None if rollup.headline is None else {
+            "formula": "rollup.headline (ENGINE_SPEC 6.11): three sub-lines, each from its renewal",
+            "sign": "positive = saving",
+            "run_rate_annual": decimal_str(rollup.headline.run_rate_annual),
+            "over_horizon": decimal_str(rollup.headline.amount),
+            "duplicate_spend": decimal_str(rollup.headline.duplicate_spend_amount),
+            "consolidation": decimal_str(rollup.headline.consolidation_amount),
+            "overlicensing": decimal_str(rollup.headline.overlicensing_amount),
+        },
     }
 
 

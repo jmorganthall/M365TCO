@@ -54,6 +54,7 @@ _LABELS = {
     "disposition": "Disposition", "residual_count": "Residual units", "headcount": "Headcount",
     "is_custom": "Custom", "seed_key": "Seed key",
     "parent_persona_id": "Carved from",
+    "unused_seats_answer": "Unused seats answer", "answer": "Customer's answer",
 }
 
 
@@ -100,7 +101,7 @@ def _registry():
          "desc": "What the customer holds today. Feeds the Microsoft side of current spend.",
          "primary": ["sku_reference", "quantity_assigned", "unit_price_paid_annual"],
          "extra": ["price_override", "overridden_price_annual", "coverage_scope",
-                   "persona_ids"]},
+                   "persona_ids", "quantity_purchased", "unused_seats_answer", "renewal_date"]},
         {"cls": models.ThirdPartyProduct, "type": "ThirdPartyProduct",
          "label": "Third-party products",
          "desc": "Non-Microsoft spend. Effective cost (managed split) feeds displacement.",
@@ -116,6 +117,12 @@ def _registry():
          "desc": "Per-product outcome of the reconciliation (mostly engine-derived).",
          "primary": ["third_party_product_id", "disposition", "residual_annual_cost"],
          "extra": []},
+        {"cls": models.CoverageGapAnswer, "type": "CoverageGapAnswer",
+         "label": "Coverage gap answers",
+         "desc": "The customer's answer for a capability nothing in the inventory delivers today: "
+                 "a confirmed gap (shown as new once a move delivers it) or covered outside the "
+                 "inventory (never costed, never claimed). Unanswered gaps are never claimed as new.",
+         "primary": ["persona_id", "outcome_id", "answer"], "extra": []},
         {"cls": models.ScenarioNarrative, "type": "ScenarioNarrative",
          "label": "Business narratives",
          "desc": "AI-drafted per-persona sales narrative (advisory; stored on the engagement, replaced on regeneration).",

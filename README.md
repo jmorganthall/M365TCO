@@ -198,10 +198,10 @@ The steps run along a chevron **progress stepper** at the top of an engagement:
    persona's **proposed target scenario** would deliver (the *new-outcome*
    candidates) that aren't delivered today by their current licensing or a
    mapped third party (tagged or org-wide, so existing coverage-map mappings
-   count). Resolve each: map a third party that actually delivers it, mark it
-   *covered elsewhere / out of scope* (recorded as a $0 sentinel, so it's kept
-   out of cost and the new-outcome story), add a third party, or leave it as a
-   genuine new outcome the target lights up. Reads existing relationships only.
+   count). Ask the customer about each and record the answer: *not delivered
+   today* (a confirmed gap, shown as a new outcome), *covered outside this
+   inventory* (never costed, never claimed as new), map a third party that
+   actually delivers it, or add one. An unanswered gap is never claimed as new.
    Two amber **honesty guards** flag a target that delivers *less* than today:
    current Microsoft licenses that map to no capability (their outcomes are
    invisible to the comparison), and outcomes the target **drops** versus the
@@ -209,9 +209,12 @@ The steps run along a chevron **progress stepper** at the top of an engagement:
    silent loss.
 6. **Readout & export** — the total-opportunity headline over the engagement's
    modeling horizon ("$X saved over 36 months", stated in words — never a sign
-   next to the word savings), decomposed into ① retire duplicate tools today
-   (the quick wins, no licensing change) and ② each persona's move at its OWN
-   incremental value (quick-win credit stripped so the two never double-count),
+   next to the word savings), decomposed into ① retire duplicate tools (the
+   quick wins, no licensing change), ② each persona's move at its OWN
+   incremental value (quick-win credit stripped so the two never double-count)
+   and ③ unused licences the customer confirmed aren't needed. Each saving
+   counts from the renewal that unlocks it (ENGINE_SPEC 6.11); a "How the
+   headline is timed" table shows every amount and which dates were assumed,
    with a list-price caveat under the hero when baseline spend is assumed;
    the Quick-wins "save today" story, per-persona
    scenarios, the **New outcomes** chips (per persona, the capabilities the

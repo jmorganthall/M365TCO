@@ -57,7 +57,7 @@ export default function CustomerInfo({ engagement, meta, onUpdate }) {
     else if (field === 'modeling_horizon_years') value = Math.max(1, Number(raw) || 3)
     else if (field === 'ecif_roi_conservative') value = raw === '' || raw === null ? 10 : Math.max(1, Number(raw) || 10)
     else if (field === 'ecif_roi_generous') value = raw === '' || raw === null ? 5 : Math.max(1, Number(raw) || 5)
-    else if (field === 'workshop_date') value = raw || null
+    else if (field === 'workshop_date' || field === 'microsoft_renewal_date') value = raw || null
     if ((engagement[field] ?? '') === (value ?? '')) return  // no-op if unchanged
     setErr('')
     try {
@@ -135,7 +135,17 @@ export default function CustomerInfo({ engagement, meta, onUpdate }) {
           <input type="number" min="1" value={f.modeling_horizon_years}
             onChange={set('modeling_horizon_years')}
             onBlur={(e) => commit('modeling_horizon_years', e.target.value)} />
-          <small className="src">Multiplies the annual delta into the readout headline (e.g. 3 → 36-month savings).</small>
+          <small className="src">How many years the headline counts (e.g. 3 → 36 months). Each saving
+            counts from its renewal to the end of this horizon.</small>
+        </div>
+        <div>
+          <label>Microsoft agreement renews {savedTag('microsoft_renewal_date')}</label>
+          <input type="date" value={f.microsoft_renewal_date}
+            onChange={(e) => { setF({ ...f, microsoft_renewal_date: e.target.value }); commit('microsoft_renewal_date', e.target.value) }} />
+          <small className="src">When the customer's Microsoft agreement next renews. Adding or upgrading
+            licences can happen any time, but <b>reducing</b> them (fewer seats, a cheaper plan) waits for
+            this date. Blank = assumed one year after the workshop, and the readout says so. A licence line
+            can carry its own date.</small>
         </div>
       </div>
 
@@ -201,6 +211,7 @@ function fromEngagement(e) {
   return {
     customer_name: e.customer_name || '',
     workshop_date: e.workshop_date || '',
+    microsoft_renewal_date: e.microsoft_renewal_date || '',
     industry: e.industry || '',
     hq_location: e.hq_location || '',
     website: e.website || '',

@@ -23,6 +23,7 @@ from .models import (
     ResidualIntent,
     ThirdPartyProduct,
 )
+from .timing import Headline, timed_headline
 
 CENTS = Decimal("0.01")
 
@@ -186,6 +187,10 @@ class RollupResult:
     msft_uplift_annual: Decimal = Decimal("0")
     ecif_funding_low: Decimal = Decimal("0")
     ecif_funding_high: Decimal = Decimal("0")
+    # The headline (Section 6.11): duplicate spend today + consolidation +
+    # over-licensing, each timed by the renewal that unlocks it and summed over
+    # the horizon. Computed here once; every surface displays it, none computes it.
+    headline: Optional[Headline] = None
 
 
 @dataclass
@@ -677,6 +682,7 @@ def compute(engagement: Engagement) -> EngineResult:
         msft_uplift_annual=msft_uplift,
         ecif_funding_low=ecif_low,
         ecif_funding_high=ecif_high,
+        headline=timed_headline(engagement, scenario_results, quick_wins),
     )
 
     return EngineResult(

@@ -223,6 +223,13 @@ def test_readout_delta_sign_and_color_convention(client):
         "persona_id": kw["id"], "target_sku_reference": "E3", "target_unit_price_annual": 0})
     r = client.post(f"/api/engagements/{eid}/compute").json()
     assert r["rollup"]["net_tco_delta_annual"] == -30000.0  # negative = saving
+    # The reduction waits for the Microsoft renewal; with none given it is assumed
+    # a year out, so 24 of 36 months count (ENGINE_SPEC 6.11) and the readout says so.
+    html_body = client.get(f"/api/engagements/{eid}/readout.html").text
+    assert "$60,000" in html_body
+    assert "1 renewal date was not given" in html_body
+    # Renewing at the workshop, the full horizon counts.
+    client.patch(f"/api/engagements/{eid}", json={"microsoft_renewal_date": eng["workshop_date"]})
     html_body = client.get(f"/api/engagements/{eid}/readout.html").text
     assert "headline pos" in html_body            # saving -> green
     assert "saved over 36 months" in html_body    # horizon headline, stated in words

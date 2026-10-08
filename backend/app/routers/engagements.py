@@ -168,6 +168,10 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
         managed_ms_account=src.managed_ms_account,
         ecif_roi_conservative=src.ecif_roi_conservative,
         ecif_roi_generous=src.ecif_roi_generous,
+        # The headline is timed from the workshop and the agreement's renewal, so
+        # a copy that dropped them would show different numbers for the same data.
+        workshop_date=src.workshop_date,
+        microsoft_renewal_date=src.microsoft_renewal_date,
     )
     db.add(dst)
     db.flush()
@@ -237,6 +241,9 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
             source_tag=lic.source_tag,
             segment=lic.segment, term_duration=lic.term_duration,
             billing_plan=lic.billing_plan,
+            coverage_scope=lic.coverage_scope,
+            renewal_date=lic.renewal_date,
+            unused_seats_answer=lic.unused_seats_answer,
         )
         # Carry the persona tags across, remapped to the cloned personas.
         src_pids = lic.persona_ids or ([lic.persona_id] if lic.persona_id else [])
@@ -270,6 +277,13 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
             ns.addons.append(models.ScenarioAddon(
                 bundle_id=ad.bundle_id, unit_price_annual=ad.unit_price_annual))
         db.add(ns)
+
+    for ans in src.gap_answers:
+        np_id, no_id = persona_map.get(ans.persona_id), outcome_map.get(ans.outcome_id)
+        if np_id and no_id:
+            db.add(models.CoverageGapAnswer(
+                engagement_id=dst.id, persona_id=np_id, outcome_id=no_id,
+                answer=ans.answer, source_tag=ans.source_tag))
 
     for d in src.dispositions:
         db.add(models.ProductDisposition(

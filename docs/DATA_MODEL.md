@@ -117,15 +117,20 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Identity:** `uuid`. **Scope:** root (owns everything else).
 - **Relationships:** one-to-many to all eight child sets, all `cascade="all, delete-orphan"`.
 - **Field ownership:** user-entered (`customer_name`, `market`, `currency`,
-  `modeling_horizon_years` (multiplies the annual delta into the readout
-  headline, e.g. 3 → "36-month savings"; the engine itself stays annualized),
+  `modeling_horizon_years` (how many months the timed headline counts, e.g.
+  3 → 36 months, ENGINE_SPEC 6.11),
   `notes`, `global_tooling_pct`, `default_segment`,
   `default_term_duration`, `default_billing_plan`,
   `business_cap_enabled`, `managed_ms_account`, the ECIF ROI ratios
   `ecif_roi_conservative` / `ecif_roi_generous`, the readout
   branding `brand_logo_data_url` / `brand_primary_color` / `brand_accent_color`,
   and the Customer-Info metadata `workshop_date` / `industry` / `hq_location` /
-  `website` / `employee_count`); derived (`created_at`, `updated_at`).
+  `website` / `employee_count`, plus `microsoft_renewal_date` — when the customer's
+  Microsoft agreement renews, the default renewal for every licence line, which
+  times Microsoft reductions and over-licensing in the headline; NULL = assumed one
+  year after the workshop, and the readout says so); derived (`created_at`,
+  `updated_at`). `workshop_date` is month 0 of the timed headline (an engagement
+  without one is timed from `created_at`).
 - **Validated soft refs:** `market` / `currency` are checked on create/patch
   against the loaded price catalog (or the configured defaults when none is
   loaded) — the engine never converts currency, so a mismatch would print a
@@ -531,6 +536,15 @@ linked to the first by `parent_persona_id`:
   reconciliation is additive-only and the ORM no longer maps it.) Not to be
   confused with `engagement_price_basis()` — the segment/term/billing quoting
   basis, which is load-bearing and unchanged.
+- **Renewal and unused seats (first-class):** `renewal_date` (NULL = the
+  engagement's `microsoft_renewal_date`, §4.1) and `unused_seats_answer` ∈
+  {`Intended`, `NotNeeded`, NULL}. Unused seats are `quantity_purchased −
+  quantity_assigned`; the customer says whether they are kept on purpose
+  (`Intended` — noted, never counted) or not needed (`NotNeeded` — over-licensing,
+  counted from the line's Microsoft renewal). NULL = not answered: left out.
+  Reader: the timed headline (ENGINE_SPEC 6.11). GUI surface: the line's
+  expander (Unused seats answer, Renews date), the row chips, the readout's
+  Unused licences section and the Data Inspector.
 - **CRUD:** `GET/POST/PATCH/DELETE …/current-licenses`; `persona_ids` on the body
   replaces the tag set.
 - **Engine role:** the Microsoft side of a persona's current spend. A line's
@@ -774,20 +788,26 @@ New-outcomes section, §6.2 step 4); each uncovered outcome carries
 `{id, name, description}` so consumers can show what the capability is, not
 just its label.
 
-The Coverage Check step (between Scenarios and Readout) walks each gap and the
-operator resolves it with **existing** actions only:
+The Coverage Check step (between Scenarios and Readout) asks the customer about
+each gap — *"you don't have this today: is that expected, or is it covered somehow
+outside this inventory?"* — and records the answer:
+- **not delivered today** — a `CoverageGapAnswer` (§4.10a-quinquies) of
+  `NotDeliveredToday`: a confirmed gap, shown as a **new outcome**;
+- **covered outside this inventory** — a `CoverageGapAnswer` of
+  `CoveredOutsideInventory`: it counts as delivered today, so it drops off the
+  gap list and is never claimed as new or costed (listed as
+  `covered_outside_outcomes`, with an undo);
 - **map a third party that actually delivers it** — a `CoverageMapEntry`
   third-party row **+** a `ThirdPartyPersona` tag so it counts for the persona;
-- **covered elsewhere / out of scope** — recorded against a reusable **$0**
-  "Covered elsewhere (out of scope)" `ThirdPartyProduct` (coverage + persona
-  tag), so the outcome is accounted for but its $0 cost keeps it out of the TCO
-  math and the new-outcome story;
-- **add a new third party**, or **leave it** as a genuine gap the target lights
-  up as a **new outcome**.
+- **add a new third party**, or leave it **unanswered** — then it is never
+  claimed as new (TARGET_SCHEMA D21).
 
-This validates coverage so a future per-persona "new outcomes" report — an
-outcome is *new* iff the target delivers it and nothing delivered it today — is
-trustworthy, without inventing data.
+Each uncovered outcome carries its `answer` / `answer_id`, and the response splits
+them into `confirmed_new_outcomes` and `unconfirmed_outcomes`. An outcome is
+*new* iff the target delivers it, nothing in the inventory delivers it today,
+**and** the customer confirmed that. The old `$0 "Covered elsewhere (out of
+scope)"` placeholder tool is no longer created; engagements that already have one
+keep reading correctly.
 
 **Capability-honesty guards (derived, no new field).** A persona can hold several
 current licenses (a many-to-one relationship); its capability is the union of all of
@@ -818,7 +838,8 @@ as amber warnings:
 
 **No silently-empty capability story.** `compute.new_outcomes` lists **every**
 in-scope persona that has a target, not only those with something new. A persona
-with nothing new carries `empty_reason` ∈ {`target_unmapped`, `covered_org_wide`,
+with nothing new carries `empty_reason` ∈ {`awaiting_confirmation` (gaps exist but
+the customer has not answered them), `target_unmapped`, `covered_org_wide`,
 `covered_today`} and the `empty_reason_text` every surface prints — the HTML
 readout (a muted note in place of the chips), the in-app Readout, and a `None` row
 on the xlsx **Capability changes** sheet. The three causes mean very different
@@ -832,6 +853,20 @@ trade-off. `compute.dropped_capability` (the mirror of `new_outcomes`) feeds a
 how many personas are affected) and the in-app Readout, a **Capability changes** sheet
 in the xlsx, and the `scenario_narrative` AI payload/prompt — all derived, all omitted
 when nothing is dropped.
+
+### 4.10a-quinquies CoverageGapAnswer — the customer's answer about a gap
+- **Identity:** `uuid`. **Scope:** engagement-scoped; also owned by its persona
+  (deleted with it) and cleared when its outcome is deleted.
+- **Relationships:** hard FKs to `Persona` and `Outcome`. Unique per
+  (`persona_id`, `outcome_id`).
+- **Field ownership:** user-entered `answer` ∈ {`NotDeliveredToday`,
+  `CoveredOutsideInventory`}; provenance `source_tag`; system `updated_at`.
+- **CRUD:** `GET …/coverage-gap-answers`, `PUT …/coverage-gap-answers` (upsert by
+  persona + outcome), `DELETE …/coverage-gap-answers/{id}` (back to unanswered).
+- **Readers:** `compute.persona_coverage_gaps` → the Coverage Check and the
+  readouts' New outcomes (§4.10a-quater). Copied by carve-out and Duplicate.
+- **GUI surface:** the Coverage Check answer per gap, the covered-outside pills
+  and the Data Inspector.
 
 ### 4.10b AiPrompt — editable AI instructions
 - **Identity:** `uuid` PK plus a unique `key` per AI function

@@ -268,6 +268,11 @@ def carve_persona(engagement_id: str, persona_id: str, payload: schemas.PersonaC
     # parent + child by headcount exactly as it did across the whole group before.
     for link in parent.requirement_links:
         db.add(models.PersonaRequirement(persona_id=child.id, outcome_id=link.outcome_id))
+    # The customer's coverage-gap answers describe these people's current state too.
+    for ans in parent.gap_answers:
+        db.add(models.CoverageGapAnswer(
+            engagement_id=engagement_id, persona_id=child.id,
+            outcome_id=ans.outcome_id, answer=ans.answer, source_tag=ans.source_tag))
     for lic in db.execute(
         select(models.CurrentLicensePersona).where(
             models.CurrentLicensePersona.persona_id == parent.id
@@ -417,6 +422,11 @@ def delete_outcome(engagement_id: str, outcome_id: str, db: Session = Depends(ge
     row = db.get(models.Outcome, outcome_id)
     if row is None or row.engagement_id != engagement_id:
         raise HTTPException(404, "Outcome not found")
+    # Answers about a capability that no longer exists answer nothing.
+    for ans in db.execute(
+        select(models.CoverageGapAnswer).where(models.CoverageGapAnswer.outcome_id == outcome_id)
+    ).scalars().all():
+        db.delete(ans)
     db.delete(row)
     db.commit()
 
@@ -604,6 +614,56 @@ def delete_coverage(engagement_id: str, entry_id: str, db: Session = Depends(get
     row = db.get(models.CoverageMapEntry, entry_id)
     if row is None or row.engagement_id != engagement_id:
         raise HTTPException(404, "Coverage entry not found")
+    db.delete(row)
+    db.commit()
+
+
+# ---------- Coverage gap answers (TARGET_SCHEMA §4.8) ----------
+@router.get("/coverage-gap-answers", response_model=list[schemas.GapAnswerOut])
+def list_gap_answers(engagement_id: str, db: Session = Depends(get_db)):
+    _require_engagement(db, engagement_id)
+    return db.execute(
+        select(models.CoverageGapAnswer).where(
+            models.CoverageGapAnswer.engagement_id == engagement_id
+        )
+    ).scalars().all()
+
+
+@router.put("/coverage-gap-answers", response_model=schemas.GapAnswerOut)
+def set_gap_answer(engagement_id: str, payload: schemas.GapAnswerIn, db: Session = Depends(get_db)):
+    """Record the customer's answer for one (persona, capability) gap — one answer
+    per pair, so a second answer replaces the first."""
+    _require_engagement(db, engagement_id)
+    persona = db.get(models.Persona, payload.persona_id)
+    outcome = db.get(models.Outcome, payload.outcome_id)
+    if persona is None or persona.engagement_id != engagement_id:
+        raise HTTPException(404, "Persona not found")
+    if outcome is None or outcome.engagement_id != engagement_id:
+        raise HTTPException(404, "Outcome not found")
+    row = db.execute(
+        select(models.CoverageGapAnswer).where(
+            models.CoverageGapAnswer.persona_id == payload.persona_id,
+            models.CoverageGapAnswer.outcome_id == payload.outcome_id,
+        )
+    ).scalars().first()
+    if row is None:
+        row = models.CoverageGapAnswer(
+            engagement_id=engagement_id, persona_id=payload.persona_id,
+            outcome_id=payload.outcome_id)
+        db.add(row)
+    row.answer = payload.answer
+    row.source_tag = payload.source_tag
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.delete("/coverage-gap-answers/{answer_id}", status_code=204)
+def delete_gap_answer(engagement_id: str, answer_id: str, db: Session = Depends(get_db)):
+    """Clear an answer: the gap goes back to unanswered (never claimed as new)."""
+    row = db.get(models.CoverageGapAnswer, answer_id)
+    if row is None or row.engagement_id != engagement_id:
+        raise HTTPException(404, "Answer not found")
     db.delete(row)
     db.commit()
 

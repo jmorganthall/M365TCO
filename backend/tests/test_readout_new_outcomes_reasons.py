@@ -116,6 +116,15 @@ def test_gaining_persona_carries_no_reason(client):
     lics = client.get(f"/api/engagements/{eid}/current-licenses").json()
     client.patch(f"/api/engagements/{eid}/current-licenses/{lics[0]['id']}",
                  json={"sku_reference": "Microsoft 365 E3"})
+    # Unanswered, the gaps are not yet claimed — and the reason says so.
+    entry = _entry(client.post(f"/api/engagements/{eid}/compute").json(), pid)
+    assert entry["outcomes"] == [] and entry["unconfirmed_outcomes"]
+    assert entry["empty_reason"] == "awaiting_confirmation"
+    assert "Coverage Check" in entry["empty_reason_text"]
+    # Confirmed as not delivered today, they are new outcomes.
+    for o in entry["unconfirmed_outcomes"]:
+        client.put(f"/api/engagements/{eid}/coverage-gap-answers", json={
+            "persona_id": pid, "outcome_id": o["id"], "answer": "NotDeliveredToday"})
     result = client.post(f"/api/engagements/{eid}/compute").json()
     entry = _entry(result, pid)
     assert entry["outcomes"]

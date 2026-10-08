@@ -11,6 +11,7 @@ happens at the data layer on input, never here.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal
 from enum import Enum
 from typing import Optional
@@ -52,6 +53,16 @@ class ResidualIntent(str, Enum):
     INTENDED_OUT_OF_SCOPE = "IntendedOutOfScope"
 
 
+class UnusedSeatsAnswer(str, Enum):
+    """The customer's answer about a licence line's unused seats (purchased −
+    assigned). INTENDED: kept on hand on purpose (e.g. quick onboarding) — noted,
+    never counted. NOT_NEEDED: over-licensing, a saving at the line's Microsoft
+    renewal (Section 6.11). No answer (None) = left out."""
+
+    INTENDED = "Intended"
+    NOT_NEEDED = "NotNeeded"
+
+
 @dataclass(frozen=True)
 class CurrentLicenseLine:
     """An existing Microsoft license holding (already normalized).
@@ -75,6 +86,15 @@ class CurrentLicenseLine:
     # coverage). Drives quick-win detection: a third-party product whose outcomes
     # are all already covered here is a duplicate the customer can drop today.
     covered_outcome_ids: frozenset[str] = field(default_factory=frozenset)
+    # Over-licensing and timing inputs (Section 6.11). `id` names the line in the
+    # timed headline; `quantity_purchased` − `quantity_assigned` is the line's
+    # unused seats; `renewal_date` is this line's own Microsoft renewal (None =
+    # the engagement's agreement date); `unused_seats_answer` is the customer's
+    # answer about those unused seats (None = not answered → left out).
+    id: str = ""
+    quantity_purchased: int = 0
+    renewal_date: Optional[date] = None
+    unused_seats_answer: Optional[UnusedSeatsAnswer] = None
 
 
 @dataclass
@@ -161,3 +181,10 @@ class Engagement:
     # conservative end and a more generous end. Policy inputs, like tooling_pct.
     ecif_roi_conservative: Decimal = Decimal("10")
     ecif_roi_generous: Decimal = Decimal("5")
+    # Headline timing (Section 6.11). Month 0 of the headline is the workshop
+    # date; the headline counts horizon_years × 12 months. microsoft_renewal_date
+    # is the agreement's renewal, the default for every licence line. With no
+    # workshop date no renewal can be placed, so every date reads as missing.
+    workshop_date: Optional[date] = None
+    microsoft_renewal_date: Optional[date] = None
+    horizon_years: int = 3
