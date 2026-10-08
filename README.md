@@ -167,6 +167,12 @@ npm run dev                            # http://localhost:5173
 
 ## Workshop flow (PRD Section 3)
 
+The app opens on an **Open engagement** page: type part of a customer's name to
+find an engagement, or create a new one. There is no list of customers on
+screen, because the app is run on a shared screen with a customer
+([`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md) §2). Each engagement has its own
+address (`#/e/<id>/<step>`), so a reload returns to it.
+
 The steps run along a chevron **progress stepper** at the top of an engagement:
 
 1. **Baseline Data** — one tab, three sequential cards: **Customer Info** (the

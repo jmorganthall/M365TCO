@@ -3,7 +3,7 @@ is a workshop tool where most fields are optional and patched incrementally."""
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
@@ -181,6 +181,15 @@ class EngagementOut(ORMModel):
     hq_location: str = ""
     website: str = ""
     employee_count: Optional[int] = None
+
+
+class EngagementSummary(ORMModel):
+    """One row of the engagement picker. Deliberately minimal: the picker is a
+    search box on a shared screen, so it carries only what is needed to find and
+    open an engagement — never another customer's notes, profile or logo."""
+    id: str
+    customer_name: str
+    updated_at: datetime
 
 
 # ---- Persona ----
