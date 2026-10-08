@@ -140,6 +140,9 @@ _RETIRED_COLUMNS: tuple[tuple[str, str], ...] = (
     # the engine already knows how to cost, so these two toggles are dead weight.
     ("engagements", "bp_swap_enabled"),
     ("persona_scenarios", "bp_swap_optout"),
+    # Users / Devices / Units on a third-party tool: never read by any calculation
+    # (everything is per person, TARGET_SCHEMA D13) — removed with the walkthrough.
+    ("third_party_products", "unit_basis"),
 )
 
 

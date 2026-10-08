@@ -1,0 +1,249 @@
+{
+  "_about": "The one source of the walkthrough's help text (docs/WALKTHROUGH.md §9). Every tooltip and the PDF's 'How we calculated this' page read this file. It is written for the customer to read. Change it in the same PR as any calculation change it describes.",
+  "steps": {
+    "customer": {
+      "title": "Customer",
+      "intro": "Who this workshop is for. Only the name is needed; the rest is optional context."
+    },
+    "groups": {
+      "title": "Groups & licences",
+      "intro": "Which groups of people get different Microsoft licences today, how many are in each, and what they get. Each group gets its own recommendation."
+    },
+    "tools": {
+      "title": "Other tools",
+      "intro": "The other products you pay for that may overlap with Microsoft 365: what each costs, when it renews, who uses it and what for."
+    },
+    "future": {
+      "title": "Future state",
+      "intro": "The recommended Microsoft plan for each group: the lowest-cost plan that keeps everything the group has today, what it saves and what it adds."
+    },
+    "gaps": {
+      "title": "Coverage check",
+      "intro": "Capabilities a recommended plan would add that nothing in this inventory delivers today. We only call something new once you confirm it isn't covered some other way."
+    },
+    "review": {
+      "title": "Review",
+      "intro": "Anything that doesn't line up yet. Answer what you can; anything still unanswered is left out of the numbers rather than guessed."
+    },
+    "summary": {
+      "title": "Summary & PDF",
+      "intro": "The result, and the PDF you keep."
+    }
+  },
+  "fields": {
+    "customer.name": {
+      "ask": "The name of your organisation, as it should appear on the report.",
+      "why": "Shown on the report's title page. It is not used in any calculation."
+    },
+    "customer.workshop_date": {
+      "ask": "The date of this workshop.",
+      "why": "The starting point for timing: each saving counts from its renewal date, measured from this date."
+    },
+    "customer.logo": {
+      "ask": "Optionally, your logo.",
+      "why": "Shown on the report's title page only."
+    },
+    "customer.details": {
+      "ask": "Optionally, your industry, headquarters, website, number of employees and any notes.",
+      "why": "Background only. The employee count is also used to check that the groups add up. None of these change the numbers."
+    },
+    "customer.pricing_basis": {
+      "ask": "Which Microsoft price list applies: your segment (for example commercial or nonprofit), commitment term and payment plan.",
+      "why": "Selects which list price is used for each Microsoft product. Leave it unless your pricing differs from the standard."
+    },
+    "agreement.renewal": {
+      "ask": "When does your Microsoft agreement next renew?",
+      "why": "You can add or upgrade Microsoft licences at any time, but reducing them — fewer seats or a cheaper plan — usually waits for renewal. Reductions and unused-seat savings are counted from this date. If it isn't known, we assume one year after the workshop and say so."
+    },
+    "groups.name": {
+      "ask": "Which groups of people get different Microsoft licences today? For example office staff, frontline staff, executives.",
+      "why": "Everyone in a group is treated as holding the same licences and tools, and each group gets its own recommendation. Split a group only when its licences or tools differ."
+    },
+    "groups.headcount": {
+      "ask": "How many people are in this group?",
+      "why": "Costs are counted per person, so the headcount sets each group's share of today's spend and of the future plan."
+    },
+    "groups.description": {
+      "ask": "A short description of the group, in your words.",
+      "why": "Shown on the group's page of the report. It does not change the numbers."
+    },
+    "groups.required_capabilities": {
+      "ask": "Only if a group needs something it doesn't have today: which capabilities must its future plan include?",
+      "why": "By default the recommended plan keeps everything the group has today. Listing a requirement here makes the recommendation include it too."
+    },
+    "licences.product": {
+      "ask": "Which Microsoft product is this?",
+      "why": "The product decides which capabilities the group has today and its list price."
+    },
+    "licences.applies_to": {
+      "ask": "Which groups get this licence?",
+      "why": "The licence's cost is split across these groups by headcount, and its capabilities count as delivered for them."
+    },
+    "licences.bought": {
+      "ask": "How many of this licence do you pay for?",
+      "why": "Compared with the number assigned to find unused seats."
+    },
+    "licences.assigned": {
+      "ask": "How many are actually assigned to people?",
+      "why": "Today's spend is counted on assigned seats. Seats bought but not assigned are shown separately as unused."
+    },
+    "licences.price": {
+      "ask": "Do you know what you pay per seat? Leave it at list price if not.",
+      "why": "A price you give replaces the list price for this line, and the report says which prices were assumed."
+    },
+    "licences.unused": {
+      "ask": "These seats are paid for but not assigned. Are they kept on purpose, for example for quick onboarding, or are they not needed?",
+      "why": "Seats you don't need are counted as a saving from this licence's renewal. Seats kept on purpose are noted and not counted. Unanswered seats are left out."
+    },
+    "licences.renewal": {
+      "ask": "Does this licence renew on a different date from the main agreement?",
+      "why": "Reductions on this line are counted from its own renewal date. Blank uses the agreement's date."
+    },
+    "licences.scope": {
+      "ask": "Does this licence cover named people only, or everyone in the organisation?",
+      "why": "Decides how many people a duplicate tool can be retired for today: a per-person licence covers only the seats assigned."
+    },
+    "tools.name": {
+      "ask": "What else do you pay for that overlaps with Microsoft 365? For example meetings, file sharing, security or identity tools.",
+      "why": "Each tool is compared with what Microsoft 365 already covers or would cover."
+    },
+    "tools.cost": {
+      "ask": "What does it cost, per month or per year?",
+      "why": "The saving if the tool is retired. A tool with no cost is left out."
+    },
+    "tools.renewal": {
+      "ask": "When does it renew?",
+      "why": "A tool can only stop at its renewal, so its saving counts from this date. If it isn't known, we assume one year after the workshop and say so."
+    },
+    "tools.used_by": {
+      "ask": "Who uses it?",
+      "why": "A tool is retired only for groups that use it, and its cost is counted per person. A tool with no users is left out."
+    },
+    "tools.managed": {
+      "ask": "Do you buy it directly, or as part of a managed service?",
+      "why": "With a managed service, only the software part can be replaced, so only that share of the cost counts. The share is shown on the tool and can be changed."
+    },
+    "tools.uses": {
+      "ask": "What do you use it for?",
+      "why": "A tool can be retired only when Microsoft 365 covers everything you use it for. A tool with no uses ticked is left out."
+    },
+    "tools.covers": {
+      "ask": "Only if it differs from the groups' headcount: how many people does it cover?",
+      "why": "Sets the cost per person. Blank uses the headcount of the groups that use it."
+    },
+    "tools.tooling_pct": {
+      "ask": "For a managed service: what share of the price is the software itself?",
+      "why": "Only that share can be replaced by Microsoft 365, so only that share counts."
+    },
+    "tools.vendor": {
+      "ask": "Who supplies it?",
+      "why": "Shown for reference only."
+    },
+    "future.plan": {
+      "ask": "Which Microsoft plan should this group move to?",
+      "why": "The plan's capabilities decide which tools can retire, and its price sets the group's future Microsoft cost."
+    },
+    "future.recommend": {
+      "ask": "Fill in the recommended plan for every group that doesn't have one.",
+      "why": "The recommendation is the lowest-cost plan, plus any add-ons, that keeps everything the group has today. You can change it."
+    },
+    "future.addons": {
+      "ask": "Any add-ons on top of the plan?",
+      "why": "Add-ons add capabilities and cost to the group's future plan."
+    },
+    "future.price": {
+      "ask": "Any discount or agreed price for the future plan?",
+      "why": "Replaces the list price for this group's future plan."
+    },
+    "future.in_scope": {
+      "ask": "Is this group part of the proposal?",
+      "why": "A group out of scope is shown for comparison but left out of the totals."
+    },
+    "future.carve": {
+      "ask": "Should only part of this group move?",
+      "why": "Splits the group so the people who move get their own plan."
+    },
+    "future.keep_or_retire": {
+      "ask": "This tool is only partly replaced. Will you keep it for the remaining users, or retire it entirely?",
+      "why": "Kept tools stay in your future costs. Retiring needs a reason, which is printed on the report. Unanswered, the tool is assumed kept."
+    },
+    "gaps.answer": {
+      "ask": "You don't have this today. Is that expected, or is it covered somehow outside this inventory?",
+      "why": "Only a confirmed gap is shown as a new capability. Something covered outside the inventory is never claimed as new or costed. Unanswered, it is left out."
+    },
+    "review.checks": {
+      "ask": "Anything listed here doesn't line up yet. Can we clear it up now?",
+      "why": "Anything still unanswered is left out of the numbers and the report, never guessed."
+    },
+    "review.sanity": {
+      "ask": "Optionally, an AI check for likely mistakes.",
+      "why": "Advisory only. It never changes your data, and the workshop works without it."
+    },
+    "summary.headline": {
+      "ask": "The total over the period modelled.",
+      "why": "The sum of duplicate spend, consolidation and over-licensing, each counted from the renewal that allows it."
+    },
+    "summary.duplicate_spend": {
+      "ask": "Tools you can retire without changing any Microsoft licence.",
+      "why": "Your current Microsoft licences already cover everything these tools are used for."
+    },
+    "summary.consolidation": {
+      "ask": "Moving each group to its recommended plan.",
+      "why": "The tools the new plan replaces, less any change in Microsoft cost."
+    },
+    "summary.overlicensing": {
+      "ask": "Unused licences you confirmed aren't needed.",
+      "why": "Counted from each licence's renewal."
+    },
+    "summary.horizon": {
+      "ask": "How many years should the total cover?",
+      "why": "Each saving counts from its renewal to the end of this period."
+    },
+    "summary.pdf": {
+      "ask": "Create the report to keep.",
+      "why": "The PDF records the numbers as shown today; later changes don't alter it."
+    },
+    "summary.ecif": {
+      "ask": "Is there a Microsoft account team assigned?",
+      "why": "If so, the report notes that Microsoft may co-fund partner services. It does not change the totals."
+    }
+  },
+  "method": [
+    {
+      "title": "What we compared",
+      "body": "For each group of people, what you spend today on Microsoft licences and on other tools, compared with the recommended Microsoft plan for that group. Licensing costs only: migration, services and operational savings are not included."
+    },
+    {
+      "title": "Groups",
+      "body": "Everyone in a group is treated as holding the same licences and tools. A licence or tool shared by several groups has its cost split between them by headcount."
+    },
+    {
+      "title": "Duplicate spend today",
+      "body": "A tool whose every use your current Microsoft licences already cover can be retired at its renewal without changing any licence. It is credited only for people who both use the tool and hold a covering licence."
+    },
+    {
+      "title": "Consolidation",
+      "body": "Moving a group to its recommended plan retires the tools whose every use the plan covers. A tool's cost is counted per person it covers. For a managed service, only the software share of the price counts. The change in Microsoft cost is added or subtracted."
+    },
+    {
+      "title": "Over-licensing",
+      "body": "Seats you pay for but haven't assigned are counted as a saving only where you confirmed they aren't needed. Seats kept on purpose are noted and not counted."
+    },
+    {
+      "title": "Timing",
+      "body": "Each saving counts from the renewal that allows it, to the end of the period modelled. A tool stops at its renewal. A Microsoft increase starts when the first tool that only the new plan can retire renews, or straight away if there is none. A Microsoft reduction waits for your Microsoft renewal. Where a renewal date wasn't known, we assumed one year after the workshop; these are marked."
+    },
+    {
+      "title": "New capabilities",
+      "body": "A capability is shown as new only when the recommended plan delivers it and you confirmed that nothing delivers it today."
+    },
+    {
+      "title": "Prices",
+      "body": "Microsoft list prices are used unless you told us what you pay. Prices that were assumed are listed below."
+    },
+    {
+      "title": "What is left out",
+      "body": "Anything we couldn't confirm in the workshop — a tool without a cost or users, an unanswered question — is left out of the numbers rather than estimated."
+    }
+  ]
+}

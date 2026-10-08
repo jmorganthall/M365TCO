@@ -103,6 +103,11 @@ class Engagement(Base):
     # 6.11). NULL = not given: one year after the workshop is assumed, and the
     # readout says so. Asked on Customer Info.
     microsoft_renewal_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # The snapshot taken when the customer PDF was last produced — the numbers the
+    # customer was handed (TARGET_SCHEMA §8). Set only by that deliberate action;
+    # a soft reference (engagement_snapshots.id) so the two tables don't depend on
+    # each other at create time. Shown as the "Presented" baseline in Summary.
+    presented_snapshot_id: Mapped[str | None] = mapped_column(String, nullable=True)
     industry: Mapped[str] = mapped_column(String, default="")
     hq_location: Mapped[str] = mapped_column(String, default="")
     website: Mapped[str] = mapped_column(String, default="")
@@ -530,9 +535,6 @@ class ThirdPartyProduct(Base):
         SAEnum(*COST_PERIODS, name="cost_period"), default="Annual"
     )
     annual_cost: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
-    unit_basis: Mapped[str] = mapped_column(
-        SAEnum(*UNIT_BASIS, name="unit_basis"), default="Users"
-    )
     # DERIVED effective coverage: the sum of the tagged personas' headcounts,
     # unless the operator sets covered_count_override (which always wins). Kept
     # persisted so the engine/exports read one canonical value; recomputed by
@@ -801,6 +803,9 @@ class EngagementSnapshot(Base):
     label: Mapped[str] = mapped_column(String, default="")
     catalog_version: Mapped[str] = mapped_column(String, default="")
     payload_json: Mapped[str] = mapped_column(Text, default="{}")
+    # True for the snapshots taken when a customer PDF was produced: the numbers
+    # the customer was handed (TARGET_SCHEMA §8).
+    is_presented: Mapped[bool] = mapped_column(Boolean, default=False)
 
     engagement: Mapped[Engagement] = relationship(back_populates="snapshots")
 

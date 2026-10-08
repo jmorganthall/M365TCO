@@ -589,6 +589,13 @@ linked to the first by `parent_persona_id`:
 - **Relationships:** target of `CoverageMapEntry` (third-party) and of exactly one
   `ProductDisposition`; **many-to-many** to `Persona` via `ThirdPartyPersona`
   (§4.6a), mirroring current licensing.
+- **GUI:** the Other tools step puts the walkthrough's questions on the row —
+  cost and period, renewal date, who uses it (persona tags), managed — and vendor,
+  the managed share and the covers override in the expander. Covers is no longer a
+  row field: it is derived from the groups unless overridden in the expander.
+- **Retired:** `unit_basis` (Users / Devices / Units) — never read by any
+  calculation (everything is per person, TARGET_SCHEMA D13); dropped via
+  `_RETIRED_COLUMNS`.
 
 ### 4.6a ThirdPartyPersona — product↔persona tags
 - **Identity:** `uuid` plus a unique `(third_party_product_id, persona_id)`.
@@ -713,6 +720,25 @@ operator-owned and engine-owned fields.
   plus `label`, `catalog_version`, `created_at`.
 - **CRUD:** `POST/GET …/snapshots`, `GET …/snapshots/{id}`. Immutable once written
   — a snapshot is a record, not editable state.
+- **Presented:** `is_presented` marks a snapshot taken when the customer PDF was
+  produced (`POST …/customer-report.pdf`), and `Engagement.presented_snapshot_id`
+  points at the latest one — the numbers the customer was handed (TARGET_SCHEMA §8;
+  a soft reference so the two tables don't depend on each other at create time).
+  GUI: the Summary step's "Last created …" note and the snapshot list's
+  `is_presented` / `is_baseline`.
+
+### 4.10a-sexies Review and the customer PDF (derived, persist nothing else)
+- `GET …/review` (`services/review.py`) — every check that works without AI, each
+  with the walkthrough step that fixes it, and the list of what is **left out**
+  because it wasn't answered (unused seats, tools with no cost / users / uses,
+  unconfirmed gaps, undecided partly-replaced tools). A pure read: it runs the
+  engine without persisting.
+- `POST …/customer-report.pdf` (`services/customer_report.py`, reportlab) — the
+  leave-behind: title page, overview with the timed headline, one section per
+  group, and *How we calculated this* from `app/content/help_text.json`. It only
+  displays computed numbers; anything left out does not appear.
+- `GET /api/help-text` — that same help-text file, for the GUI tooltips. Content,
+  not domain data: changed by a reviewed PR, never in Settings.
 
 ### 4.10a Best-bundle analysis (derived, persists nothing)
 The optimizer (`tco_engine/optimizer.py`) evaluates every candidate Microsoft

@@ -1,7 +1,13 @@
 import React, { useEffect, useState } from 'react'
+import Help from './Help.jsx'
 import { api } from '../api'
 
-export default function CoverageMap({ engagement, meta }) {
+// `section` places the card in the walkthrough: "tools" = what each tool is used
+// for (step 3); "library" = this engagement's capability list and Microsoft plan
+// coverage, an advanced expander on the Coverage check (step 5). Omitted = both.
+export default function CoverageMap({ engagement, meta, section }) {
+  const showTools = section !== 'library'
+  const showLibrary = section !== 'tools'
   const eid = engagement.id
   const [outcomes, setOutcomes] = useState([])
   const [products, setProducts] = useState([])
@@ -148,7 +154,7 @@ export default function CoverageMap({ engagement, meta }) {
     <>
       {err && <div className="err">{err}</div>}
 
-      <details className="card">
+      {showLibrary && <details className="card">
         <summary style={{ cursor: 'pointer' }}>
           <h2 style={{ display: 'inline', margin: 0 }}>Outcomes in this engagement ({outcomes.length})</h2>
           <span className="muted"> — the capability list coverage maps to (expand)</span>
@@ -180,11 +186,11 @@ export default function CoverageMap({ engagement, meta }) {
           </div>
         ))}
         {outcomes.length === 0 && <span className="muted">No outcomes yet.</span>}
-      </details>
+      </details>}
 
-      <div className="card">
+      {showTools && <div className="card">
         <div className="flex-between">
-          <h2 style={{ margin: 0 }}>Third-party coverage</h2>
+          <h2 style={{ margin: 0 }}>What each tool is used for <Help k="tools.uses" /></h2>
           {aiEnabled && products.length > 0 && (
             <button className="ghost sm" onClick={aiSuggestAll}
               disabled={bulkBusy || Object.keys(suggesting).length > 0
@@ -195,10 +201,10 @@ export default function CoverageMap({ engagement, meta }) {
             </button>
           )}
         </div>
-        <p className="hint">Map each product to the outcomes it delivers. A target SKU
-          displaces a product only when it covers every outcome the product delivers.
-          <b> "AI suggest all"</b> runs only on products with no coverage yet.
-          <b> Unratified AI suggestions never feed the math.</b></p>
+        <p className="hint">For each tool, tick what the customer uses it for. A Microsoft plan
+          can retire a tool only when it covers everything the tool is used for.
+          {aiEnabled && <> <b>AI suggest</b> pre-ticks likely uses; confirm each with the customer —
+            a suggestion counts only once confirmed.</>}</p>
         {msg && <div className="popcheck" style={{ margin: '.4rem 0' }}>{msg}</div>}
         {products.length === 0 && <p className="muted">Add third-party products first.</p>}
         {products.map((tp) => (
@@ -229,9 +235,9 @@ export default function CoverageMap({ engagement, meta }) {
               onAdd={(oid) => addCoverage(tp.id, oid)} />
           </div>
         ))}
-      </div>
+      </div>}
 
-      <details className="card">
+      {showLibrary && <details className="card">
         <summary style={{ cursor: 'pointer' }}>
           <h2 style={{ display: 'inline', margin: 0 }}>Microsoft bundle coverage</h2>
           <span className="muted"> — the reference map (collapsed; expand to tune)</span>
@@ -283,9 +289,9 @@ export default function CoverageMap({ engagement, meta }) {
             ))}
           </>
         )}
-      </details>
+      </details>}
 
-      <div className="card">
+      {showLibrary && <div className="card">
         <h2>Add a custom outcome</h2>
         <p className="hint">An outcome is a capability that coverage maps to. This engagement
           already has a seeded set (see <b>Outcomes in this engagement</b> at the top) — you rarely
@@ -308,7 +314,7 @@ export default function CoverageMap({ engagement, meta }) {
           </div>
           <button onClick={addCustomOutcome}>Add outcome</button>
         </div>
-      </div>
+      </div>}
     </>
   )
 }

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { api } from '../api'
+import Help from './Help.jsx'
 
 // Inline (auto-saving) text field that holds local state and commits on blur or
 // Enter — not per keystroke. The row's update() does a PATCH-and-reload, which
@@ -75,20 +76,13 @@ export default function Personas({ engagement, meta }) {
 
   return (
     <div className="card">
-      <h2>Personas and headcounts</h2>
-      <p className="hint">Define the populations you will model. Each persona gets one target
-        scenario later. Expand a persona to set the capabilities it <b>requires</b> (e.g. Desktop
-        Software, Full-Size Cloud Storage) — recommend-a-path flags a gap if a target bundle
-        misses one, keeping Frontline personas off mainline bundles they don't need and vice versa.
-        To move <b>part</b> of a persona onto a different plan, carve it out on the{' '}
-        <b>Scenarios</b> tab — a carve-out copies this persona's licensing and tools as they
-        stand, so it belongs after the baseline is entered, not before.</p>
+      <h2 style={{ marginTop: 0 }}>Groups</h2>
       {err && <div className="err">{err}</div>}
 
       <table className="resp-table">
         <thead><tr>
-          <th></th><th>Name</th><th className="num">Headcount</th>
-          <th className="num">Requires</th><th></th>
+          <th></th><th>Group <Help k="groups.name" /></th><th className="num">People <Help k="groups.headcount" /></th>
+          <th>Description <Help k="groups.description" /></th><th className="num">Requires</th><th></th>
         </tr></thead>
         <tbody>
           {withCarveOutsUnderParents(items).map((p) => {
@@ -128,24 +122,23 @@ export default function Personas({ engagement, meta }) {
                   </td>
                   <td className="num" data-label="Headcount"><input type="number" value={p.headcount}
                     onChange={(e) => update(p.id, { headcount: Number(e.target.value) })} style={{ width: 90 }} /></td>
+                  <td data-label="Description"><TextInput value={p.description || ''} placeholder="Who they are (optional)"
+                    onCommit={(v) => update(p.id, { description: v })} /></td>
                   <td className="num" data-label="Requires">{reqs.length || <span className="muted">—</span>}</td>
                   <td className="num"><button className="danger sm" onClick={() => remove(p.id)}>Remove</button></td>
                 </tr>
                 {open[p.id] && (
                   <tr className="detail-row">
                     <td></td>
-                    <td colSpan={4} style={{ background: 'var(--panel2)' }}>
+                    <td colSpan={5} style={{ background: 'var(--panel2)' }}>
                       <div className="grid c4" style={{ padding: '.2rem 0 .5rem' }}>
                         <div><label>Source</label>
                           <select value={p.source_tag} onChange={(e) => update(p.id, { source_tag: e.target.value })}>
                             {(meta?.source_tags || []).map((s) => <option key={s}>{s}</option>)}
                           </select>
                           <small className="src">Provenance of the headcount — informational; doesn't affect the math.</small></div>
-                        <div style={{ gridColumn: 'span 3' }}><label>Description</label>
-                          <TextInput value={p.description || ''} placeholder="Optional notes about this population"
-                            onCommit={(v) => update(p.id, { description: v })} /></div>
                       </div>
-                      <label style={{ display: 'block', marginBottom: '.3rem' }}>Required capabilities</label>
+                      <label style={{ display: 'block', marginBottom: '.3rem' }}>Must also include <Help k="groups.required_capabilities" /></label>
                       <div className="pill-list">
                         {outcomes.map((o) => (
                           <button key={o.id} type="button"
@@ -154,7 +147,7 @@ export default function Personas({ engagement, meta }) {
                         ))}
                         {outcomes.length === 0 && <span className="muted">No outcomes defined yet.</span>}
                       </div>
-                      <small className="src">These count as required in recommend-a-path even if no current license delivers them.</small>
+                      <small className="src">Only for something this group needs but doesn't have today — the recommendation already keeps everything it has.</small>
                     </td>
                   </tr>
                 )}
@@ -166,17 +159,17 @@ export default function Personas({ engagement, meta }) {
 
       <div className="toolbar" style={{ marginTop: '.8rem' }}>
         <div style={{ flex: 2 }}>
-          <label>New persona</label>
-          <input value={form.name} placeholder="Knowledge Worker"
+          <label>New group</label>
+          <input value={form.name} placeholder="e.g. Office staff" autoComplete="off"
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             onKeyDown={(e) => e.key === 'Enter' && add()} />
         </div>
         <div>
-          <label>Headcount</label>
+          <label>People</label>
           <input type="number" value={form.headcount}
             onChange={(e) => setForm({ ...form, headcount: e.target.value })} />
         </div>
-        <button onClick={add}>Add persona</button>
+        <button onClick={add}>Add group</button>
       </div>
     </div>
   )

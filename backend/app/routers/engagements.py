@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,7 +15,8 @@ from .. import models, schemas
 from ..config import settings
 from ..db import get_db
 from ..services import (
-    ai, ai_prompts, compute, defaults, exporter, limits, narrative, sanity, seeds,
+    ai, ai_prompts, compute, customer_report, defaults, exporter, limits, narrative,
+    review, sanity, seeds,
 )
 from ..services.serialize import result_to_dict
 
@@ -234,7 +236,7 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
     for tp in src.third_party_products:
         ntp = models.ThirdPartyProduct(
             engagement_id=dst.id, name=tp.name, vendor=tp.vendor, raw_cost=tp.raw_cost,
-            cost_period=tp.cost_period, annual_cost=tp.annual_cost, unit_basis=tp.unit_basis,
+            cost_period=tp.cost_period, annual_cost=tp.annual_cost,
             covered_count=tp.covered_count, covered_count_override=tp.covered_count_override,
             per_unit_annual_cost=tp.per_unit_annual_cost,
             renewal_date=tp.renewal_date,
@@ -486,6 +488,42 @@ def readout_xlsx(engagement_id: str, db: Session = Depends(get_db)):
     )
 
 
+@router.get("/{engagement_id}/review")
+def review_engagement(engagement_id: str, db: Session = Depends(get_db)):
+    """The walkthrough's Review step: every check that works without AI, and what
+    is being left out because it wasn't answered (services/review). Reads only."""
+    _get_engagement(db, engagement_id)
+    return review.review(db, engagement_id)
+
+
+@router.post("/{engagement_id}/customer-report.pdf")
+def customer_report_pdf(engagement_id: str, db: Session = Depends(get_db)):
+    """Produce the customer PDF (docs/WALKTHROUGH.md §7). A deliberate action, not a
+    view: it records the numbers handed to the customer as a Presented snapshot
+    and points the engagement's presented_snapshot_id at it (TARGET_SCHEMA §8)."""
+    eng = _get_engagement(db, engagement_id)
+    result = _computed_dict(db, engagement_id)
+    catalog_version = (
+        db.execute(select(models.MicrosoftSku.catalog_version).limit(1)).scalar() or ""
+    )
+    snap = models.EngagementSnapshot(
+        engagement_id=engagement_id, label="Customer PDF", is_presented=True,
+        catalog_version=catalog_version, payload_json=json.dumps(result),
+    )
+    db.add(snap)
+    db.flush()
+    eng.presented_snapshot_id = snap.id
+    db.commit()
+    db.refresh(eng)
+    pdf = customer_report.build_pdf(eng, result, compute.persona_coverage_gaps(db, engagement_id))
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", eng.customer_name or "customer").strip("-") or "customer"
+    return Response(
+        content=pdf, media_type="application/pdf",
+        headers={"Content-Disposition":
+                 f'attachment; filename="{slug}-M365-TCO-{date.today().isoformat()}.pdf"'},
+    )
+
+
 @router.post("/{engagement_id}/snapshots", status_code=201)
 def create_snapshot(engagement_id: str, label: str = "", db: Session = Depends(get_db)):
     """Reproducible saved readout (PRD 12) — survives later catalog updates."""
@@ -513,9 +551,12 @@ def list_snapshots(engagement_id: str, db: Session = Depends(get_db)):
         .where(models.EngagementSnapshot.engagement_id == engagement_id)
         .order_by(models.EngagementSnapshot.created_at.desc())
     ).scalars().all()
+    eng = _get_engagement(db, engagement_id)
     return [
         {"id": s.id, "label": s.label, "created_at": s.created_at.isoformat(),
-         "catalog_version": s.catalog_version} for s in rows
+         "catalog_version": s.catalog_version, "is_presented": bool(s.is_presented),
+         # The baseline: the snapshot taken with the latest customer PDF.
+         "is_baseline": s.id == eng.presented_snapshot_id} for s in rows
     ]
 
 

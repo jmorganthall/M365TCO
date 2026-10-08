@@ -42,7 +42,7 @@ algorithm port; the code does not.
   algorithm.
 - [`docs/PRICE_SYNC.md`](docs/PRICE_SYNC.md) — Partner Center price-sheet
   acquisition (interactive login, no stored token) and local freshness monitoring.
-- [`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md) — the agreed design (not yet built)
+- [`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md) — the agreed design (built)
   for the guided walkthrough an account executive runs live with a customer.
 
 ## Quick start (Docker — Unraid / local)
@@ -173,74 +173,51 @@ screen, because the app is run on a shared screen with a customer
 ([`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md) §2). Each engagement has its own
 address (`#/e/<id>/<step>`), so a reload returns to it.
 
-The steps run along a chevron **progress stepper** at the top of an engagement:
+An engagement is a **guided walkthrough** an account executive runs with the
+customer, seven steps along a chevron stepper with **Back / Next** at the foot of
+each ([`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md)). Each step shows the basics; the
+unusual cases sit in each card's **▸ / details** expander. Every question carries an
+**ⓘ** tooltip — *what we're asking* and *how it's used* — written for the customer
+to read, from one reviewed file (`backend/app/content/help_text.json`) that the
+PDF's method page also reads.
 
-1. **Baseline Data** — one tab, three sequential cards: **Customer Info** (the
-   editable engagement/customer name + basic context — workshop date (defaults to
-   today), industry, HQ location, website, employee count, notes — for display and
-   later AI business-narrative grounding); **Personas & headcounts**; and **Current
-   Microsoft licensing** (model on *assigned*, enter the real price paid — a
-   **pricing basis** of segment / commit term / purchase term is inherited
-   `Global default → Engagement → line item`, so a picked SKU seeds the right priced
-   variant, e.g. a Nonprofit customer's Business Premium price).
-2. **Third-party products** — cost, term, unit basis, count, renewal, managed flag, tooling split.
-3. **Coverage map** — confirm/extend; AI-assist proposes third-party coverage
-   (human-ratified). Microsoft bundle coverage (the reference map) is collapsed
-   by default so the tab leads with third-party coverage.
-4. **Scenarios** — a base target bundle **+** composable add-ons per persona.
-   Add-ons are constrained to the bases they may layer onto (the composition
-   **eligibility** rule — e.g. F5 Security only onto F3), so the picker only
-   offers valid add-ons. When only PART of a persona should move to a different
-   plan — e.g. 300 of 2,518 onto Business Premium, which the tenant caps at 300
-   seats — **carve out** those seats from the persona's row here: it creates a
-   child persona with its own target, inheriting the parent's current licensing,
-   tools and required capabilities, shown indented under the persona the seats came
-   from. The seats move, so the population and today's spend are unchanged. The
-   action lives on this tab (not Personas) because a carve-out copies those
-   associations as they stand — before the baseline is entered there is nothing to
-   copy — and the GUI states exactly what it will inherit, and that the two become
-   independent, before you commit.
-5. **Coverage Check** — per-persona validation, scoped to the outcomes the
-   persona's **proposed target scenario** would deliver (the *new-outcome*
-   candidates) that aren't delivered today by their current licensing or a
-   mapped third party (tagged or org-wide, so existing coverage-map mappings
-   count). Ask the customer about each and record the answer: *not delivered
-   today* (a confirmed gap, shown as a new outcome), *covered outside this
-   inventory* (never costed, never claimed as new), map a third party that
-   actually delivers it, or add one. An unanswered gap is never claimed as new.
-   Two amber **honesty guards** flag a target that delivers *less* than today:
-   current Microsoft licenses that map to no capability (their outcomes are
-   invisible to the comparison), and outcomes the target **drops** versus the
-   persona's current licensing — so a downgrade is a confirmed choice, not a
-   silent loss.
-6. **Readout & export** — the total-opportunity headline over the engagement's
-   modeling horizon ("$X saved over 36 months", stated in words — never a sign
-   next to the word savings), decomposed into ① retire duplicate tools (the
-   quick wins, no licensing change), ② each persona's move at its OWN
-   incremental value (quick-win credit stripped so the two never double-count)
-   and ③ unused licences the customer confirmed aren't needed. Each saving
-   counts from the renewal that unlocks it (ENGINE_SPEC 6.11); a "How the
-   headline is timed" table shows every amount and which dates were assumed,
-   with a list-price caveat under the hero when baseline spend is assumed;
-   the Quick-wins "save today" story, per-persona
-   scenarios, the **New outcomes** chips (per persona, the capabilities the
-   move lights up that nothing delivers today — outcome descriptions on
-   hover, editable on the Coverage Map; every in-scope persona is listed, and
-   one with nothing new says why — unmapped target, licensing counted org-wide
-   because it carries no persona tag, or genuinely nothing new), the mirror-image **Capability
-   trade-offs** section (capabilities the current licensing delivers that the
-   target drops, with a headline caveat — so the saved-dollars figure is never
-   read as a free win; a **Capability changes** sheet carries both into the
-   xlsx), the spend bridge (every line broken
-   down per persona: one column per in-scope persona plus a Total),
-   third-party dispositions, and rollup;
-   plus **License-limit** checks (Microsoft licensing caps evaluated tenant-wide —
-   e.g. Microsoft 365 Business Basic/Standard/Premium share a 300-seat maximum,
-   shown as an over/under badge across current + future state), advisory
-   **AI sanity check** + **business
-   narratives** (stored per persona, hand-editable on the Readout — an edit
-   re-tags the row from AI draft to human-asserted), per-engagement **readout
-   branding** (logo + theme colors), and HTML / xlsx export.
+1. **Customer** — name, workshop date, logo. Optional details (industry, HQ,
+   website, employee count, notes, ✨ AI research) and the **pricing basis**
+   (segment / commit term / payment, inherited `Global default → Engagement → line`)
+   are in expanders.
+2. **Groups & licences** — the groups that get different licences (name, people,
+   description; *must also include* capabilities in the expander), when the
+   **Microsoft agreement renews**, and each Microsoft licence: product, bought, price
+   (list unless known); in its expander the groups that get it, seats assigned, the
+   **unused-seat answer** (kept on purpose / not needed), its own renewal date,
+   per-user vs tenant-wide scope and price-basis overrides.
+3. **Other tools** — each tool's cost, period, **renewal date**, **who uses it**
+   (groups) and whether it's a **managed service**; vendor, the managed service's
+   software share and a covers number in the expander. Below, **what each tool is
+   used for** (✨ AI suggest pre-ticks; only confirmed uses count). A tool with no
+   cost, users or uses is flagged *left out*.
+4. **Future state** — **Fill in recommended plans** (the lowest-cost plan plus
+   add-ons that keeps everything each group has today), a base bundle + eligible
+   add-ons per group, **carve-out** for moving part of a group, and **partly
+   replaced tools**: keep for the remaining users, or retire (with a reason).
+5. **Coverage check** — for each capability a plan adds that nothing in the
+   inventory delivers today, the customer's answer: *not delivered today* (a new
+   outcome), *covered outside this inventory* (never costed or claimed), or map a
+   tool that does it. Unanswered gaps are never claimed as new. Amber honesty
+   guards flag unmapped licensing and capability a plan drops. The engagement's
+   capability library sits in an advanced expander.
+6. **Review** — every check that works without AI, each linking to the step that
+   fixes it, and what is **left out** because it wasn't answered. The optional
+   **AI sanity check** is here.
+7. **Summary & PDF** — years to model and **Create customer PDF** (title page,
+   overview, a page per group, *How we calculated this*), which records a
+   **Presented** snapshot. Below it, the readout: the timed headline — ① duplicate
+   tools retired with no licensing change, ② each group's move, ③ unused licences
+   confirmed not needed, each from the renewal that unlocks it (ENGINE_SPEC 6.11),
+   with *How the headline is timed* — quick wins, per-group scenarios, **New
+   outcomes**, **Capability trade-offs**, the per-group spend bridge, dispositions,
+   **License-limit** checks, AI **business narratives** (editable), and HTML / xlsx
+   export. Report colours and Microsoft co-funding (ECIF) are under *Report options*.
 
 The **in/out-of-scope** toggle on a scenario recomputes everything. A header
 **🔧 Tools** menu holds engagement-specific tools outside the workshop flow — the

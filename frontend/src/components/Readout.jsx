@@ -7,29 +7,12 @@ import { api, usd } from '../api'
 const usd0 = (v) => `$${Math.abs(Math.round(Number(v) || 0)).toLocaleString('en-US')}`
 import { PricingBadge } from './PricingBanner.jsx'
 
-// Sanity-check results persist across tab navigation (per engagement) without a
-// new data field — a module-level cache that outlives the Readout unmount.
-const _sanityCache = {}
-
-function timeAgo(ms) {
-  const s = Math.max(0, Math.round((Date.now() - ms) / 1000))
-  if (s < 60) return `${s}s ago`
-  const m = Math.round(s / 60)
-  if (m < 60) return `${m}m ago`
-  const h = Math.round(m / 60)
-  if (h < 24) return `${h}h ago`
-  return `${Math.round(h / 24)}d ago`
-}
-
 export default function Readout({ engagement }) {
   const eid = engagement.id
   const [result, setResult] = useState(null)
   const [snapshots, setSnapshots] = useState([])
   const [err, setErr] = useState('')
-  // Pre-readout AI sanity check (advisory).
   const [aiEnabled, setAiEnabled] = useState(false)
-  const [checking, setChecking] = useState(false)
-  const [sanity, setSanity] = useState(null)
   const [narrating, setNarrating] = useState(false)
   const [narratives, setNarratives] = useState(null)
   const [narrativesAt, setNarrativesAt] = useState(null)
@@ -43,8 +26,6 @@ export default function Readout({ engagement }) {
   }
   useEffect(() => {
     compute()
-    // Restore any prior sanity result for this engagement (survives navigation).
-    setSanity(_sanityCache[eid] || null)
     // Narratives are ENGAGEMENT-LEVEL data — load the stored set (survives
     // navigation); the Business narratives button regenerates and replaces it.
     setNarratives(null); setNarrativesAt(null)
@@ -55,50 +36,12 @@ export default function Readout({ engagement }) {
     api.get(`/api/engagements/${eid}/outcomes`).then(setOutcomes).catch(() => setOutcomes([]))
   }, [eid])
 
-  async function runSanity() {
-    setChecking(true); setErr('')
-    try {
-      const res = await api.post(`/api/engagements/${eid}/sanity-check`)
-      const entry = { ...res, at: Date.now() }
-      _sanityCache[eid] = entry
-      setSanity(entry)
-    } catch (e) { setErr(e.message) } finally { setChecking(false) }
-  }
   async function runNarrative() {
     setNarrating(true); setErr('')
     try {
       const r = await api.post(`/api/engagements/${eid}/narrative`)
       setNarratives(r.narratives); setNarrativesAt(r.generated_at)
     } catch (e) { setErr(e.message) } finally { setNarrating(false) }
-  }
-
-  // Readout branding (logo + theme colors). Local so edits reflect immediately;
-  // persisted on the engagement and applied by the HTML readout.
-  const [brand, setBrand] = useState({
-    logo: engagement.brand_logo_data_url || '',
-    primary: engagement.brand_primary_color || '',
-    accent: engagement.brand_accent_color || '',
-  })
-  useEffect(() => setBrand({
-    logo: engagement.brand_logo_data_url || '',
-    primary: engagement.brand_primary_color || '',
-    accent: engagement.brand_accent_color || '',
-  }), [eid])
-  async function patchBrand(patch) {
-    const next = { ...brand, ...patch }
-    setBrand(next)
-    const body = {
-      brand_logo_data_url: next.logo, brand_primary_color: next.primary,
-      brand_accent_color: next.accent,
-    }
-    try { await api.patch(`/api/engagements/${eid}`, body) } catch (e) { setErr(e.message) }
-  }
-  function onLogoFile(file) {
-    if (!file) return
-    if (!file.type.startsWith('image/')) { setErr('Logo must be an image (PNG/SVG/JPG).'); return }
-    const reader = new FileReader()
-    reader.onload = () => patchBrand({ logo: reader.result })
-    reader.readAsDataURL(file)
   }
 
   async function setOverride(tpId, payload) {
@@ -133,11 +76,6 @@ export default function Readout({ engagement }) {
       <div className="card">
         <div className="readout-toolbar">
           {aiEnabled && (
-            <button className="ghost sm" onClick={runSanity} disabled={checking}
-              title="Ask an inexpensive model to flag likely mistakes before you present">
-              {checking ? 'Checking…' : '✨ AI sanity check'}</button>
-          )}
-          {aiEnabled && (
             <button className="ghost sm" onClick={runNarrative} disabled={narrating}
               title="Draft the per-persona business narrative (today / what's new / value)">
               {narrating ? 'Writing…' : '✨ Business narratives'}</button>
@@ -159,58 +97,8 @@ export default function Readout({ engagement }) {
           <b>{r.population_check.third_party_covered_population}</b>{' '}
           <small className="muted">(summed across tools; people may hold several, so this isn't a distinct-people count)</small>. Per-tool coverage vs. displacement is in the dispositions below.
         </div>
-        <details style={{ marginTop: '.5rem' }}>
-          <summary className="src" style={{ cursor: 'pointer' }}>Readout branding (logo + theme colors)</summary>
-          <div className="grid c4" style={{ marginTop: '.5rem', alignItems: 'end' }}>
-            <div><label>Logo (PNG/SVG)</label>
-              <input type="file" accept="image/*" onChange={(e) => onLogoFile(e.target.files?.[0])} />
-              {brand.logo && <div style={{ marginTop: '.3rem' }}>
-                <img src={brand.logo} alt="logo" style={{ maxHeight: 40, maxWidth: 140 }} />{' '}
-                <button className="ghost sm" onClick={() => patchBrand({ logo: '' })}>Clear</button>
-              </div>}</div>
-            <div><label>Primary color</label>
-              <input type="color" value={brand.primary || '#1a1a2e'}
-                onChange={(e) => patchBrand({ primary: e.target.value })} /></div>
-            <div><label>Accent color</label>
-              <input type="color" value={brand.accent || '#2563eb'}
-                onChange={(e) => patchBrand({ accent: e.target.value })} /></div>
-            <div><small className="src">Applied to the HTML readout header, section titles, and callout border. Entered per engagement.</small></div>
-          </div>
-        </details>
       </div>
 
-      {aiEnabled && (
-        <details className="card">
-          <summary style={{ cursor: 'pointer', listStyle: 'revert' }}>
-            <b>AI Sanity Check</b>{' '}
-            {sanity
-              ? <small className="muted">— last run {timeAgo(sanity.at)} · {sanity.findings.length === 0 ? 'no issues' : `${sanity.findings.length} finding(s)`}</small>
-              : <small className="muted">— not run yet</small>}
-          </summary>
-          <div style={{ marginTop: '.6rem' }}>
-            <div className="flex-between">
-              <small className="src">Advisory only — never edits your data.{sanity ? ` Model: ${sanity.model}` : ''}</small>
-              <button className="ghost sm" onClick={runSanity} disabled={checking}>
-                {checking ? 'Checking…' : sanity ? '↻ Re-run' : 'Run sanity check'}</button>
-            </div>
-            {!sanity && <div className="muted" style={{ marginTop: '.4rem' }}>Not run yet — run it to flag likely mistakes before you present.</div>}
-            {sanity && sanity.findings.length === 0 && (
-              <div className="muted" style={{ marginTop: '.4rem' }}>✓ No issues flagged — the numbers look reasonable.</div>
-            )}
-            {sanity && sanity.findings.length > 0 && (
-              <ul style={{ margin: '.4rem 0 0', paddingLeft: '1.1rem' }}>
-                {sanity.findings.map((f, i) => (
-                  <li key={i} style={{ marginBottom: '.25rem' }}>
-                    <span className={`badge ${f.severity === 'error' ? 'neg' : f.severity === 'warn' ? 'warn' : 'muted'}`}>
-                      {f.severity}</span>{' '}
-                    {f.field && <b>{f.field}: </b>}{f.message}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </details>
-      )}
 
       <TimingTable h={r.headline} />
       <UnusedLicences h={r.headline} />

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { api, money, pct } from '../api'
+import Help from './Help.jsx'
 
 // A number input for an inline (auto-saving) line-item field. Holds local text
 // state so you can clear it and TYPE a new number freely; it commits on blur or
@@ -22,99 +23,81 @@ function NumInput({ value, onCommit, style, step, disabled, placeholder, allowEm
   )
 }
 
-// One third-party product as an expandable line item (same form as Current
-// Licensing): core fields up top, an expander for the details — vendor, managed
-// split, renewal/commitment, provenance, and the persona tags it applies to.
+// Who uses a tool: tag whole groups (the default reading), or "All groups".
+// Untagged with no covers number means no users — the tool is left out.
+function UsedBy({ personas, tagIds, onChange, dimmed }) {
+  const toggle = (pid) => onChange(tagIds.includes(pid) ? tagIds.filter((x) => x !== pid) : [...tagIds, pid])
+  const all = personas.length > 0 && personas.every((p) => tagIds.includes(p.id))
+  return (
+    <div className="pill-list">
+      {personas.map((p) => (
+        <button key={p.id} type="button" className={`tag-toggle ${tagIds.includes(p.id) ? 'on' : ''} ${dimmed ? 'inactive' : ''}`}
+          onClick={() => toggle(p.id)}>{p.name}</button>
+      ))}
+      {personas.length > 1 && (
+        <button type="button" className="ghost sm" onClick={() => onChange(all ? [] : personas.map((p) => p.id))}>
+          {all ? 'none' : 'all groups'}</button>
+      )}
+      {personas.length === 0 && <span className="muted">Add groups first.</span>}
+    </div>
+  )
+}
+
+// One tool as an expandable line item: the walkthrough's questions on the row
+// (name, cost, renewal, who uses it, managed), the unusual details — vendor, the
+// managed service's software share, a covers number that differs from the
+// groups' headcount — in the expander (docs/WALKTHROUGH.md §3, step 3).
 function ProductRow({ t, meta, personas, moneyUnit, update, remove }) {
   const [open, setOpen] = useState(false)
   const tagIds = t.persona_ids || []
-  const tagNames = tagIds.map((id) => personas.find((p) => p.id === id)?.name).filter(Boolean)
-  // An override replaces the persona-derived covers, so the Details chips show
-  // OVERRIDE (opens the expander) instead of the persona tags — one glance tells
-  // apart a typical persona-driven row from an overridden one.
   const overridden = t.covered_count_override != null
-  const chips = []
-  if (t.is_managed) chips.push(<span key="m" className="badge muted">managed {pct(t.tooling_pct)}</span>)
-  if (overridden) {
-    chips.push(<button key="ov" type="button" className="badge warn chip-btn"
-      title="Covers is manually overridden — personas do not drive it. Click for details."
-      onClick={() => setOpen(true)}>OVERRIDE: {t.covered_count_override}</button>)
-  } else {
-    tagNames.forEach((n, i) => chips.push(<span key={`p${i}`} className="badge muted">{n}</span>))
-  }
-  if (t.source_tag && t.source_tag !== 'CustomerStated') chips.push(<span key="s" className="badge muted">{t.source_tag}</span>)
-
-  const togglePersona = (pid) => {
-    const next = tagIds.includes(pid) ? tagIds.filter((x) => x !== pid) : [...tagIds, pid]
-    update(t.id, { persona_ids: next })
-  }
-
+  const leftOut = !(Number(t.raw_cost) > 0) || !(t.covered_count > 0)
   return (
     <>
       <tr>
         <td><button className="ghost sm" title="Details" onClick={() => setOpen(!open)}>{open ? '▾' : '▸'}</button></td>
-        <td data-label="Product"><input value={t.name} style={{ minWidth: 120 }} onChange={(e) => update(t.id, { name: e.target.value })} /></td>
+        <td data-label="Tool"><input value={t.name} style={{ minWidth: 120 }} onChange={(e) => update(t.id, { name: e.target.value })} />
+          {leftOut && <div><span className="badge warn" title="A tool with no cost or no users is left out of the numbers">
+            left out — {!(Number(t.raw_cost) > 0) ? 'no cost' : 'no users'}</span></div>}</td>
         <td className="num" data-label="Cost"><NumInput value={t.raw_cost} style={{ width: 90 }}
           onCommit={(n) => update(t.id, { raw_cost: n })} /></td>
-        <td data-label="Period">
+        <td data-label="Per">
           <select value={t.cost_period} onChange={(e) => update(t.id, { cost_period: e.target.value })}>
             {(meta?.cost_periods || []).map((s) => <option key={s}>{s}</option>)}
           </select>
         </td>
-        <td className="num" data-label="Covers">
-          <NumInput value={t.covered_count_override} allowEmpty style={{ width: 80 }}
-            placeholder={String(t.persona_covered_count ?? 0)}
-            onCommit={(n) => update(t.id, { covered_count_override: n })} />
-        </td>
-        <td className="num" data-label="Effective cost">{money(t.effective_annual_cost, moneyUnit)}</td>
-        <td data-label="Details"><div className="pill-list">
-          {chips.length ? chips : <span className="muted" style={{ fontSize: '.75rem' }}>unmanaged</span>}
-        </div></td>
+        <td data-label="Renews"><input type="date" value={t.renewal_date || ''} style={{ width: 140 }}
+          onChange={(e) => update(t.id, { renewal_date: e.target.value || null })} />
+          {!t.renewal_date && <div className="src warn" style={{ fontSize: '.72rem' }}>assumed in a year</div>}</td>
+        <td data-label="Used by"><UsedBy personas={personas} tagIds={tagIds} dimmed={overridden}
+          onChange={(ids) => update(t.id, { persona_ids: ids })} />
+          {overridden && <div className="src" style={{ fontSize: '.72rem' }}>covers {t.covered_count_override} (set in details)</div>}</td>
+        <td data-label="Managed"><input type="checkbox" style={{ width: 'auto' }} checked={t.is_managed}
+          title="Bought as part of a managed service"
+          onChange={(e) => update(t.id, { is_managed: e.target.checked })} />
+          {t.is_managed && <span className="muted" style={{ fontSize: '.75rem', marginLeft: 4 }}>{pct(t.tooling_pct)}</span>}</td>
+        <td className="num" data-label="Counted">{money(t.effective_annual_cost, moneyUnit)}</td>
         <td className="num"><button className="danger sm" onClick={() => remove(t.id)}>Remove</button></td>
       </tr>
       {open && (
         <tr className="detail-row">
           <td></td>
-          <td colSpan={7} style={{ background: 'var(--panel2)' }}>
+          <td colSpan={8} style={{ background: 'var(--panel2)' }}>
             <div className="grid c4" style={{ padding: '.4rem 0' }}>
-              <div><label>Vendor</label>
+              <div><label>Vendor <Help k="tools.vendor" /></label>
                 <input value={t.vendor || ''} onChange={(e) => update(t.id, { vendor: e.target.value })} /></div>
-              <div><label>Managed</label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <input type="checkbox" style={{ width: 'auto' }} checked={t.is_managed}
-                    onChange={(e) => update(t.id, { is_managed: e.target.checked })} />
-                  <span className="muted" style={{ fontSize: '.78rem' }}>tool + management</span>
-                </label></div>
-              <div><label>Tooling %</label>
+              <div><label>Software share of a managed service <Help k="tools.tooling_pct" /></label>
                 <NumInput value={t.tooling_pct} step="0.05" disabled={!t.is_managed}
                   onCommit={(n) => update(t.id, { tooling_pct: n })} />
-                <small className="src">Applies only when managed.</small></div>
-              <div><label>Unit basis</label>
-                <select value={t.unit_basis} onChange={(e) => update(t.id, { unit_basis: e.target.value })}>
-                  {(meta?.unit_basis || ['Users', 'Devices', 'Units']).map((s) => <option key={s}>{s}</option>)}
-                </select></div>
-              <div><label>Renewal date</label>
-                <input type="date" value={t.renewal_date || ''}
-                  onChange={(e) => update(t.id, { renewal_date: e.target.value || null })} /></div>
-              <div><label>Applies to (personas)</label>
-                <div className="pill-list">
-                  {personas.map((p) => (
-                    <button key={p.id} type="button"
-                      className={`tag-toggle ${tagIds.includes(p.id) ? 'on' : ''} ${overridden ? 'inactive' : ''}`}
-                      title={overridden ? 'Inactive for covers while the override is set (still tags the product for coverage analysis).' : undefined}
-                      onClick={() => togglePersona(p.id)}>{p.name}</button>
-                  ))}
-                  {personas.length === 0 && <span className="muted">No personas yet.</span>}
-                </div>
-                {overridden && <small className="src">Inactive for covers — override in effect.</small>}</div>
-              <div style={overridden ? { opacity: 0.5 } : undefined}><label>Covers — derived from personas</label>
-                <div className="muted" style={{ paddingTop: '.35rem', textDecoration: overridden ? 'line-through' : 'none' }}>{t.persona_covered_count}</div>
-                <small className="src">{overridden
-                  ? 'Not in effect — the Covers value on the row wins.'
-                  : "Sum of the selected personas' headcounts — the default when Covers on the row is left blank."}</small></div>
-              <div><label>Covers · Effective cost · per unit</label>
-                <div className="muted" style={{ paddingTop: '.35rem' }}>{t.covered_count} · {money(t.effective_annual_cost, moneyUnit)} · {money(t.per_unit_annual_cost, moneyUnit)}</div>
-                <small className="src">Covers is set on the row (blank = the persona-derived value); effective cost and per-unit follow from it, the cost, and the managed split.</small></div>
+                <small className="src">{t.is_managed ? 'A fraction: 0.30 = 30%.' : 'Only when bought as a managed service.'}</small></div>
+              <div><label>People covered <Help k="tools.covers" /></label>
+                <NumInput value={t.covered_count_override} allowEmpty
+                  placeholder={String(t.persona_covered_count ?? 0)}
+                  onCommit={(n) => update(t.id, { covered_count_override: n })} />
+                <small className="src">Blank = the groups' headcount ({t.persona_covered_count}).</small></div>
+              <div><label>Counted · per person</label>
+                <div className="muted" style={{ paddingTop: '.35rem' }}>{t.covered_count} people · {money(t.effective_annual_cost, moneyUnit)} · {money(t.per_unit_annual_cost, moneyUnit)} each</div>
+                <small className="src">The cost counted (after any managed-service share), split per person covered.</small></div>
             </div>
           </td>
         </tr>
@@ -128,8 +111,8 @@ export default function ThirdParty({ engagement, meta, moneyUnit = 'mo' }) {
   const [items, setItems] = useState([])
   const [err, setErr] = useState('')
   const blank = {
-    name: '', vendor: '', raw_cost: 0, cost_period: 'Annual', unit_basis: 'Users',
-    covered_count_override: '', renewal_date: '', is_managed: false, tooling_pct: '', source_tag: 'CustomerStated',
+    name: '', raw_cost: '', cost_period: 'Annual', renewal_date: '', is_managed: false,
+    persona_ids: [], source_tag: 'CustomerStated',
   }
   const [form, setForm] = useState(blank)
   const [personas, setPersonas] = useState([])
@@ -163,7 +146,7 @@ export default function ThirdParty({ engagement, meta, moneyUnit = 'mo' }) {
       for (const r of rows) {
         await api.post(base, {
           name: r.name, vendor: r.vendor || '', raw_cost: Number(r.raw_cost) || 0,
-          cost_period: r.cost_period, unit_basis: 'Users',
+          cost_period: r.cost_period,
           covered_count_override: Number(r.covered_count) || null, renewal_date: null,
           is_managed: !!r.is_managed, tooling_pct: null, source_tag: 'CustomerStated',
         })
@@ -177,10 +160,8 @@ export default function ThirdParty({ engagement, meta, moneyUnit = 'mo' }) {
     try {
       await api.post(base, {
         ...form,
-        raw_cost: Number(form.raw_cost),
-        covered_count_override: form.covered_count_override === '' ? null : Number(form.covered_count_override),
+        raw_cost: Number(form.raw_cost) || 0,
         renewal_date: form.renewal_date || null,
-        tooling_pct: form.tooling_pct === '' ? null : Number(form.tooling_pct),
       })
       setForm(blank); load()
     } catch (e) { setErr(e.message) }
@@ -194,10 +175,7 @@ export default function ThirdParty({ engagement, meta, moneyUnit = 'mo' }) {
 
   return (
     <div className="card">
-      <h2>Third-party products</h2>
-      <p className="hint">The managed split keeps management cost out of the comparison.
-        An unmanaged product counts at 100%; a managed product counts at its tooling
-        percentage (default {pct(meta?.default_tooling_pct)}). Effective cost is what feeds displacement math.</p>
+      <h2 style={{ marginTop: 0 }}>Other tools</h2>
       {err && <div className="err">{err}</div>}
 
       {aiEnabled && (
@@ -262,8 +240,9 @@ export default function ThirdParty({ engagement, meta, moneyUnit = 'mo' }) {
 
       <table className="resp-table">
         <thead><tr>
-          <th></th><th>Product</th><th className="num">Cost</th><th>Period</th>
-          <th className="num">Covers</th><th className="num">Effective cost</th><th>Details</th><th></th>
+          <th></th><th>Tool <Help k="tools.name" /></th><th className="num">Cost <Help k="tools.cost" /></th><th>Per</th>
+          <th>Renews <Help k="tools.renewal" /></th><th>Used by <Help k="tools.used_by" /></th>
+          <th>Managed <Help k="tools.managed" /></th><th className="num">Counted</th><th></th>
         </tr></thead>
         <tbody>
           {items.map((t) => (
@@ -272,32 +251,30 @@ export default function ThirdParty({ engagement, meta, moneyUnit = 'mo' }) {
           ))}
         </tbody>
       </table>
+      <small className="src">What each tool is used for is ticked below, under <b>What each tool is used for</b>.</small>
 
       <div className="grid c4" style={{ marginTop: '.8rem' }}>
-        <div><label>Name</label>
-          <input value={form.name} placeholder="Okta"
-            onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+        <div><label>Tool</label>
+          <input value={form.name} placeholder="Tool name" autoComplete="off"
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            onKeyDown={(e) => e.key === 'Enter' && add()} /></div>
         <div><label>Cost</label>
-          <input type="number" value={form.raw_cost}
-            onChange={(e) => setForm({ ...form, raw_cost: e.target.value })} /></div>
-        <div><label>Period</label>
-          <select value={form.cost_period} onChange={(e) => setForm({ ...form, cost_period: e.target.value })}>
-            {(meta?.cost_periods || []).map((s) => <option key={s}>{s}</option>)}
-          </select></div>
-        <div><label>Covers</label>
-          <input type="number" value={form.covered_count_override} placeholder="blank = from personas"
-            onChange={(e) => setForm({ ...form, covered_count_override: e.target.value })} />
-          <small className="src">Seats the tool covers — drives displacement $. Blank derives it from tagged personas.</small></div>
-        <div><label><input type="checkbox" style={{ width: 'auto', marginRight: 6 }}
-          checked={form.is_managed} onChange={(e) => setForm({ ...form, is_managed: e.target.checked })} />Managed (tool + management)</label></div>
-        <div><label>Tooling % override</label>
-          <input type="number" step="0.05" value={form.tooling_pct} placeholder="default"
-            onChange={(e) => setForm({ ...form, tooling_pct: e.target.value })} /></div>
-        <div><label>Renewal date</label>
+          <div style={{ display: 'flex', gap: '.3rem' }}>
+            <input type="number" value={form.raw_cost} placeholder="0"
+              onChange={(e) => setForm({ ...form, raw_cost: e.target.value })} />
+            <select value={form.cost_period} onChange={(e) => setForm({ ...form, cost_period: e.target.value })}>
+              {(meta?.cost_periods || []).map((s) => <option key={s}>{s}</option>)}
+            </select></div></div>
+        <div><label>Renews</label>
           <input type="date" value={form.renewal_date}
             onChange={(e) => setForm({ ...form, renewal_date: e.target.value })} /></div>
+        <div><label><input type="checkbox" style={{ width: 'auto', marginRight: 6 }}
+          checked={form.is_managed} onChange={(e) => setForm({ ...form, is_managed: e.target.checked })} />Managed service</label></div>
+        <div style={{ gridColumn: 'span 3' }}><label>Used by</label>
+          <UsedBy personas={personas} tagIds={form.persona_ids}
+            onChange={(ids) => setForm({ ...form, persona_ids: ids })} /></div>
         <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-          <button onClick={add}>Add product</button></div>
+          <button onClick={add}>Add tool</button></div>
       </div>
     </div>
   )

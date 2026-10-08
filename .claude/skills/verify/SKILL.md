@@ -37,6 +37,13 @@ Gotchas:
 - Navigation: there is no engagement list. Go straight to
   `http://localhost:8471/#/e/<engagement id>/<step>`, or type part of the customer
   name in the Open-engagement search box and click the result; then use the step
-  buttons (`Baseline Data`, `Third-Party`, `Coverage Map`, …).
+  buttons (`Customer`, `Groups & licences`, `Other tools`, `Future state`,
+  `Coverage check`, `Review`, `Summary & PDF`) or the step key in the URL
+  (`customer`, `groups`, `tools`, `future`, `gaps`, `review`, `summary`).
+- Recommendations need prices: a fresh database has no price list, so load one
+  (`POST /api/catalog/import-csv`; `tests/sweep_services.py` has a small CSV)
+  before verifying "Fill in recommended plans".
+- The customer PDF downloads via `page.expect_download()`; `pdftoppm` or PyMuPDF
+  renders its pages to images for a visual check.
 - The session DB is throwaway; aborted script runs leave rows behind — don't
   read a duplicate row as an app bug.

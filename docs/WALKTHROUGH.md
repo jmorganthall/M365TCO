@@ -1,16 +1,18 @@
-# Guided walkthrough — the agreed design (not yet built)
+# Guided walkthrough — the agreed design
 
-> **Status: agreed design, implementation pending.** This document describes how the
-> TCO workshop becomes a guided walkthrough that an account executive can run live
-> with a customer. It was agreed in a design review of the current GUI in October 2026.
+> **Status: agreed design, built on today's data model.** This document describes how
+> the TCO workshop becomes a guided walkthrough that an account executive can run live
+> with a customer. It was agreed in a design review of the current GUI in October 2026,
+> and is implemented on the current schema ahead of the TARGET_SCHEMA rebuild, using
+> exactly the shapes §12 added to that contract.
 >
-> - The **current** screens are described by the code and by
->   [`DATA_MODEL.md`](DATA_MODEL.md). They stay as they are until each part below lands.
+> - The screens are built as described here. Field-level detail is in the code and in
+>   [`DATA_MODEL.md`](DATA_MODEL.md).
 > - The data this design needs is specified by [`TARGET_SCHEMA.md`](TARGET_SCHEMA.md),
 >   which carries the additions in §12 (decisions D19–D22 and the items marked
 >   *walkthrough*).
-> - The calculation changes in §4 land in [`ENGINE_SPEC.md`](ENGINE_SPEC.md) and the
->   engine's unit tests before any code uses them, as `CLAUDE.md` requires.
+> - The calculation changes in §4 are specified in [`ENGINE_SPEC.md`](ENGINE_SPEC.md)
+>   §6.11 and covered by the engine's unit tests, as `CLAUDE.md` requires.
 
 ---
 
