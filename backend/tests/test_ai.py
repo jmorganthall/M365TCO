@@ -366,3 +366,55 @@ def test_business_narratives_stored_on_engagement(client, monkeypatch):
     r = client.patch(f"/api/engagements/{other['id']}/narrative/{row['id']}",
                      json={"value": "x"})
     assert r.status_code == 404
+
+
+def test_stored_narratives_reach_the_html_and_xlsx_readouts(client, monkeypatch):
+    """The business case the operator reviewed must reach the customer-facing
+    exports. Regression: the readout result never carried the stored
+    narratives, so the HTML "business case" section was always skipped."""
+    import io
+
+    from openpyxl import load_workbook
+
+    from app.routers import engagements as eng_router
+
+    monkeypatch.setattr(eng_router.ai, "is_enabled", lambda: True)
+    monkeypatch.setattr(
+        eng_router.ai, "scenario_narratives",
+        lambda scenarios, instructions, model=None, web_search=False, customer=None: [
+            {"persona": s["persona"], "today": "On a separate meetings tool.",
+             "whats_new": "Gains EDR.", "value": "Draft value."} for s in scenarios])
+
+    eid = client.post("/api/engagements", json={"customer_name": "Readout Co"}).json()["id"]
+    kw = client.post(f"/api/engagements/{eid}/personas",
+                     json={"name": "KW", "headcount": 100}).json()
+    client.post(f"/api/engagements/{eid}/scenarios",
+                json={"persona_id": kw["id"], "target_sku_reference": "E3",
+                      "target_unit_price_annual": 0, "in_scope": True})
+    row = client.post(f"/api/engagements/{eid}/narrative").json()["narratives"][0]
+    client.patch(f"/api/engagements/{eid}/narrative/{row['id']}",
+                 json={"value": "Reviewed: consolidates two vendors."})
+
+    html = client.get(f"/api/engagements/{eid}/readout.html").text
+    assert "The business case" in html
+    assert "Reviewed: consolidates two vendors." in html
+    assert "Draft value." not in html  # the operator's edit is the record
+
+    wb = load_workbook(io.BytesIO(client.get(f"/api/engagements/{eid}/readout.xlsx").content))
+    sheet = wb["Business case"]
+    rows = list(sheet.iter_rows(values_only=True))
+    assert rows[0] == ("Persona", "Today", "What's new", "Value")
+    assert rows[1] == ("KW", "On a separate meetings tool.", "Gains EDR.",
+                       "Reviewed: consolidates two vendors.")
+
+
+def test_readout_without_narratives_has_no_business_case(client):
+    """With AI off and nothing generated, the exports simply omit the section."""
+    import io
+
+    from openpyxl import load_workbook
+
+    eid = client.post("/api/engagements", json={"customer_name": "No AI Co"}).json()["id"]
+    assert "The business case" not in client.get(f"/api/engagements/{eid}/readout.html").text
+    wb = load_workbook(io.BytesIO(client.get(f"/api/engagements/{eid}/readout.xlsx").content))
+    assert "Business case" not in wb.sheetnames
