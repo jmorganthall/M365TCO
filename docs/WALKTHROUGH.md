@@ -6,9 +6,9 @@
 >
 > - The **current** screens are described by the code and by
 >   [`DATA_MODEL.md`](DATA_MODEL.md). They stay as they are until each part below lands.
-> - The data this design needs is specified by [`TARGET_SCHEMA.md`](TARGET_SCHEMA.md).
->   The additions in §12 are **not yet in that document**. They land there first, in
->   their own reviewed PR, before any code that depends on them.
+> - The data this design needs is specified by [`TARGET_SCHEMA.md`](TARGET_SCHEMA.md),
+>   which carries the additions in §12 (decisions D19–D22 and the items marked
+>   *walkthrough*).
 > - The calculation changes in §4 land in [`ENGINE_SPEC.md`](ENGINE_SPEC.md) and the
 >   engine's unit tests before any code uses them, as `CLAUDE.md` requires.
 
@@ -211,8 +211,10 @@ each saving by the contract that unlocks it:
   consolidation, starts at the tool's renewal date.
 - **Microsoft increases can start any time.** Microsoft lets a customer add seats or
   add-ons, or upgrade, mid-term. So a group's added Microsoft cost starts when the
-  first tool it replaces renews, because that is when there is something to retire. A
-  group that retires no tool starts its added cost on day one.
+  first tool only the move can retire renews, because that is when the upgrade is
+  needed. A duplicate tool (duplicate spend today) retires without the move, so it
+  does not pull the cost forward. A group whose move retires no such tool starts its
+  added cost on day one.
 - **Microsoft reductions wait for the Microsoft renewal.** Removing unused seats
   (over-licensing), or moving a group to a cheaper plan, starts at the Microsoft
   renewal date. That is the licence's own date if one is set, otherwise the
@@ -356,7 +358,7 @@ everything else sits in the card's expander.
 
 ---
 
-## 12. Contract changes this needs (not yet in TARGET_SCHEMA.md)
+## 12. Contract changes this needs (now in TARGET_SCHEMA.md)
 
 | Change | TARGET_SCHEMA section |
 | --- | --- |
@@ -390,5 +392,6 @@ No change is needed for:
 These two rules were derived from the agreed principles but not discussed directly:
 
 1. A missing renewal date is assumed to be one year after the workshop date (§4).
-2. A group's added Microsoft cost starts when the first tool it replaces renews. A
-   group that retires no tool starts its added cost on day one (§4).
+2. A group's added Microsoft cost starts when the first tool only the move can retire
+   renews (a duplicate tool retires without the move, so it doesn't count). A group
+   whose move retires no such tool starts its added cost on day one (§4).
