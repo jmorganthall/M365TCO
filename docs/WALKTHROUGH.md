@@ -1,8 +1,10 @@
 # Guided walkthrough — the agreed design (not yet built)
 
-> **Status: agreed design, implementation pending.** This document describes how the
-> TCO workshop becomes a guided walkthrough that an account executive can run live
-> with a customer. It was agreed in a design review of the current GUI in October 2026.
+> **Status: agreed design, built on today's data model.** This document describes how
+> the TCO workshop becomes a guided walkthrough that an account executive can run live
+> with a customer. It was agreed in a design review of the current GUI in October 2026,
+> and is implemented on the current schema ahead of the TARGET_SCHEMA rebuild, using
+> exactly the shapes §12 added to that contract.
 >
 > - The **current** screens are described by the code and by
 >   [`DATA_MODEL.md`](DATA_MODEL.md). They stay as they are until each part below lands.

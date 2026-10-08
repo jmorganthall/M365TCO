@@ -179,6 +179,7 @@ class EngagementOut(ORMModel):
     ecif_roi_generous: Decimal = Decimal("5")
     workshop_date: Optional[date] = None
     microsoft_renewal_date: Optional[date] = None
+    presented_snapshot_id: Optional[str] = None
     industry: str = ""
     hq_location: str = ""
     website: str = ""
@@ -349,7 +350,6 @@ class ThirdPartyIn(BaseModel):
     vendor: str = ""
     raw_cost: Decimal = Decimal("0")
     cost_period: str = "Annual"
-    unit_basis: str = "Users"
     # Covers is derived from the tagged personas' headcounts; this optional
     # override wins when set (e.g. the product covers more users than the tags).
     covered_count_override: Optional[int] = None
@@ -368,7 +368,6 @@ class ThirdPartyOut(ORMModel):
     raw_cost: Decimal
     cost_period: str
     annual_cost: Decimal
-    unit_basis: str
     covered_count: int  # effective covers: override if set, else the persona sum
     covered_count_override: Optional[int]
     persona_covered_count: int  # derived: combined headcount of tagged personas

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import Help from './Help.jsx'
 import { api, usd, pct } from '../api'
 import SkuCombobox, { loadSkus, matchSku } from './SkuCombobox.jsx'
 import { BasisSelect, billingLabel, effectiveBasis, termLabel } from './basis.jsx'
@@ -177,11 +178,11 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
           <td></td>
           <td colSpan={5} style={{ background: 'var(--panel2)' }}>
             <div className="grid c4" style={{ padding: '.4rem 0' }}>
-              <div><label>Assigned (deployed)</label>
+              <div><label>Assigned to people <Help k="licences.assigned" /></label>
                 <input type="number" value={l.quantity_assigned}
                   onChange={(e) => update(l.id, { quantity_assigned: Number(e.target.value) })} />
                 <small className="src">Below purchased = shelfware.</small></div>
-              <div><label>Custom price</label>
+              <div><label>What you pay <Help k="licences.price" /></label>
                 <label className="src" style={{ display: 'flex', alignItems: 'center', gap: '.4rem' }}>
                   <input type="checkbox" style={{ width: 'auto' }} checked={!!l.price_override}
                     onChange={(e) => toggleOverride(e.target.checked)} />
@@ -193,7 +194,7 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
                       {off > 0 ? ` (−${pct(off)})` : ''}. Edit the $/seat cell above.</>
                     : <>The $/seat cell shows the catalog list. Tick to enter a negotiated price.</>}
                 </small></div>
-              <div><label>Applies to (personas)</label>
+              <div><label>Groups that get it <Help k="licences.applies_to" /></label>
                 <div className="pill-list">
                   {personas.map((p) => (
                     <button key={p.id} type="button"
@@ -203,7 +204,7 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
                   {personas.length === 0 && <span className="muted">No personas yet.</span>}
                 </div>
                 <small className="src">Tag one or more. Cost splits across the tagged personas by headcount.</small></div>
-              <div><label>Entitlement scope</label>
+              <div><label>Named people or everyone <Help k="licences.scope" /></label>
                 <select value={tenantWide ? 'TenantWide' : 'PerUser'}
                   onChange={(e) => update(l.id, { coverage_scope: e.target.value })}>
                   <option value="PerUser">Per-user seats</option>
@@ -216,7 +217,7 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
                 </small></div>
             </div>
             <div className="grid c4" style={{ padding: '.4rem 0' }}>
-              <div><label>Unused seats</label>
+              <div><label>Unused seats <Help k="licences.unused" /></label>
                 {unused > 0 ? (
                   <select value={l.unused_seats_answer || ''}
                     onChange={(e) => update(l.id, { unused_seats_answer: e.target.value || null })}>
@@ -232,7 +233,7 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
                       are <b>not needed</b> count, as over-licensing, from this line's Microsoft renewal.</>
                     : <>Set Assigned below Qty to record unused seats.</>}
                 </small></div>
-              <div><label>Renews (this line)</label>
+              <div><label>Renews (this line) <Help k="licences.renewal" /></label>
                 <input type="date" value={l.renewal_date || ''}
                   onChange={(e) => update(l.id, { renewal_date: e.target.value || null })} />
                 <small className="src">Only when this line renews on a different date from the
@@ -363,12 +364,12 @@ export default function CurrentLicensing({ engagement, meta, onUpdate }) {
 
   return (
     <div className="card">
-      <h2>Current Microsoft licensing</h2>
-      <p className="hint">Model on <b>assigned</b>, not purchased — shelfware is a savings
-        source. Enter the actual price paid per seat (absolute, EA, CSP, or negotiated);
-        don't assume ERP. Pricing basis default:{' '}
+      <h2 style={{ marginTop: 0 }}>Microsoft licences</h2>
+      <p className="hint">Each Microsoft product the customer pays for: how many are bought, which
+        groups get it (▸ details) and, if known, what they pay — otherwise the list price is used. Seats
+        bought but not assigned are asked about in the details. Prices are quoted at{' '}
         <b>{engBasis.segment} · {termLabel(engBasis.term)} · {billingLabel(engBasis.billing)}</b>{' '}
-        (edited under <b>Customer info</b> above; overridable per line in a line's expander).</p>
+        (Customer step › Pricing basis; a line can override it).</p>
       {err && <div className="err">{err}</div>}
 
       {aiEnabled && (
@@ -457,8 +458,8 @@ export default function CurrentLicensing({ engagement, meta, onUpdate }) {
 
       <table className="resp-table">
         <thead><tr>
-          <th></th><th>SKU</th><th className="num">Qty</th>
-          <th className="num">Monthly $/seat</th><th>Adjustments</th><th></th>
+          <th></th><th>Product <Help k="licences.product" /></th><th className="num">Bought <Help k="licences.bought" /></th>
+          <th className="num">Monthly $/seat <Help k="licences.price" /></th><th>Details</th><th></th>
         </tr></thead>
         <tbody>
           {items.map((l) => (

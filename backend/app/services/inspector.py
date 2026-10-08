@@ -41,7 +41,6 @@ _LABELS = {
     "covered_count": "Covers", "covered_count_override": "Covers override",
     "per_unit_annual_cost": "$/unit/yr", "is_managed": "Managed",
     "tooling_pct": "Tooling %", "effective_annual_cost": "Effective $/yr",
-    "unit_basis": "Unit basis",
     "renewal_date": "Renewal", "source_tag": "Source", "outcome_id": "Outcome",
     "product_kind": "Product kind", "microsoft_sku_reference": "Microsoft SKU",
     "third_party_product_id": "Third-party product", "coverage": "Coverage",

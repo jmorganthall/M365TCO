@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { api } from '../api'
+import Help from './Help.jsx'
 
 // The $0 placeholder tool older versions created for "covered elsewhere". It is
 // no longer created (gap answers replaced it) but stays readable, so it is kept
@@ -74,7 +75,7 @@ export default function CoverageCheck({ engagement, onNavigate }) {
 
   return (
     <div className="card">
-      <h2>Coverage check — confirm the target's new outcomes</h2>
+      <h2 style={{ marginTop: 0 }}>Coverage check</h2>
       <p className="hint">For each persona, the capabilities their <b>proposed target</b> would deliver
         that nothing in this inventory delivers today. Ask the customer about each: <i>"You don't have
         this today — is that expected, or is it covered somehow outside this inventory?"</i> Only a gap
@@ -193,7 +194,7 @@ export default function CoverageCheck({ engagement, onNavigate }) {
             <>
               {p.uncovered_outcomes.length > 0 && (
                 <table>
-                  <thead><tr><th>Not delivered by anything in the inventory</th><th style={{ width: 340 }}>Customer's answer</th></tr></thead>
+                  <thead><tr><th>Not delivered by anything in the inventory</th><th style={{ width: 340 }}>Customer's answer <Help k="gaps.answer" /></th></tr></thead>
                   <tbody>
                     {p.uncovered_outcomes.map((o) => (
                       <tr key={o.id}>
@@ -206,7 +207,7 @@ export default function CoverageCheck({ engagement, onNavigate }) {
                             const v = e.target.value
                             if (v === '') clearAnswer(o)
                             else if (v === 'NotDeliveredToday' || v === 'CoveredOutsideInventory') answer(p, o, v)
-                            else if (v === '__new') onNavigate && onNavigate('thirdparty')
+                            else if (v === '__new') onNavigate && onNavigate('tools')
                             else { clearAnswer(o); mapThirdParty(p, o, v) }
                           }}>
                             <option value="">Not answered yet</option>

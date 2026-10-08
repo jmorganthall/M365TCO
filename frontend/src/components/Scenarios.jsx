@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import Help from './Help.jsx'
 import { api, usd, money, pct } from '../api'
 import BundleAnalysis from './BundleAnalysis.jsx'
 import SkuCombobox from './SkuCombobox.jsx'
@@ -315,7 +316,7 @@ function CarvePanel({ eid, persona, bundles, onDone, onCancel }) {
   )
 }
 
-export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
+export default function Scenarios({ engagement, meta, moneyUnit = 'mo', onChanged }) {
   const eid = engagement.id
   const [personas, setPersonas] = useState([])
   const [scenarios, setScenarios] = useState([])
@@ -367,7 +368,7 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
   }
   async function compute() {
     setErr('')
-    try { setResult(await api.post(`/api/engagements/${eid}/compute`)) } catch (e) { setErr(e.message) }
+    try { setResult(await api.post(`/api/engagements/${eid}/compute`)); onChanged?.() } catch (e) { setErr(e.message) }
   }
 
   async function applyBundle(persona, { sku_reference, price, addons }) {
@@ -391,20 +392,20 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
   return (
     <div className="card">
       <div className="flex-between">
-        <h2>Persona scenarios</h2>
+        <h2 style={{ marginTop: 0 }}>Future state per group <Help k="future.plan" /></h2>
         <button onClick={compute}>Recompute</button>
       </div>
-      <p className="hint">One target-state plan per persona. The future state is a base bundle
-        plus optional add-ons (E5 Security, etc.) — the engine unions their outcomes and sums
-        their prices; a discount applies to the total. Prices are per-seat monthly.</p>
+      <p className="hint">A plan is a base bundle plus any add-ons; their capabilities combine and
+        their prices add up. ⚡ shows the options for a group; ▸ holds add-ons, agreed prices and
+        splitting a group <Help k="future.carve" />. Prices are per seat per month.</p>
 
       {err && <div className="err">{err}</div>}
 
       <table className="resp-table">
         <thead><tr>
-          <th></th><th>Persona</th><th className="num">HC</th><th>Base bundle</th>
-          <th className="num">Net $/seat/mo</th><th>Scope</th><th className="num">Current</th>
-          <th className="num">Target</th><th className="num">Delta</th><th></th>
+          <th></th><th>Group</th><th className="num">People</th><th>Plan</th>
+          <th className="num">Net $/seat/mo</th><th>In scope <Help k="future.in_scope" /></th><th className="num">Today</th>
+          <th className="num">Future</th><th className="num">Change</th><th></th>
         </tr></thead>
         <tbody>
           {personas.map((p) => {

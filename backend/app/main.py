@@ -519,6 +519,15 @@ def update_now() -> dict:
     return updater.trigger()
 
 
+@app.get("/api/help-text")
+def help_text() -> dict:
+    """The walkthrough's help text — the same file the customer PDF's method page
+    reads (services/help_text)."""
+    from .services import help_text as help_text_service
+
+    return help_text_service.load()
+
+
 @app.get("/api/meta")
 def meta(db=Depends(get_db)) -> dict:
     """Metadata the UI needs: enum values, defaults, seed versions."""
