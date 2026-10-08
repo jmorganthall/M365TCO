@@ -347,78 +347,99 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
             f"opportunity in the headline.</p>"
         )
 
-    # Hero block (Section 6.8a decomposition): the headline splits into the two
-    # things the customer can actually decide — ① retire duplicate tools today
-    # (the quick wins, no licensing change) and ② move each persona to
-    # right-sized licensing (the moves' OWN value, quick-win credit stripped so
-    # the two never double-count a dollar). The anchor number is their sum over
-    # the modeling horizon, stated in words ("saved"), never as a signed
-    # figure next to the word savings.
-    horizon = int(engagement.modeling_horizon_years or 3)
-    months = horizon * 12
-    qw_total = float(rollup.get("quick_win_savings_annual", 0) or 0)
-    move_incr = float(rollup.get("move_incremental_delta_annual", 0) or 0)
-    moves_value = -move_incr  # positive = the moves save money
-    total_opportunity = qw_total + moves_value  # positive = total saved / yr
+    # Hero block — the timed headline (ENGINE_SPEC 6.11), computed once in the
+    # engine: ① duplicate spend today (the quick wins, no licensing change),
+    # ② consolidation (each persona's move, its own value — quick-win credit
+    # stripped so no dollar counts twice) and ③ over-licensing (unused seats the
+    # customer confirmed aren't needed). Each is counted from the renewal that
+    # unlocks it, over the modelling horizon, and stated in words ("saved"),
+    # never as a signed figure next to the word savings. Savings-positive.
+    h = rollup.get("headline") or {}
+    months = int(h.get("horizon_months") or 0)
+    total = float(h.get("amount", 0) or 0)
+    dup = float(h.get("duplicate_spend_amount", 0) or 0)
+    cons = float(h.get("consolidation_amount", 0) or 0)
+    over = float(h.get("overlicensing_amount", 0) or 0)
+    items = h.get("items") or []
 
-    if total_opportunity > 0:
+    if total > 0:
         head_word, head_cls = f"saved over {months} months", "pos"
-    elif total_opportunity < 0:
+    elif total < 0:
         head_word, head_cls = f"added cost over {months} months", ""
     else:
         head_word, head_cls = "no net change", ""
 
-    def _moves_amount(v):
-        # Number first, like card ①, no words: finance notation. Positive plain
-        # (green) = savings; parentheses (black) = added expense. Every hero
-        # figure is over the SAME horizon, so the components visibly sum to the
-        # headline; "per year" appears exactly once, under the headline.
-        if v < 0:
-            return f"<span class='move-amt pos'>{_usd0(v * horizon)}</span>"
+    def _amount(v):
+        # Finance notation, no words: a saving plain (green); an added cost in
+        # parentheses (black). Every hero figure is over the SAME horizon, so the
+        # parts visibly sum to the headline.
         if v > 0:
-            return f"<span class='move-amt'>({_usd0(v * horizon)})</span>"
+            return f"<span class='move-amt pos'>{_usd0(v)}</span>"
+        if v < 0:
+            return f"<span class='move-amt'>({_usd0(v)})</span>"
         return "<span class='move-amt muted'>$0</span>"
 
+    persona_amount = {}
+    for i in items:
+        if i.get("sub_line") == "consolidation" and i.get("persona_id"):
+            persona_amount[i["persona_id"]] = persona_amount.get(i["persona_id"], 0.0) + float(i["amount"])
     move_items = "".join(
-        f"<li>{_moves_amount(s.get('move_incremental_delta_annual', s['delta_annual']))}"
+        f"<li>{_amount(persona_amount.get(s['persona_id'], 0.0))}"
         f"<span class='move-desc'><b>{html.escape(s['persona_name'])}</b> ({s['headcount']}) → "
         f"<b>{html.escape(_tlabel(s))}</b></span></li>"
         for s in in_scope
     )
-    # Share of the total each lever contributes. The two are the two parts of one
-    # number (total = quick wins + moves), so the moves' share is the complement
-    # of the quick-win share — they always sum to 100%, never 99/101 from
-    # independent rounding. Shown only when the total is a net saving; on a net
-    # cost, a "share of a negative" reads as nonsense, so it's suppressed.
-    show_pct = total_opportunity > 0
-    qw_pct = round(qw_total / total_opportunity * 100) if show_pct else 0
-    moves_pct = 100 - qw_pct
-    # A share that opposes the total (the move is a net investment) renders in
-    # parentheses — the same finance notation the move amounts use for a cost.
-    def _pct_html(p):
-        if not show_pct:
+    # Each part's share of the total, shown only when every part is a saving (a
+    # share of a negative, or a part over 100% because another part is a cost,
+    # reads as nonsense). The last part takes the rounding remainder, so the
+    # shares always sum to 100%.
+    parts = [(k, v) for k, v in (("dup", dup), ("cons", cons), ("over", over))
+             if k == "cons" or v]
+    shares = {}
+    if total > 0 and all(v >= 0 for _, v in parts):
+        running = 0
+        for idx, (k, v) in enumerate(parts):
+            p_ = 100 - running if idx == len(parts) - 1 else round(v / total * 100)
+            shares[k] = p_
+            running += p_
+
+    def _pct_html(k):
+        if k not in shares:
             return ""
-        text = f"({abs(p)}%)" if p < 0 else f"{p}%"
+        p_ = shares[k]
+        text = f"({abs(p_)}%)" if p_ < 0 else f"{p_}%"
         return f"<div class='part-pct'>{text}</div>"
 
-    part_today = (
+    n = 0
+    def _num_mark():
+        nonlocal n
+        n += 1
+        return "①②③"[n - 1] + " " if len(parts) > 1 else ""
+
+    part_dup = (
         f"<div class='hero-part'>"
-        f"<div class='hero-part-main'><div class='part-label'>① Retire duplicate tools today "
-        f"— no licensing change</div>"
-        f"<div class='part-value pos'>{_usd0(qw_total * horizon)}</div></div>"
-        f"{_pct_html(qw_pct)}</div>"
-        if qw_total > 0 else ""
+        f"<div class='hero-part-main'><div class='part-label'>{_num_mark()}Retire duplicate "
+        f"tools — no licensing change</div>"
+        f"<div class='part-value pos'>{_usd0(dup)}</div></div>"
+        f"{_pct_html('dup')}</div>"
+        if dup else ""
     )
-    # Card ② is just the moves — persona → bundle (amount), no roll-up number
-    # repeating what the bridge derives later.
     part_moves = (
         f"<div class='hero-part'>"
         f"<div class='hero-part-main'><div class='part-label'>"
-        f"{'② ' if part_today else ''}Move each persona to right-sized licensing</div>"
+        f"{_num_mark()}Move each persona to right-sized licensing</div>"
         + (f"<ul class='moves'>{move_items}</ul>" if in_scope else "")
         + "</div>"
-        + _pct_html(moves_pct)
+        + _pct_html("cons")
         + "</div>"
+    )
+    part_over = (
+        f"<div class='hero-part'>"
+        f"<div class='hero-part-main'><div class='part-label'>{_num_mark()}Drop unused "
+        f"licences the customer confirmed aren't needed</div>"
+        f"<div class='part-value pos'>{_usd0(over)}</div></div>"
+        f"{_pct_html('over')}</div>"
+        if over else ""
     )
     # List-price caveat: when baseline spend rests on assumed prices, say so
     # next to the headline, not in the appendix — it builds trust, not doubt.
@@ -431,28 +452,88 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         f"{n_drop} persona{'s' if n_drop != 1 else ''} — see Capability trade-offs below."
         if n_drop else ""
     )
-    hero_caveat = (
-        f"<div class='hero-caveat'>Baseline spend uses list-price assumptions for "
-        f"{assumed_n} current SKU{'s' if assumed_n != 1 else ''} — validating against "
-        f"invoices is step one and may move this number. Figures assume full savings "
-        f"from day one; year one phases with contract end dates.{tradeoff_note}</div>"
-        if assumed_n
-        else "<div class='hero-caveat'>Figures assume full savings from day one; "
-             f"year one phases with contract end dates.{tradeoff_note}</div>"
+    n_assumed_dates = int(h.get("assumed_dates") or 0)
+    timing_note = (
+        "Each saving starts when the contract that holds it renews"
+        + (f"; {n_assumed_dates} renewal date{'s were' if n_assumed_dates != 1 else ' was'} "
+           f"not given and {'are' if n_assumed_dates != 1 else 'is'} assumed to be a year "
+           f"after the workshop" if n_assumed_dates else "")
+        + " — see How the headline is timed below."
     )
-    # One headline, two stacked sub-cards. The components' dollars live in the
-    # cards ONLY — no equation line repeating them above.
-    hero_sub = f"{_usd0(total_opportunity)} per year"
+    price_note = (
+        f"Baseline spend uses list-price assumptions for {assumed_n} current "
+        f"SKU{'s' if assumed_n != 1 else ''} — validating against invoices is step one "
+        f"and may move this number. " if assumed_n else ""
+    )
+    hero_caveat = f"<div class='hero-caveat'>{price_note}{timing_note}.{tradeoff_note}</div>"
+    # One headline, stacked sub-cards. The components' dollars live in the cards
+    # ONLY — no equation line repeating them above.
+    run_rate = float(h.get("run_rate_annual", 0) or 0)
+    rr_word = "saved" if run_rate > 0 else "added" if run_rate < 0 else "no change"
+    hero_sub = f"{_usd0(run_rate)} per year {rr_word} once every contract has renewed"
     hero = (
         f"<section class='hero'>"
         f"<div class='hero-label'>Total opportunity <span class='hero-note'>"
-        f"· all figures over {months} months · quick wins + licensing moves</span></div>"
-        f"<div class='headline {head_cls}'>{_usd0(total_opportunity * horizon)} "
+        f"· all figures over {months} months, each from its renewal</span></div>"
+        f"<div class='headline {head_cls}'>{_usd0(total)} "
         f"<span class='headline-word'>{head_word}</span></div>"
         f"<div class='hero-sub'>{hero_sub}</div>"
-        f"<div class='hero-split'>{part_today}{part_moves}</div>"
+        f"<div class='hero-split'>{part_dup}{part_moves}{part_over}</div>"
         f"{hero_caveat}"
         f"</section>"
+    )
+
+    # How the headline is timed: every timed amount, so the customer's finance
+    # team can see from which month each saving or cost counts and which dates
+    # were assumed.
+    kind_word = {
+        "quick_win": "duplicate tool retired at its renewal",
+        "tool_credit": "tool retired at its renewal",
+        "microsoft_increase": "Microsoft increase, from the first tool only the move retires",
+        "microsoft_reduction": "Microsoft reduction, at the Microsoft renewal",
+        "unused_seats": "unused licences dropped at the Microsoft renewal",
+    }
+    timing_rows = "".join(
+        f"<tr><td>{html.escape(i['label'])}<div class='muted'>{kind_word.get(i['kind'], '')}"
+        f"</div></td>"
+        f"<td>{html.escape(i['timed_by'] or '—')}"
+        + (" <span class='muted'>(assumed)</span>" if i.get("date_assumed") else "")
+        + f"</td><td class='num'>{i['months_counted']}</td>"
+        f"<td class='num'>{_usd(i['annual_amount'])}</td>"
+        f"<td class='num'>{_usd(i['amount'])}</td></tr>"
+        for i in items
+    )
+    timing_section = (
+        "<section><h2>How the headline is timed</h2>"
+        "<p class='sub'>Savings are positive, added costs negative. Each amount counts "
+        "from its start date to the end of the horizon.</p>"
+        "<table><tr><th>Item</th><th>Starts</th><th class='num'>Months counted</th>"
+        "<th class='num'>Per year</th><th class='num'>Over the horizon</th></tr>"
+        f"{timing_rows}"
+        f"<tr class='total'><td><b>Total</b></td><td></td><td></td>"
+        f"<td class='num'><b>{_usd(run_rate)}</b></td>"
+        f"<td class='num'><b>{_usd(total)}</b></td></tr></table></section>"
+        if items else ""
+    )
+
+    # Unused licences: every line with seats bought but not assigned, and what
+    # the customer said about them. Intended seats are noted and not counted;
+    # unanswered ones are left out of the headline.
+    unused = h.get("unused_seat_lines") or []
+    answer_word = {"NotNeeded": "not needed — counted as over-licensing",
+                   "Intended": "kept on purpose — not counted",
+                   None: "not answered — left out"}
+    unused_section = (
+        "<section><h2>Unused licences</h2><table><tr><th>Licence</th>"
+        "<th class='num'>Unused seats</th><th class='num'>Per year</th><th>Customer's answer</th></tr>"
+        + "".join(
+            f"<tr><td>{html.escape(u['sku_reference'] or '—')}</td>"
+            f"<td class='num'>{u['unused_seats']}</td><td class='num'>{_usd(u['annual_value'])}</td>"
+            f"<td>{answer_word.get(u.get('answer'), '')}</td></tr>"
+            for u in unused
+        )
+        + "</table></section>"
+        if unused else ""
     )
 
     # Eliminations section — build only the parts that have content, and omit the
@@ -658,8 +739,9 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
         "<li><b>Validate.</b> Confirm current licensing counts and third-party invoices, "
         f"and pull contract end dates for the {n_retire} retirement target{'s' if n_retire != 1 else ''} "
         "— this converts the assumptions above into an invoice-verified business case.</li>"
-        "<li><b>Sequence.</b> Co-term each retirement against its renewal date into a "
-        "phased savings schedule. The figures here assume full savings from day one; year one phases in.</li>"
+        "<li><b>Sequence.</b> Co-term each retirement against its renewal date. The "
+        "headline already counts each saving from its renewal; confirm any date marked "
+        "assumed.</li>"
         + fund_step +
         "<li><b>Decide.</b> A 30-day validation sprint converts this readout into an "
         "invoice-verified, phased business case.</li></ol>"
@@ -779,6 +861,8 @@ def build_html(engagement: models.Engagement, result: dict) -> str:
 tooling those users free up when they move, and the target Microsoft licensing —
 building to the net TCO delta, with each line broken down per persona.</p>
 <table class="bridge">{bridge_head}<tbody>{bridge_rows}</tbody></table>{bridge_note}</section>
+{timing_section}
+{unused_section}
 {disp_section}
 {elim_section}
 {appendix_section}
@@ -855,11 +939,18 @@ def build_xlsx(engagement: models.Engagement, result: dict) -> bytes:
                -(rollup.get("freed_redundant_today_annual", 0) or 0)])
     wr.append(["  of which: the moves' own value (excl. quick wins)",
                rollup.get("move_incremental_delta_annual", 0) or 0])
-    horizon = int(engagement.modeling_horizon_years or 3)
-    wr.append([
-        f"Net TCO delta ({horizon * 12}-month headline)",
-        rollup["net_tco_delta_annual"] * horizon,
-    ])
+    # The timed headline (ENGINE_SPEC 6.11) — savings-positive, unlike the
+    # cost-change deltas above.
+    h = rollup.get("headline") or {}
+    hm = h.get("horizon_months") or 0
+    wr.append([f"Headline: total over {hm} months, each from its renewal (positive = saving)",
+               h.get("amount", 0)])
+    wr.append(["  of which: duplicate spend today (quick wins)", h.get("duplicate_spend_amount", 0)])
+    wr.append(["  of which: consolidation (the moves)", h.get("consolidation_amount", 0)])
+    wr.append(["  of which: over-licensing (unused seats not needed)",
+               h.get("overlicensing_amount", 0)])
+    wr.append(["Per year once every contract has renewed (positive = saving)",
+               h.get("run_rate_annual", 0)])
     if engagement.managed_ms_account:
         cons = _fmt_ratio(engagement.ecif_roi_conservative)
         gen = _fmt_ratio(engagement.ecif_roi_generous)
@@ -894,6 +985,20 @@ def build_xlsx(engagement: models.Engagement, result: dict) -> bytes:
     for d in result.get("dropped_capability") or []:
         for o in d.get("outcomes", []):
             wcap.append([d["persona_name"], d["headcount"], "Dropped", o["name"]])
+
+    # How the headline is timed — every timed amount behind it.
+    wt = wb.create_sheet("Headline timing")
+    wt.append(["Sub-line", "Item", "Kind", "Starts", "Date assumed", "Months counted",
+               "Per year (positive = saving)", "Over the horizon"])
+    for i in h.get("items") or []:
+        wt.append([i["sub_line"], i["label"], i["kind"], i["timed_by"] or "",
+                   "yes" if i["date_assumed"] else "no", i["months_counted"],
+                   i["annual_amount"], i["amount"]])
+    wu = wb.create_sheet("Unused licences")
+    wu.append(["Licence", "Unused seats", "Per year", "Customer's answer"])
+    for u in h.get("unused_seat_lines") or []:
+        wu.append([u["sku_reference"], u["unused_seats"], u["annual_value"],
+                   u.get("answer") or "not answered"])
 
     # The business case — the same stored narratives the HTML readout prints.
     narratives = result.get("narratives") or []

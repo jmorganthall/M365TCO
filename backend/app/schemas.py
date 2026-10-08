@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -152,6 +152,7 @@ class EngagementUpdate(BaseModel):
     ecif_roi_generous: Optional[Decimal] = None
     # Customer Info tab.
     workshop_date: Optional[date] = None
+    microsoft_renewal_date: Optional[date] = None
     industry: Optional[str] = None
     hq_location: Optional[str] = None
     website: Optional[str] = None
@@ -177,6 +178,7 @@ class EngagementOut(ORMModel):
     ecif_roi_conservative: Decimal = Decimal("10")
     ecif_roi_generous: Decimal = Decimal("5")
     workshop_date: Optional[date] = None
+    microsoft_renewal_date: Optional[date] = None
     industry: str = ""
     hq_location: str = ""
     website: str = ""
@@ -296,6 +298,11 @@ class CurrentLicenseIn(BaseModel):
     # How many seats the line entitles: "PerUser" (quantity_assigned seats) or
     # "TenantWide" (the whole population it applies to).
     coverage_scope: str = "PerUser"
+    # This line's own Microsoft renewal (None = the agreement's date).
+    renewal_date: Optional[date] = None
+    # The customer's answer about the unused seats: "Intended" | "NotNeeded" |
+    # None (not answered).
+    unused_seats_answer: Optional[Literal["Intended", "NotNeeded"]] = None
     # Personas this line applies to (many-to-many tags).
     persona_ids: list[str] = []
     source_tag: str = "CustomerStated"
@@ -313,7 +320,25 @@ class CurrentLicenseOut(ORMModel):
     term_duration: Optional[str]
     billing_plan: Optional[str]
     coverage_scope: str = "PerUser"
+    renewal_date: Optional[date] = None
+    unused_seats_answer: Optional[str] = None
     persona_ids: list[str]
+    source_tag: str
+
+
+# ---- Coverage gap answer (TARGET_SCHEMA §4.8) ----
+class GapAnswerIn(BaseModel):
+    persona_id: str
+    outcome_id: str
+    answer: Literal["NotDeliveredToday", "CoveredOutsideInventory"]
+    source_tag: str = "CustomerStated"
+
+
+class GapAnswerOut(ORMModel):
+    id: str
+    persona_id: str
+    outcome_id: str
+    answer: str
     source_tag: str
 
 

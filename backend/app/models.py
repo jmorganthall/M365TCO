@@ -44,6 +44,13 @@ RESIDUAL_INTENTS = ("None", "IntendedOutOfScope")
 # tenant-level entitlement covering the whole population it applies to,
 # whatever the seat count on the line.
 COVERAGE_SCOPES = ("PerUser", "TenantWide")
+# The customer's answer about a licence line's unused seats (purchased − assigned):
+# kept on hand on purpose, or not needed (over-licensing). NULL = not answered.
+UNUSED_SEATS_ANSWERS = ("Intended", "NotNeeded")
+# The customer's answer about a capability nothing in the inventory delivers to a
+# persona today (TARGET_SCHEMA §4.8): a confirmed gap, or covered by something the
+# engagement doesn't cost. No row = not answered (never claimed as new).
+GAP_ANSWERS = ("NotDeliveredToday", "CoveredOutsideInventory")
 TERM_DURATIONS = ("P1M", "P1Y", "P3Y")
 BILLING_PLANS = ("Monthly", "Annual", "Triennial")
 # Customer segments as they appear in the Microsoft price sheet's `Segment`
@@ -90,6 +97,12 @@ class Engagement(Base):
     # customer — used for display and, later, as grounding for the AI business
     # narrative research. `customer_name` above is the engagement's display name.
     workshop_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # When the customer's Microsoft agreement renews — the default renewal for
+    # every licence line (a line's own renewal_date overrides it). Times when a
+    # Microsoft reduction or an over-licensing saving can start (ENGINE_SPEC
+    # 6.11). NULL = not given: one year after the workshop is assumed, and the
+    # readout says so. Asked on Customer Info.
+    microsoft_renewal_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     industry: Mapped[str] = mapped_column(String, default="")
     hq_location: Mapped[str] = mapped_column(String, default="")
     website: Mapped[str] = mapped_column(String, default="")
@@ -157,6 +170,9 @@ class Engagement(Base):
     narratives: Mapped[list["ScenarioNarrative"]] = relationship(
         back_populates="engagement", cascade="all, delete-orphan"
     )
+    gap_answers: Mapped[list["CoverageGapAnswer"]] = relationship(
+        back_populates="engagement", cascade="all, delete-orphan"
+    )
 
 
 class Persona(Base):
@@ -184,6 +200,11 @@ class Persona(Base):
 
     engagement: Mapped[Engagement] = relationship(back_populates="personas")
     requirement_links: Mapped[list["PersonaRequirement"]] = relationship(
+        back_populates="persona", cascade="all, delete-orphan"
+    )
+    # The customer's answers about this persona's coverage gaps; they describe
+    # this persona's current state, so they go with it.
+    gap_answers: Mapped[list["CoverageGapAnswer"]] = relationship(
         back_populates="persona", cascade="all, delete-orphan"
     )
 
@@ -433,6 +454,16 @@ class CurrentMicrosoftLicense(Base):
     segment: Mapped[str | None] = mapped_column(String, nullable=True)
     term_duration: Mapped[str | None] = mapped_column(String, nullable=True)
     billing_plan: Mapped[str | None] = mapped_column(String, nullable=True)
+    # This line's own Microsoft renewal, when it differs from the agreement's
+    # (Engagement.microsoft_renewal_date). NULL = inherit the agreement's date.
+    renewal_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # The customer's answer about this line's unused seats (quantity_purchased −
+    # quantity_assigned). "Intended" = kept on hand on purpose: noted, never
+    # counted. "NotNeeded" = over-licensing, a saving at the line's Microsoft
+    # renewal (ENGINE_SPEC 6.11). NULL = not answered: left out of the headline.
+    unused_seats_answer: Mapped[str | None] = mapped_column(
+        SAEnum(*UNUSED_SEATS_ANSWERS, name="unused_seats_answer"), nullable=True
+    )
     # DEPRECATED single-persona link. Superseded by the many-to-many persona tags
     # (CurrentLicensePersona). Kept for the one-time backfill; not read by the
     # engine or API anymore.
@@ -657,6 +688,37 @@ class PersonaScenario(Base):
         if self.price_override and self.overridden_price_annual is not None:
             return Decimal(str(self.overridden_price_annual))
         return self.discounted_net_annual
+
+
+class CoverageGapAnswer(Base):
+    """The customer's answer about a capability that nothing in the inventory
+    delivers to a persona today (TARGET_SCHEMA §4.8; the Coverage Check step).
+
+    NotDeliveredToday — a confirmed gap: if the persona's move delivers it, it is
+    a new outcome. CoveredOutsideInventory — something the engagement doesn't cost
+    delivers it: it counts as delivered today, is never claimed as new and never
+    costed. No row = not answered: never claimed as new (D21).
+
+    Replaces the old "$0 Covered elsewhere (out of scope)" placeholder tool, which
+    stays readable on engagements that already have one."""
+
+    __tablename__ = "coverage_gap_answers"
+    __table_args__ = (
+        UniqueConstraint("persona_id", "outcome_id", name="uq_gap_answer"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    engagement_id: Mapped[str] = mapped_column(ForeignKey("engagements.id"), index=True)
+    persona_id: Mapped[str] = mapped_column(ForeignKey("personas.id"), index=True)
+    outcome_id: Mapped[str] = mapped_column(ForeignKey("outcomes.id"), index=True)
+    answer: Mapped[str] = mapped_column(SAEnum(*GAP_ANSWERS, name="gap_answer"))
+    source_tag: Mapped[str] = _source_tag_col()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    engagement: Mapped[Engagement] = relationship(back_populates="gap_answers")
+    persona: Mapped[Persona] = relationship(back_populates="gap_answers")
 
 
 class ScenarioNarrative(Base):

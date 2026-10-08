@@ -36,6 +36,8 @@ function MonthlyPriceInput({ annual, onCommit, style }) {
   )
 }
 
+const UNUSED_WORD = { '': 'not answered', Intended: 'kept on purpose', NotNeeded: 'not needed' }
+
 // One license line. The row shows the common case (fully assigned); the ▸
 // expander reveals the non-standard modifiers — shelfware (assigned below
 // purchased), discount, price basis, persona — so they don't clutter the row.
@@ -60,6 +62,13 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
   const chips = []
   if (notInCatalog) chips.push(<span key="c" className="badge warn" title="No matching SKU in the imported price list">⚠ not in catalog</span>)
   if (!fullyAssigned) chips.push(<span key="a" className="badge warn">{l.quantity_assigned}/{l.quantity_purchased} assigned</span>)
+  // Unused seats need the customer's answer before they count (or don't).
+  const unused = Math.max((l.quantity_purchased || 0) - (l.quantity_assigned || 0), 0)
+  if (unused > 0) chips.push(
+    <span key="u" className={`badge ${l.unused_seats_answer ? 'muted' : 'warn'}`}
+      title="Unused seats: bought but not assigned">
+      {unused} unused · {UNUSED_WORD[l.unused_seats_answer || '']}</span>)
+  if (l.renewal_date) chips.push(<span key="r" className="badge muted" title="This line's own Microsoft renewal">renews {l.renewal_date}</span>)
   if (l.price_override) chips.push(
     <span key="ov" className="badge" title={`Custom price · list ${usd(listAnnual(l))}/seat/yr`}>
       override{off > 0 ? ` −${pct(off)}` : ''}</span>)
@@ -205,6 +214,30 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove }) {
                     ? <>Covers <b>every user</b> this line applies to, whatever the seat count.</>
                     : <>Entitles <b>{l.quantity_assigned}</b> seats — untagged means those seats aren't attributed to a persona, not that everyone holds one. Caps how much a duplicate tool counts as redundant today.</>}
                 </small></div>
+            </div>
+            <div className="grid c4" style={{ padding: '.4rem 0' }}>
+              <div><label>Unused seats</label>
+                {unused > 0 ? (
+                  <select value={l.unused_seats_answer || ''}
+                    onChange={(e) => update(l.id, { unused_seats_answer: e.target.value || null })}>
+                    <option value="">Not answered yet</option>
+                    <option value="Intended">Kept on purpose (not counted)</option>
+                    <option value="NotNeeded">Not needed (a saving)</option>
+                  </select>
+                ) : <div className="muted" style={{ padding: '.35rem 0' }}>None — every seat bought is assigned.</div>}
+                <small className="src">
+                  {unused > 0
+                    ? <>{unused} seat{unused === 1 ? '' : 's'} bought but not assigned ({usd(unused * effectiveAnnual(l))}/yr).
+                      Some organisations keep spares for quick onboarding. Only seats the customer says
+                      are <b>not needed</b> count, as over-licensing, from this line's Microsoft renewal.</>
+                    : <>Set Assigned below Qty to record unused seats.</>}
+                </small></div>
+              <div><label>Renews (this line)</label>
+                <input type="date" value={l.renewal_date || ''}
+                  onChange={(e) => update(l.id, { renewal_date: e.target.value || null })} />
+                <small className="src">Only when this line renews on a different date from the
+                  agreement{eng.microsoft_renewal_date ? <> ({eng.microsoft_renewal_date})</> : ''}.
+                  Blank = the agreement's date.</small></div>
             </div>
             <div className="grid c4" style={{ padding: '.4rem 0' }}>
               <div><label>Segment</label>

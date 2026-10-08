@@ -356,6 +356,30 @@ def check(case: Case) -> list[str]:
         if d.residual_count < 0 or d.residual_annual_cost < 0:
             fail("disposition-sign", f"negative residual on {d.third_party_product_id}")
 
+    # ---- The timed headline (Section 6.11) ----
+    h = r.headline
+    if h is None:
+        fail("timed-present", "rollup carries no headline")
+    else:
+        # Before timing, the sub-lines are exactly the untimed total opportunity:
+        # quick wins plus the moves' own value (no unused-seat answers here).
+        untimed = r.quick_win_savings_annual - r.move_incremental_delta_annual
+        if abs(h.run_rate_annual - untimed) > CENT * (len(res.scenarios) + 1):
+            fail("timed-runrate", f"run-rate {h.run_rate_annual} != untimed {untimed}")
+        if h.amount != h.duplicate_spend_amount + h.consolidation_amount + h.overlicensing_amount:
+            fail("timed-sum", f"{h.amount} != the three sub-lines")
+        for sub in ("duplicate_spend", "consolidation", "overlicensing"):
+            items = sum((i.amount for i in h.items if i.sub_line == sub), D("0"))
+            if items != getattr(h, f"{sub}_amount"):
+                fail("timed-sum", f"{sub}: items {items} != sub-line")
+        for i in h.items:
+            # Timing only ever shortens a saving or a cost, never stretches or flips it.
+            full = abs(i.annual_amount) * h.horizon_months / 12
+            if not (0 <= i.months_counted <= h.horizon_months) or abs(i.amount) > full + CENT:
+                fail("timed-bounds", f"{i.item_key}: {i.amount} over {i.months_counted} months")
+            if i.amount and (i.amount > 0) != (i.annual_amount > 0):
+                fail("timed-bounds", f"{i.item_key}: sign flipped")
+
     # ---- Current Microsoft spend is distributed, never invented ----
     line_total = sum(
         (D(l.quantity_assigned) * l.unit_price_paid_annual for l in eng.current_licenses),

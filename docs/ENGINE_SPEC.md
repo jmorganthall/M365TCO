@@ -13,9 +13,15 @@ the data layer on input, never inside the engine.
 ## Inputs (hydrated)
 
 - **Personas**: `{id, name, headcount}`.
-- **CurrentLicenseLines**: `{quantity_assigned, unit_price_paid_annual, persona_ids}`.
+- **CurrentLicenseLines**: `{id, quantity_assigned, quantity_purchased,
+  unit_price_paid_annual, persona_ids, coverage_scope, covered_outcome_ids,
+  renewal_date, unused_seats_answer}`.
   A line may apply to several personas; its cost is distributed across their
-  combined headcount (see 6.2).
+  combined headcount (see 6.2). `quantity_purchased`, `renewal_date` and
+  `unused_seats_answer` (`Intended` | `NotNeeded` | none) feed only the timed
+  headline (6.11).
+- **Engagement timing**: `{workshop_date, microsoft_renewal_date, horizon_years}`,
+  read only by the timed headline (6.11).
 - **ThirdPartyProducts**: `{id, name, annual_cost, covered_count, is_managed,
   tooling_pct, renewal_date, delivered_outcome_ids, override, override_reason,
   residual_intent}`. `delivered_outcome_ids` are **ratified** coverage outcomes
@@ -368,9 +374,74 @@ move* — the two sum to the same total, so the bridge still builds to the net d
 > `current_microsoft_annual`, the per-product `offsets`, `delta_annual`). The
 > bridge identity therefore holds per column as well as in total; the engine
 > emits no separate per-persona bridge structure, so there is nothing to keep
-> in sync. The readout **headline** is `net_tco_delta_annual ×
-> engagement.modeling_horizon_years` (e.g. "36-month savings") — a presentation
-> multiplication; every engine quantity remains annualized.
+> in sync. The readout **headline** is no longer a presentation multiplication:
+> it is the timed headline of §6.11, computed once here. Every other engine
+> quantity remains annualized.
+
+## The headline, timed by renewals (6.11)
+
+One headline, made of three sub-lines, each timed by the contract that unlocks
+it and summed over the modelling horizon. Amounts here are **savings-positive**
+(a positive amount is money saved, a negative one money added) — the opposite
+sign of `delta`, because this is the number a customer reads.
+
+```
+H = horizon_years × 12                      # months in the headline
+month 0 = workshop_date
+
+start(d):                                   # the month an amount timed by date d starts
+    if d is missing or workshop_date is missing:  return 12, assumed
+    while d < workshop_date:  d = d + 12 months     # a past renewal: next anniversary
+    return the smallest whole m with workshop_date + m months ≥ d
+           (month arithmetic clamps the day to the month's length)
+
+item(annual, s):  months = max(0, H − s);  amount = round_cents(annual × months / 12)
+
+# 1. Duplicate spend today — each quick win (6.10), from the tool's renewal.
+for q in quick_wins:
+    item(q.credited_annual, start(tool(q).renewal_date))
+
+# 2. Consolidation — each IN-SCOPE scenario r (its move value, 6.8a, split by when
+#    each part can happen).
+for r in in-scope scenarios:
+    for o in r.offsets:                                     # the move's own tool credit
+        item(o.move_unlocked_annual, start(tool(o).renewal_date))
+    ms_change = r.target_spend_annual − r.current_microsoft_annual
+    if ms_change > 0:    # an INCREASE: Microsoft lets a customer add or upgrade mid-term,
+                         # so it starts when there is something only the move can
+                         # retire — the first tool whose credit the move itself
+                         # unlocks (a quick win retires without it) — else on day one
+        item(−ms_change, min(start(tool(o).renewal_date)
+                             for o in r.offsets if o.move_unlocked_annual > 0) or 0)
+    if ms_change < 0:    # a REDUCTION waits for every line it touches to renew
+        lines = the licence lines that apply to r's persona (6.2's rule: tagged to it,
+                or untagged = the org-wide pool of personas with a scenario)
+        item(−ms_change, max(start(L.renewal_date or microsoft_renewal_date) for L in lines))
+
+# 3. Over-licensing — unused seats the customer confirmed are not needed.
+for L in current lines with unused = quantity_purchased − quantity_assigned > 0:
+    list L (unused, unused × unit_price_paid_annual, its answer)   # shown either way
+    if L.unused_seats_answer = NotNeeded:
+        item(unused × L.unit_price_paid_annual, start(L.renewal_date or microsoft_renewal_date))
+    # Intended (kept on purpose) and unanswered seats are never counted.
+
+duplicate_spend_amount, consolidation_amount, overlicensing_amount = Σ item amounts per sub-line
+headline_amount  = their sum;  direction = saved | added | none by its sign
+run_rate_annual  = Σ item annual amounts (the year once everything has renewed)
+```
+
+**Run-rate identity.** Without timing (every date at the workshop, no
+unused-seat answers) the headline is today's untimed total opportunity:
+`run_rate_annual = quick_win_savings_annual − move_incremental_delta_annual`, and
+`headline_amount = run_rate_annual × horizon_years`. Duplicate spend is exactly
+the quick wins, consolidation exactly the moves' own value (6.8a), so timing never
+counts a dollar in two sub-lines; it only decides from which month each dollar
+counts.
+
+Every item is returned (sub-line, kind, label, annual amount, start month, the
+date it was timed by, whether that date was assumed, months counted, amount), so
+a readout can show exactly how the headline was built and which dates were
+assumed. An item that starts after the horizon is listed with `months = 0`.
 
 ## Recompute is total, not incremental (6.7)
 
@@ -419,6 +490,9 @@ then asserts the properties below on every result. ~1.27M engagements:
 | `disposition-displaced` | displaced users = the displacing personas' headcount |
 | `current-ms-conservation` | attributed Microsoft spend never exceeds actual licence spend |
 | `order-dependence` | shuffling the input lists changes no output |
+| `timed-runrate` | untimed, the headline is the quick wins plus the moves' own value (§6.11) |
+| `timed-sum` | the headline is the sum of its sub-lines, each the sum of its timed items |
+| `timed-bounds` | timing only shortens a saving or a cost: never longer than the horizon, never a flipped sign |
 
 The two decision surfaces above the engine — recommend-a-path and the Business
 carve-out — get the same treatment in `backend/tests/sweep_services.py`, built

@@ -22,6 +22,7 @@ from tco_engine import (
     PersonaScenario as EngScenario,
     ResidualIntent,
     ThirdPartyProduct as EngThirdParty,
+    UnusedSeatsAnswer,
     analyze_bundles,
     compute as engine_compute,
 )
@@ -114,6 +115,13 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
             covered_outcome_ids=frozenset(
                 sku_outcomes.get(_cover_key(db, lic.sku_reference), set())
             ),
+            # Over-licensing and timing (ENGINE_SPEC 6.11).
+            id=lic.id,
+            quantity_purchased=lic.quantity_purchased or 0,
+            renewal_date=lic.renewal_date,
+            unused_seats_answer=(
+                UnusedSeatsAnswer(lic.unused_seats_answer) if lic.unused_seats_answer else None
+            ),
         )
         for lic in eng.current_licenses
     ]
@@ -173,6 +181,12 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
         current_licenses=current_lines,
         ecif_roi_conservative=_dec(eng.ecif_roi_conservative),
         ecif_roi_generous=_dec(eng.ecif_roi_generous),
+        # Month 0 of the timed headline. An engagement created before the workshop
+        # date existed falls back to the day it was created — a fixed date, so the
+        # numbers never drift with the calendar.
+        workshop_date=eng.workshop_date or (eng.created_at.date() if eng.created_at else None),
+        microsoft_renewal_date=eng.microsoft_renewal_date,
+        horizon_years=int(eng.modeling_horizon_years or 3),
     )
 
 
@@ -527,12 +541,24 @@ def persona_coverage_gaps(db: Session, engagement_id: str) -> list[dict]:
         target_by_persona[s.persona_id] = covered
         target_refs_by_persona[s.persona_id] = refs
 
-    def _outcome_dicts(ids):
-        return [
-            {"id": oid, "name": name_by_id.get(oid, oid),
-             "description": desc_by_id.get(oid, "")}
-            for oid in ids
-        ]
+    # The customer's answers about gaps (TARGET_SCHEMA §4.8): CoveredOutsideInventory
+    # counts as delivered today; NotDeliveredToday confirms a gap; no answer leaves
+    # it unconfirmed (never claimed as new, D21).
+    answers = {
+        (a.persona_id, a.outcome_id): a for a in eng.gap_answers
+    }
+
+    def _outcome_dicts(ids, pid=None):
+        out = []
+        for oid in ids:
+            d = {"id": oid, "name": name_by_id.get(oid, oid),
+                 "description": desc_by_id.get(oid, "")}
+            if pid is not None:
+                a = answers.get((pid, oid))
+                d["answer"] = a.answer if a else None
+                d["answer_id"] = a.id if a else None
+            out.append(d)
+        return out
 
     personas = []
     for p in eng.personas:
@@ -582,8 +608,15 @@ def persona_coverage_gaps(db: Session, engagement_id: str) -> list[dict]:
             if t.persona_ids and p.id not in t.persona_ids:
                 continue
             tp_today |= tp_outcomes.get(t.id, set())
-        covered_today = ms_today | tp_today
+        outside = {
+            oid for (pid, oid), a in answers.items()
+            if pid == p.id and a.answer == "CoveredOutsideInventory"
+        }
+        covered_today = ms_today | tp_today | outside
         uncovered = sorted(target_outcomes - covered_today)
+        confirmed = [o for o in uncovered
+                     if (a := answers.get((p.id, o))) and a.answer == "NotDeliveredToday"]
+        unconfirmed = [o for o in uncovered if (p.id, o) not in answers]
         # The target references that contribute NO ratified coverage. With all of
         # them unmapped there is nothing to compare against, so the capability
         # story is a data gap, not a finding.
@@ -617,7 +650,13 @@ def persona_coverage_gaps(db: Session, engagement_id: str) -> list[dict]:
             "has_scenario": p.id in target_by_persona,
             "target_outcome_count": len(target_outcomes),
             "covered_of_target": len(target_outcomes & covered_today),
-            "uncovered_outcomes": _outcome_dicts(uncovered),
+            # Every gap the move would fill, each with the customer's answer.
+            "uncovered_outcomes": _outcome_dicts(uncovered, p.id),
+            # ...split: confirmed gaps are new outcomes; unanswered ones are not
+            # claimed until the customer confirms nothing delivers them today.
+            "confirmed_new_outcomes": _outcome_dicts(confirmed),
+            "unconfirmed_outcomes": _outcome_dicts(unconfirmed),
+            "covered_outside_outcomes": _outcome_dicts(sorted(outside & target_outcomes), p.id),
             # Honesty guards for a target that delivers LESS than today (below).
             "dropped_outcomes": _outcome_dicts(dropped),
             "unmapped_current_licenses": unmapped,
@@ -674,14 +713,28 @@ def new_outcomes(db: Session, engagement_id: str, result: dict) -> list[dict]:
     for g in persona_coverage_gaps(db, engagement_id):
         if not g["has_scenario"] or g["persona_id"] not in in_scope:
             continue
-        reason, reason_text = (
-            (None, "") if g["uncovered_outcomes"] else _no_new_capability_reason(g)
-        )
+        # Only a gap the customer confirmed nothing delivers today is a new outcome
+        # (D21); unanswered gaps are listed as awaiting confirmation, never claimed.
+        confirmed = g["confirmed_new_outcomes"]
+        unconfirmed = g["unconfirmed_outcomes"]
+        if confirmed:
+            reason, reason_text = None, ""
+        elif unconfirmed:
+            n = len(unconfirmed)
+            reason, reason_text = "awaiting_confirmation", (
+                f"Not yet claimed: the move adds {n} capabilit{'y' if n == 1 else 'ies'} "
+                f"nothing in the inventory delivers today, but the customer has not "
+                f"confirmed {'it is' if n == 1 else 'they are'} not covered some other "
+                f"way. Answer {'it' if n == 1 else 'them'} in Coverage Check."
+            )
+        else:
+            reason, reason_text = _no_new_capability_reason(g)
         out.append({
             "persona_id": g["persona_id"],
             "persona_name": g["persona_name"],
             "headcount": g["headcount"],
-            "outcomes": g["uncovered_outcomes"],
+            "outcomes": confirmed,
+            "unconfirmed_outcomes": unconfirmed,
             "empty_reason": reason,
             "empty_reason_text": reason_text,
         })

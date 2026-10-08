@@ -86,8 +86,11 @@ def test_readout_breaks_bridge_down_per_persona(client):
     b = client.post(f"/api/engagements/{eid}/personas",
                     json={"name": "Engineering", "headcount": 50}).json()
     identity = _outcome(client, eid, "identity-sso")
+    # Okta renews at the workshop, so nothing waits and the timed headline equals
+    # the untimed one (ENGINE_SPEC 6.11's run-rate identity).
     tool = client.post(f"/api/engagements/{eid}/third-party", json={
-        "name": "Okta", "raw_cost": 30000, "covered_count_override": 150}).json()
+        "name": "Okta", "raw_cost": 30000, "covered_count_override": 150,
+        "renewal_date": eng["workshop_date"]}).json()
     client.post(f"/api/engagements/{eid}/coverage", json={
         "outcome_id": identity["id"], "product_kind": "ThirdParty",
         "third_party_product_id": tool["id"], "coverage": "Full", "ratified": True})
@@ -97,6 +100,12 @@ def test_readout_breaks_bridge_down_per_persona(client):
     client.post(f"/api/engagements/{eid}/scenarios", json={
         "persona_id": b["id"], "target_sku_reference": "Microsoft 365 E3",
         "target_unit_price_annual": 400, "in_scope": True})
+    # The customer confirms nothing delivers the gaps today, so they are new (D21).
+    for g in client.get(f"/api/engagements/{eid}/coverage-gaps").json()["personas"]:
+        for o in g["uncovered_outcomes"]:
+            client.put(f"/api/engagements/{eid}/coverage-gap-answers", json={
+                "persona_id": g["persona_id"], "outcome_id": o["id"],
+                "answer": "NotDeliveredToday"})
 
     html = client.get(f"/api/engagements/{eid}/readout.html").text
 

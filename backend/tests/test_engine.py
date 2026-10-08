@@ -1150,3 +1150,248 @@ def test_quick_win_credits_the_persona_that_holds_its_own_coverage():
     assert q.displaced_today == 30                       # capped at the 30 E3 seats
     assert q.credited_annual == D("15000.00")            # 30 × $500/seat
     assert q.residual_today == 20
+
+
+# ---------------------------------------------------------------------------
+# Section 6.11 — the headline, timed by renewals
+# ---------------------------------------------------------------------------
+
+from datetime import date  # noqa: E402
+
+from tco_engine import UnusedSeatsAnswer, start_month  # noqa: E402
+from tco_engine.timing import add_months  # noqa: E402
+
+WORKSHOP = date(2026, 10, 8)
+
+
+def _timed(personas, products, scenarios, lines, *, horizon=3, ms_renewal=None,
+           workshop=WORKSHOP):
+    return compute(Engagement(
+        id="e", personas=personas, third_party_products=products,
+        scenarios=scenarios, current_licenses=lines, workshop_date=workshop,
+        microsoft_renewal_date=ms_renewal, horizon_years=horizon,
+    )).rollup.headline
+
+
+@pytest.mark.parametrize("when,expected", [
+    (date(2026, 10, 8), (0, date(2026, 10, 8), False)),    # renews at the workshop
+    (date(2026, 10, 9), (1, date(2026, 10, 9), False)),    # a day later: next month
+    (date(2027, 3, 5), (5, date(2027, 3, 5), False)),      # before the 8th: month 5
+    (date(2027, 3, 20), (6, date(2027, 3, 20), False)),    # after the 8th: month 6
+    (date(2025, 12, 1), (2, date(2026, 12, 1), False)),    # past: next anniversary
+    (date(2024, 2, 29), (5, date(2027, 2, 28), False)),    # leap day rolls to the 28th
+    (None, (12, date(2027, 10, 8), True)),                 # missing: assumed 12
+])
+def test_start_month_counts_whole_months_from_the_workshop(when, expected):
+    assert start_month(WORKSHOP, when) == expected
+
+
+def test_add_months_clamps_to_the_month_length():
+    assert add_months(date(2027, 1, 31), 1) == date(2027, 2, 28)
+    assert add_months(date(2024, 1, 31), 1) == date(2024, 2, 29)
+    assert add_months(date(2026, 11, 30), 3) == date(2027, 2, 28)
+
+
+def test_no_workshop_date_assumes_every_renewal():
+    assert start_month(None, date(2027, 1, 1)) == (12, None, True)
+
+
+def _identity_quick_win(renewal):
+    """kw (100) already holds E3 covering identity; Okta ($12,000, 100 seats)
+    duplicates it — a $12,000/yr quick win."""
+    kw = Persona(id="kw", name="KW", headcount=100)
+    e3 = CurrentLicenseLine(quantity_assigned=100, unit_price_paid_annual=D("100"),
+                            persona_ids=("kw",), covered_outcome_ids=frozenset({IDENTITY}))
+    okta = ThirdPartyProduct(id="okta", name="Okta", annual_cost=D("12000"),
+                             covered_count=100, renewal_date=renewal,
+                             delivered_outcome_ids=frozenset({IDENTITY}),
+                             persona_ids=frozenset({"kw"}))
+    return kw, e3, okta
+
+
+def test_duplicate_spend_starts_at_the_tools_renewal():
+    kw, e3, okta = _identity_quick_win("2027-04-08")      # month 6
+    h = _timed([kw], [okta], [], [e3])
+    assert h.horizon_months == 36
+    assert h.run_rate_annual == D("12000.00")
+    # 30 of 36 months: 12,000 × 30 / 12.
+    assert h.duplicate_spend_amount == D("30000.00")
+    assert h.consolidation_amount == D("0.00")
+    assert h.overlicensing_amount == D("0.00")
+    assert h.amount == D("30000.00") and h.direction == "saved"
+    (item,) = h.items
+    assert (item.kind, item.start_month, item.months_counted, item.date_assumed) == \
+        ("quick_win", 6, 30, False)
+
+
+def test_a_missing_tool_renewal_is_assumed_a_year_out():
+    kw, e3, okta = _identity_quick_win(None)
+    h = _timed([kw], [okta], [], [e3])
+    assert h.duplicate_spend_amount == D("24000.00")      # 24 of 36 months
+    assert h.items[0].date_assumed and h.items[0].timed_by == "2027-10-08"
+
+
+def test_a_renewal_past_the_horizon_counts_nothing_but_is_listed():
+    kw, e3, okta = _identity_quick_win("2028-01-08")      # month 15
+    h = _timed([kw], [okta], [], [e3], horizon=1)          # 12 months
+    assert h.amount == D("0.00") and h.direction == "none"
+    assert h.items[0].months_counted == 0 and h.items[0].start_month == 15
+
+
+def _upgrade_case(edr_renewal="2027-06-08", mail_renewal="2028-06-08", tools=True):
+    """kw (100) on O365 E3 ($240/yr, covers nothing mapped) moves to E5 ($480/yr),
+    which replaces an EDR tool ($6,000) and a mail-security tool ($3,000)."""
+    kw = Persona(id="kw", name="KW", headcount=100)
+    o365 = CurrentLicenseLine(quantity_assigned=100, unit_price_paid_annual=D("240"),
+                              persona_ids=("kw",))
+    products = [
+        ThirdPartyProduct(id="edr", name="EDR", annual_cost=D("6000"), covered_count=100,
+                          renewal_date=edr_renewal,
+                          delivered_outcome_ids=frozenset({ENDPOINT}),
+                          persona_ids=frozenset({"kw"})),
+        ThirdPartyProduct(id="mail", name="Mail", annual_cost=D("3000"), covered_count=100,
+                          renewal_date=mail_renewal,
+                          delivered_outcome_ids=frozenset({EMAIL_SEC}),
+                          persona_ids=frozenset({"kw"})),
+    ] if tools else []
+    e5 = PersonaScenario(id="s", persona_id="kw", target_sku_reference="E5",
+                         target_unit_price_annual=D("480"),
+                         target_covered_outcome_ids=frozenset({ENDPOINT, EMAIL_SEC}))
+    return [kw], products, [e5], [o365]
+
+
+def test_a_microsoft_increase_starts_when_the_first_replaced_tool_renews():
+    h = _timed(*_upgrade_case())
+    by_kind = {i.kind: i for i in h.items if i.kind != "tool_credit"}
+    ms = by_kind["microsoft_increase"]
+    # +$24,000/yr of Microsoft from month 8 (the EDR renewal, the earlier of the two).
+    assert (ms.annual_amount, ms.start_month, ms.amount) == \
+        (D("-24000.00"), 8, D("-56000.00"))
+    credits = {i.third_party_product_id: i for i in h.items if i.kind == "tool_credit"}
+    assert (credits["edr"].start_month, credits["edr"].amount) == (8, D("14000.00"))
+    assert (credits["mail"].start_month, credits["mail"].amount) == (20, D("4000.00"))
+    assert h.consolidation_amount == D("-38000.00")
+    assert h.run_rate_annual == D("-15000.00")
+    assert h.direction == "added"
+
+
+def test_a_microsoft_increase_replacing_no_tool_starts_on_day_one():
+    h = _timed(*_upgrade_case(tools=False))
+    (ms,) = h.items
+    assert (ms.kind, ms.start_month, ms.amount) == ("microsoft_increase", 0, D("-72000.00"))
+
+
+def _reduction_case(line_b_renewal=None):
+    """kw (100) holds two lines ($400 and $200/yr) and moves to a $300/yr plan: a
+    $30,000/yr Microsoft reduction."""
+    kw = Persona(id="kw", name="KW", headcount=100)
+    a = CurrentLicenseLine(id="a", quantity_assigned=100, unit_price_paid_annual=D("400"),
+                           persona_ids=("kw",), renewal_date=date(2027, 1, 8))  # month 3
+    b = CurrentLicenseLine(id="b", quantity_assigned=100, unit_price_paid_annual=D("200"),
+                           persona_ids=("kw",), renewal_date=line_b_renewal)
+    s = PersonaScenario(id="s", persona_id="kw", target_sku_reference="P",
+                        target_unit_price_annual=D("300"))
+    return [kw], [], [s], [a, b]
+
+
+def test_a_microsoft_reduction_waits_for_the_latest_line_renewal():
+    # Line b inherits the agreement's renewal (month 9), later than line a's (3).
+    h = _timed(*_reduction_case(), ms_renewal=date(2027, 7, 8))
+    (ms,) = h.items
+    assert (ms.kind, ms.annual_amount, ms.start_month) == \
+        ("microsoft_reduction", D("30000.00"), 9)
+    assert ms.amount == D("67500.00") and ms.timed_by == "2027-07-08"
+    assert not ms.date_assumed
+
+
+def test_a_reduction_with_no_agreement_date_assumes_a_year():
+    h = _timed(*_reduction_case())
+    (ms,) = h.items
+    assert (ms.start_month, ms.date_assumed, ms.amount) == (12, True, D("60000.00"))
+
+
+def test_a_lines_own_renewal_overrides_the_agreement():
+    h = _timed(*_reduction_case(line_b_renewal=date(2026, 12, 8)),
+               ms_renewal=date(2027, 7, 8))
+    # a: month 3, b: month 2 (its own date wins over the agreement's month 9).
+    assert h.items[0].start_month == 3
+
+
+def test_out_of_scope_moves_are_not_in_the_headline():
+    personas, products, scenarios, lines = _upgrade_case()
+    scenarios = [replace(scenarios[0], in_scope=False)]
+    h = _timed(personas, products, scenarios, lines)
+    assert h.items == [] and h.amount == D("0.00")
+
+
+def test_overlicensing_counts_only_seats_confirmed_not_needed():
+    lines = [
+        CurrentLicenseLine(id="l1", sku_reference="E3", quantity_purchased=120,
+                           quantity_assigned=100, unit_price_paid_annual=D("240"),
+                           unused_seats_answer=UnusedSeatsAnswer.NOT_NEEDED),
+        CurrentLicenseLine(id="l2", sku_reference="F3", quantity_purchased=50,
+                           quantity_assigned=40, unit_price_paid_annual=D("100"),
+                           unused_seats_answer=UnusedSeatsAnswer.INTENDED),
+        CurrentLicenseLine(id="l3", sku_reference="BP", quantity_purchased=30,
+                           quantity_assigned=30, unit_price_paid_annual=D("264")),
+        CurrentLicenseLine(id="l4", sku_reference="E5", quantity_purchased=15,
+                           quantity_assigned=10, unit_price_paid_annual=D("100")),
+    ]
+    h = _timed([], [], [], lines, ms_renewal=date(2027, 4, 8))   # month 6
+    # Only l1: 20 seats × $240 = $4,800/yr for 30 of 36 months.
+    assert h.overlicensing_amount == D("12000.00") and h.amount == D("12000.00")
+    (item,) = h.items
+    assert (item.kind, item.license_id, item.start_month) == ("unused_seats", "l1", 6)
+    listed = {u.license_id: (u.unused_seats, u.annual_value, u.answer)
+              for u in h.unused_seat_lines}
+    # Intended and unanswered seats are shown, never counted; l3 has none unused.
+    assert listed == {"l1": (20, D("4800.00"), "NotNeeded"),
+                      "l2": (10, D("1000.00"), "Intended"),
+                      "l4": (5, D("500.00"), None)}
+
+
+def test_timed_headline_equals_run_rate_when_everything_renews_at_the_workshop():
+    """With every date at the workshop, nothing waits: the headline is the untimed
+    total opportunity (quick wins − move value) × the horizon."""
+    kw, e3, okta = _identity_quick_win(WORKSHOP.isoformat())
+    edr = ThirdPartyProduct(id="edr", name="EDR", annual_cost=D("6000"), covered_count=100,
+                            renewal_date=WORKSHOP.isoformat(),
+                            delivered_outcome_ids=frozenset({ENDPOINT}),
+                            persona_ids=frozenset({"kw"}))
+    s = PersonaScenario(id="s", persona_id="kw", target_sku_reference="E5",
+                        target_unit_price_annual=D("150"),
+                        target_covered_outcome_ids=frozenset({IDENTITY, ENDPOINT}))
+    res = compute(Engagement(id="e", personas=[kw], third_party_products=[okta, edr],
+                             scenarios=[s], current_licenses=[e3],
+                             workshop_date=WORKSHOP, microsoft_renewal_date=WORKSHOP))
+    r, h = res.rollup, res.rollup.headline
+    untimed = r.quick_win_savings_annual - r.move_incremental_delta_annual
+    assert h.run_rate_annual == untimed
+    assert h.amount == untimed * 3
+    assert h.duplicate_spend_amount == r.quick_win_savings_annual * 3
+
+
+def test_a_microsoft_increase_is_not_pulled_forward_by_a_quick_win():
+    """A duplicate tool the CURRENT licensing already covers retires without the
+    move, so its earlier renewal must not start the upgrade's added cost."""
+    kw, e3, okta = _identity_quick_win("2026-12-08")          # quick win, month 2
+    edr = ThirdPartyProduct(id="edr", name="EDR", annual_cost=D("6000"), covered_count=100,
+                            renewal_date="2027-06-08",          # month 8
+                            delivered_outcome_ids=frozenset({ENDPOINT}),
+                            persona_ids=frozenset({"kw"}))
+    e5 = PersonaScenario(id="s", persona_id="kw", target_sku_reference="E5",
+                         target_unit_price_annual=D("400"),
+                         target_covered_outcome_ids=frozenset({IDENTITY, ENDPOINT}))
+    h = _timed([kw], [okta, edr], [e5], [e3])
+    ms = next(i for i in h.items if i.kind == "microsoft_increase")
+    assert ms.start_month == 8 and ms.annual_amount == D("-30000.00")
+
+
+def test_a_microsoft_increase_whose_move_retires_only_quick_wins_starts_on_day_one():
+    kw, e3, okta = _identity_quick_win("2027-06-08")
+    e5 = PersonaScenario(id="s", persona_id="kw", target_sku_reference="E5",
+                         target_unit_price_annual=D("400"),
+                         target_covered_outcome_ids=frozenset({IDENTITY}))
+    h = _timed([kw], [okta], [e5], [e3])
+    ms = next(i for i in h.items if i.kind == "microsoft_increase")
+    assert ms.start_month == 0

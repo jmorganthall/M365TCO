@@ -150,56 +150,7 @@ export default function Readout({ engagement }) {
         </div>
         <div className="hero-block">
           <div>
-            {(() => {
-              const horizon = engagement.modeling_horizon_years || 3
-              const qw = Number(r.quick_win_savings_annual) || 0
-              const movesValue = -(Number(r.move_incremental_delta_annual) || 0)
-              const total = qw + movesValue // positive = saved per year
-              const word = total > 0 ? `saved over ${horizon * 12} months`
-                : total < 0 ? `added cost over ${horizon * 12} months` : 'no net change'
-              return (
-                <>
-                  <div className="muted">Total opportunity · all figures over {horizon * 12} months · quick wins + licensing moves · {engagement.currency} <PricingBadge /></div>
-                  <div className={`headline headline-xl ${total > 0 ? 'pos' : ''}`}>
-                    {usd0(total * horizon)} <span style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--muted)' }}>{word}</span>
-                  </div>
-                  <div className="muted">{usd0(total)} per year</div>
-                  {(() => {
-                    // Share of the total per lever. total = quick wins + moves,
-                    // so the moves' share is the complement — always sums to 100,
-                    // no 99/101 rounding. Only meaningful on a net saving.
-                    const showPct = total > 0
-                    const qwPct = showPct ? Math.round(qw / total * 100) : 0
-                    const movesPct = 100 - qwPct
-                    // A share opposing the total (a net investment) shows in
-                    // parentheses, matching the move amounts' finance notation.
-                    const pct = (p) => showPct
-                      ? <span className="part-pct">{p < 0 ? `(${Math.abs(p)}%)` : `${p}%`}</span>
-                      : null
-                    return (
-                      <>
-                        {qw > 0 && (
-                          <div className="popcheck hero-part" style={{ marginTop: '.5rem' }}>
-                            <div className="hero-part-main">
-                              ① Retire duplicate tools today — no licensing change:{' '}
-                              <b className="pos">{usd0(qw * horizon)}</b>
-                            </div>
-                            {pct(qwPct)}
-                          </div>
-                        )}
-                        <div className="popcheck hero-part" style={{ marginTop: '.4rem' }}>
-                          <div className="hero-part-main">
-                            {qw > 0 ? '② ' : ''}Move each persona to right-sized licensing:
-                            <MoveSummary scenarios={inScope} horizon={horizon} />
-                          </div>
-                          {pct(movesPct)}
-                        </div>
-                      </>
-                    )
-                  })()}
-                </>
-              )
-            })()}
+            <TimedHeadline h={r.headline} inScope={inScope} currency={engagement.currency} />
           </div>
         </div>
         <div className="popcheck">
@@ -260,6 +211,9 @@ export default function Readout({ engagement }) {
           </div>
         </details>
       )}
+
+      <TimingTable h={r.headline} />
+      <UnusedLicences h={r.headline} />
 
       {r.quick_wins && r.quick_wins.length > 0 && (
         <div className="card" style={{ borderColor: 'var(--pos, #127436)' }}>
@@ -650,19 +604,88 @@ function NarrativeBlock({ n, eid, onSaved, onError }) {
 // The moves under the headline: one plain line per in-scope persona, showing
 // the move's OWN value (quick-win credit stripped, so ① and ② never
 // double-count) — "Baseline (1000) → Microsoft 365 E5 (adds $22,560/yr)".
-function MoveSummary({ scenarios, horizon = 1 }) {
+// The headline, timed by renewals (ENGINE_SPEC 6.11) — computed once in the engine;
+// this only displays it. Savings-positive: ① duplicate spend today, ② consolidation
+// (each persona's move), ③ over-licensing. Every figure is over the same horizon,
+// each counted from the renewal that unlocks it, so the parts sum to the headline.
+function TimedHeadline({ h, inScope, currency }) {
+  if (!h) return null
+  const months = h.horizon_months
+  const total = Number(h.amount) || 0
+  const dup = Number(h.duplicate_spend_amount) || 0
+  const cons = Number(h.consolidation_amount) || 0
+  const over = Number(h.overlicensing_amount) || 0
+  const runRate = Number(h.run_rate_annual) || 0
+  const word = total > 0 ? `saved over ${months} months`
+    : total < 0 ? `added cost over ${months} months` : 'no net change'
+  // Shares of the total, only when every part is a saving (a share of a cost, or
+  // a part over 100% beside one, reads as nonsense); the last shown part takes
+  // the rounding remainder so they always sum to 100%.
+  const parts = [['dup', dup], ['cons', cons], ['over', over]].filter(([k, v]) => k === 'cons' || v)
+  const shares = {}
+  if (total > 0 && parts.every(([, v]) => v >= 0)) {
+    let running = 0
+    parts.forEach(([k, v], i) => {
+      const p = i === parts.length - 1 ? 100 - running : Math.round(v / total * 100)
+      shares[k] = p; running += p
+    })
+  }
+  const pct = (k) => k in shares
+    ? <span className="part-pct">{shares[k] < 0 ? `(${Math.abs(shares[k])}%)` : `${shares[k]}%`}</span> : null
+  const marks = parts.length > 1 ? ['①', '②', '③'] : []
+  let n = 0
+  const mark = () => (marks[n++] ? `${marks[n - 1]} ` : '')
+  const byPersona = {}
+  for (const i of h.items || []) {
+    if (i.sub_line === 'consolidation' && i.persona_id) {
+      byPersona[i.persona_id] = (byPersona[i.persona_id] || 0) + Number(i.amount)
+    }
+  }
+  return (
+    <>
+      <div className="muted">Total opportunity · all figures over {months} months, each from its renewal · {currency} <PricingBadge /></div>
+      <div className={`headline headline-xl ${total > 0 ? 'pos' : ''}`}>
+        {usd0(total)} <span style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--muted)' }}>{word}</span>
+      </div>
+      <div className="muted">{usd0(runRate)} per year {runRate > 0 ? 'saved' : runRate < 0 ? 'added' : ''} once every contract has renewed
+        {h.assumed_dates > 0 && <> · <span className="warn">{h.assumed_dates} renewal date{h.assumed_dates === 1 ? '' : 's'} assumed</span></>}</div>
+      {dup !== 0 && (
+        <div className="popcheck hero-part" style={{ marginTop: '.5rem' }}>
+          <div className="hero-part-main">{mark()}Retire duplicate tools — no licensing change:{' '}
+            <b className="pos">{usd0(dup)}</b></div>
+          {pct('dup')}
+        </div>
+      )}
+      <div className="popcheck hero-part" style={{ marginTop: '.4rem' }}>
+        <div className="hero-part-main">{mark()}Move each persona to right-sized licensing:
+          <MoveSummary scenarios={inScope} amounts={byPersona} />
+        </div>
+        {pct('cons')}
+      </div>
+      {over !== 0 && (
+        <div className="popcheck hero-part" style={{ marginTop: '.4rem' }}>
+          <div className="hero-part-main">{mark()}Drop unused licences the customer confirmed aren't needed:{' '}
+            <b className="pos">{usd0(over)}</b></div>
+          {pct('over')}
+        </div>
+      )}
+    </>
+  )
+}
+
+function MoveSummary({ scenarios, amounts }) {
   if (!scenarios.length) {
     return <div className="muted">No in-scope scenarios yet — set a target bundle per persona on the Scenarios tab.</div>
   }
   return (
     <ul className="moves">
       {scenarios.map((s) => {
-        // Hero figures share one horizon so the components sum to the headline.
-        const v = (Number(s.move_incremental_delta_annual ?? s.delta_annual) || 0) * horizon
+        // Savings-positive, over the horizon, each part from its renewal.
+        const v = Number(amounts[s.persona_id]) || 0
         return (
           <li key={s.scenario_id}>
-            <span className={`move-amt ${v < 0 ? 'pos' : v === 0 ? 'muted' : ''}`}>
-              {v < 0 ? usd0(v) : v > 0 ? `(${usd0(v)})` : '$0'}
+            <span className={`move-amt ${v > 0 ? 'pos' : v === 0 ? 'muted' : ''}`}>
+              {v > 0 ? usd0(v) : v < 0 ? `(${usd0(v)})` : '$0'}
             </span>
             <span className="move-desc">
               <b>{s.persona_name}</b> ({s.headcount}) → <b>{s.target_label || s.target_sku_reference}</b>
@@ -671,6 +694,72 @@ function MoveSummary({ scenarios, horizon = 1 }) {
         )
       })}
     </ul>
+  )
+}
+
+// How the headline is timed: every timed amount, its start, and whether its
+// date was assumed — the engine's own items, displayed as-is.
+const KIND_WORD = {
+  quick_win: 'duplicate tool retired at its renewal',
+  tool_credit: 'tool retired at its renewal',
+  microsoft_increase: 'Microsoft increase, from the first tool only the move retires',
+  microsoft_reduction: 'Microsoft reduction, at the Microsoft renewal',
+  unused_seats: 'unused licences dropped at the Microsoft renewal',
+}
+function TimingTable({ h }) {
+  if (!h || !(h.items || []).length) return null
+  return (
+    <details className="card">
+      <summary style={{ cursor: 'pointer', listStyle: 'revert' }}><b>How the headline is timed</b>{' '}
+        <small className="muted">— each amount counts from its renewal to the end of the {h.horizon_months}-month horizon</small></summary>
+      <table style={{ marginTop: '.5rem' }}>
+        <thead><tr><th>Item</th><th>Starts</th><th className="num">Months</th>
+          <th className="num">Per year</th><th className="num">Over the horizon</th></tr></thead>
+        <tbody>
+          {h.items.map((i) => (
+            <tr key={i.item_key}>
+              <td>{i.label}<div className="muted" style={{ fontSize: '.78rem' }}>{KIND_WORD[i.kind]}</div></td>
+              <td>{i.timed_by || '—'}{i.date_assumed && <span className="badge warn" style={{ marginLeft: 4 }}
+                title="No renewal date was given, so one year after the workshop is assumed">assumed</span>}</td>
+              <td className="num">{i.months_counted}</td>
+              <td className={`num ${Number(i.annual_amount) > 0 ? 'pos' : ''}`}>{usd(i.annual_amount)}</td>
+              <td className={`num ${Number(i.amount) > 0 ? 'pos' : ''}`}>{usd(i.amount)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <small className="src">Savings positive, added costs negative. A missing renewal date is assumed to be
+        one year after the workshop — enter it on Customer Info (Microsoft), the licence line, or the
+        third-party tool.</small>
+    </details>
+  )
+}
+
+const UNUSED_ANSWER = {
+  NotNeeded: 'not needed — counted as over-licensing',
+  Intended: 'kept on purpose — not counted',
+  '': 'not answered — left out (answer it on the licence line)',
+}
+function UnusedLicences({ h }) {
+  const rows = h?.unused_seat_lines || []
+  if (!rows.length) return null
+  return (
+    <div className="card">
+      <h2 style={{ marginTop: 0 }}>Unused licences</h2>
+      <table>
+        <thead><tr><th>Licence</th><th className="num">Unused seats</th><th className="num">Per year</th><th>Customer's answer</th></tr></thead>
+        <tbody>
+          {rows.map((u) => (
+            <tr key={u.license_id}>
+              <td>{u.sku_reference || '—'}</td>
+              <td className="num">{u.unused_seats}</td>
+              <td className="num">{usd(u.annual_value)}</td>
+              <td className={u.answer ? '' : 'warn'}>{UNUSED_ANSWER[u.answer || '']}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
