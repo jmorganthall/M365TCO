@@ -13,6 +13,10 @@
 > - When the rebuild is complete, this document replaces `DATA_MODEL.md` and
 >   `DATA_MAP.md`, and the rule changes in §13 are applied to
 >   `DATA_ARCHITECTURE.md` and `CLAUDE.md`.
+> - Decisions D19–D22 and the columns and tables marked *(walkthrough)* come from
+>   the guided-walkthrough design, [`WALKTHROUGH.md`](WALKTHROUGH.md) §12. Those
+>   pieces may be built on today's schema ahead of the rebuild, in exactly the
+>   shape given here.
 
 ---
 
@@ -35,9 +39,13 @@
 | D13 | **Everything is per person.** No device or unit pricing. | §4.5 |
 | D14 | **Proposals.** An engagement holds one or more proposals; each owns its future state. One is primary. | §5 |
 | D15 | **Delete means archive.** Archived rows leave the math and can be restored. Seeding never resurrects them. | §1.3 |
-| D16 | **One headline:** the net change × the modelling horizon, computed once in the engine. | §7 |
+| D16 | **One headline,** computed once in the engine: three sub-lines (duplicate spend today, consolidation, over-licensing), each timed by the renewal that unlocks it and summed month by month over the modelling horizon. | §7 |
 | D17 | **AI-provided values are marked** until a person confirms them. | §1.4 |
 | D18 | **Viewing never writes.** | §1.2 |
+| D19 | **Savings start when a contract allows it.** A tool's saving starts at its renewal; Microsoft increases start when the first tool only the move can retire renews; Microsoft reductions wait for the Microsoft renewal. A missing date is assumed one year after the workshop date. | §7.1 |
+| D20 | **Unused seats are answered, not assumed.** Seats the customer confirms are not needed are over-licensing; seats kept on purpose are noted and counted nowhere; unanswered seats are left out. | §4.4, §7 |
+| D21 | **A new outcome is a confirmed gap.** An outcome is claimed as gained only when the customer confirms nothing delivers it today; "covered outside this inventory" is never claimed or costed; an unanswered gap is not claimed. | §4.8, §6.3 |
+| D22 | **AI is optional.** Nothing the engine, the interpreter or an export needs depends on an AI call. | §13 |
 
 ---
 
@@ -212,6 +220,10 @@ customer as they are and what they need.
   `profile_confirmed_by` / `profile_confirmed_at`.
 - `presented_snapshot_id` (FK `engagement_snapshots`, nullable): the baseline for
   "changed since workshop" (§8).
+- `microsoft_renewal_date` (date, nullable) *(walkthrough)*: when the customer's
+  Microsoft agreement renews. The default for every licence line (§4.4). `NULL` =
+  not given; the interpreted layer assumes `workshop_date` + 12 months and labels it
+  **assumed** (§7.1).
 
 ### 4.2 `personas`
 
@@ -250,6 +262,13 @@ entry for the operation. Scenario add-ons are copied too.
 - `segment`, `term_duration`, `billing_plan`: nullable = inherit from the engagement.
 - `price_override_annual` (nullable, CHECK ≥ 0): the negotiated or typed price per
   seat per year. `NULL` = follow the live list price (D9).
+- `renewal_date` (date, nullable) *(walkthrough)*: this line's own renewal when it
+  differs from the agreement's. `NULL` = inherit `engagements.microsoft_renewal_date`.
+- `unused_seats_answer` ∈ {`Intended`, `NotNeeded`}, nullable *(walkthrough)*: the
+  customer's answer about the line's unused seats (`quantity_purchased` −
+  `quantity_assigned`). `Intended` = kept on hand on purpose (noted, never counted);
+  `NotNeeded` = over-licensing (§7); `NULL` = not answered (left out, and a finding
+  while unused seats exist).
 - `source_tag`, confirmation columns.
 
 **`current_license_personas`** — PK (`license_id`, `persona_id`).
@@ -290,6 +309,22 @@ the customer's own tools.
 
 Effective Microsoft coverage for an engagement = verified library rows + `add`
 exceptions − `remove` exceptions (§6.2).
+
+### 4.8 `coverage_gap_answers` *(walkthrough)*
+
+The customer's answer about an outcome that nothing in the inventory delivers to a
+persona today (the Coverage Check, [`WALKTHROUGH.md`](WALKTHROUGH.md) step 5).
+Engagement-owned; it describes the customer's current state, so every proposal
+reads the same answers.
+- PK (`persona_id`, `outcome_id`).
+- `answer` ∈ {`NotDeliveredToday`, `CoveredOutsideInventory`}.
+  - `NotDeliveredToday`: confirmed gap. If a move delivers it, it is **Gained** (§6.3).
+  - `CoveredOutsideInventory`: something the engagement doesn't cost delivers it.
+    It counts as delivered today, is never claimed as gained, and is never costed.
+- No row = not answered: never claimed as gained (D21), and a finding while a move
+  would deliver it.
+- `source_tag`, common columns.
+- Replaces today's `$0 "Covered elsewhere (out of scope)"` placeholder tool (§12).
 
 ---
 
@@ -377,7 +412,10 @@ output is stored in the tables below, read-only in the GUI and labelled derived.
 **`i_today`** — PK (`persona_id`, `outcome_id`). One row for every outcome the
 persona needs or gets today.
 - `needed` (bool) and `needed_source` ∈ {`required`, `default_today`}.
-- `delivered_today`, `by_microsoft`, `by_tool` (bools).
+- `delivered_today`, `by_microsoft`, `by_tool`, `by_outside` (bools). `by_outside`
+  *(walkthrough)* = the persona's `coverage_gap_answers` row says
+  `CoveredOutsideInventory`.
+- `gap_answer` *(walkthrough)*: the persona's answer for this outcome, or `NULL`.
 
 **`i_today_sources`** — what delivers each row today: (`persona_id`, `outcome_id`)
 plus exactly one of `license_id` or `product_id` (CHECK exactly one).
@@ -385,7 +423,8 @@ plus exactly one of `license_id` or `product_id` (CHECK exactly one).
 **`i_proposed`** — PK (`proposal_id`, `persona_id`, `outcome_id`). One row for every
 outcome the persona needs, gets today, or gets after the move under this proposal.
 - `delivered_after`, `by_target`, `by_kept_tool` (bools), `in_scope` (bool).
-- `status` ∈ {`Kept`, `MovedToMicrosoft`, `Gained`, `Lost`, `Gap`, `Pending`}.
+- `status` ∈ {`Kept`, `MovedToMicrosoft`, `Gained`, `Unconfirmed`, `Lost`, `Gap`,
+  `Pending`}.
 
 **`i_proposed_sources`** — what delivers each row after the move: exactly one of
 `bundle_key` (base or add-on) or `product_id` (a kept tool).
@@ -398,8 +437,10 @@ tool that applies to the persona: `retired`, `quick_win`, `forced` (bools).
 1. **Needed** — the persona's `persona_requirements`. If it has none, every outcome
    it gets today (`needed_source = default_today`).
 2. **Delivered today** — by a licence line that applies to the persona and whose
-   bundle's effective coverage includes the outcome, or by a tool that applies to
-   the persona and whose ratified coverage includes it.
+   bundle's effective coverage includes the outcome, by a tool that applies to
+   the persona and whose ratified coverage includes it, or *(walkthrough)* by
+   something outside the inventory (`coverage_gap_answers` =
+   `CoveredOutsideInventory`).
 3. **Delivered after the move** — by the scenario's base bundle or add-ons (effective
    coverage), or by a tool the persona keeps. A persona with no scenario in the
    proposal keeps what it has today.
@@ -412,9 +453,12 @@ tool that applies to the persona: `retired`, `quick_win`, `forced` (bools).
 6. **Status**
    - `Kept`: delivered today and after, and not a move from tools to Microsoft.
    - `MovedToMicrosoft`: delivered today only by tools; delivered after by Microsoft.
-   - `Gained`: delivered by nothing today (neither Microsoft nor a tool); delivered
+   - `Gained`: delivered by nothing today (neither Microsoft nor a tool), confirmed
+     as a gap (`coverage_gap_answers` = `NotDeliveredToday`, D21), and delivered
      after. This is what the readout calls a new outcome: "This persona gains EDR
      and Email Security, which neither Microsoft nor a third party delivered before."
+   - `Unconfirmed` *(walkthrough)*: delivered by nothing today and delivered after,
+     but the gap is not answered. Never claimed as new; raises `gap_unanswered`.
    - `Lost`: delivered today, not after. Highlighted when `needed`.
    - `Gap`: needed, delivered neither today nor after.
    - `Pending`: the persona's scenario is incomplete.
@@ -449,6 +493,12 @@ and quick-win rules; the difference is one definition used everywhere.
 | `unverified_coverage_adopted` | an engagement relies on an unverified library row via an exception |
 | `ai_unconfirmed` | a counted value is still `AISuggestedUnconfirmed` |
 | `decision_not_applicable` | a `tool_decisions` row currently has no effect |
+| `renewal_date_assumed` *(walkthrough)* | a tool, a licence line or the agreement has no renewal date, so one year after the workshop is assumed |
+| `unused_seats_unanswered` *(walkthrough)* | a line has unused seats and no `unused_seats_answer` |
+| `gap_unanswered` *(walkthrough)* | an `i_proposed` row is `Unconfirmed` |
+| `tool_incomplete` *(walkthrough)* | a tool has no cost, no people covered, or no ratified outcomes, so it is left out of the numbers and the readout |
+| `residual_unanswered` *(walkthrough)* | a tool is partly replaced and its keep-or-retire decision is not made, so it is assumed kept |
+| `headcount_vs_employees` *(walkthrough)* | the personas' total headcount differs from the engagement's `employee_count` |
 
 Subjects are typed nullable FKs (`persona_id`, `license_id`, `product_id`,
 `scenario_id`, `outcome_id`), not a free-text reference.
@@ -471,7 +521,8 @@ Written only by the engine from the interpreted layer, per proposal.
 
 | Table | Key | Holds |
 | --- | --- | --- |
-| `c_proposal_results` | `proposal_id` | rollup: current Microsoft and third-party spend, target spend, quick wins, the spend bridge components, net change per year; **the headline** (`headline_months` = horizon × 12, `headline_amount` = net change × horizon, `headline_direction` ∈ {`saved`, `added`, `none`}); inputs fingerprint; engine version |
+| `c_proposal_results` | `proposal_id` | rollup: current Microsoft and third-party spend, target spend, quick wins, the spend bridge components, net change per year; **the headline** (`headline_months` = horizon × 12; the three sub-line amounts `duplicate_spend_amount`, `consolidation_amount`, `overlicensing_amount`; `headline_amount` = their sum; `headline_direction` ∈ {`saved`, `added`, `none`}), each timed per §7.1; inputs fingerprint; engine version |
+| `c_timing_items` *(walkthrough)* | (`proposal_id`, `item_key`) | every timed amount behind the headline: sub-line, subject (`product_id`, `persona_id` or `license_id`), annual amount, start month, the date it was timed by and whether that date was assumed, months counted, amount over the horizon |
 | `c_scenario_results` | (`proposal_id`, `persona_id`) | current and target spend, delta, offsets |
 | `c_tool_results` | (`proposal_id`, `product_id`) | displaced people, disposition, residual people and cost |
 | `c_limit_results` | (`proposal_id`, `limit_key`) | seats counted against each licence cap (current + in-scope proposed), the cap, and whether it's exceeded |
@@ -482,6 +533,26 @@ readout display it; none computes it.
 The best-bundle recommender and the pre-readout sanity check stay pure reads over
 the interpreted and calculated layers. They store nothing, and they use the same
 definitions as everything else (including Org-wide lines).
+
+### 7.1 The headline's sub-lines and their timing *(walkthrough)*
+
+| Sub-line | Annual amount | Starts at |
+| --- | --- | --- |
+| **Duplicate spend today** | each quick win's credit (definition 5, §6.3) | the tool's `renewal_date` |
+| **Consolidation** | each in-scope persona's move: its displaced-tool credits beyond the quick-win portion, less its Microsoft change (the move value of ENGINE_SPEC §6.8a, so no dollar is counted in both sub-lines) | each tool credit at that tool's `renewal_date`; a Microsoft **increase** when the first tool only the move can retire renews — a tool whose credit the move itself unlocks, since a quick win retires without it (day one if there is none); a Microsoft **reduction** at the Microsoft renewal of the persona's lines |
+| **Over-licensing** | each `NotNeeded` line's unused seats × its effective price | the line's Microsoft renewal |
+
+- **Months.** Month 0 is the `workshop_date`. An amount that starts at month *s*
+  counts for `max(0, horizon × 12 − s)` months at one twelfth of its annual
+  amount. `headline_amount` is the sum of every timed amount.
+- **Dates.** A date before the workshop is rolled forward a year at a time to its
+  next anniversary on or after the workshop. A missing date is assumed to be
+  `workshop_date` + 12 months, and the timing item is marked assumed (D19).
+- **The Microsoft renewal of a persona's lines** is the latest effective renewal
+  (line's own, else the agreement's) among the lines that apply to it, because a
+  reduction needs every line it touches to renew.
+- Rounding: amounts are kept to the cent per timing item; the sub-lines and the
+  headline are sums of rounded items, so every displayed total reconciles.
 
 ---
 
@@ -494,6 +565,9 @@ definitions as everything else (including Org-wide lines).
   Immutable (a sanctioned blob, §13).
 - The engagement's `presented_snapshot_id` points at the baseline.
 - Taking a snapshot reads only; it never writes to the engagement.
+- *(walkthrough)* Producing the customer PDF is a deliberate action, not a view: it
+  takes a snapshot, marks it Presented and points `presented_snapshot_id` at it, so
+  the numbers the customer was handed are always on record.
 
 **"Changed since workshop"** is derived on read by comparing the Presented
 snapshot with the current layers, and classifies every difference:
@@ -588,7 +662,7 @@ is in the engagement. Operational, short-lived.
 | --- | --- |
 | **Foreign keys, enforced** | every `*_id` and `*_key` column listed above |
 | **On delete** | `RESTRICT` between raw rows (archive is the delete); `CASCADE` only from an engagement purge and from raw → interpreted/calculated rows |
-| **Unique** | one scenario per (proposal, persona); one add-on per (scenario, bundle); one decision per (proposal, tool); one narrative per (proposal, persona); one coverage row per (tool, outcome) and per (bundle, outcome); one exception per (engagement, bundle, outcome); one primary proposal per engagement (partial) |
+| **Unique** | one scenario per (proposal, persona); one add-on per (scenario, bundle); one decision per (proposal, tool); one narrative per (proposal, persona); one coverage row per (tool, outcome) and per (bundle, outcome); one exception per (engagement, bundle, outcome); one primary proposal per engagement (partial); one gap answer per (persona, outcome) |
 | **Check** | headcount, quantities, costs and prices ≥ 0; `0 ≤ discount_pct < 1`; horizon 1–10; every fixed-choice column; exactly one source column in `i_today_sources` / `i_proposed_sources`; `applies_to = 'Personas'` rows must have tags (checked by the CRUD module, since tags are rows) |
 
 ---
@@ -614,6 +688,8 @@ is in the engagement. Operational, short-lived.
 | `scenario_narratives` | under Primary | edited rows (`source_tag = Estimate`) → `final_*`; the rest → `draft_*`; `persona_name` removed |
 | carve-out parent headcount | entered headcount restored | parent = today's headcount + the seats in its carve-outs |
 | `engagement_snapshots` | kept, labelled legacy (outputs only) | new snapshots use the §8 payload |
+| the `$0 "Covered elsewhere (out of scope)"` placeholder tool and its coverage rows | `coverage_gap_answers` = `CoveredOutsideInventory` for each (persona, outcome) it covered; the tool row archived | the placeholder is the one tool Coverage Check creates under that exact name; the migration report lists every row it converts |
+| gaps resolved before the walkthrough ("leave as new" wrote nothing) | no answer row | they read as `Unconfirmed` until answered (D21); the before/after report shows each persona's new outcomes that become unconfirmed |
 | `global_defaults` | `install_settings` | |
 
 **Order of the move:** capture the before/after export on the live instance; copy the
@@ -633,6 +709,9 @@ To `DATA_ARCHITECTURE.md` and `CLAUDE.md`:
 - **Add the three layers** and "only people write raw" as law.
 - **Add "multi-user always":** every write has an actor; no process-local state;
   no design that assumes a single user.
+- **Add "AI is optional" (D22):** the engine, the interpreter and every export work
+  with AI off. AI may suggest, enrich and narrate; a person's entry or confirmation
+  is always enough on its own.
 - **Sanctioned blobs:** add `change_records.before` / `after` and
   `engagement_snapshots.payload` (immutable records, never live state).
 - **Seeds:** seed files remain the versioned source for the library; seeding is an
@@ -672,6 +751,8 @@ erDiagram
 
     PERSONA ||--o{ PERSONA : "carved into"
     PERSONA ||--o{ PERSONA_REQUIREMENT : needs
+    PERSONA ||--o{ COVERAGE_GAP_ANSWER : "answers gaps"
+    OUTCOME ||--o{ COVERAGE_GAP_ANSWER : "gap for"
     OUTCOME ||--o{ PERSONA_REQUIREMENT : "needed by"
 
     CURRENT_LICENSE ||--o{ CURRENT_LICENSE_PERSONA : "applies to"
