@@ -29,6 +29,9 @@ def _computed_dict(db, engagement_id: str) -> dict:
     result["new_outcomes"] = compute.new_outcomes(db, engagement_id, result)
     result["dropped_capability"] = compute.dropped_capability(db, engagement_id, result)
     compute.attach_target_labels(db, engagement_id, result)
+    # The stored per-persona business narratives (operator-edited or AI-drafted),
+    # so the HTML/xlsx readouts and snapshots carry the business case too.
+    result["narratives"] = _narratives_response(_get_engagement(db, engagement_id))["narratives"]
     return result
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
