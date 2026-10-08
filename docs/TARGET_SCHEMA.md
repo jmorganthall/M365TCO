@@ -42,7 +42,7 @@
 | D16 | **One headline,** computed once in the engine: three sub-lines (duplicate spend today, consolidation, over-licensing), each timed by the renewal that unlocks it and summed month by month over the modelling horizon. | §7 |
 | D17 | **AI-provided values are marked** until a person confirms them. | §1.4 |
 | D18 | **Viewing never writes.** | §1.2 |
-| D19 | **Savings start when a contract allows it.** A tool's saving starts at its renewal; Microsoft increases start when the first tool they replace renews; Microsoft reductions wait for the Microsoft renewal. A missing date is assumed one year after the workshop date. | §7.1 |
+| D19 | **Savings start when a contract allows it.** A tool's saving starts at its renewal; Microsoft increases start when the first tool only the move can retire renews; Microsoft reductions wait for the Microsoft renewal. A missing date is assumed one year after the workshop date. | §7.1 |
 | D20 | **Unused seats are answered, not assumed.** Seats the customer confirms are not needed are over-licensing; seats kept on purpose are noted and counted nowhere; unanswered seats are left out. | §4.4, §7 |
 | D21 | **A new outcome is a confirmed gap.** An outcome is claimed as gained only when the customer confirms nothing delivers it today; "covered outside this inventory" is never claimed or costed; an unanswered gap is not claimed. | §4.8, §6.3 |
 | D22 | **AI is optional.** Nothing the engine, the interpreter or an export needs depends on an AI call. | §13 |
@@ -539,7 +539,7 @@ definitions as everything else (including Org-wide lines).
 | Sub-line | Annual amount | Starts at |
 | --- | --- | --- |
 | **Duplicate spend today** | each quick win's credit (definition 5, §6.3) | the tool's `renewal_date` |
-| **Consolidation** | each in-scope persona's move: its displaced-tool credits beyond the quick-win portion, less its Microsoft change (the move value of ENGINE_SPEC §6.8a, so no dollar is counted in both sub-lines) | each tool credit at that tool's `renewal_date`; a Microsoft **increase** when the first tool the persona retires renews (day one if it retires none); a Microsoft **reduction** at the Microsoft renewal of the persona's lines |
+| **Consolidation** | each in-scope persona's move: its displaced-tool credits beyond the quick-win portion, less its Microsoft change (the move value of ENGINE_SPEC §6.8a, so no dollar is counted in both sub-lines) | each tool credit at that tool's `renewal_date`; a Microsoft **increase** when the first tool only the move can retire renews — a tool whose credit the move itself unlocks, since a quick win retires without it (day one if there is none); a Microsoft **reduction** at the Microsoft renewal of the persona's lines |
 | **Over-licensing** | each `NotNeeded` line's unused seats × its effective price | the line's Microsoft renewal |
 
 - **Months.** Month 0 is the `workshop_date`. An amount that starts at month *s*

@@ -211,8 +211,10 @@ each saving by the contract that unlocks it:
   consolidation, starts at the tool's renewal date.
 - **Microsoft increases can start any time.** Microsoft lets a customer add seats or
   add-ons, or upgrade, mid-term. So a group's added Microsoft cost starts when the
-  first tool it replaces renews, because that is when there is something to retire. A
-  group that retires no tool starts its added cost on day one.
+  first tool only the move can retire renews, because that is when the upgrade is
+  needed. A duplicate tool (duplicate spend today) retires without the move, so it
+  does not pull the cost forward. A group whose move retires no such tool starts its
+  added cost on day one.
 - **Microsoft reductions wait for the Microsoft renewal.** Removing unused seats
   (over-licensing), or moving a group to a cheaper plan, starts at the Microsoft
   renewal date. That is the licence's own date if one is set, otherwise the
@@ -390,5 +392,6 @@ No change is needed for:
 These two rules were derived from the agreed principles but not discussed directly:
 
 1. A missing renewal date is assumed to be one year after the workshop date (§4).
-2. A group's added Microsoft cost starts when the first tool it replaces renews. A
-   group that retires no tool starts its added cost on day one (§4).
+2. A group's added Microsoft cost starts when the first tool only the move can retire
+   renews (a duplicate tool retires without the move, so it doesn't count). A group
+   whose move retires no such tool starts its added cost on day one (§4).
