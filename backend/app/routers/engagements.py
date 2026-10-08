@@ -29,6 +29,9 @@ def _computed_dict(db, engagement_id: str) -> dict:
     result["new_outcomes"] = compute.new_outcomes(db, engagement_id, result)
     result["dropped_capability"] = compute.dropped_capability(db, engagement_id, result)
     compute.attach_target_labels(db, engagement_id, result)
+    # The stored per-persona business narratives (operator-edited or AI-drafted),
+    # so the HTML/xlsx readouts and snapshots carry the business case too.
+    result["narratives"] = _narratives_response(_get_engagement(db, engagement_id))["narratives"]
     return result
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
@@ -41,10 +44,25 @@ def _get_engagement(db: Session, engagement_id: str) -> models.Engagement:
     return eng
 
 
-@router.get("", response_model=list[schemas.EngagementOut])
-def list_engagements(db: Session = Depends(get_db)):
+@router.get("", response_model=list[schemas.EngagementSummary])
+def list_engagements(q: str = "", limit: int = 20, db: Session = Depends(get_db)):
+    """Find engagements by customer name for the Open-engagement picker.
+
+    Returns only id, name and last-updated (EngagementSummary) — the full record is
+    fetched per engagement — so another customer's notes, profile and logo never
+    travel to a browser that is only looking for one name. `q` matches anywhere in
+    the name, case-insensitively; with no `q` the most recently updated come first.
+    """
+    stmt = select(models.Engagement)
+    q = q.strip()
+    if q:
+        # Typed % and _ are literal characters here, not LIKE wildcards.
+        literal = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        stmt = stmt.where(
+            models.Engagement.customer_name.ilike(f"%{literal}%", escape="\\"))
+    limit = max(1, min(limit, 100))
     return db.execute(
-        select(models.Engagement).order_by(models.Engagement.updated_at.desc())
+        stmt.order_by(models.Engagement.updated_at.desc()).limit(limit)
     ).scalars().all()
 
 

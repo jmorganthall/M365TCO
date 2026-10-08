@@ -34,7 +34,9 @@ Gotchas:
   for a third-party row) and read values from inputs.
 - Number fields commit on blur/Enter (`NumInput`), not per keystroke — `fill()`
   then `press("Enter")` and wait ~500ms for the save-and-reload round trip.
-- Navigation: click the engagement name in the left rail, then the step buttons
-  (`Baseline Data`, `Third-Party`, `Coverage Map`, …).
+- Navigation: there is no engagement list. Go straight to
+  `http://localhost:8471/#/e/<engagement id>/<step>`, or type part of the customer
+  name in the Open-engagement search box and click the result; then use the step
+  buttons (`Baseline Data`, `Third-Party`, `Coverage Map`, …).
 - The session DB is throwaway; aborted script runs leave rows behind — don't
   read a duplicate row as an app bug.
