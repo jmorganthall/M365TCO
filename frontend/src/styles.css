@@ -358,3 +358,11 @@ details.more[open] > summary { margin-bottom: .5rem; }
 .review-item { display: flex; gap: .6rem; align-items: flex-start; padding: .45rem 0; border-bottom: 1px solid var(--border); }
 .review-item:last-child { border-bottom: none; }
 .review-item .grow { flex: 1; }
+
+/* The unknown-licence card (WALKTHROUGH step 3): loud while a licence is unread. */
+.card.card-loud { border-color: var(--warn); box-shadow: inset 4px 0 0 var(--warn); }
+.licence-editor { margin-top: .5rem; padding-top: .5rem; border-top: 1px dashed var(--border); }
+.answered-licence { padding: .45rem 0; border-bottom: 1px solid var(--border); }
+.answered-licence:last-child { border-bottom: none; }
+.answered-licence .grow { flex: 1; min-width: 0; }
+button.badge.licence-flag { background: transparent; padding: .12rem .45rem; font-size: .72rem; border-radius: 999px; cursor: pointer; }

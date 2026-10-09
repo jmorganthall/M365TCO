@@ -15,8 +15,8 @@ from ..db import get_db
 from sqlalchemy import func
 
 from ..services import (
-    ai, ai_prompts, bundles as bundles_service, defaults, limits as limits_service,
-    secrets, seeds,
+    ai, ai_prompts, bundles as bundles_service, defaults, licence_names,
+    limits as limits_service, secrets, seeds,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -439,6 +439,67 @@ def suggest_coverage_all(engagement_id: str, db: Session = Depends(get_db)):
         "results": results,
         "errors": errors,
     }
+
+
+@router.post("/engagements/{engagement_id}/ai/suggest-licence-outcomes")
+def suggest_licence_outcomes(
+    engagement_id: str, payload: schemas.LicenceNameRequest, db: Session = Depends(get_db)
+):
+    """AI suggestion for a Microsoft licence the library doesn't know: which
+    outcomes it delivers. The same mechanism as a tool's uses — suggestions are
+    stored unconfirmed on every line of that name and count only once a person
+    confirms them (TARGET_SCHEMA §4.4 `current_license_outcomes`)."""
+    eng = db.get(models.Engagement, engagement_id)
+    if eng is None:
+        raise HTTPException(404, "Engagement not found")
+    name = payload.sku_reference.strip()
+    if not name or not licence_names.lines_named(eng, name):
+        raise HTTPException(404, "No licence line has that name.")
+    if not ai.is_enabled():
+        raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
+    outcome_dicts = _outcome_dicts(db, engagement_id)
+    instructions = ai_prompts.get_instructions(db, "licence_outcomes_suggest")
+    model, web_search = _resolved_model(db), _main_web_search(db)
+    try:
+        suggestions = ai.suggest_coverage(
+            f"Microsoft licence: {name}", outcome_dicts, instructions=instructions,
+            model=model, web_search=web_search,
+        )
+    except Exception as exc:  # network/model errors surface cleanly
+        raise HTTPException(502, f"AI suggestion failed: {exc}")
+    # Written only now, after the model has answered (SQLite has one writer).
+    created = licence_names.persist_suggestions(eng, name, suggestions)
+    db.commit()
+    return {"suggested": created}
+
+
+# ---- Licence names answered by hand (TARGET_SCHEMA §3.4, D24) ----
+@router.get("/licence-names")
+def list_licence_names_answered(db: Session = Depends(get_db)):
+    """Licence names engagements answered by hand: each answer and how many
+    engagements gave it. Names and counts only, never which customers."""
+    return licence_names.answered_by_hand(db)
+
+
+@router.post("/licence-names/alias")
+def add_licence_name_alias(payload: schemas.LicenceNameAliasIn, db: Session = Depends(get_db)):
+    """Teach the library a licence name as another name of a plan."""
+    try:
+        return {"aliases": licence_names.add_alias(db, payload.name, payload.bundle_id)}
+    except LookupError as exc:
+        raise HTTPException(404, str(exc))
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+
+
+@router.post("/licence-names/plan", status_code=201)
+def add_licence_name_plan(payload: schemas.LicenceNamePlanIn, db: Session = Depends(get_db)):
+    """Add a licence name to the library as a new plan with this coverage."""
+    try:
+        row = licence_names.add_plan(db, payload.name, payload.outcome_keys)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    return {"id": row.id, "key": row.key, "name": row.name}
 
 
 @router.post("/engagements/{engagement_id}/ai/parse-third-party")

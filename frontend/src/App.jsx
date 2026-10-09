@@ -9,6 +9,7 @@ import Personas from './components/Personas.jsx'
 import CurrentLicensing from './components/CurrentLicensing.jsx'
 import ThirdParty from './components/ThirdParty.jsx'
 import CoverageMap from './components/CoverageMap.jsx'
+import UnknownLicences from './components/UnknownLicences.jsx'
 import FutureState from './components/FutureState.jsx'
 import CoverageCheck from './components/CoverageCheck.jsx'
 import Review from './components/Review.jsx'
@@ -181,11 +182,12 @@ export default function App() {
                 <>
                   <Personas engagement={active} meta={meta} />
                   <AgreementCard engagement={active} onUpdate={setActive} />
-                  <CurrentLicensing engagement={active} meta={meta} onUpdate={setActive} />
+                  <CurrentLicensing engagement={active} meta={meta} onUpdate={setActive} onNavigate={setTab} />
                 </>
               )}
               {tab === 'tools' && (
                 <>
+                  <UnknownLicences engagement={active} />
                   <ThirdParty engagement={active} meta={meta} moneyUnit={moneyUnit} />
                   <CoverageMap engagement={active} meta={meta} section="tools" />
                 </>

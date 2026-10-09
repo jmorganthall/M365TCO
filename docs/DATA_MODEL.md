@@ -572,8 +572,35 @@ linked to the first by `parent_persona_id`:
   review's `license_out_of_scope` note, the HTML readout's and PDF's "Not part of
   this workshop" line and the Excel licence sheet. GUI surface: the line's
   expander ("Out of scope for this workshop") and its row chip.
+- **"Same as" a library plan (first-class):** `bundle_id` (FK `Bundle`, nullable;
+  TARGET_SCHEMA §4.4 `bundle_key`, D23) — a person's explicit link, answered on the
+  unknown-licence card. The customer's `sku_reference` is kept for display; the
+  line reads as the linked plan. Written only by `PUT …/licence-names/answer`
+  (read-only on the line's API). Readers: `compute.licence_readings` (the
+  hydrator, the recommender, the coverage comparison), the Settings licence-name
+  list. GUI surface: the card, a "same as …" row chip and the Data Inspector. A
+  plan a line is linked to can't be deleted (409).
+- **How a line is read** (`compute.licence_readings`, TARGET_SCHEMA "Reading a
+  line", D23), first match wins: **out of scope** (delivers nothing, in no number) →
+  **linked** (`bundle_id`: its plan's ratified coverage) → **mapped** (its confirmed
+  `CurrentLicenseOutcome` rows, §4.5b) → **named** (legacy coverage entered on the
+  Coverage map against this exact name) → **resolved** (its name resolves to a
+  plan with coverage: key, alias, name, catalog title) → **unread**. An explicit
+  answer outranks resolving the name, so a mapping keeps counting after the library
+  later learns the name. An **unread** line's cost counts, but its personas'
+  capability changes are left out: no new outcomes (`empty_reason`
+  `licence_unread`), no dropped capability, the review's `license_unread` check
+  and a left-out entry, and a note on the PDF's group page and method page.
 - **CRUD:** `GET/POST/PATCH/DELETE …/current-licenses`; `persona_ids` on the body
-  replaces the tag set.
+  replaces the tag set. The unknown-licence card answers per **licence name**
+  (compared as name resolution compares it: case and spacing ignored) and writes
+  every line of that name: `GET …/licence-names`, `PUT …/licence-names/answer`
+  (`same_as` / `library` / `out_of_scope` / `clear`), `PUT …/licence-names/outcome`
+  (`add` / `confirm` / `remove`), and the AI suggestion
+  `POST /api/admin/engagements/{id}/ai/suggest-licence-outcomes`. Linking to a plan
+  the engagement has no coverage for copies the library's coverage for that plan
+  (and any library outcome it needs, with that outcome's library coverage on every
+  plan) — a person's click, reported back.
 - **Engine role:** the Microsoft side of a persona's current spend. A line's
   total cost is distributed across its tagged personas by headcount (ENGINE_SPEC
   6.2), so a shared line is never double-counted.
@@ -585,6 +612,32 @@ linked to the first by `parent_persona_id`:
 - **Why first-class:** it's the seam where the future **partial application**
   (e.g. "5% of Knowledge Workers") will live as an `applies_pct` field on the
   tag, without reshaping the license or the engine contract.
+
+### 4.5b CurrentLicenseOutcome — what an unknown licence delivers
+- **Identity:** `uuid` plus a unique `(license_id, outcome_id)`. **Scope:**
+  engagement-scoped (via the license). **Association object** — "this line
+  delivers this outcome", for a licence the library doesn't know (TARGET_SCHEMA
+  §4.4 `current_license_outcomes`, D23).
+- **Fields:** `ai_suggested`, `ratified` — like coverage, an AI suggestion is
+  stored unconfirmed and counts only once a person confirms it.
+- **Written by** the unknown-licence card (ticks, AI suggestions, confirmations),
+  once per licence name onto every line of that name; cleared by any other answer.
+  Read only while the line has no `bundle_id`. Deleting an outcome deletes its
+  rows; Duplicate copies them with the outcome ids remapped.
+- **Readers:** `compute.licence_readings` (state `mapped`), the card, the Settings
+  licence-name list. GUI surface: the card's chips and the Data Inspector's
+  "Delivers (answered on Other tools)" column (`CurrentMicrosoftLicense.outcome_ids`).
+
+### 4.5c Licence names answered by hand (derived, persists nothing)
+`GET /api/admin/licence-names` (TARGET_SCHEMA §3.4, D24): every licence name
+engagements linked to a plan or mapped to outcomes, each distinct answer and how
+many engagements gave it — licence, plan and outcome names and counts only, never
+customers. From it an admin adds the name as a plan's alias
+(`POST /api/admin/licence-names/alias`) or as a new plan with that library
+coverage and the name as its alias (`POST /api/admin/licence-names/plan`; a base
+plan, unpriced — so never recommended — until a catalog SKU is mapped to it).
+Engagements that already answered keep their answer. GUI surface: Settings →
+Licence names.
 
 ### 4.6 ThirdPartyProduct — non-Microsoft spend
 - **Identity:** `uuid`. **Scope:** engagement-scoped.
@@ -831,7 +884,7 @@ overlay (§10) attach later as their own first-class overlays, not edits here.
 target scenario** (base bundle + add-ons) would deliver that are **not** delivered
 today — the *new-outcome* candidates worth validating (not the whole outcome
 library). "Delivered today" reads existing coverage: the persona's current
-Microsoft licensing (its bundles' ratified coverage, tagged-or-org-wide lines)
+Microsoft licensing (each line as it is read, §4.5; tagged-or-org-wide lines)
 plus third parties whose ratified coverage applies to the persona — **tagged to
 it, or untagged (org-wide, mirroring current licensing)** so established
 coverage-map mappings count even before a product is persona-tagged. It is a pure
@@ -867,11 +920,13 @@ current licenses (a many-to-one relationship); its capability is the union of al
 them. The new-outcomes check above is one-directional — it only finds what a target
 *adds* — so `persona_coverage_gaps` also returns two guards the Coverage Check renders
 as amber warnings:
-- `unmapped_current_licenses` — current Microsoft licenses applying to the persona
-  whose SKU resolves to **no** mapped capability (cost counted, outcomes invisible),
-  each flagged with whether it `resolves_to_bundle` (known bundle missing coverage →
-  fix in the Coverage map) or not (unrecognized SKU → map it in Settings → Staple
-  bundles). This is what caught the *Office 365 E3 + EMS E3* trap before EMS was
+- `unmapped_current_licenses` — the persona's **unread** licence lines (§4.5), once
+  per licence name: cost counted, what they deliver unknown. Each says whether it
+  `resolves_to_bundle` (a library plan this engagement has no coverage for — the
+  card offers the library's list) or not. Every one is answered on the
+  unknown-licence card (Other tools); until then the persona's capability changes
+  are left out (no new outcomes, no dropped capability, nothing to ask on this
+  step). This is what caught the *Office 365 E3 + EMS E3* trap before EMS was
   modelled (§4.4b).
 - `dropped_outcomes` — outcomes the persona's **current Microsoft licensing** delivers
   that the proposed target will **not** — the reverse of `uncovered_outcomes`. A

@@ -154,7 +154,9 @@ doesn't know, or that this engagement has no coverage for, once per name, with t
 groups that hold it. Each takes one answer, written to every line with that name:
 
 1. **It's the same as** a library plan, picked from a list. The customer's name for
-   the line is kept; only this engagement records the link.
+   the line is kept; only this engagement records the link. Picking a plan this
+   engagement has no coverage for copies the library's list for it, as answer 3
+   does.
 2. **It delivers these outcomes:** ticked by hand, or suggested by AI and confirmed,
    with the same controls as a tool's uses.
 3. **Use the library's list:** offered when the library knows the plan but this

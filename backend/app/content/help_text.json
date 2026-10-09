@@ -11,7 +11,7 @@
     },
     "tools": {
       "title": "Other tools",
-      "intro": "The other products you pay for that may overlap with Microsoft 365: what each costs, when it renews, who uses it and what for."
+      "intro": "The other products you pay for that may overlap with Microsoft 365: what each costs, when it renews, who uses it and what for. Any Microsoft licence we don't recognise yet is asked about here too."
     },
     "future": {
       "title": "Future state",
@@ -210,6 +210,10 @@
     "licences.out_of_scope": {
       "ask": "Is this licence part of this workshop?",
       "why": "Some licences no Microsoft 365 plan includes, such as Visio, Project or Teams Rooms, aren't part of this comparison. Marked out of scope, a licence is in no figure — not today's spend and not replaced by any plan — and the report lists it as not part of this workshop."
+    },
+    "licences.unknown": {
+      "ask": "What does this licence include?",
+      "why": "We don't recognise this licence yet, so we can't tell what it gives you today. Its cost still counts, but until we know what it includes we leave out anything the groups that hold it would gain or give up — a capability can't be called new, or lost, without knowing what you have."
     }
   },
   "method": [
@@ -247,7 +251,7 @@
     },
     {
       "title": "What is left out",
-      "body": "Anything we couldn't confirm in the workshop — a tool without a cost or users, an unanswered question — is left out of the numbers rather than estimated."
+      "body": "Anything we couldn't confirm in the workshop — a tool without a cost or users, an unanswered question — is left out of the numbers rather than estimated. Where we couldn't tell what a Microsoft licence includes, its cost is counted but its group's capability changes are left out."
     }
   ]
 }

@@ -17,7 +17,10 @@ the data layer on input, never inside the engine.
   unit_price_paid_annual, persona_ids, coverage_scope, covered_outcome_ids,
   renewal_date, unused_seats_answer}`.
   A line may apply to several personas; its cost is distributed across their
-  combined headcount (see 6.2). `quantity_purchased`, `renewal_date` and
+  combined headcount (see 6.2). `covered_outcome_ids` is how the hydrator reads
+  the line (DATA_MODEL §4.5): its linked plan, its answered outcomes, or its
+  name's plan; empty for a line nobody can read yet. Out-of-scope lines are not
+  hydrated. `quantity_purchased`, `renewal_date` and
   `unused_seats_answer` (`Intended` | `NotNeeded` | none) feed only the timed
   headline (6.11).
 - **Engagement timing**: `{workshop_date, microsoft_renewal_date, horizon_years}`,

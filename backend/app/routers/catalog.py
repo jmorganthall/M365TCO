@@ -294,6 +294,10 @@ def delete_bundle(bundle_id: str, db: Session = Depends(get_db)):
     addons = _count(models.ScenarioAddon, models.ScenarioAddon.bundle_id == bundle_id)
     if addons:
         refs.append(f"{addons} scenario add-on(s)")
+    linked = _count(models.CurrentMicrosoftLicense,
+                    models.CurrentMicrosoftLicense.bundle_id == bundle_id)
+    if linked:
+        refs.append(f"{linked} licence line(s) answered as the same as it")
     children = _count(models.Bundle, models.Bundle.base_bundle_id == bundle_id)
     if children:
         refs.append(f"{children} add-on(s) based on it")

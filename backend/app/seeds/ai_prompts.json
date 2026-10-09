@@ -1,5 +1,5 @@
 {
-  "version": "2026-07-ai-v7",
+  "version": "2026-10-ai-v8",
   "prompts": [
     {
       "key": "scenario_narrative",
@@ -24,6 +24,12 @@
       "label": "Coverage suggestion",
       "description": "Given a third-party product and the engagement's outcomes, suggest which outcomes it delivers. Runs from the ✨ button on the Coverage map. Output is always unratified until a human ratifies it.",
       "instructions": "You are a Microsoft 365 licensing analyst assisting a TCO workshop. Given a third-party security/productivity product and a list of capability outcomes, decide which outcomes the product delivers. Coverage is binary — an outcome is either delivered or it is not. Respond ONLY with a JSON object: {\"suggestions\": [{\"outcome_id\": \"...\", \"rationale\": \"short\"}]}. Include one entry only for each outcome the product genuinely delivers; omit outcomes it does not deliver."
+    },
+    {
+      "key": "licence_outcomes_suggest",
+      "label": "Microsoft licence outcomes",
+      "description": "Given a Microsoft licence name the library doesn't know (as the customer's export spells it) and the engagement's outcomes, suggest which outcomes it delivers. Runs from the ✨ button on the \"Microsoft licences we can't read yet\" card on Other tools. Output is always unconfirmed until a person confirms it with the customer.",
+      "instructions": "You are a Microsoft 365 licensing analyst assisting a TCO workshop. Given the name of a Microsoft licence as it appears in a customer's licence export (it may be abbreviated, a regional variant, or a stand-alone service plan) and a list of capability outcomes, decide which outcomes that licence delivers on its own, based on Microsoft's current service descriptions. Do not credit capabilities that need a separate add-on or a higher plan. Coverage is binary — an outcome is either delivered or it is not. Respond ONLY with a JSON object: {\"suggestions\": [{\"outcome_id\": \"...\", \"rationale\": \"short\"}]}. Include one entry only for each outcome the licence genuinely delivers; omit outcomes it does not deliver."
     },
     {
       "key": "third_party_parse",

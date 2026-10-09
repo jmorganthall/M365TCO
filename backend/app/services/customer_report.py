@@ -366,6 +366,20 @@ def build_pdf(eng: models.Engagement, result: dict, gaps: list[dict]) -> bytes:
         if outside:
             cap.append(P("Covered outside this review (not counted): "
                          + E(", ".join(o["name"] for o in outside)), "muted"))
+        # An empty list means different things (services/compute new_outcomes); only
+        # "covered today" may say everything is already in place.
+        reason = (new_by_pid.get(pid) or {}).get("empty_reason")
+        unread = [u["sku_reference"] for u in g.get("unmapped_current_licenses") or []]
+        if reason == "licence_unread":
+            cap.insert(0, P(
+                f"Capability changes aren't shown for this group: we couldn't confirm what "
+                f"{E(', '.join(unread))} include{'s' if len(unread) == 1 else ''}, so we can't say "
+                f"what it gains or gives up. Its cost is counted above.", "muted"))
+        elif reason == "awaiting_confirmation":
+            cap.append(P("Capabilities this plan would add weren't confirmed in the workshop, "
+                         "so none is shown as new.", "muted"))
+        elif reason == "target_unmapped":
+            cap.append(P("Capability changes aren't shown: what this plan includes isn't mapped.", "muted"))
         story += [P("Capability changes", "h2")] + (cap or [P(
             "Everything this plan delivers is already in place today.", "muted")])
 
@@ -394,6 +408,17 @@ def build_pdf(eng: models.Engagement, result: dict, gaps: list[dict]) -> bytes:
     if no_dates:
         assumptions.append("No renewal date given, so treated as month-to-month and counted "
                            "from today: " + "; ".join(no_dates) + ".")
+    in_scope_pids = {s["persona_id"] for s in scenarios}
+    unread_by_ref: dict[str, list[str]] = {}
+    for g in gaps:
+        if g["persona_id"] in in_scope_pids:
+            for u in g.get("unmapped_current_licenses") or []:
+                unread_by_ref.setdefault(u["sku_reference"], []).append(g["persona_name"])
+    if unread_by_ref:
+        assumptions.append(
+            "We couldn't confirm what these licences include, so the capability changes of the "
+            "groups holding them are left out (their cost is counted): "
+            + "; ".join(f"{ref} ({', '.join(groups)})" for ref, groups in unread_by_ref.items()) + ".")
     groups_out = [s["persona_name"] for s in result.get("scenarios", []) if not s.get("in_scope")]
     if groups_out:
         assumptions.append("Groups not included in the totals: " + ", ".join(groups_out) + ".")

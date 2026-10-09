@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
-from ..services import bundles, compute, inspector
+from ..services import bundles, compute, inspector, licence_names
 
 router = APIRouter(prefix="/api/engagements/{engagement_id}", tags=["entities"])
 
@@ -427,6 +427,10 @@ def delete_outcome(engagement_id: str, outcome_id: str, db: Session = Depends(ge
         select(models.CoverageGapAnswer).where(models.CoverageGapAnswer.outcome_id == outcome_id)
     ).scalars().all():
         db.delete(ans)
+    for tick in db.execute(
+        select(models.CurrentLicenseOutcome).where(models.CurrentLicenseOutcome.outcome_id == outcome_id)
+    ).scalars().all():
+        db.delete(tick)
     db.delete(row)
     db.commit()
 
@@ -498,6 +502,43 @@ def delete_license(engagement_id: str, license_id: str, db: Session = Depends(ge
         raise HTTPException(404, "License not found")
     db.delete(row)
     db.commit()
+
+
+# ---------- Licence names: the unknown-licence card (TARGET_SCHEMA §4.4, D23) ----------
+@router.get("/licence-names")
+def list_licence_names(engagement_id: str, db: Session = Depends(get_db)):
+    """Each licence name that needs an answer (unread) or has a person's answer,
+    once per name, with the groups holding it and how it is read. A pure read."""
+    eng = _require_engagement(db, engagement_id)
+    return licence_names.list_names(db, eng)
+
+
+@router.put("/licence-names/answer")
+def answer_licence_name(engagement_id: str, payload: schemas.LicenceNameAnswerIn,
+                        db: Session = Depends(get_db)):
+    """Answer a licence name for every line that carries it: the same as a library
+    plan, the library's list, out of scope, or clear the answer."""
+    eng = _require_engagement(db, engagement_id)
+    try:
+        return licence_names.answer(db, eng, payload.sku_reference, payload.answer, payload.bundle_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+@router.put("/licence-names/outcome", status_code=204)
+def set_licence_name_outcome(engagement_id: str, payload: schemas.LicenceNameOutcomeIn,
+                             db: Session = Depends(get_db)):
+    """Tick, confirm or untick one outcome a licence name delivers (every line of
+    that name). The same controls as a tool's uses."""
+    eng = _require_engagement(db, engagement_id)
+    try:
+        licence_names.set_outcome(db, eng, payload.sku_reference, payload.outcome_id, payload.action)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
 
 
 # ---------- Third-party products ----------
