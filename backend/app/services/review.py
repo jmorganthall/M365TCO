@@ -41,7 +41,7 @@ def review(db: Session, engagement_id: str) -> dict:
               f"The groups add up to {total_hc:,} people; the customer has {eng.employee_count:,} "
               f"employees. Is a group missing, or is the employee count out of date?", "info")
 
-    for lic in eng.current_licenses:
+    for lic in eng.licenses_in_scope:
         name = lic.sku_reference or "A licence line"
         tagged = [personas[pid] for pid in lic.persona_ids if pid in personas]
         if not lic.persona_ids:
@@ -61,11 +61,17 @@ def review(db: Session, engagement_id: str) -> dict:
                   f"{name}: {unused:,} seats are paid for but not assigned. Kept on purpose, or not needed?")
             leave_out(f"{unused:,} unused {name} seats",
                       "not yet answered whether they're needed", "groups")
-    if eng.current_licenses and not eng.microsoft_renewal_date and any(
-            not lic.renewal_date for lic in eng.current_licenses):
-        check("agreement_renewal_missing", "groups",
-              "The Microsoft agreement's renewal date isn't known, so Microsoft reductions are "
-              "assumed to start one year after the workshop.", "info")
+    in_scope = eng.licenses_in_scope
+    if in_scope and not eng.microsoft_renewal_date and any(
+            not lic.renewal_date for lic in in_scope):
+        check("renewal_date_missing", "groups",
+              "The Microsoft agreement has no renewal date, so it is treated as month-to-month: "
+              "Microsoft reductions count from today.", "info")
+    out = [lic.sku_reference or "A licence line" for lic in eng.current_licenses if lic.out_of_scope]
+    if out:
+        check("license_out_of_scope", "groups",
+              f"Set aside as out of scope for this workshop: {', '.join(out)}. "
+              f"They are in no number; the PDF lists them.", "info")
 
     # ---- Other tools --------------------------------------------------------
     tp_outcomes = compute._ratified_thirdparty_outcomes(db, engagement_id)
@@ -82,8 +88,9 @@ def review(db: Session, engagement_id: str) -> dict:
                   f"{t.name or 'A tool'} has {', '.join(missing)}, so it is left out of the numbers.")
             leave_out(t.name or "A tool", ", ".join(missing), "tools")
         elif not t.renewal_date:
-            check("renewal_date_assumed", "tools",
-                  f"{t.name}: renewal date not known — assumed one year after the workshop.", "info")
+            check("renewal_date_missing", "tools",
+                  f"{t.name}: no renewal date, so it is treated as month-to-month and its saving "
+                  f"counts from today.", "info")
 
     # ---- Future state (engine, not persisted) ------------------------------
     result = engine_compute(compute.hydrate(db, engagement_id))

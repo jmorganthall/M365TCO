@@ -179,6 +179,14 @@ class Engagement(Base):
         back_populates="engagement", cascade="all, delete-orphan"
     )
 
+    @property
+    def licenses_in_scope(self) -> list["CurrentMicrosoftLicense"]:
+        """The licence lines that are part of this workshop: every line not marked
+        out of scope. Everything that counts, compares or reports licensing reads
+        these; only the licence list itself and the PDF's "not part of this
+        workshop" note read the out-of-scope ones."""
+        return [l for l in self.current_licenses if not l.out_of_scope]
+
 
 class Persona(Base):
     __tablename__ = "personas"
@@ -469,6 +477,11 @@ class CurrentMicrosoftLicense(Base):
     unused_seats_answer: Mapped[str | None] = mapped_column(
         SAEnum(*UNUSED_SEATS_ANSWERS, name="unused_seats_answer"), nullable=True
     )
+    # Not part of this workshop (TARGET_SCHEMA §4.4, D23): a licence no plan
+    # includes, such as Visio or Teams Rooms, that came in with the customer's
+    # export. The line stays visible but is in no number: not today's spend, not
+    # replaced by any move, delivering nothing. The PDF's method page lists it.
+    out_of_scope: Mapped[bool] = mapped_column(Boolean, default=False)
     # DEPRECATED single-persona link. Superseded by the many-to-many persona tags
     # (CurrentLicensePersona). Kept for the one-time backfill; not read by the
     # engine or API anymore.

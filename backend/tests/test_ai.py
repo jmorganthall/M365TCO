@@ -133,6 +133,7 @@ def test_build_sanity_payload_shape():
         customer_name = "Acme"; market = "US"; currency = "USD"
         default_segment = "Commercial"
         personas = []; current_licenses = [L()]; third_party_products = []
+        licenses_in_scope = current_licenses
 
     result = {"rollup": {"net_tco_delta_annual": 1000,
                          "population_check": {"in_scope_persona_headcount": 10,

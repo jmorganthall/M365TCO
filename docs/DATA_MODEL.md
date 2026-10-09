@@ -117,8 +117,8 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Identity:** `uuid`. **Scope:** root (owns everything else).
 - **Relationships:** one-to-many to all eight child sets, all `cascade="all, delete-orphan"`.
 - **Field ownership:** user-entered (`customer_name`, `market`, `currency`,
-  `modeling_horizon_years` (how many months the timed headline counts, e.g.
-  3 → 36 months, ENGINE_SPEC 6.11),
+  `modeling_horizon_years` (how many months the headline's ramp counts, e.g.
+  3 → 36 months, ENGINE_SPEC 6.11; the run rate doesn't depend on it),
   `notes`, `global_tooling_pct`, `default_segment`,
   `default_term_duration`, `default_billing_plan`,
   `business_cap_enabled`, `managed_ms_account`, the ECIF ROI ratios
@@ -127,10 +127,10 @@ FK, UUID PK, cascade-deleted with the engagement.
   and the Customer-Info metadata `workshop_date` / `industry` / `hq_location` /
   `website` / `employee_count`, plus `microsoft_renewal_date` — when the customer's
   Microsoft agreement renews, the default renewal for every licence line, which
-  times Microsoft reductions and over-licensing in the headline; NULL = assumed one
-  year after the workshop, and the readout says so); derived (`created_at`,
-  `updated_at`). `workshop_date` is month 0 of the timed headline (an engagement
-  without one is timed from `created_at`).
+  times Microsoft reductions and over-licensing in the headline's ramp; NULL =
+  month-to-month with no lock-in, counted from day one, and the readout says so);
+  derived (`created_at`, `updated_at`). `workshop_date` is month 0 of the ramp (an
+  engagement without one is timed from `created_at`).
 - **Validated soft refs:** `market` / `currency` are checked on create/patch
   against the loaded price catalog (or the configured defaults when none is
   loaded) — the engine never converts currency, so a mismatch would print a
@@ -542,9 +542,18 @@ linked to the first by `parent_persona_id`:
   quantity_assigned`; the customer says whether they are kept on purpose
   (`Intended` — noted, never counted) or not needed (`NotNeeded` — over-licensing,
   counted from the line's Microsoft renewal). NULL = not answered: left out.
-  Reader: the timed headline (ENGINE_SPEC 6.11). GUI surface: the line's
+  Reader: the headline and its ramp (ENGINE_SPEC 6.11). GUI surface: the line's
   expander (Unused seats answer, Renews date), the row chips, the readout's
   Unused licences section and the Data Inspector.
+- **Out of scope (first-class):** `out_of_scope` (bool, default false;
+  TARGET_SCHEMA §4.4, D23) — a licence no plan includes (Visio, Teams Rooms…) that
+  came in with the customer's export. It stays listed, greyed, but is in no
+  number: `Engagement.licenses_in_scope` (the only list the engine hydrator, the
+  coverage comparison, the recommender, licence caps, the review, the narratives and
+  every readout total read) leaves it out. Readers: the hydrator's filter, the
+  review's `license_out_of_scope` note, the HTML readout's and PDF's "Not part of
+  this workshop" line and the Excel licence sheet. GUI surface: the line's
+  expander ("Out of scope for this workshop") and its row chip.
 - **CRUD:** `GET/POST/PATCH/DELETE …/current-licenses`; `persona_ids` on the body
   replaces the tag set.
 - **Engine role:** the Microsoft side of a persona's current spend. A line's
@@ -734,7 +743,7 @@ operator-owned and engine-owned fields.
   unconfirmed gaps, undecided partly-replaced tools). A pure read: it runs the
   engine without persisting.
 - `POST …/customer-report.pdf` (`services/customer_report.py`, reportlab) — the
-  leave-behind: title page, overview with the timed headline, one section per
+  leave-behind: title page, overview led by the run rate with the yearly ramp, one section per
   group, and *How we calculated this* from `app/content/help_text.json`. It only
   displays computed numbers; anything left out does not appear.
 - `GET /api/help-text` — that same help-text file, for the GUI tooltips. Content,

@@ -57,7 +57,7 @@ def test_review_lists_what_is_unanswered_and_left_out(client):
     r = _review(client, eid)
     codes = {c["code"] for c in r["checks"]}
     assert {"unused_seats_unanswered", "tool_incomplete", "group_without_plan",
-            "gap_unanswered", "headcount_vs_employees", "agreement_renewal_missing"} <= codes
+            "gap_unanswered", "headcount_vs_employees", "renewal_date_missing"} <= codes
     whats = " | ".join(x["what"] for x in r["left_out"])
     assert "10 unused Microsoft 365 E3 seats" in whats and "Free Tool" in whats
     assert all(c["step"] in {"customer", "groups", "tools", "future", "gaps", "review", "summary"}

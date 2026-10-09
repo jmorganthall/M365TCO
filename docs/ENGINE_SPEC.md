@@ -378,24 +378,28 @@ move* — the two sum to the same total, so the bridge still builds to the net d
 > it is the timed headline of §6.11, computed once here. Every other engine
 > quantity remains annualized.
 
-## The headline, timed by renewals (6.11)
+## The headline: the run rate, then the ramp (6.11)
 
-One headline, made of three sub-lines, each timed by the contract that unlocks
-it and summed over the modelling horizon. Amounts here are **savings-positive**
-(a positive amount is money saved, a negative one money added) — the opposite
-sign of `delta`, because this is the number a customer reads.
+One headline, made of three sub-lines. It **leads with the run rate**: what the
+customer saves (or invests) each year once every contract has renewed. Then the
+**ramp**: each amount timed by the contract that unlocks it and summed over the
+modelling horizon, year by year. Amounts here are **savings-positive** (a positive
+amount is money saved, a negative one money added) — the opposite sign of `delta`,
+because this is the number a customer reads.
 
 ```
 H = horizon_years × 12                      # months in the headline
 month 0 = workshop_date
 
 start(d):                                   # the month an amount timed by date d starts
-    if d is missing or workshop_date is missing:  return 12, assumed
+    if d is missing or workshop_date is missing:  return 0, no date
+                                            # month-to-month with no lock-in: day one
     while d < workshop_date:  d = d + 12 months     # a past renewal: next anniversary
     return the smallest whole m with workshop_date + m months ≥ d
            (month arithmetic clamps the day to the month's length)
 
 item(annual, s):  months = max(0, H − s);  amount = round_cents(annual × months / 12)
+                                            # round_cents: half a cent rounds away from zero
 
 # 1. Duplicate spend today — each quick win (6.10), from the tool's renewal.
 for q in quick_wins:
@@ -425,23 +429,47 @@ for L in current lines with unused = quantity_purchased − quantity_assigned > 
         item(unused × L.unit_price_paid_annual, start(L.renewal_date or microsoft_renewal_date))
     # Intended (kept on purpose) and unanswered seats are never counted.
 
+# The headline: the run rate.
+run_rate_annual = Σ item annual amounts      # each year once everything has renewed
+duplicate_spend_annual, consolidation_annual, overlicensing_annual = Σ item annual amounts per sub-line
+direction = saved | added | none by the sign of run_rate_annual
+
+# The ramp: the same items over the horizon.
 duplicate_spend_amount, consolidation_amount, overlicensing_amount = Σ item amounts per sub-line
-headline_amount  = their sum;  direction = saved | added | none by its sign
-run_rate_annual  = Σ item annual amounts (the year once everything has renewed)
+headline_amount = their sum
+through(i, m) = round_cents(i.annual × min(max(m − i.start, 0), i.months) / 12)
+for y in 1 … horizon_years:                  # each modelled year
+    year[y] = Σ over items (through(i, 12y) − through(i, 12(y − 1)));  cumulative[y] = Σ year[1..y]
+full_run_rate_month = max(i.start over items), or none when there are no items
 ```
 
-**Run-rate identity.** Without timing (every date at the workshop, no
-unused-seat answers) the headline is today's untimed total opportunity:
-`run_rate_annual = quick_win_savings_annual − move_incremental_delta_annual`, and
+**The ramp reconciles.** Each item's years add up to its own rounded amount
+(`through(i, H) = i.amount`), so the years add up to `headline_amount` and the last
+cumulative equals it. Every year that begins at or after `full_run_rate_month`
+equals `run_rate_annual` exactly: a whole year adds a whole-cent amount of the same
+sign, which never changes how half a cent rounds. When `full_run_rate_month` is at
+or beyond the horizon, the full run rate is reached after the modelled years. The
+run rate is never multiplied by the horizon: a tool that renews in month 30 saves
+6 months inside a 36-month window.
+
+**Run-rate identity.** With no unused-seat answers, the run rate is today's untimed
+total opportunity: `run_rate_annual = quick_win_savings_annual −
+move_incremental_delta_annual`. With every date at the workshop, or no dates at all
+(month-to-month), every item starts at month 0 and
 `headline_amount = run_rate_annual × horizon_years`. Duplicate spend is exactly
 the quick wins, consolidation exactly the moves' own value (6.8a), so timing never
 counts a dollar in two sub-lines; it only decides from which month each dollar
 counts.
 
 Every item is returned (sub-line, kind, label, annual amount, start month, the
-date it was timed by, whether that date was assumed, months counted, amount), so
-a readout can show exactly how the headline was built and which dates were
-assumed. An item that starts after the horizon is listed with `months = 0`.
+date it was timed by, whether no date was given, months counted, amount), so a
+readout can show exactly how the headline was built and which amounts count from
+day one for want of a date. An item that starts after the horizon is listed with
+`months = 0`.
+
+**Out-of-scope licence lines** (TARGET_SCHEMA D23) are not inputs to the engine:
+the hydrator leaves them out, so they are in no number: not current spend, not
+retired by a move, delivering nothing, and not over-licensing.
 
 ## Recompute is total, not incremental (6.7)
 
@@ -468,10 +496,13 @@ meets a particular seat count. `backend/tests/sweep.py` enumerates that space �
 org-wide), at seat counts below / at / above the population they apply to,
 per-user or tenant-wide, covering or not; tools tagged to any subset, at covered
 counts below / at / above their population, managed or not; and each persona's
-scenario absent / in-scope displacing / in-scope non-displacing / out-of-scope —
-then asserts the properties below on every result. ~1.27M engagements:
+scenario absent / in-scope displacing / in-scope non-displacing / out-of-scope.
+Every case has a workshop date, and the renewal dates of the tool, the licence lines
+and the agreement are cycled across cases (none, at the workshop, mid-horizon, past,
+beyond the horizon) so the timing and the ramp see every shape. Then it asserts the
+properties below on every result. ~1.27M engagements:
 
-    cd backend && python -m tests.sweep            # the full space (~4 min)
+    cd backend && python -m tests.sweep            # the full space (~10 min)
     cd backend && python -m tests.sweep --level ci # the slice every test run does
 
 | Invariant | Claim |
@@ -493,6 +524,13 @@ then asserts the properties below on every result. ~1.27M engagements:
 | `timed-runrate` | untimed, the headline is the quick wins plus the moves' own value (§6.11) |
 | `timed-sum` | the headline is the sum of its sub-lines, each the sum of its timed items |
 | `timed-bounds` | timing only shortens a saving or a cost: never longer than the horizon, never a flipped sign |
+| `timed-nodate` | an item with no date starts at month 0 and names no date (month-to-month) |
+| `runrate-parts` | the run rate is its three sub-lines' yearly amounts |
+| `runrate-direction` | the headline's direction is the sign of the run rate |
+| `ramp-years` | the ramp has one entry per modelled year |
+| `ramp-sum` | the years add up to the horizon total, and the last running total equals it |
+| `ramp-full-month` | full run rate starts at the latest item start month |
+| `ramp-full-year` | every year that begins at or after that month is exactly the run rate |
 
 The two decision surfaces above the engine — recommend-a-path and the Business
 carve-out — get the same treatment in `backend/tests/sweep_services.py`, built

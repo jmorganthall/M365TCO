@@ -190,7 +190,9 @@ PDF's method page also reads.
    **Microsoft agreement renews**, and each Microsoft licence: product, bought, price
    (list unless known); in its expander the groups that get it, seats assigned, the
    **unused-seat answer** (kept on purpose / not needed), its own renewal date,
-   per-user vs tenant-wide scope and price-basis overrides.
+   **out of scope for this workshop** (for licences no plan includes, such as
+   Visio: listed but in no number), per-user vs tenant-wide scope and price-basis
+   overrides.
 3. **Other tools** — each tool's cost, period, **renewal date**, **who uses it**
    (groups) and whether it's a **managed service**; vendor, the managed service's
    software share and a covers number in the expander. Below, **what each tool is
@@ -211,10 +213,12 @@ PDF's method page also reads.
    **AI sanity check** is here.
 7. **Summary & PDF** — years to model and **Create customer PDF** (title page,
    overview, a page per group, *How we calculated this*), which records a
-   **Presented** snapshot. Below it, the readout: the timed headline — ① duplicate
-   tools retired with no licensing change, ② each group's move, ③ unused licences
-   confirmed not needed, each from the renewal that unlocks it (ENGINE_SPEC 6.11),
-   with *How the headline is timed* — quick wins, per-group scenarios, **New
+   **Presented** snapshot. Below it, the readout: the **run rate** — what the
+   customer saves each year once every contract has renewed: ① duplicate tools
+   retired with no licensing change, ② each group's move, ③ unused licences
+   confirmed not needed (ENGINE_SPEC 6.11) — then *How the run rate is reached*, a
+   bar per modelled year with each amount from the renewal that unlocks it (no
+   date = month-to-month, from today) — quick wins, per-group scenarios, **New
    outcomes**, **Capability trade-offs**, the per-group spend bridge, dispositions,
    **License-limit** checks, AI **business narratives** (editable), and HTML / xlsx
    export. Report colours and Microsoft co-funding (ECIF) are under *Report options*.

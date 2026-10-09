@@ -53,7 +53,7 @@
     },
     "agreement.renewal": {
       "ask": "When does your Microsoft agreement next renew?",
-      "why": "You can add or upgrade Microsoft licences at any time, but reducing them — fewer seats or a cheaper plan — usually waits for renewal. Reductions and unused-seat savings are counted from this date. If it isn't known, we assume one year after the workshop and say so."
+      "why": "You can add or upgrade Microsoft licences at any time, but reducing them — fewer seats or a cheaper plan — usually waits for renewal. Reductions and unused-seat savings are counted from this date. Left blank, we treat it as month-to-month with no lock-in: they count from today, and the report says so."
     },
     "groups.name": {
       "ask": "Which groups of people get different Microsoft licences today? For example office staff, frontline staff, executives.",
@@ -113,7 +113,7 @@
     },
     "tools.renewal": {
       "ask": "When does it renew?",
-      "why": "A tool can only stop at its renewal, so its saving counts from this date. If it isn't known, we assume one year after the workshop and say so."
+      "why": "A tool can only stop at its renewal, so its saving counts from this date. Left blank, we treat it as month-to-month with no lock-in: the saving counts from today, and the report says so."
     },
     "tools.used_by": {
       "ask": "Who uses it?",
@@ -180,8 +180,8 @@
       "why": "Advisory only. It never changes your data, and the workshop works without it."
     },
     "summary.headline": {
-      "ask": "The total over the period modelled.",
-      "why": "The sum of duplicate spend, consolidation and over-licensing, each counted from the renewal that allows it."
+      "ask": "What you save each year, once every contract has renewed.",
+      "why": "The sum of duplicate spend, consolidation and over-licensing, per year at the full run rate. Below it, the ramp shows how that is reached year by year as each contract renews."
     },
     "summary.duplicate_spend": {
       "ask": "Tools you can retire without changing any Microsoft licence.",
@@ -196,8 +196,8 @@
       "why": "Counted from each licence's renewal."
     },
     "summary.horizon": {
-      "ask": "How many years should the total cover?",
-      "why": "Each saving counts from its renewal to the end of this period."
+      "ask": "How many years should the ramp cover?",
+      "why": "The ramp counts each saving from its renewal to the end of this period. The run rate at the top doesn't depend on it."
     },
     "summary.pdf": {
       "ask": "Create the report to keep.",
@@ -206,6 +206,10 @@
     "summary.ecif": {
       "ask": "Is there a Microsoft account team assigned?",
       "why": "If so, the report notes that Microsoft may co-fund partner services. It does not change the totals."
+    },
+    "licences.out_of_scope": {
+      "ask": "Is this licence part of this workshop?",
+      "why": "Some licences no Microsoft 365 plan includes, such as Visio, Project or Teams Rooms, aren't part of this comparison. Marked out of scope, a licence is in no figure — not today's spend and not replaced by any plan — and the report lists it as not part of this workshop."
     }
   },
   "method": [
@@ -231,7 +235,7 @@
     },
     {
       "title": "Timing",
-      "body": "Each saving counts from the renewal that allows it, to the end of the period modelled. A tool stops at its renewal. A Microsoft increase starts when the first tool that only the new plan can retire renews, or straight away if there is none. A Microsoft reduction waits for your Microsoft renewal. Where a renewal date wasn't known, we assumed one year after the workshop; these are marked."
+      "body": "The headline is what you save each year once every contract has renewed. Below it, the ramp counts each saving from the renewal that allows it, to the end of the period modelled. A tool stops at its renewal. A Microsoft increase starts when the first tool that only the new plan can retire renews, or straight away if there is none. A Microsoft reduction waits for your Microsoft renewal. Where no renewal date was given, we treat the contract as month-to-month with no lock-in, so it counts from today; these are marked."
     },
     {
       "title": "New capabilities",

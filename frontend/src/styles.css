@@ -162,6 +162,17 @@ ul.moves li { margin: .18rem 0; display: flex; gap: .55rem; align-items: baselin
 /* Hero component card: content left, share-of-total percentage top-right. */
 .hero-part { display: flex; align-items: center; gap: 1rem; }
 .hero-part-main { flex: 1; min-width: 0; }
+/* A licence line set aside as out of scope: listed, in no number. */
+tr.row-out > td { opacity: .55; }
+/* The ramp: a bar per modelled year, then the full run rate. */
+.ramp { margin: .4rem 0 .8rem; }
+.ramp-row { display: flex; align-items: center; gap: .7rem; margin: .3rem 0; }
+.ramp-label { flex: 0 0 6.5rem; font-weight: 600; }
+.ramp-track { flex: 1; min-width: 3rem; height: .8rem; background: var(--panel2); border-radius: 4px; overflow: hidden; }
+.ramp-bar { height: 100%; border-radius: 4px; background: var(--muted); }
+.ramp-bar.pos { background: var(--pos, #127436); }
+.ramp-value { flex: 0 0 9rem; text-align: right; }
+@media (max-width: 600px) { .ramp-label { flex-basis: 4.5rem; } .ramp-value { flex-basis: 6.5rem; } }
 .part-pct { flex: 0 0 auto; font-size: 1rem; font-weight: 600; color: var(--muted); opacity: .55; letter-spacing: -.02em; line-height: 1; }
 /* The readout's action bar: one horizontal row of controls across the top of
    the headline card, wrapping on narrow screens. */

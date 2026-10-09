@@ -129,19 +129,28 @@ def result_to_dict(result: EngineResult) -> dict:
 
 
 def _headline(h) -> dict | None:
-    """The timed headline (ENGINE_SPEC 6.11). Savings-positive throughout."""
+    """The headline (ENGINE_SPEC 6.11): the run rate first, then the ramp over the
+    horizon. Savings-positive throughout."""
     if h is None:
         return None
     return {
         "horizon_months": h.horizon_months,
         "workshop_date": h.workshop_date,
+        "run_rate_annual": _num(h.run_rate_annual),
+        "duplicate_spend_annual": _num(h.duplicate_spend_annual),
+        "consolidation_annual": _num(h.consolidation_annual),
+        "overlicensing_annual": _num(h.overlicensing_annual),
+        "direction": h.direction,
         "duplicate_spend_amount": _num(h.duplicate_spend_amount),
         "consolidation_amount": _num(h.consolidation_amount),
         "overlicensing_amount": _num(h.overlicensing_amount),
         "amount": _num(h.amount),
-        "direction": h.direction,
-        "run_rate_annual": _num(h.run_rate_annual),
-        "assumed_dates": sum(1 for i in h.items if i.date_assumed),
+        "full_run_rate_month": h.full_run_rate_month,
+        "years": [
+            {"year": y.year, "amount": _num(y.amount), "cumulative": _num(y.cumulative)}
+            for y in h.years
+        ],
+        "missing_dates": sum(1 for i in h.items if i.date_missing),
         "items": [
             {
                 "item_key": i.item_key,
@@ -151,7 +160,7 @@ def _headline(h) -> dict | None:
                 "annual_amount": _num(i.annual_amount),
                 "start_month": i.start_month,
                 "timed_by": i.timed_by,
-                "date_assumed": i.date_assumed,
+                "date_missing": i.date_missing,
                 "months_counted": i.months_counted,
                 "amount": _num(i.amount),
                 "persona_id": i.persona_id,
