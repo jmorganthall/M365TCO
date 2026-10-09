@@ -21,7 +21,7 @@ from .. import models
 # inside the engagement; the deprecated persona_id is replaced by persona_ids).
 _SKIP = {"engagement_id", ("current_microsoft_licenses", "persona_id")}
 
-_PROVENANCE = {"source_tag", "ai_suggested", "ratified", "seed_key", "catalog_version"}
+_PROVENANCE = {"source_tag", "ai_suggested", "ratified", "seed_key", "catalog_version", "source"}
 _DERIVED = {
     "annual_cost", "effective_annual_cost", "per_unit_annual_cost",
     "covered_count",  # persona-headcount sum unless covered_count_override is set
@@ -56,6 +56,7 @@ _LABELS = {
     "unused_seats_answer": "Unused seats answer", "answer": "Customer's answer",
     "out_of_scope": "Out of scope (in no number)",
     "outcome_ids": "Delivers (answered on Other tools)",
+    "source": "Origin (library / this engagement)",
 }
 
 

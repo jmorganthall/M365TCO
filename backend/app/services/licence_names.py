@@ -188,7 +188,7 @@ def adopt_library_plan(db: Session, eng: models.Engagement, bundle: models.Bundl
         row = models.CoverageMapEntry(
             engagement_id=eng.id, outcome_id=outcome.id, product_kind="MicrosoftSku",
             bundle_id=target.id, microsoft_sku_reference=target.name,
-            coverage=dc.coverage or "Full", ai_suggested=False, ratified=True)
+            coverage=dc.coverage or "Full", ai_suggested=False, ratified=True, source="library")
         db.add(row)
         existing[(target.id, outcome.id)] = row
         count += 1

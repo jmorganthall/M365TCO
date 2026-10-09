@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from tco_engine import compute as engine_compute
 
 from .. import models
-from . import bundles, compute
+from . import bundles, compute, library_updates
 
 STEP_ORDER = ["customer", "groups", "tools", "future", "gaps", "review", "summary"]
 
@@ -144,6 +144,15 @@ def review(db: Session, engagement_id: str) -> dict:
                   f"{'is' if n == 1 else 'are'} not yet confirmed as missing today.")
             leave_out(f"{n} new capabilit{'y' if n == 1 else 'ies'} for {name}",
                       "not yet confirmed as missing today", "gaps")
+
+    # ---- Library updates (TARGET_SCHEMA §4.7, §6.4) ---------------------------
+    waiting = library_updates.pending(db, eng)
+    if waiting:
+        n = len(waiting)
+        check("library_update_pending", "gaps",
+              f"{n} library update{'s are' if n > 1 else ' is'} waiting for this engagement "
+              f"(the shared library changed after it was created). Apply or decline "
+              f"{'them' if n > 1 else 'it'} on the Coverage check.", "info")
 
     rank = {s: i for i, s in enumerate(STEP_ORDER)}
     # A licence nobody can read blanks whole groups' capability story: it leads.

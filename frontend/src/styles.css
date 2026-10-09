@@ -366,3 +366,8 @@ details.more[open] > summary { margin-bottom: .5rem; }
 .answered-licence:last-child { border-bottom: none; }
 .answered-licence .grow { flex: 1; min-width: 0; }
 button.badge.licence-flag { background: transparent; padding: .12rem .45rem; font-size: .72rem; border-radius: 999px; cursor: pointer; }
+
+/* Library updates waiting (WALKTHROUGH W13): a slim notice under the stepper. */
+.library-notice { display: flex; gap: .6rem; align-items: center; justify-content: space-between;
+  border: 1px solid var(--accent); border-radius: 8px; padding: .45rem .7rem; margin: 0 0 .8rem;
+  font-size: .85rem; background: var(--panel); }

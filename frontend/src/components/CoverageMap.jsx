@@ -72,29 +72,6 @@ export default function CoverageMap({ engagement, meta, section }) {
       setOutcomes((list) => list.map((o) => (o.id === id ? updated : o)))
     } catch (e) { setErr(e.message) }
   }
-  async function updateOutcomes() {
-    const warning =
-      'Update this engagement’s outcomes to the current global defaults?\n\n' +
-      'THIS IS A FULL OVERWRITE of the outcome list:\n' +
-      '• CUSTOM outcomes created in this engagement will be DELETED — including ' +
-      'their coverage mappings and persona requirements.\n' +
-      '• Seeded outcomes are reset to the library’s current names/descriptions ' +
-      '(their coverage mappings are kept).\n' +
-      '• Outcomes added to the global library since this engagement was created are ' +
-      'added here, wired with their default Microsoft coverage.\n\n' +
-      'This cannot be undone.'
-    if (!confirm(warning)) return
-    setErr(''); setMsg('')
-    try {
-      const r = await api.post(`/api/engagements/${eid}/outcomes/sync-defaults`)
-      setMsg(`Outcomes updated to library ${r.library_version} — `
-        + `${r.added.length} added${r.added.length ? ` (${r.added.join(', ')})` : ''}, `
-        + `${r.updated} reset to library values, `
-        + `${r.removed.length} removed${r.removed.length ? ` (${r.removed.join(', ')})` : ''}, `
-        + `${r.coverage_added} default Microsoft coverage row(s) added.`)
-      load()
-    } catch (e) { setErr(e.message) }
-  }
   async function addCoverage(tpId, outcomeId) {
     try {
       await api.post(`/api/engagements/${eid}/coverage`, {
@@ -163,15 +140,8 @@ export default function CoverageMap({ engagement, meta, section }) {
           to. <b>Seeded</b> outcomes were copied from the global default library when the engagement was
           created (Settings → Default outcomes is the template for <b>new</b> engagements only); <b>custom</b>
           ones were added here. Editing an engagement's outcomes never changes any other engagement or the
-          global library. Third-party and Microsoft coverage below can only reference outcomes on this list.</p>
-        <div className="toolbar" style={{ margin: '.3rem 0 .5rem' }}>
-          <button className="sm" onClick={updateOutcomes}
-            title="Full overwrite: replace this engagement's outcome list with the current global default library">
-            ⟳ Update outcomes from global defaults</button>
-          <small className="src"><b>Full overwrite</b> — replaces this list with the current library.
-            Custom outcomes (and their coverage/persona requirements) are <b>deleted</b>; seeded outcomes
-            keep their coverage. You'll be asked to confirm.</small>
-        </div>
+          global library. Outcomes the library gains later arrive through <b>Library updates</b> on this
+          step, one click each. Third-party and Microsoft coverage below can only reference outcomes on this list.</p>
         <p className="hint" style={{ margin: '.2rem 0 .4rem' }}>Name and description are this
           engagement's own copy and editable here — the description prints on the readout's
           <b> New outcomes</b> chips (and their hover text). Commits on blur.</p>
@@ -254,7 +224,8 @@ export default function CoverageMap({ engagement, meta, section }) {
             </div>
             <div className="pill-list" style={{ margin: '.5rem 0' }}>
               {bundleEntries(b).map((c) => (
-                <span key={c.id} className={`badge ${c.ratified ? 'pos' : 'warn'}`}>
+                <span key={c.id} className={`badge ${c.ratified ? 'pos' : 'warn'}`}
+                  title={c.source === 'engagement' ? 'Added for this customer' : c.source === 'library' ? 'From the library' : undefined}>
                   {outcomeName(c.outcome_id)}
                   {c.ai_suggested && !c.ratified && ' · AI'}
                   {!c.ratified && <button className="sm ghost" style={{ marginLeft: 6 }} onClick={() => ratify(c.id)}>Confirm</button>}

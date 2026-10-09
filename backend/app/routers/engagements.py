@@ -251,6 +251,7 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
         db.flush()
         tp_map[tp.id] = ntp.id
 
+    lic_map: dict[str, models.CurrentMicrosoftLicense] = {}
     for lic in src.current_licenses:
         nlic = models.CurrentMicrosoftLicense(
             engagement_id=dst.id, sku_reference=lic.sku_reference,
@@ -280,6 +281,17 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
                     outcome_id=outcome_map[link.outcome_id],
                     ai_suggested=link.ai_suggested, ratified=link.ratified))
         db.add(nlic)
+        lic_map[lic.id] = nlic
+
+    # "Not for this customer" answers on the Library updates review.
+    db.flush()
+    for d in src.library_update_decisions:
+        if d.license_id and d.license_id not in lic_map:
+            continue
+        dst.library_update_decisions.append(models.LibraryUpdateDecision(
+            kind=d.kind, bundle_id=d.bundle_id, outcome_key=d.outcome_key,
+            license_id=lic_map[d.license_id].id if d.license_id else None,
+            reason=d.reason, decided_at=d.decided_at))
 
     for ce in src.coverage_entries:
         db.add(models.CoverageMapEntry(
@@ -288,6 +300,7 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
             microsoft_sku_reference=ce.microsoft_sku_reference,
             third_party_product_id=tp_map.get(ce.third_party_product_id) if ce.third_party_product_id else None,
             coverage=ce.coverage, ai_suggested=ce.ai_suggested, ratified=ce.ratified,
+            source=ce.source,
         ))
 
     for s in src.scenarios:

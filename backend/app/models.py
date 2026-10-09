@@ -178,6 +178,9 @@ class Engagement(Base):
     gap_answers: Mapped[list["CoverageGapAnswer"]] = relationship(
         back_populates="engagement", cascade="all, delete-orphan"
     )
+    library_update_decisions: Mapped[list["LibraryUpdateDecision"]] = relationship(
+        back_populates="engagement", cascade="all, delete-orphan"
+    )
 
     @property
     def licenses_in_scope(self) -> list["CurrentMicrosoftLicense"]:
@@ -688,6 +691,13 @@ class CoverageMapEntry(Base):
     coverage: Mapped[str] = mapped_column(String, default="Full")
     ai_suggested: Mapped[bool] = mapped_column(Boolean, default=False)
     ratified: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Where a Microsoft coverage row came from (TARGET_SCHEMA §4.7 `source`):
+    # "library" — copied from the shared library (engagement creation, a Library
+    # updates item, "use the library's list"); "engagement" — added by a person for
+    # this customer. NULL = a row from before this was recorded. The Library updates
+    # review offers to remove a row the library no longer lists only when it isn't
+    # the engagement's own ("engagement"). System-derived; shown read-only.
+    source: Mapped[str | None] = mapped_column(String, nullable=True)
 
     engagement: Mapped[Engagement] = relationship(back_populates="coverage_entries")
 
@@ -941,6 +951,34 @@ class PriceSyncSettings(Base):
     use_month_rule: Mapped[bool] = mapped_column(Boolean, default=True)
     retention_count: Mapped[int] = mapped_column(Integer, default=2)
     notify_webhook_url: Mapped[str] = mapped_column(String, default="")
+
+
+class LibraryUpdateDecision(Base):
+    """"Not for this customer" on the Library updates review (TARGET_SCHEMA §4.7
+    `library_update_decisions`, D8; WALKTHROUGH W13). The review compares this
+    engagement's copy of the library with the shared library on read; a decision
+    hides one difference for good (until undone). Also written when a person
+    removes a library coverage row by hand — the current code deletes rather than
+    archives, so the removal is recorded as the engagement's answer.
+
+    kind ∈ coverage_added | coverage_removed | outcome_added | licence_in_library.
+    Subject: `bundle_id` + `outcome_key` (the library outcome's stable key) for the
+    coverage kinds, `outcome_key` for outcome_added, `license_id` for
+    licence_in_library."""
+
+    __tablename__ = "library_update_decisions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    engagement_id: Mapped[str] = mapped_column(ForeignKey("engagements.id"), index=True)
+    kind: Mapped[str] = mapped_column(String)
+    bundle_id: Mapped[str | None] = mapped_column(ForeignKey("bundles.id"), nullable=True)
+    outcome_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    license_id: Mapped[str | None] = mapped_column(
+        ForeignKey("current_microsoft_licenses.id"), nullable=True)
+    reason: Mapped[str] = mapped_column(Text, default="")
+    decided_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    engagement: Mapped[Engagement] = relationship(back_populates="library_update_decisions")
 
 
 class DefaultOutcome(Base):
