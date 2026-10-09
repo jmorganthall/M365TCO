@@ -15,6 +15,9 @@ def test_license_limit_seeded_with_business_family(client):
         "Microsoft 365 Business Basic",
         "Microsoft 365 Business Standard",
         "Microsoft 365 Business Premium",
+        "Microsoft 365 Business Basic (no Teams)",
+        "Microsoft 365 Business Standard (no Teams)",
+        "Microsoft 365 Business Premium (no Teams)",
     }
     # The two new Business staples are seeded bundles with default coverage.
     bundles = {b["key"] for b in client.get("/api/catalog/bundles").json()}

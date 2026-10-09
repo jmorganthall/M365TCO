@@ -303,7 +303,7 @@ def catalog_fingerprint(session) -> dict:
     }
     tables: dict[str, dict] = {}
     for model in (
-        models.Bundle, models.AddonEligibility, models.MicrosoftSku,
+        models.Bundle, models.AddonEligibility, models.BundleAlias, models.MicrosoftSku,
         models.DefaultOutcome, models.DefaultBundleCoverage,
         models.LicenseLimit, models.LicenseLimitMember,
     ):
@@ -325,10 +325,6 @@ def catalog_fingerprint(session) -> dict:
         body = {"columns": sorted(c.name for c in cols), "rows": rows}
         tables[table.name] = {"rows": len(rows), "sha256": _sha256(canonical_json(body))}
 
-    aliases = sorted(bundles_service._ALIASES.items())
-    tables["bundle_aliases"] = {
-        "rows": len(aliases), "sha256": _sha256(canonical_json(aliases)),
-    }
     return {
         "fingerprint": _sha256(canonical_json({n: t["sha256"] for n, t in tables.items()})),
         "tables": tables,

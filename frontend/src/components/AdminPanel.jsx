@@ -834,6 +834,13 @@ function BundleLibrary({ onMsg, onErr }) {
     try { await api.put(`/api/catalog/bundles/${id}/eligibility`, { base_bundle_ids: baseIds }); load() }
     catch (e) { onErr?.(e.message) }
   }
+  // The other names a bundle goes by in customer exports — how a licence line
+  // typed as "Exchange Online (Plan 2)" or "O365 E3 (no Teams)" finds its plan.
+  async function setAliases(id, aliases) {
+    onErr?.('')
+    try { await api.put(`/api/catalog/bundles/${id}/aliases`, { aliases }); load() }
+    catch (e) { onErr?.(e.message) }
+  }
   const baseBundles = bundles.filter((b) => b.kind === 'bundle')
 
   return (
@@ -846,18 +853,20 @@ function BundleLibrary({ onMsg, onErr }) {
       </div>
       <p className="hint">The canonical bundles that coverage, scenarios, and licenses resolve to.
         Many priced catalog SKUs map onto one bundle. Edit the library below; the AI mapper proposes
-        a bundle for each unmapped SKU (<b>unratified</b> until you accept). Deleting a seeded staple
-        re-creates it on restart — delete is for operator-added bundles.</p>
+        a bundle for each unmapped SKU (<b>unratified</b> until you accept). <b>Also called</b> lists the
+        other names customer exports use for a plan, so a licence line typed that way finds it. Deleting a
+        seeded staple re-creates it on restart — delete is for operator-added bundles.</p>
       <table style={{ marginBottom: '.5rem' }}>
         <thead><tr>
-          <th>Name</th><th>Kind</th><th>Base</th><th>Eligible bases (add-ons)</th>
+          <th>Name</th><th>Also called</th><th>Kind</th><th>Base</th><th>Eligible bases (add-ons)</th>
           <th className="num">Sort</th><th></th>
         </tr></thead>
         <tbody>
           {bundles.map((b) => (
             <BundleEditRow key={b.id} b={b} baseBundles={baseBundles}
               onSave={(patch) => saveBundle(b.id, patch)} onDelete={() => removeBundle(b.id)}
-              onEligibility={(ids) => setEligibility(b.id, ids)} />
+              onEligibility={(ids) => setEligibility(b.id, ids)}
+              onAliases={(aliases) => setAliases(b.id, aliases)} />
           ))}
         </tbody>
       </table>
@@ -954,7 +963,7 @@ function BundleLibrary({ onMsg, onErr }) {
 
 // One editable bundle row: name/sort commit on blur; kind + base commit on change.
 // An add-on requires a base; switching to base clears it.
-function BundleEditRow({ b, baseBundles, onSave, onDelete, onEligibility }) {
+function BundleEditRow({ b, baseBundles, onSave, onDelete, onEligibility, onAliases }) {
   const bases = baseBundles.filter((x) => x.id !== b.id)
   const eligible = new Set(b.eligible_base_ids || [])
   function toggleBase(id) {
@@ -969,7 +978,22 @@ function BundleEditRow({ b, baseBundles, onSave, onDelete, onEligibility }) {
           onBlur={(e) => e.target.value !== b.name && onSave({ name: e.target.value })} />
       </td>
       <td>
-        <select value={b.kind} onChange={(e) => onSave(
+        <div className="pill-list" style={{ gap: '.25rem', maxWidth: 240 }}>
+          {(b.aliases || []).map((a) => (
+            <span key={a} className="badge muted">{a}
+              <button className="sm ghost" style={{ marginLeft: 4, padding: '0 .2rem' }} title="Remove this name"
+                onClick={() => onAliases(b.aliases.filter((x) => x !== a))}>×</button></span>
+          ))}
+          <input placeholder="+ name" style={{ width: 110, fontSize: '.75rem' }}
+            title="Another name customer exports use for this plan; press Enter to add"
+            onKeyDown={(e) => {
+              const v = e.target.value.trim()
+              if (e.key === 'Enter' && v) { onAliases([...(b.aliases || []), v]); e.target.value = '' }
+            }} />
+        </div>
+      </td>
+      <td>
+        <select value={b.kind} style={{ minWidth: 92 }} onChange={(e) => onSave(
           e.target.value === 'bundle'
             ? { kind: 'bundle', base_bundle_id: null }
             : { kind: 'addon', base_bundle_id: b.base_bundle_id || bases[0]?.id })}>

@@ -352,6 +352,22 @@ class AddonEligibility(Base):
     base_bundle_id: Mapped[str] = mapped_column(ForeignKey("bundles.id"), index=True)
 
 
+class BundleAlias(Base):
+    """Another name a bundle goes by in customer exports — "Exchange Online (Plan
+    2)", "Office 365 E3 (no Teams)", "EMS E3" (TARGET_SCHEMA §3.1, D24). Global +
+    editable in Settings → Staple bundles; seeded from the `aliases` of each entry
+    in seeds/bundles.json (additive: a seeded alias is inserted only if no bundle
+    holds it yet). `alias` is stored normalized (lower case, single spaces) and
+    belongs to one bundle. Read by name resolution (services/bundles.resolve_bundle),
+    so a licence line typed with the customer's own wording finds its plan."""
+
+    __tablename__ = "bundle_aliases"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    alias: Mapped[str] = mapped_column(String, unique=True)
+    bundle_id: Mapped[str] = mapped_column(ForeignKey("bundles.id"), index=True)
+
+
 # Kinds of licensing limit. Today only a tenant-wide seat ceiling; the field keeps
 # the engine general so future caps (per-add-on, per-market) are just new rows.
 LIMIT_TYPES = ("max_total_seats",)

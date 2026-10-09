@@ -56,6 +56,36 @@ def seed_license_limits(db: Session) -> None:
     db.commit()
 
 
+# Seeded limits that gained member bundles after they were first seeded: inserted
+# on an already-seeded DB when missing, so a new plan that shares a cap counts
+# toward it. An explicit list (the seed's other members are left exactly as the
+# operator has them).
+_MEMBER_ADDITIONS = (
+    ("m365-business-seat-cap", "m365-business-basic-no-teams"),
+    ("m365-business-seat-cap", "m365-business-standard-no-teams"),
+    ("m365-business-seat-cap", "m365-business-premium-no-teams"),
+)
+
+
+def backfill_limit_members(db: Session) -> None:
+    """Additive: add each _MEMBER_ADDITIONS pair whose limit and bundle exist but
+    whose membership is missing. A no-op on a fresh DB (the seed already lists
+    them) and idempotent."""
+    limits = {l.key: l for l in db.execute(select(models.LicenseLimit)).scalars()}
+    by_key = {b.key: b for b in bundles_service.list_bundles(db)}
+    have = {(m.license_limit_id, m.bundle_id)
+            for m in db.execute(select(models.LicenseLimitMember)).scalars()}
+    changed = False
+    for limit_key, bundle_key in _MEMBER_ADDITIONS:
+        lim, b = limits.get(limit_key), by_key.get(bundle_key)
+        if lim is not None and b is not None and (lim.id, b.id) not in have:
+            db.add(models.LicenseLimitMember(license_limit_id=lim.id, bundle_id=b.id))
+            have.add((lim.id, b.id))
+            changed = True
+    if changed:
+        db.commit()
+
+
 def _members_by_limit(db: Session) -> dict[str, set[str]]:
     out: dict[str, set[str]] = {}
     for m in db.execute(select(models.LicenseLimitMember)).scalars().all():

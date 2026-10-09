@@ -97,7 +97,7 @@ erDiagram
 ```
 
 The global **rules layer over the Bundle spine** — `Bundle`, `AddonEligibility`
-(§4.4d), `LicenseLimit` + `LicenseLimitMember` (§4.4e) — is not engagement-owned;
+(§4.4d), `BundleAlias` (§4.4f), `LicenseLimit` + `LicenseLimitMember` (§4.4e) — is not engagement-owned;
 it is global, seeded, and editable, and it is evaluated *for* an engagement at
 compute time (limit checks) without persisting
 per-engagement state.
@@ -461,6 +461,24 @@ linked to the first by `parent_persona_id`:
   `_backfill_addon_eligibility` (`app/main.py`) carries the legacy single
   `base_bundle_id` forward for any add-on with a base but no rows. Idempotent.
 
+
+### 4.4f BundleAlias — the names a bundle goes by
+- **Identity:** `uuid` plus a unique `alias`. **Scope:** **global**, editable, seeded
+  from the `aliases` of each entry in `seeds/bundles.json` (`services/bundles.py`;
+  TARGET_SCHEMA §3.1, D24).
+- **Shape:** `alias` (stored normalized: lower case, single spaces) → `bundle_id`. An
+  alias belongs to exactly one bundle.
+- **Why it exists:** customer exports name a licence their own way ("Exchange Online
+  (Plan 2)", "O365 E3 (no Teams)", "EMS E3"). Name resolution
+  (`bundles.resolve_bundle`) reads this table after the exact key and before the exact
+  bundle name, so a licence line typed that way finds its plan. It replaces a
+  dictionary that used to live in code (domain data never lives in code).
+- **CRUD:** read via `GET /api/catalog/bundles` (each bundle carries `aliases`); set via
+  `PUT /api/catalog/bundles/{id}/aliases` (replace-the-set; 409 when another bundle
+  already holds an alias); deleting a bundle removes its aliases. GUI surface: the
+  *Also called* column in Settings → Staple bundles.
+- **Lifecycle:** seeded additively on startup — a seeded alias is inserted only when
+  no bundle holds it yet, so an operator's edits stand.
 ### 4.4e LicenseLimit + LicenseLimitMember — Microsoft licensing caps
 - **Identity:** `LicenseLimit` — `uuid` + unique `key`; `LicenseLimitMember` — `uuid`
   + unique `(license_limit_id, bundle_id)`. **Scope:** **global**, editable, seeded

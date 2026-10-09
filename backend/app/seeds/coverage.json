@@ -1,5 +1,5 @@
 {
-  "version": "2026-08-seed-v11-epm-back-in-e3-e5",
+  "version": "2026-10-seed-v12-email-outcomes-standalones-no-teams",
   "note": "Default Bundle -> outcome coverage library, keyed by Bundle key (see seeds/bundles.json) and outcomes.json keys. Seeded (ratified) into engagement-scoped CoverageMapEntry rows (bundle_id set) on engagement creation. A first-pass authored default from standard Microsoft SKU inclusions \u2014 the SA refines per engagement (and, later, the global library) in the GUI. Security outcomes are split: Endpoint = EPP (anti-malware/AV) vs EDR (behavioral detection); Email = Hygiene (EOP) vs Advanced Threat Protection (Defender for Office 365). Identity is split three ways: SSO/IdP (cloud directory + single sign-on, on any Entra/Azure AD tenant \u2014 so every M365/O365 suite has it) vs MFA & Conditional Access (Entra P1: multi-factor + dynamic/adaptive access policies \u2014 NOT basic security-defaults, so O365 and Business Basic/Standard lack it) vs Governance (Entra P2: PIM/Identity Protection/access reviews). Collaboration is now Team Chat & Meetings (the Teams-vs-Slack/Zoom hub) \u2014 desktop apps and cloud storage are their own outcomes.",
   "bundles": [
     {
@@ -27,6 +27,14 @@
         },
         {
           "outcome": "process-automation",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "mailbox-full",
           "coverage": "Full"
         }
       ]
@@ -64,6 +72,18 @@
         },
         {
           "outcome": "process-automation",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "mailbox-full",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-atp",
           "coverage": "Full"
         }
       ]
@@ -117,6 +137,14 @@
         },
         {
           "outcome": "information-governance",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "mailbox-full",
           "coverage": "Full"
         }
       ]
@@ -184,6 +212,10 @@
         {
           "outcome": "endpoint-protection",
           "coverage": "Full"
+        },
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
         }
       ]
     },
@@ -212,6 +244,14 @@
         },
         {
           "outcome": "process-automation",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "mailbox-full",
           "coverage": "Full"
         }
       ]
@@ -245,6 +285,14 @@
         },
         {
           "outcome": "process-automation",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "mailbox-full",
           "coverage": "Full"
         }
       ]
@@ -310,6 +358,14 @@
         },
         {
           "outcome": "threat-vuln-management",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "mailbox-full",
           "coverage": "Full"
         }
       ]
@@ -417,6 +473,18 @@
         },
         {
           "outcome": "endpoint-privilege-management",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "mailbox-full",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-atp",
           "coverage": "Full"
         }
       ]
@@ -553,6 +621,14 @@
         {
           "outcome": "endpoint-privilege-management",
           "coverage": "Full"
+        },
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "mailbox-full",
+          "coverage": "Full"
         }
       ]
     },
@@ -649,6 +725,14 @@
         },
         {
           "outcome": "endpoint-privilege-management",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "mailbox-full",
           "coverage": "Full"
         }
       ]
@@ -787,6 +871,721 @@
       "coverage": [
         {
           "outcome": "process-automation",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "m365-business-basic-no-teams",
+      "coverage": [
+        {
+          "outcome": "identity-sso",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-hygiene",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "cloud-storage-full",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "information-governance",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "process-automation",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "mailbox-full",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "m365-business-standard-no-teams",
+      "coverage": [
+        {
+          "outcome": "identity-sso",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-hygiene",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "cloud-storage-full",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "desktop-software",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "information-governance",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "process-automation",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "mailbox-full",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "m365-business-premium-no-teams",
+      "coverage": [
+        {
+          "outcome": "desktop-software",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "cloud-storage-full",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "endpoint-protection",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "endpoint-edr",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-hygiene",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-atp",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "device-management",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "identity-sso",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "identity-mfa",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "information-protection",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "drive-encryption",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "information-governance",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "process-automation",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "threat-vuln-management",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "mailbox-full",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "m365-f1-no-teams",
+      "coverage": [
+        {
+          "outcome": "identity-sso",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "identity-mfa",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "information-governance",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "device-management",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "m365-f3-no-teams",
+      "coverage": [
+        {
+          "outcome": "identity-sso",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "identity-mfa",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-hygiene",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "device-management",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "information-protection",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "information-governance",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "process-automation",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "endpoint-protection",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "o365-e1-no-teams",
+      "coverage": [
+        {
+          "outcome": "identity-sso",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-hygiene",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "cloud-storage-full",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "information-governance",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "process-automation",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "mailbox-full",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "o365-e3-no-teams",
+      "coverage": [
+        {
+          "outcome": "desktop-software",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "cloud-storage-full",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "identity-sso",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-hygiene",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "information-protection",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "information-governance",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "process-automation",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "mailbox-full",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-atp",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "o365-e5-no-teams",
+      "coverage": [
+        {
+          "outcome": "desktop-software",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "cloud-storage-full",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "identity-sso",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-hygiene",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-atp",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "information-protection",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "security-awareness",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "telephony-pbx",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "analytics-bi",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "process-automation",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "information-governance",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "mailbox-full",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "m365-e3-no-teams",
+      "coverage": [
+        {
+          "outcome": "desktop-software",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "cloud-storage-full",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "device-management",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "identity-sso",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "identity-mfa",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "information-protection",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "drive-encryption",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-hygiene",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "information-governance",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "process-automation",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "endpoint-protection",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "endpoint-privilege-management",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "mailbox-full",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-atp",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "m365-e5-no-teams",
+      "coverage": [
+        {
+          "outcome": "desktop-software",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "cloud-storage-full",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "endpoint-protection",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "endpoint-edr",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-hygiene",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-atp",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "device-management",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "identity-sso",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "identity-mfa",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "identity-governance",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "information-protection",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "drive-encryption",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "security-awareness",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "cloud-app-security",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "telephony-pbx",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "analytics-bi",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "process-automation",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "threat-vuln-management",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "information-governance",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "endpoint-privilege-management",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "mailbox-full",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "exo-kiosk",
+      "coverage": [
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-hygiene",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "identity-sso",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "exo-p1",
+      "coverage": [
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "mailbox-full",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-hygiene",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "identity-sso",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "exo-p2",
+      "coverage": [
+        {
+          "outcome": "email-calendar",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "mailbox-full",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "email-hygiene",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "identity-sso",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "information-governance",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "m365-apps-business",
+      "coverage": [
+        {
+          "outcome": "desktop-software",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "cloud-storage-full",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "identity-sso",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "m365-apps-enterprise",
+      "coverage": [
+        {
+          "outcome": "desktop-software",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "cloud-storage-full",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "identity-sso",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "teams-essentials",
+      "coverage": [
+        {
+          "outcome": "chat-meetings",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "identity-sso",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "teams-enterprise",
+      "coverage": [
+        {
+          "outcome": "chat-meetings",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "sharepoint-p1",
+      "coverage": [
+        {
+          "outcome": "cloud-storage-full",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "sharepoint-p2",
+      "coverage": [
+        {
+          "outcome": "cloud-storage-full",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "entra-id-p1",
+      "coverage": [
+        {
+          "outcome": "identity-sso",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "identity-mfa",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "intune-p1",
+      "coverage": [
+        {
+          "outcome": "device-management",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "defender-endpoint-p1",
+      "coverage": [
+        {
+          "outcome": "endpoint-protection",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "defender-office-p1",
+      "coverage": [
+        {
+          "outcome": "email-atp",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "defender-business",
+      "coverage": [
+        {
+          "outcome": "endpoint-protection",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "endpoint-edr",
+          "coverage": "Full"
+        },
+        {
+          "outcome": "threat-vuln-management",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "eop",
+      "coverage": [
+        {
+          "outcome": "email-hygiene",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "exo-archiving",
+      "coverage": [
+        {
+          "outcome": "information-governance",
+          "coverage": "Full"
+        }
+      ]
+    },
+    {
+      "bundle": "copilot",
+      "coverage": [
+        {
+          "outcome": "ai-assistant",
           "coverage": "Full"
         }
       ]
