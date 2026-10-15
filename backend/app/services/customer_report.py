@@ -336,11 +336,17 @@ def build_pdf(eng: models.Engagement, result: dict, gaps: list[dict]) -> bytes:
         story += [P("Recommended", "h2"),
                   P(f"<b>{E(s.get('target_label') or s.get('target_sku_reference') or '—')}</b>"
                     f" — {_usd0(per_seat)} per person per year", "base")]
+        # The table reconciles to this persona's run rate: tools it could retire
+        # without any change are the duplicate-spend sub-line (ENGINE_SPEC 6.8a),
+        # so only the part the move unlocks is credited here.
+        offs = s.get("offsets") or []
+        today_only = sum(float(o.get("redundant_today_annual") or 0) for o in offs)
+        unlocked = sum(float(o.get("move_unlocked_annual") or 0) for o in offs)
         impact = [["", "Per year"],
                   ["Microsoft licences today", _usd0(s["current_microsoft_annual"])],
-                  ["Tools this plan retires", _usd0(s["current_third_party_offset_annual"])],
+                  ["Tools only this plan retires", _usd0(unlocked)],
                   ["Microsoft licences with this plan", _usd0(s["target_spend_annual"])],
-                  ["Change per year", _amount(-float(s["delta_annual"]))]]
+                  ["Change per year", _amount(-float(s.get("move_incremental_delta_annual") or 0))]]
         story += [P("Economic impact", "h2"),
                   _table(impact, [4.2 * inch, 1.4 * inch], num_cols=(1,), total=True),
                   P(f"Per year once every contract has renewed: "
@@ -348,10 +354,9 @@ def build_pdf(eng: models.Engagement, result: dict, gaps: list[dict]) -> bytes:
                     f"modelled, counting each part from its renewal: "
                     f"<b>{_amount(consolidation_by_pid.get(pid, 0))}</b>. Positive figures are savings; "
                     f"figures in brackets are added cost."
-                    + (" Tools this group could retire without any change are counted under "
-                       "<i>Retire duplicate tools</i> instead."
-                       if any(float(o.get("redundant_today_annual") or 0) > 0 for o in s.get("offsets") or [])
-                       else ""), "muted")]
+                    + (f" Tools this group could retire without any change ({_usd0(today_only)} a year) "
+                       "are counted under <i>Retire duplicate tools</i> instead."
+                       if today_only > 0 else ""), "muted")]
 
         # Capability changes — new ones highlighted
         new = (new_by_pid.get(pid) or {}).get("outcomes") or []

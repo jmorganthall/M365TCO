@@ -146,3 +146,43 @@ def test_customer_pdf_skips_an_unreadable_logo(client):
     svg = "data:image/svg+xml;base64," + base64.b64encode(b"<svg/>").decode()
     client.patch(f"/api/engagements/{eid}", json={"brand_logo_data_url": svg})
     assert client.post(f"/api/engagements/{eid}/customer-report.pdf").status_code == 200
+
+
+def test_customer_pdf_economic_impact_matches_the_run_rate(client):
+    """A persona's Economic impact table must total to the per-year figure under it.
+
+    Tools the persona could retire without any change belong to "Retire duplicate
+    tools" (ENGINE_SPEC 6.8a), so the table credits only what the move unlocks."""
+    from io import BytesIO
+    from pypdf import PdfReader
+
+    eid = _eng(client, "Reconcile Co")
+    kw = client.post(f"/api/engagements/{eid}/personas",
+                     json={"name": "Office", "headcount": 100}).json()
+    for sku, price in [("Office 365 E3", 276), ("Enterprise Mobility + Security E3", 127)]:
+        client.post(f"/api/engagements/{eid}/current-licenses", json={
+            "sku_reference": sku, "quantity_purchased": 100, "quantity_assigned": 100,
+            "unit_price_paid_annual": price, "persona_ids": [kw["id"]]})
+    outcomes = {o["seed_key"]: o["id"] for o in client.get(f"/api/engagements/{eid}/outcomes").json()}
+    # One tool the current licences already cover (a quick win), one only E5 retires.
+    for name, cost, keys in [("SSO Tool", 6000, ("identity-sso",)),
+                             ("EDR Tool", 9000, ("endpoint-edr",))]:
+        tool = client.post(f"/api/engagements/{eid}/third-party", json={
+            "name": name, "raw_cost": cost, "persona_ids": [kw["id"]],
+            "renewal_date": "2027-06-01"}).json()
+        for k in keys:
+            client.post(f"/api/engagements/{eid}/coverage", json={
+                "outcome_id": outcomes[k], "product_kind": "ThirdParty",
+                "third_party_product_id": tool["id"], "coverage": "Full", "ratified": True})
+    client.post(f"/api/engagements/{eid}/scenarios", json={
+        "persona_id": kw["id"], "target_sku_reference": "Microsoft 365 E5",
+        "target_unit_price_annual": 684, "in_scope": True})
+
+    pdf = client.post(f"/api/engagements/{eid}/customer-report.pdf").content
+    text = " ".join(p.extract_text() for p in PdfReader(BytesIO(pdf)).pages)
+    text = re.sub(r"\s+", " ", text)
+    change = re.search(r"Change per year (\(?\$[\d,]+\)?)", text).group(1)
+    run_rate = re.search(r"Per year once every contract has renewed: (\(?\$[\d,]+\)?)", text).group(1)
+    assert change == run_rate
+    # The part retired without any change is shown, with its amount.
+    assert re.search(r"retire without any change \(\$[\d,]+ a year\)", text)
