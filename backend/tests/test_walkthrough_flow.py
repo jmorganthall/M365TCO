@@ -20,7 +20,7 @@ def test_help_text_has_steps_fields_and_method(client):
     assert set(h["steps"]) == {"customer", "groups", "tools", "future", "gaps", "review", "summary"}
     for key, f in h["fields"].items():
         assert f["ask"].strip() and f["why"].strip(), key
-    assert [m["title"] for m in h["method"]][:2] == ["What we compared", "Groups"]
+    assert [m["title"] for m in h["method"]][:2] == ["What we compared", "Personas"]
 
 
 def test_every_tooltip_in_the_gui_has_help_text(client):

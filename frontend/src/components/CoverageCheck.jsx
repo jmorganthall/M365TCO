@@ -95,7 +95,7 @@ export default function CoverageCheck({ engagement, onNavigate }) {
           </div>
 
           {/* Honesty guard #1: a current licence nobody can read (TARGET_SCHEMA D23).
-              What the group has today is unknown, so its capability changes are left
+              What the persona has today is unknown, so its capability changes are left
               out until the licence is answered on Other tools. */}
           {unread(p) && (
             <div style={WARN_CALLOUT}>
@@ -103,7 +103,7 @@ export default function CoverageCheck({ engagement, onNavigate }) {
               <div className="muted" style={{ fontSize: '.82rem', marginTop: '.25rem' }}>
                 We don't know what {names(p.unmapped_current_licenses)} include
                 {p.unmapped_current_licenses.length > 1 ? '' : 's'}, so nothing can be shown as gained or
-                given up for this group. Its cost still counts.
+                given up for this persona. Its cost still counts.
               </div>
               <FixLink step="tools" label="Answer it on Other tools" onNavigate={onNavigate} />
             </div>
@@ -144,15 +144,15 @@ export default function CoverageCheck({ engagement, onNavigate }) {
                 {p.org_wide_current_licenses.length > 1 ? ' they count' : ' it counts'} for
                 every persona — and{' '}
                 {p.org_wide_current_licenses.length > 1 ? 'they are' : 'it is'} what makes
-                outcomes of this persona's target look already delivered. Say which groups get{' '}
-                {p.org_wide_current_licenses.length > 1 ? 'them' : 'it'} for a per-group value story:
+                outcomes of this persona's target look already delivered. Say which personas get{' '}
+                {p.org_wide_current_licenses.length > 1 ? 'them' : 'it'} for a per-persona value story:
               </div>
               <div className="pill-list" style={{ marginTop: '.35rem' }}>
                 {p.org_wide_current_licenses.map((ref) => (
                   <span key={ref} className="badge warn">{ref}</span>
                 ))}
               </div>
-              <FixLink step="groups" label="Tag them on Groups & licences" onNavigate={onNavigate} />
+              <FixLink step="groups" label="Tag them on Personas & licences" onNavigate={onNavigate} />
             </div>
           )}
 
@@ -254,7 +254,7 @@ function FixLink({ step, label, onNavigate, inline = false }) {
 }
 
 // Shown first, and loudly (WALKTHROUGH step 5): Microsoft licences the library
-// can't read, once per name with the groups holding each, linked to their card.
+// can't read, once per name with the personas holding each, linked to their card.
 function UnreadLicences({ personas, onNavigate }) {
   const byName = {}
   personas.forEach((p) => (p.unmapped_current_licenses || []).forEach((u) => {
@@ -268,7 +268,7 @@ function UnreadLicences({ personas, onNavigate }) {
     <div className="card card-loud" style={{ background: 'var(--panel2)' }}>
       <b className="warn">⚠ {list.length} Microsoft licence{list.length > 1 ? 's' : ''} we can't read yet</b>
       <p className="hint" style={{ margin: '.3rem 0 .4rem' }}>Until each is answered, its cost counts but the
-        capability changes of the groups holding it are left out of the report.</p>
+        capability changes of the personas holding it are left out of the report.</p>
       <ul style={{ margin: 0, paddingLeft: '1.1rem', fontSize: '.85rem' }}>
         {list.map((l) => <li key={l.name}><b>{l.name}</b> <span className="muted">— {l.groups.join(', ')}</span></li>)}
       </ul>

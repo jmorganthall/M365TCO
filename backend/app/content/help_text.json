@@ -6,8 +6,8 @@
       "intro": "Who this workshop is for. Only the name is needed; the rest is optional context."
     },
     "groups": {
-      "title": "Groups & licences",
-      "intro": "Which groups of people get different Microsoft licences today, how many are in each, and what they get. Each group gets its own recommendation."
+      "title": "Personas & licences",
+      "intro": "Which personas get different Microsoft licences today, how many are in each, and what they get. Each persona gets its own recommendation."
     },
     "tools": {
       "title": "Other tools",
@@ -15,7 +15,7 @@
     },
     "future": {
       "title": "Future state",
-      "intro": "The recommended Microsoft plan for each group: the lowest-cost plan that keeps everything the group has today, what it saves and what it adds."
+      "intro": "The recommended Microsoft plan for each persona: the lowest-cost plan that keeps everything the persona has today, what it saves and what it adds."
     },
     "gaps": {
       "title": "Coverage check",
@@ -45,7 +45,7 @@
     },
     "customer.details": {
       "ask": "Optionally, your industry, headquarters, website, number of employees and any notes.",
-      "why": "Background only. The employee count is also used to check that the groups add up. None of these change the numbers."
+      "why": "Background only. The employee count is also used to check that the personas add up. None of these change the numbers."
     },
     "customer.pricing_basis": {
       "ask": "Which Microsoft price list applies: your segment (for example commercial or nonprofit), commitment term and payment plan.",
@@ -56,28 +56,28 @@
       "why": "You can add or upgrade Microsoft licences at any time, but reducing them — fewer seats or a cheaper plan — usually waits for renewal. Reductions and unused-seat savings are counted from this date. Left blank, we treat it as month-to-month with no lock-in: they count from today, and the report says so."
     },
     "groups.name": {
-      "ask": "Which groups of people get different Microsoft licences today? For example office staff, frontline staff, executives.",
-      "why": "Everyone in a group is treated as holding the same licences and tools, and each group gets its own recommendation. Split a group only when its licences or tools differ."
+      "ask": "Which personas get different Microsoft licences today? For example office staff, frontline staff, executives.",
+      "why": "Everyone in a persona is treated as holding the same licences and tools, and each persona gets its own recommendation. Split a persona only when its licences or tools differ."
     },
     "groups.headcount": {
-      "ask": "How many people are in this group?",
-      "why": "Costs are counted per person, so the headcount sets each group's share of today's spend and of the future plan."
+      "ask": "How many people are in this persona?",
+      "why": "Costs are counted per person, so the headcount sets each persona's share of today's spend and of the future plan."
     },
     "groups.description": {
-      "ask": "A short description of the group, in your words.",
-      "why": "Shown on the group's page of the report. It does not change the numbers."
+      "ask": "A short description of the persona, in your words.",
+      "why": "Shown on the persona's page of the report. It does not change the numbers."
     },
     "groups.required_capabilities": {
-      "ask": "Only if a group needs something it doesn't have today: which capabilities must its future plan include?",
-      "why": "By default the recommended plan keeps everything the group has today. Listing a requirement here makes the recommendation include it too."
+      "ask": "Only if a persona needs something it doesn't have today: which capabilities must its future plan include?",
+      "why": "By default the recommended plan keeps everything the persona has today. Listing a requirement here makes the recommendation include it too."
     },
     "licences.product": {
       "ask": "Which Microsoft product is this?",
-      "why": "The product decides which capabilities the group has today and its list price."
+      "why": "The product decides which capabilities the persona has today and its list price."
     },
     "licences.applies_to": {
-      "ask": "Which groups get this licence?",
-      "why": "The licence's cost is split across these groups by headcount, and its capabilities count as delivered for them."
+      "ask": "Which personas get this licence?",
+      "why": "The licence's cost is split across these personas by headcount, and its capabilities count as delivered for them."
     },
     "licences.bought": {
       "ask": "How many of this licence do you pay for?",
@@ -117,7 +117,7 @@
     },
     "tools.used_by": {
       "ask": "Who uses it?",
-      "why": "A tool is retired only for groups that use it, and its cost is counted per person. A tool with no users is left out."
+      "why": "A tool is retired only for personas that use it, and its cost is counted per person. A tool with no users is left out."
     },
     "tools.managed": {
       "ask": "Do you buy it directly, or as part of a managed service?",
@@ -128,8 +128,8 @@
       "why": "A tool can be retired only when Microsoft 365 covers everything you use it for. A tool with no uses ticked is left out."
     },
     "tools.covers": {
-      "ask": "Only if it differs from the groups' headcount: how many people does it cover?",
-      "why": "Sets the cost per person. Blank uses the headcount of the groups that use it."
+      "ask": "Only if it differs from the personas' headcount: how many people does it cover?",
+      "why": "Sets the cost per person. Blank uses the headcount of the personas that use it."
     },
     "tools.tooling_pct": {
       "ask": "For a managed service: what share of the price is the software itself?",
@@ -140,28 +140,28 @@
       "why": "Shown for reference only."
     },
     "future.plan": {
-      "ask": "Which Microsoft plan should this group move to?",
-      "why": "The plan's capabilities decide which tools can retire, and its price sets the group's future Microsoft cost."
+      "ask": "Which Microsoft plan should this persona move to?",
+      "why": "The plan's capabilities decide which tools can retire, and its price sets the persona's future Microsoft cost."
     },
     "future.recommend": {
-      "ask": "Fill in the recommended plan for every group that doesn't have one.",
-      "why": "The recommendation is the lowest-cost plan, plus any add-ons, that keeps everything the group has today. You can change it."
+      "ask": "Fill in the recommended plan for every persona that doesn't have one.",
+      "why": "The recommendation is the lowest-cost plan, plus any add-ons, that keeps everything the persona has today. You can change it."
     },
     "future.addons": {
       "ask": "Any add-ons on top of the plan?",
-      "why": "Add-ons add capabilities and cost to the group's future plan."
+      "why": "Add-ons add capabilities and cost to the persona's future plan."
     },
     "future.price": {
       "ask": "Any discount or agreed price for the future plan?",
-      "why": "Replaces the list price for this group's future plan."
+      "why": "Replaces the list price for this persona's future plan."
     },
     "future.in_scope": {
-      "ask": "Is this group part of the proposal?",
-      "why": "A group out of scope is shown for comparison but left out of the totals."
+      "ask": "Is this persona part of the proposal?",
+      "why": "A persona out of scope is shown for comparison but left out of the totals."
     },
     "future.carve": {
-      "ask": "Should only part of this group move?",
-      "why": "Splits the group so the people who move get their own plan."
+      "ask": "Should only part of this persona move?",
+      "why": "Splits the persona so the people who move get their own plan."
     },
     "future.keep_or_retire": {
       "ask": "This tool is only partly replaced. Will you keep it for the remaining users, or retire it entirely?",
@@ -188,7 +188,7 @@
       "why": "Your current Microsoft licences already cover everything these tools are used for."
     },
     "summary.consolidation": {
-      "ask": "Moving each group to its recommended plan.",
+      "ask": "Moving each persona to its recommended plan.",
       "why": "The tools the new plan replaces, less any change in Microsoft cost."
     },
     "summary.overlicensing": {
@@ -217,17 +217,17 @@
     },
     "licences.unknown": {
       "ask": "What does this licence include?",
-      "why": "We don't recognise this licence yet, so we can't tell what it gives you today. Its cost still counts, but until we know what it includes we leave out anything the groups that hold it would gain or give up — a capability can't be called new, or lost, without knowing what you have."
+      "why": "We don't recognise this licence yet, so we can't tell what it gives you today. Its cost still counts, but until we know what it includes we leave out anything the personas that hold it would gain or give up — a capability can't be called new, or lost, without knowing what you have."
     }
   },
   "method": [
     {
       "title": "What we compared",
-      "body": "For each group of people, what you spend today on Microsoft licences and on other tools, compared with the recommended Microsoft plan for that group. Licensing costs only: migration, services and operational savings are not included."
+      "body": "For each persona, what you spend today on Microsoft licences and on other tools, compared with the recommended Microsoft plan for that persona. Licensing costs only: migration, services and operational savings are not included."
     },
     {
-      "title": "Groups",
-      "body": "Everyone in a group is treated as holding the same licences and tools. A licence or tool shared by several groups has its cost split between them by headcount."
+      "title": "Personas",
+      "body": "Everyone in a persona is treated as holding the same licences and tools. A licence or tool shared by several personas has its cost split between them by headcount."
     },
     {
       "title": "Duplicate spend today",
@@ -235,7 +235,7 @@
     },
     {
       "title": "Consolidation",
-      "body": "Moving a group to its recommended plan retires the tools whose every use the plan covers. A tool's cost is counted per person it covers. For a managed service, only the software share of the price counts. The change in Microsoft cost is added or subtracted."
+      "body": "Moving a persona to its recommended plan retires the tools whose every use the plan covers. A tool's cost is counted per person it covers. For a managed service, only the software share of the price counts. The change in Microsoft cost is added or subtracted."
     },
     {
       "title": "Over-licensing",
@@ -255,7 +255,7 @@
     },
     {
       "title": "What is left out",
-      "body": "Anything we couldn't confirm in the workshop — a tool without a cost or users, an unanswered question — is left out of the numbers rather than estimated. Where we couldn't tell what a Microsoft licence includes, its cost is counted but its group's capability changes are left out."
+      "body": "Anything we couldn't confirm in the workshop — a tool without a cost or users, an unanswered question — is left out of the numbers rather than estimated. Where we couldn't tell what a Microsoft licence includes, its cost is counted but its persona's capability changes are left out."
     }
   ]
 }

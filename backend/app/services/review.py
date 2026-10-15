@@ -33,27 +33,27 @@ def review(db: Session, engagement_id: str) -> dict:
     personas = {p.id: p for p in eng.personas}
     total_hc = sum(p.headcount or 0 for p in eng.personas)
 
-    # ---- Groups & licences -------------------------------------------------
+    # ---- Personas & licences -----------------------------------------------
     if not eng.personas:
-        check("no_groups", "groups", "No groups yet. Add the groups of people who get different licences.")
+        check("no_groups", "groups", "No personas yet. Add the personas who get different licences.")
     if eng.employee_count and total_hc and total_hc != eng.employee_count:
         check("headcount_vs_employees", "groups",
-              f"The groups add up to {total_hc:,} people; the customer has {eng.employee_count:,} "
-              f"employees. Is a group missing, or is the employee count out of date?", "info")
+              f"The personas add up to {total_hc:,} people; the customer has {eng.employee_count:,} "
+              f"employees. Is a persona missing, or is the employee count out of date?", "info")
 
     for lic in eng.licenses_in_scope:
         name = lic.sku_reference or "A licence line"
         tagged = [personas[pid] for pid in lic.persona_ids if pid in personas]
         if not lic.persona_ids:
             check("licence_untagged", "groups",
-                  f"{name} isn't assigned to any group, so it is counted across every group. "
-                  f"Say which groups get it.")
+                  f"{name} isn't assigned to any persona, so it is counted across every persona. "
+                  f"Say which personas get it.")
         elif lic.coverage_scope != "TenantWide":
             hc = sum(p.headcount or 0 for p in tagged)
             if lic.quantity_assigned != hc:
                 check("seats_vs_headcount", "groups",
-                      f"{name}: {lic.quantity_assigned:,} seats are assigned, but the groups that get "
-                      f"it have {hc:,} people. Adjust the seats, or split the group if only some of "
+                      f"{name}: {lic.quantity_assigned:,} seats are assigned, but the personas that get "
+                      f"it have {hc:,} people. Adjust the seats, or split the persona if only some of "
                       f"them hold it.", "info")
         unused = max((lic.quantity_purchased or 0) - (lic.quantity_assigned or 0), 0)
         if unused and not lic.unused_seats_answer:

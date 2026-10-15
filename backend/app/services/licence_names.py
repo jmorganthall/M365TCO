@@ -90,7 +90,7 @@ def list_names(db: Session, eng: models.Engagement) -> list[dict]:
         groups: list[str] = []
         for lic in lines:
             if not lic.persona_ids:
-                groups.append("Every group")
+                groups.append("Every persona")
             groups += [persona_names[pid] for pid in lic.persona_ids if pid in persona_names]
         linked = {lic.bundle_id for lic in lines if lic.bundle_id}
         linked_id = next(iter(linked)) if len(linked) == 1 else None

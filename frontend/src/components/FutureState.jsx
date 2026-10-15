@@ -4,8 +4,8 @@ import Help from './Help.jsx'
 import Scenarios from './Scenarios.jsx'
 import PartlyReplaced from './PartlyReplaced.jsx'
 
-// Step 4 — Future state per group (docs/WALKTHROUGH.md §3): fill in the
-// recommended plan for every group without one, adjust plans, and answer the
+// Step 4 — Future state per persona (docs/WALKTHROUGH.md §3): fill in the
+// recommended plan for every persona without one, adjust plans, and answer the
 // keep-or-retire question for tools only partly replaced.
 export default function FutureState({ engagement, meta, moneyUnit }) {
   const [plansKey, setPlansKey] = useState(0)     // remount the plans after a fill-in
@@ -21,8 +21,8 @@ export default function FutureState({ engagement, meta, moneyUnit }) {
   )
 }
 
-// One click fills every group that has no plan with the recommender's choice: the
-// lowest-cost plan (plus add-ons) that keeps everything the group has today. An
+// One click fills every persona that has no plan with the recommender's choice: the
+// lowest-cost plan (plus add-ons) that keeps everything the persona has today. An
 // explicit action, never automatic — and every plan stays editable.
 function RecommendPlans({ engagement, changed, onDone }) {
   const eid = engagement.id
@@ -50,7 +50,7 @@ function RecommendPlans({ engagement, changed, onDone }) {
         if (!best) {
           done.push({ name: p.name, plan: null,
             why: bundles.some((b) => b.price_known)
-              ? 'no priced plan keeps everything this group has today — pick one with ⚡ below'
+              ? 'no priced plan keeps everything this persona has today — pick one with ⚡ below'
               : 'no Microsoft prices are loaded — load the price list in Settings, or pick a plan and price below' })
           continue
         }
@@ -72,7 +72,7 @@ function RecommendPlans({ engagement, changed, onDone }) {
       <div className="flex-between">
         <div>
           <b>{missing.length
-            ? `${missing.length} group${missing.length === 1 ? ' has' : 's have'} no plan yet`
+            ? `${missing.length} persona${missing.length === 1 ? ' has' : 's have'} no plan yet`
             : 'Recommended plans filled in'}</b> <Help k="future.recommend" />
         </div>
         {missing.length > 0 && (

@@ -65,7 +65,7 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove, reading, 
   // answered on Other tools, never here — the flag links there.
   if (reading?.state === 'unread') chips.push(
     <button key="read" className="badge warn licence-flag" onClick={() => onNavigate?.('tools')}
-      title="We don't know what this licence includes, so its groups' capability changes are left out. Answer it on Other tools.">
+      title="We don't know what this licence includes, so its personas' capability changes are left out. Answer it on Other tools.">
       ⚠ not read yet — answer on Other tools ›</button>)
   if (reading?.state === 'linked') chips.push(
     <span key="read" className="badge muted" title="Answered on Other tools">same as {reading.bundle_name}</span>)
@@ -210,7 +210,7 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove, reading, 
                       {off > 0 ? ` (−${pct(off)})` : ''}. Edit the $/seat cell above.</>
                     : <>The $/seat cell shows the catalog list. Tick to enter a negotiated price.</>}
                 </small></div>
-              <div><label>Groups that get it <Help k="licences.applies_to" /></label>
+              <div><label>Personas that get it <Help k="licences.applies_to" /></label>
                 <div className="pill-list">
                   {personas.map((p) => (
                     <button key={p.id} type="button"
@@ -396,7 +396,7 @@ export default function CurrentLicensing({ engagement, meta, onUpdate, onNavigat
     <div className="card">
       <h2 style={{ marginTop: 0 }}>Microsoft licences</h2>
       <p className="hint">Each Microsoft product the customer pays for: how many are bought, which
-        groups get it (▸ details) and, if known, what they pay — otherwise the list price is used. Seats
+        personas get it (▸ details) and, if known, what they pay — otherwise the list price is used. Seats
         bought but not assigned are asked about in the details. Prices are quoted at{' '}
         <b>{engBasis.segment} · {termLabel(engBasis.term)} · {billingLabel(engBasis.billing)}</b>{' '}
         (Customer step › Pricing basis; a line can override it).</p>

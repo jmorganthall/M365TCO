@@ -23,7 +23,7 @@ function NumInput({ value, onCommit, style, step, disabled, placeholder, allowEm
   )
 }
 
-// Who uses a tool: tag whole groups (the default reading), or "All groups".
+// Who uses a tool: tag whole personas (the default reading), or "All personas".
 // Untagged with no covers number means no users — the tool is left out.
 function UsedBy({ personas, tagIds, onChange, dimmed }) {
   const toggle = (pid) => onChange(tagIds.includes(pid) ? tagIds.filter((x) => x !== pid) : [...tagIds, pid])
@@ -36,9 +36,9 @@ function UsedBy({ personas, tagIds, onChange, dimmed }) {
       ))}
       {personas.length > 1 && (
         <button type="button" className="ghost sm" onClick={() => onChange(all ? [] : personas.map((p) => p.id))}>
-          {all ? 'none' : 'all groups'}</button>
+          {all ? 'none' : 'all personas'}</button>
       )}
-      {personas.length === 0 && <span className="muted">Add groups first.</span>}
+      {personas.length === 0 && <span className="muted">Add personas first.</span>}
     </div>
   )
 }
@@ -46,7 +46,7 @@ function UsedBy({ personas, tagIds, onChange, dimmed }) {
 // One tool as an expandable line item: the walkthrough's questions on the row
 // (name, cost, renewal, who uses it, managed), the unusual details — vendor, the
 // managed service's software share, a covers number that differs from the
-// groups' headcount — in the expander (docs/WALKTHROUGH.md §3, step 3).
+// personas' headcount — in the expander (docs/WALKTHROUGH.md §3, step 3).
 function ProductRow({ t, meta, personas, moneyUnit, update, remove }) {
   const [open, setOpen] = useState(false)
   const tagIds = t.persona_ids || []
@@ -94,7 +94,7 @@ function ProductRow({ t, meta, personas, moneyUnit, update, remove }) {
                 <NumInput value={t.covered_count_override} allowEmpty
                   placeholder={String(t.persona_covered_count ?? 0)}
                   onCommit={(n) => update(t.id, { covered_count_override: n })} />
-                <small className="src">Blank = the groups' headcount ({t.persona_covered_count}).</small></div>
+                <small className="src">Blank = the personas' headcount ({t.persona_covered_count}).</small></div>
               <div><label>Counted · per person</label>
                 <div className="muted" style={{ paddingTop: '.35rem' }}>{t.covered_count} people · {money(t.effective_annual_cost, moneyUnit)} · {money(t.per_unit_annual_cost, moneyUnit)} each</div>
                 <small className="src">The cost counted (after any managed-service share), split per person covered.</small></div>

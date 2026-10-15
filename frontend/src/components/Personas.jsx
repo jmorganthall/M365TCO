@@ -76,12 +76,12 @@ export default function Personas({ engagement, meta }) {
 
   return (
     <div className="card">
-      <h2 style={{ marginTop: 0 }}>Groups</h2>
+      <h2 style={{ marginTop: 0 }}>Personas</h2>
       {err && <div className="err">{err}</div>}
 
       <table className="resp-table">
         <thead><tr>
-          <th></th><th>Group <Help k="groups.name" /></th><th className="num">People <Help k="groups.headcount" /></th>
+          <th></th><th>Persona <Help k="groups.name" /></th><th className="num">People <Help k="groups.headcount" /></th>
           <th>Description <Help k="groups.description" /></th><th className="num">Requires</th><th></th>
         </tr></thead>
         <tbody>
@@ -147,7 +147,7 @@ export default function Personas({ engagement, meta }) {
                         ))}
                         {outcomes.length === 0 && <span className="muted">No outcomes defined yet.</span>}
                       </div>
-                      <small className="src">Only for something this group needs but doesn't have today — the recommendation already keeps everything it has.</small>
+                      <small className="src">Only for something this persona needs but doesn't have today — the recommendation already keeps everything it has.</small>
                     </td>
                   </tr>
                 )}
@@ -159,7 +159,7 @@ export default function Personas({ engagement, meta }) {
 
       <div className="toolbar" style={{ marginTop: '.8rem' }}>
         <div style={{ flex: 2 }}>
-          <label>New group</label>
+          <label>New persona</label>
           <input value={form.name} placeholder="e.g. Office staff" autoComplete="off"
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             onKeyDown={(e) => e.key === 'Enter' && add()} />
@@ -169,7 +169,7 @@ export default function Personas({ engagement, meta }) {
           <input type="number" value={form.headcount}
             onChange={(e) => setForm({ ...form, headcount: e.target.value })} />
         </div>
-        <button onClick={add}>Add group</button>
+        <button onClick={add}>Add persona</button>
       </div>
     </div>
   )

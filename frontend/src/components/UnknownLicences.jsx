@@ -9,7 +9,7 @@ import { api } from '../api'
 // answer is written to every line of that name: the same as a library plan, the
 // outcomes it delivers (ticked, or AI-suggested and confirmed — the same controls
 // as a tool's uses), the library's list, or out of scope. Until answered, its cost
-// counts but its groups' capability changes are left out.
+// counts but its personas' capability changes are left out.
 export default function UnknownLicences({ engagement }) {
   const eid = engagement.id
   const base = `/api/engagements/${eid}`
@@ -126,7 +126,7 @@ export default function UnknownLicences({ engagement }) {
   const heading = (item) => (
     <>
       <b>{item.sku_reference || 'A licence line with no name'}</b>
-      <span className="muted"> · {item.groups.join(', ') || 'no group'} · {item.seats.toLocaleString()} seats</span>
+      <span className="muted"> · {item.groups.join(', ') || 'no persona'} · {item.seats.toLocaleString()} seats</span>
     </>
   )
 
@@ -134,14 +134,14 @@ export default function UnknownLicences({ engagement }) {
     <div className={`card${unread.length ? ' card-loud' : ''}`} id="unknown-licences">
       <h2 style={{ marginTop: 0 }}>Microsoft licences we can't read yet <Help k="licences.unknown" /></h2>
       <p className="hint">The library doesn't know what these licences include, so we can't tell what
-        their groups gain or give up. Their cost still counts. Answer each once; the answer applies to
+        their personas gain or give up. Their cost still counts. Answer each once; the answer applies to
         every line with that name. {aiEnabled && <><b>AI suggest</b> pre-ticks likely outcomes; confirm each
         with the customer — a suggestion counts only once confirmed.</>}</p>
       {err && <div className="err">{err}</div>}
       {msg && <div className="popcheck" style={{ margin: '.4rem 0' }}>{msg}</div>}
 
       {unread.length > 0 && <p className="warn" style={{ margin: '0 0 .5rem' }}>
-        <b>{unread.length} to answer.</b> Until then, the capability changes of the groups holding{' '}
+        <b>{unread.length} to answer.</b> Until then, the capability changes of the personas holding{' '}
         {unread.length === 1 ? 'it' : 'them'} are left out of the report.</p>}
       {sorted.map((item) => item.state === 'unread' ? (
         <div key={item.sku_reference} className="card" style={{ background: 'var(--panel2)' }}>
