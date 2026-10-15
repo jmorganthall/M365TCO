@@ -491,11 +491,11 @@ function NarrativeBlock({ n, eid, onSaved, onError }) {
 }
 
 // The headline (ENGINE_SPEC 6.11) — computed once in the engine; this only displays
-// it. It LEADS with the run rate: what the customer saves each year once every
-// contract has renewed, made of ① duplicate spend today, ② consolidation (each
-// persona's move, its own value — quick-win credit stripped, so ① and ② never
-// double-count) and ③ over-licensing. Every figure here is per year, so the parts
-// sum to the headline. How it is reached, year by year, is the RampCard below.
+// it, exactly as the readout and PDF do. It LEADS with the full run rate over the
+// horizon, with the run rate per year beside it: ① duplicate spend today, ②
+// consolidation (each persona's move, its own value — quick-win credit stripped,
+// so ① and ② never double-count) and ③ over-licensing, each per year with its
+// share of the savings (from the engine). How it is reached is the RampCard below.
 function RunRateHeadline({ h, inScope, currency, newCount }) {
   if (!h) return null
   const months = h.horizon_months
@@ -504,23 +504,19 @@ function RunRateHeadline({ h, inScope, currency, newCount }) {
   const dup = Number(h.duplicate_spend_annual) || 0
   const cons = Number(h.consolidation_annual) || 0
   const over = Number(h.overlicensing_annual) || 0
+  const horizonTotal = Number(h.run_rate_horizon_amount) || 0
   // A cost that buys confirmed new capabilities leads with what it buys (W6).
   const invest = runRate < 0 && newCount > 0
-  const word = runRate > 0 ? 'per year saved'
-    : invest ? `per year to gain ${newCount} new capabilit${newCount === 1 ? 'y' : 'ies'}`
-      : runRate < 0 ? 'per year added' : 'no net change per year'
-  // Shares of the run rate, only when every part is a saving (a share of a cost, or
-  // a part over 100% beside one, reads as nonsense); the last shown part takes
-  // the rounding remainder so they always sum to 100%.
+  const word = runRate > 0 ? `saved over ${months} months at full run rate`
+    : invest ? `over ${months} months at full run rate to gain ${newCount} new capabilit${newCount === 1 ? 'y' : 'ies'}`
+      : runRate < 0 ? `added over ${months} months at full run rate` : 'no net change at full run rate'
   const parts = [['dup', dup], ['cons', cons], ['over', over]].filter(([k, v]) => k === 'cons' || v)
+  // Each saving's share of the savings, from the engine (never of the net).
+  const ss = h.savings_shares || {}
   const shares = {}
-  if (runRate > 0 && parts.every(([, v]) => v >= 0)) {
-    let running = 0
-    parts.forEach(([k, v], i) => {
-      const p = i === parts.length - 1 ? 100 - running : Math.round(v / runRate * 100)
-      shares[k] = p; running += p
-    })
-  }
+  if (ss.duplicate_spend != null) shares.dup = ss.duplicate_spend
+  if (ss.consolidation != null) shares.cons = ss.consolidation
+  if (ss.overlicensing != null) shares.over = ss.overlicensing
   const pct = (k) => k in shares
     ? <span className="part-pct">{shares[k] < 0 ? `(${Math.abs(shares[k])}%)` : `${shares[k]}%`}</span> : null
   const marks = parts.length > 1 ? ['①', '②', '③'] : []
@@ -534,12 +530,14 @@ function RunRateHeadline({ h, inScope, currency, newCount }) {
   }
   return (
     <>
-      <div className="muted">Total opportunity · per year, once every contract has renewed · {currency} <PricingBadge /></div>
+      <div className="muted">Total opportunity · at full run rate over the period modelled · {currency} <PricingBadge /></div>
       <div className={`headline headline-xl ${runRate > 0 ? 'pos' : ''}`}>
-        {invest ? 'Invest ' : ''}{usd0(runRate)} <span style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--muted)' }}>{word}</span>
+        {invest ? 'Invest ' : ''}{usd0(horizonTotal)} <span style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--muted)' }}>{word}</span>
       </div>
-      <div className="muted">Over {months} months: {usd0(total)} {total > 0 ? 'saved' : total < 0 ? 'added' : 'no net change'} as
-        contracts renew{reachText(h.full_run_rate_month, months) && <> · {reachText(h.full_run_rate_month, months)}</>}
+      <div className="muted"><b>{usd0(runRate)}</b> per year {runRate > 0 ? 'saved' : runRate < 0 ? 'added' : 'unchanged'} once
+        every contract has renewed{reachText(h.full_run_rate_month, months) && <> · {reachText(h.full_run_rate_month, months)}</>}
+        {' '}· within the first {months} months, {usd0(total)} {total > 0 ? 'saved' : total < 0 ? 'added' : 'no net change'} as
+        contracts renew
         {h.missing_dates > 0 && <> · <span className="muted">{h.missing_dates} amount{h.missing_dates === 1 ? '' : 's'} with
           no renewal date count{h.missing_dates === 1 ? 's' : ''} from today</span></>}</div>
       {dup !== 0 && (

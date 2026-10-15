@@ -42,7 +42,7 @@ def test_in_scope_persona_with_nothing_new_is_still_listed_with_a_reason(client)
     assert result["dropped_capability"] == []
 
     html = client.get(f"/api/engagements/{eid}/readout.html").text
-    assert "<h2>New outcomes</h2>" in html          # the section survives
+    assert "<h3>Capability changes</h3>" in html    # the section survives
     assert "Knowledge Workers" in html
     assert "Nothing new" in html
 
@@ -60,8 +60,8 @@ def test_unmapped_target_is_reported_as_a_data_gap_not_a_capability_wipe(client)
     # No phantom drop, and no Capability trade-offs section built on one.
     assert result["dropped_capability"] == []
     html = client.get(f"/api/engagements/{eid}/readout.html").text
-    assert "no ratified coverage" in html
-    assert "Capability trade-offs" not in html
+    assert "isn't mapped in this review" in html
+    assert "No longer included" not in html
 
     gaps = client.get(f"/api/engagements/{eid}/coverage-gaps").json()
     gap = next(g for g in gaps["personas"] if g["persona_id"] == pid)
@@ -83,7 +83,7 @@ def test_untagged_current_licensing_is_named_as_the_reason(client):
     assert "Microsoft 365 E5" in entry["empty_reason_text"]
 
     html = client.get(f"/api/engagements/{eid}/readout.html").text
-    assert "no persona tag" in html
+    assert "licences with no persona assigned" in html
 
     gaps = client.get(f"/api/engagements/{eid}/coverage-gaps").json()
     gap = next(g for g in gaps["personas"] if g["persona_id"] == pid)

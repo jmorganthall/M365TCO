@@ -225,23 +225,27 @@ def test_readout_delta_sign_and_color_convention(client):
         "persona_id": kw["id"], "target_sku_reference": "E3", "target_unit_price_annual": 0})
     r = client.post(f"/api/engagements/{eid}/compute").json()
     assert r["rollup"]["net_tco_delta_annual"] == -30000.0  # negative = saving
-    # The headline is the run rate, stated in words, unsigned and green.
+    # The headline is the full run rate over the horizon, stated in words,
+    # unsigned and highlighted; the run rate per year sits beside it.
     html_body = client.get(f"/api/engagements/{eid}/readout.html").text
-    assert "headline pos" in html_body            # saving -> green
-    assert "$30,000 <span class='headline-word'>per year saved" in html_body
-    assert "headline neg" not in html_body        # never red
+    assert "<div class='hero-figure saved'>$90,000</div>" in html_body
+    assert "saved over 36 months at full run rate" in html_body
+    assert "<b>$30,000</b> per year saved once every contract has renewed" in html_body
     # The reduction waits for the Microsoft renewal; with none given it is
     # month-to-month, so all 36 months count (ENGINE_SPEC 6.11) and the readout says so.
-    assert "Over 36 months: $90,000 saved" in html_body
+    assert "Within the first 36 months, $90,000 is saved" in html_body
     assert "1 amount has no renewal date and counts from today" in html_body
     # Renewing in a year, the ramp shows 24 of 36 months; the run rate is unchanged.
     workshop = date.fromisoformat(eng["workshop_date"])
     client.patch(f"/api/engagements/{eid}", json={
         "microsoft_renewal_date": workshop.replace(year=workshop.year + 1).isoformat()})
     html_body = client.get(f"/api/engagements/{eid}/readout.html").text
-    assert "$30,000 <span class='headline-word'>per year saved" in html_body
-    assert "Over 36 months: $60,000 saved" in html_body
-    assert "the full run rate from month 12" in html_body
+    # The headline is the run rate's value over the horizon — unchanged by timing;
+    # the ramp shows what lands within it.
+    assert "<div class='hero-figure saved'>$90,000</div>" in html_body
+    assert "<b>$30,000</b> per year saved" in html_body
+    assert "Within the first 36 months, $60,000 is saved" in html_body
+    assert "full run rate from month 12" in html_body
 
     # Cost increase: expensive target.
     eng2 = client.post("/api/engagements", json={"customer_name": "Up Co"}).json()
@@ -255,26 +259,27 @@ def test_readout_delta_sign_and_color_convention(client):
     r2 = client.post(f"/api/engagements/{e2}/compute").json()
     assert r2["rollup"]["net_tco_delta_annual"] == 50000.0  # positive = cost increase
     html2 = client.get(f"/api/engagements/{e2}/readout.html").text
-    assert "$50,000 <span class='headline-word'>per year added" in html2
-    assert "headline neg" not in html2            # increase is neutral, not red
+    assert "<div class='hero-figure added'>$150,000</div>" in html2   # neutral, not red
+    assert "added over 36 months at full run rate" in html2
+    assert "<b>$50,000</b> per year added" in html2
 
 
 def test_readout_branding_applied_and_sanitized(client):
+    """The practice brands the readout once (TARGET_SCHEMA D25); the customer's
+    logo is the engagement's. Bad colours are refused, never inlined."""
     eng = client.post("/api/engagements", json={"customer_name": "Brand Co"}).json()
     eid = eng["id"]
-    tiny_png = ("data:image/png;base64,"
-                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
-    out = client.patch(f"/api/engagements/{eid}", json={
-        "brand_primary_color": "#0a7d34",
-        "brand_accent_color": "red; } body { display:none",  # injection attempt
-        "brand_logo_data_url": tiny_png,
-    }).json()
-    assert out["brand_primary_color"] == "#0a7d34"
+    png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAEklEQVR4nGMUiTrBAANMDEgAAByqATrMLakTAAAAAElFTkSuQmCC"
+    client.patch(f"/api/engagements/{eid}", json={"brand_logo_data_url": png})
+    r = client.put("/api/admin/branding", json={"accent_color": "red; } body { display:none"})
+    assert r.status_code == 422                                   # injection refused
+    out = client.put("/api/admin/branding", json={"primary_color": "#0a7d34"}).json()
+    assert out["primary_color"] == "#0A7D34" and out["accent_color"] is None
 
     html_body = client.get(f"/api/engagements/{eid}/readout.html").text
-    assert "#0a7d34" in html_body           # valid color inlined
-    assert "display:none" not in html_body  # malicious accent color rejected
-    assert tiny_png[:30] in html_body       # logo embedded
+    assert "--primary:#0A7D34" in html_body  # valid color inlined
+    assert "red; }" not in html_body         # malicious accent color never stored
+    assert png[:40] in html_body             # customer logo embedded on the cover
 
 
 def test_download_existing_catalog_returns_uploaded_file_as_is(client):

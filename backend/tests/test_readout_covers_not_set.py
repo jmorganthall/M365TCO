@@ -39,9 +39,9 @@ def test_html_readout_explains_zero_covers_instead_of_contradicting(client):
     # …but the customer readout explains the unset covers rather than printing a
     # contradictory "Retire fully · 0 seats retired".
     html = client.get(f"/api/engagements/{eid}/readout.html").text
-    assert "Third-party tools — what happens to each" in html
-    assert "Retire fully" in html
-    assert "Covered population not set" in html
+    assert "What happens to each tool" in html
+    assert "<span class='tag retire'>Retire</span>" in html
+    assert "Users not set" in html
 
 
 def test_covers_set_still_shows_the_seat_count(client):
@@ -63,6 +63,6 @@ def test_covers_set_still_shows_the_seat_count(client):
         "target_unit_price_annual": 400, "in_scope": True})
 
     html = client.get(f"/api/engagements/{eid}/readout.html").text
-    assert "Covered population not set" not in html
+    assert "Users not set" not in html
     # 100 seats retired appears in the dispositions table.
     assert ">100<" in html

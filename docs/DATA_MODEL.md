@@ -118,12 +118,13 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Relationships:** one-to-many to all eight child sets, all `cascade="all, delete-orphan"`.
 - **Field ownership:** user-entered (`customer_name`, `market`, `currency`,
   `modeling_horizon_years` (how many months the headline's ramp counts, e.g.
-  3 → 36 months, ENGINE_SPEC 6.11; the run rate doesn't depend on it),
+  3 → 36 months: the headline is the run rate over it, and the ramp counts it,
+  ENGINE_SPEC 6.11; the run rate per year doesn't depend on it),
   `notes`, `global_tooling_pct`, `default_segment`,
   `default_term_duration`, `default_billing_plan`,
   `business_cap_enabled`, `managed_ms_account`, the ECIF ROI ratios
-  `ecif_roi_conservative` / `ecif_roi_generous`, the readout
-  branding `brand_logo_data_url` / `brand_primary_color` / `brand_accent_color`,
+  `ecif_roi_conservative` / `ecif_roi_generous`, the customer's logo
+  `brand_logo_data_url` (TARGET_SCHEMA `customer_logo`),
   and the Customer-Info metadata `workshop_date` / `industry` / `hq_location` /
   `website` / `employee_count`, plus `microsoft_renewal_date` — when the customer's
   Microsoft agreement renews, the default renewal for every licence line, which
@@ -168,15 +169,18 @@ FK, UUID PK, cascade-deleted with the engagement.
   the basis defaults) with id remapping.
 - **Note:** `global_tooling_pct` is the engagement default for the managed split;
   individual third-party rows may override it.
-- **Readout branding:** `brand_logo_data_url` (a base64 image data URL),
-  `brand_primary_color`, `brand_accent_color` are user-entered runtime data
-  applied to the HTML readout (blank = neutral built-in theme). They are the
-  customer/practice's own runtime branding — never a hard-coded identity — so
-  they honor the white-label rule (like `customer_name`). The exporter sanitizes
-  colors against a strict CSS-color pattern and the logo against a base64 image
-  data-URL pattern before inlining, so neither can break out of the readout's
-  `<style>`/`<img>` context. Editable on the Readout tab. A future reusable
-  `BrandTheme` library (global presets seeding these fields) would follow §2.
+- **Readout branding** (TARGET_SCHEMA §3.5, D25): the practice brands the
+  readout once, in the single-row `practice_branding` (`logo_data_url`,
+  `primary_color` / `accent_color` / `highlight_color`, and the rich-text blocks
+  `tagline`, `cover_subtitle`, `closing_block`, `footer_disclaimer`; `updated_at`
+  shown read-only), edited in Settings → Readout branding. Every field is
+  nullable — NULL is the neutral built-in default in `services/branding`, resolved
+  at render and never written back. Colours must be hex and the logo a base64
+  image data URL (PNG, JPEG, GIF, WebP or SVG); rich text is sanitized on write and
+  again on render to bold, italic, links and a highlight span. It is runtime data,
+  never a hard-coded identity, so it honours the white-label rule. The engagement
+  keeps only the customer's logo (`brand_logo_data_url`, labelled "Customer logo"
+  on the Customer step); its old per-engagement colours are retired.
 - **Pricing-basis inheritance:** `default_segment` / `default_term_duration`
   (P1Y) / `default_billing_plan` (Monthly — the typical customer case, a 1-year
   commit paid monthly; note the sheet prices this variant ~5% above the
@@ -845,10 +849,14 @@ operator-owned and engine-owned fields.
   because it wasn't answered (unused seats, tools with no cost / users / uses,
   unconfirmed gaps, undecided partly-replaced tools). A pure read: it runs the
   engine without persisting.
-- `POST …/customer-report.pdf` (`services/customer_report.py`, reportlab) — the
-  leave-behind: title page, overview led by the run rate with the yearly ramp, one section per
-  group, and *How we calculated this* from `app/content/help_text.json`. It only
-  displays computed numbers; anything left out does not appear.
+- `GET …/readout.html` and `POST …/customer-report.pdf` (`services/readout.py`) —
+  one document (TARGET_SCHEMA D26): the HTML readout, and the same HTML printed by
+  WeasyPrint as the leave-behind. Cover, the headline (the run rate over the
+  horizon, each source's share of the savings, the ramp), quick wins, a page per
+  persona, the spend bridge, every third-party tool, assumptions with *How we
+  calculated this* from `app/content/help_text.json`, and next steps. Branded by
+  `PracticeBranding`. It only displays computed numbers; anything left out does not
+  appear.
 - `GET /api/help-text` — that same help-text file, for the GUI tooltips. Content,
   not domain data: changed by a reviewed PR, never in Settings.
 

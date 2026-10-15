@@ -38,7 +38,7 @@ def test_compute_result_exposes_dropped_capability(client):
 def test_html_readout_shows_capability_tradeoffs_and_headline_caveat(client):
     eid, _ = _ems_drop_engagement(client, "Reconcile HTML Co")
     html = client.get(f"/api/engagements/{eid}/readout.html").text
-    assert "Capability trade-offs" in html
+    assert "No longer included" in html    # on the persona's page
     assert "MFA &amp; Conditional Access" in html  # html-escaped
     assert "Mobile Device &amp; App Management (MDM/MAM)" in html
     # The headline caveat ties the number to the trade-off, so it isn't read alone.
@@ -71,5 +71,5 @@ def test_no_tradeoff_section_when_nothing_is_dropped(client):
     result = client.post(f"/api/engagements/{eid}/compute").json()
     assert result["dropped_capability"] == []
     html = client.get(f"/api/engagements/{eid}/readout.html").text
-    assert "Capability trade-offs" not in html
+    assert "No longer included" not in html
     assert "capability trade-off" not in html

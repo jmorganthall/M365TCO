@@ -185,10 +185,10 @@ PDF's method page also reads.
    website, employee count, notes, ✨ AI research) and the **pricing basis**
    (segment / commit term / payment, inherited `Global default → Engagement → line`)
    are in expanders.
-2. **Groups & licences** — the groups that get different licences (name, people,
+2. **Personas & licences** — the personas that get different licences (name, people,
    description; *must also include* capabilities in the expander), when the
    **Microsoft agreement renews**, and each Microsoft licence: product, bought, price
-   (list unless known); in its expander the groups that get it, seats assigned, the
+   (list unless known); in its expander the personas that get it, seats assigned, the
    **unused-seat answer** (kept on purpose / not needed), its own renewal date,
    **out of scope for this workshop** (for licences no plan includes, such as
    Visio: listed but in no number), per-user vs tenant-wide scope and price-basis
@@ -198,15 +198,15 @@ PDF's method page also reads.
    name the library doesn't know (or this engagement has no coverage for), asked
    once per name — *it's the same as* a library plan, *use the library's list*,
    tick what it delivers (✨ AI suggest, confirmed like a tool's uses), or *out of
-   scope*. Until answered its cost counts but its groups' capability changes are
+   scope*. Until answered its cost counts but its personas' capability changes are
    left out. Then each tool's cost, period, **renewal date**, **who uses it**
-   (groups) and whether it's a **managed service**; vendor, the managed service's
+   (personas) and whether it's a **managed service**; vendor, the managed service's
    software share and a covers number in the expander. Below, **what each tool is
    used for** (✨ AI suggest pre-ticks; only confirmed uses count). A tool with no
    cost, users or uses is flagged *left out*.
 4. **Future state** — **Fill in recommended plans** (the lowest-cost plan plus
-   add-ons that keeps everything each group has today), a base bundle + eligible
-   add-ons per group, **carve-out** for moving part of a group, and **partly
+   add-ons that keeps everything each persona has today), a base bundle + eligible
+   add-ons per persona, **carve-out** for moving part of a persona, and **partly
    replaced tools**: keep for the remaining users, or retire (with a reason).
 5. **Coverage check** — for each capability a plan adds that nothing in the
    inventory delivers today, the customer's answer: *not delivered today* (a new
@@ -223,15 +223,17 @@ PDF's method page also reads.
 6. **Review** — every check that works without AI, each linking to the step that
    fixes it, and what is **left out** because it wasn't answered. The optional
    **AI sanity check** is here.
-7. **Summary & PDF** — years to model and **Create customer PDF** (title page,
-   overview, a page per group, *How we calculated this*), which records a
-   **Presented** snapshot. Below it, the readout: the **run rate** — what the
-   customer saves each year once every contract has renewed: ① duplicate tools
-   retired with no licensing change, ② each group's move, ③ unused licences
+7. **Summary & PDF** — years to model and **Create customer PDF** (the readout,
+   printed: cover, what it's worth, a page per persona, the bridge, every tool, the
+   assumptions and next steps, branded once in Settings → Readout branding), which
+   records a **Presented** snapshot. Below it, the readout: the **run rate over the
+   period modelled**, with the run rate per year — what the customer saves each year
+   once every contract has renewed: ① duplicate tools
+   retired with no licensing change, ② each persona's move, ③ unused licences
    confirmed not needed (ENGINE_SPEC 6.11) — then *How the run rate is reached*, a
    bar per modelled year with each amount from the renewal that unlocks it (no
-   date = month-to-month, from today) — quick wins, per-group scenarios, **New
-   outcomes**, **Capability trade-offs**, the per-group spend bridge, dispositions,
+   date = month-to-month, from today) — quick wins, per-persona scenarios, **New
+   outcomes**, **Capability trade-offs**, the per-persona spend bridge, dispositions,
    **License-limit** checks, AI **business narratives** (editable), and HTML / xlsx
    export. Report colours and Microsoft co-funding (ECIF) are under *Report options*.
 

@@ -383,8 +383,10 @@ move* — the two sum to the same total, so the bridge still builds to the net d
 
 ## The headline: the run rate, then the ramp (6.11)
 
-One headline, made of three sub-lines. It **leads with the run rate**: what the
-customer saves (or invests) each year once every contract has renewed. Then the
+One headline, made of three sub-lines. It **leads with the full run rate over the
+horizon** (`run_rate_horizon_amount`, "over 36 months at full run rate"), with the
+**run rate** beside it: what the customer saves (or invests) each year once every
+contract has renewed. Then the
 **ramp**: each amount timed by the contract that unlocks it and summed over the
 modelling horizon, year by year. Amounts here are **savings-positive** (a positive
 amount is money saved, a negative one money added) — the opposite sign of `delta`,
@@ -437,6 +439,16 @@ run_rate_annual = Σ item annual amounts      # each year once everything has re
 duplicate_spend_annual, consolidation_annual, overlicensing_annual = Σ item annual amounts per sub-line
 direction = saved | added | none by the sign of run_rate_annual
 
+# The headline figure: the run rate over the whole horizon.
+run_rate_horizon_amount = round_cents(run_rate_annual × H / 12)
+
+# Each saving sub-line's share of the savings, in whole percents.
+pool = Σ sub-line annual amounts that are > 0       # never the net
+share[s] = for each sub-line s with annual > 0: floor(100 × annual[s] / pool),
+           then +1 to the largest remainders (ties: duplicate spend, consolidation,
+           over-licensing order) until the shares sum to 100
+           # a cost or zero sub-line has no share; no savings → no shares
+
 # The ramp: the same items over the horizon.
 duplicate_spend_amount, consolidation_amount, overlicensing_amount = Σ item amounts per sub-line
 headline_amount = their sum
@@ -451,9 +463,13 @@ full_run_rate_month = max(i.start over items), or none when there are no items
 cumulative equals it. Every year that begins at or after `full_run_rate_month`
 equals `run_rate_annual` exactly: a whole year adds a whole-cent amount of the same
 sign, which never changes how half a cent rounds. When `full_run_rate_month` is at
-or beyond the horizon, the full run rate is reached after the modelled years. The
-run rate is never multiplied by the horizon: a tool that renews in month 30 saves
-6 months inside a 36-month window.
+or beyond the horizon, the full run rate is reached after the modelled years.
+
+**Two horizon figures, never confused.** `run_rate_horizon_amount` is the run rate's
+value over the horizon once at full rate — the headline. `headline_amount` is what
+the timing actually lands inside the horizon — shown with the ramp. A tool that
+renews in month 30 counts 12 months in the first and 6 in the second; with every
+amount starting at month 0 the two are equal.
 
 **Run-rate identity.** With no unused-seat answers, the run rate is today's untimed
 total opportunity: `run_rate_annual = quick_win_savings_annual −

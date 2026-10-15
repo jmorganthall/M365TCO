@@ -15,8 +15,8 @@ from .. import models, schemas
 from ..config import settings
 from ..db import get_db
 from ..services import (
-    ai, ai_prompts, compute, customer_report, defaults, exporter, limits, narrative,
-    review, sanity, seeds,
+    ai, ai_prompts, branding, compute, defaults, exporter, limits, narrative,
+    readout, review, sanity, seeds,
 )
 from ..services.serialize import result_to_dict
 
@@ -154,6 +154,9 @@ def update_engagement(
     eng = _get_engagement(db, engagement_id)
     data = payload.model_dump(exclude_unset=True)
     _validate_market_currency(db, data.get("market"), data.get("currency"))
+    logo = data.get("brand_logo_data_url")
+    if logo and not branding.is_logo(logo):
+        raise HTTPException(422, "The customer logo must be a PNG, JPEG, GIF, WebP or SVG image.")
     for k, v in data.items():
         setattr(eng, k, v)
     db.commit()
@@ -182,8 +185,6 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
         default_term_duration=src.default_term_duration,
         default_billing_plan=src.default_billing_plan,
         brand_logo_data_url=src.brand_logo_data_url,
-        brand_primary_color=src.brand_primary_color,
-        brand_accent_color=src.brand_accent_color,
         notes=src.notes,
         managed_ms_account=src.managed_ms_account,
         ecif_roi_conservative=src.ecif_roi_conservative,
@@ -493,7 +494,9 @@ def coverage_gaps(engagement_id: str, db: Session = Depends(get_db)):
 def readout_html(engagement_id: str, db: Session = Depends(get_db)):
     eng = _get_engagement(db, engagement_id)
     result = _computed_dict(db, engagement_id)
-    return HTMLResponse(exporter.build_html(eng, result))
+    return HTMLResponse(readout.build_html(
+        eng, result, compute.persona_coverage_gaps(db, engagement_id),
+        branding.resolved(branding.get(db))))
 
 
 @router.get("/{engagement_id}/readout.xlsx")
@@ -537,7 +540,8 @@ def customer_report_pdf(engagement_id: str, db: Session = Depends(get_db)):
     eng.presented_snapshot_id = snap.id
     db.commit()
     db.refresh(eng)
-    pdf = customer_report.build_pdf(eng, result, compute.persona_coverage_gaps(db, engagement_id))
+    pdf = readout.build_pdf(eng, result, compute.persona_coverage_gaps(db, engagement_id),
+                            branding.resolved(branding.get(db)))
     slug = re.sub(r"[^A-Za-z0-9]+", "-", eng.customer_name or "customer").strip("-") or "customer"
     return Response(
         content=pdf, media_type="application/pdf",

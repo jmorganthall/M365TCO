@@ -108,6 +108,11 @@ class Headline:
     consolidation_annual: Decimal
     overlicensing_annual: Decimal
     direction: str                # saved | added | none, from the run rate
+    # The headline figure: the run rate over the whole horizon (run rate ×
+    # horizon years) — its value once at full rate, not cash within the horizon.
+    run_rate_horizon_amount: Decimal
+    # Each SAVING sub-line's whole-percent share of the saving sub-lines' sum
+    # (largest remainder, so they add to 100); a cost sub-line has no share.
     # The ramp: the same items timed over the horizon.
     duplicate_spend_amount: Decimal
     consolidation_amount: Decimal
@@ -116,6 +121,7 @@ class Headline:
     # The month from which every item counts (the latest start month); None when
     # there is nothing to time. At or beyond the horizon = not reached in it.
     full_run_rate_month: Optional[int]
+    savings_shares: dict = field(default_factory=dict)
     years: list[HeadlineYear] = field(default_factory=list)
     items: list[TimingItem] = field(default_factory=list)
     unused_seat_lines: list[UnusedSeatLine] = field(default_factory=list)
@@ -282,14 +288,19 @@ def timed_headline(engagement: Engagement, scenario_results, quick_wins) -> Head
     dup, cons, over = total(DUPLICATE_SPEND), total(CONSOLIDATION), total(OVERLICENSING)
     amount = _money(dup + cons + over)
     run_rate = _money(sum((i.annual_amount for i in items), Decimal("0")))
+    annual = {DUPLICATE_SPEND: total(DUPLICATE_SPEND, "annual_amount"),
+              CONSOLIDATION: total(CONSOLIDATION, "annual_amount"),
+              OVERLICENSING: total(OVERLICENSING, "annual_amount")}
     return Headline(
         horizon_months=horizon_months,
         workshop_date=workshop.isoformat() if workshop else None,
         run_rate_annual=run_rate,
-        duplicate_spend_annual=total(DUPLICATE_SPEND, "annual_amount"),
-        consolidation_annual=total(CONSOLIDATION, "annual_amount"),
-        overlicensing_annual=total(OVERLICENSING, "annual_amount"),
+        duplicate_spend_annual=annual[DUPLICATE_SPEND],
+        consolidation_annual=annual[CONSOLIDATION],
+        overlicensing_annual=annual[OVERLICENSING],
         direction="saved" if run_rate > 0 else "added" if run_rate < 0 else "none",
+        run_rate_horizon_amount=_money(run_rate * horizon_months / 12),
+        savings_shares=savings_shares(annual),
         duplicate_spend_amount=dup,
         consolidation_amount=cons,
         overlicensing_amount=over,
@@ -299,6 +310,25 @@ def timed_headline(engagement: Engagement, scenario_results, quick_wins) -> Head
         items=items,
         unused_seat_lines=unused_lines,
     )
+
+
+def savings_shares(annual: dict) -> dict:
+    """Each saving sub-line's whole-percent share of the savings (ENGINE_SPEC 6.11).
+
+    Shares are of the sum of the SAVING sub-lines, never of the net, which can be
+    smaller than its parts when one sub-line is a cost; a cost or zero sub-line
+    gets no share. Whole percents by largest remainder, so they add to exactly 100
+    (ties go to the earlier sub-line)."""
+    savings = {k: v for k, v in annual.items() if v > 0}
+    pool = sum(savings.values(), Decimal("0"))
+    if not pool:
+        return {}
+    raw = {k: v * 100 / pool for k, v in savings.items()}
+    shares = {k: int(r) for k, r in raw.items()}
+    order = sorted(raw, key=lambda k: (-(raw[k] - shares[k]), list(annual).index(k)))
+    for k in order[: 100 - sum(shares.values())]:
+        shares[k] += 1
+    return shares
 
 
 def ramp_years(items: list[TimingItem], horizon_months: int) -> list[HeadlineYear]:

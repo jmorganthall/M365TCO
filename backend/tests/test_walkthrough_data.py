@@ -170,7 +170,7 @@ def test_readouts_show_how_the_headline_is_timed(client):
     assert "Year 1" in html and "Full run rate" in html
     assert "Unused licences" in html and "not needed — counted as over-licensing" in html
     # No Microsoft renewal date given: month-to-month, counted from today.
-    assert "no date <span class='muted'>— counted from today</span>" in html
+    assert "<td>no date — from today</td>" in html
     wb = load_workbook(io.BytesIO(client.get(f"/api/engagements/{eid}/readout.xlsx").content))
     timing = list(wb["Headline timing"].iter_rows(values_only=True))
     assert timing[1][0] == "overlicensing" and timing[1][4] == "yes"
@@ -231,7 +231,7 @@ def test_an_out_of_scope_licence_is_in_no_number(client):
     assert any(c["code"] == "license_out_of_scope" and "Visio Plan 2" in c["message"] for c in checks)
     assert not any("Visio" in c["message"] for c in checks if c["code"] != "license_out_of_scope")
     html = client.get(f"/api/engagements/{eid}/readout.html").text
-    assert "Not part of this workshop:</b> Visio Plan 2 (40)" in html
+    assert "Not part of this workshop, and in no figure:</b> Visio Plan 2 (40)" in html
     wb = load_workbook(io.BytesIO(client.get(f"/api/engagements/{eid}/readout.xlsx").content))
     rows = list(wb["Current licensing"].iter_rows(values_only=True))
     assert rows[0][-1] == "Out of scope (in no number)"

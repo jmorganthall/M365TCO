@@ -114,7 +114,15 @@ def _full_engagement(client, name="Report & <Co>"):
 
 
 def _pages(pdf: bytes) -> int:
-    return max(int(n) for n in re.findall(rb"/Count (\d+)", pdf))
+    from io import BytesIO
+    from pypdf import PdfReader
+    return len(PdfReader(BytesIO(pdf)).pages)
+
+
+def _text(pdf: bytes) -> str:
+    from io import BytesIO
+    from pypdf import PdfReader
+    return re.sub(r"\s+", " ", " ".join(p.extract_text() for p in PdfReader(BytesIO(pdf)).pages))
 
 
 def test_customer_pdf_records_a_presented_snapshot(client):
@@ -123,8 +131,8 @@ def test_customer_pdf_records_a_presented_snapshot(client):
     assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
     assert r.content.startswith(b"%PDF")
     assert 'filename="Report-Co-M365-TCO-' in r.headers["content-disposition"]
-    # Title, overview, one group, how we calculated it.
-    assert _pages(r.content) >= 4
+    # Cover, the opportunity, one persona, the bridge, tools, assumptions, next steps.
+    assert _pages(r.content) >= 5
     first = client.get(f"/api/engagements/{eid}").json()["presented_snapshot_id"]
     snaps = client.get(f"/api/engagements/{eid}/snapshots").json()
     assert [(s["id"], s["is_presented"], s["is_baseline"]) for s in snaps] == [(first, True, True)]

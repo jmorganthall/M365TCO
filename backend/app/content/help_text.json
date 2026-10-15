@@ -40,8 +40,8 @@
       "why": "The starting point for timing: each saving counts from its renewal date, measured from this date."
     },
     "customer.logo": {
-      "ask": "Optionally, your logo.",
-      "why": "Shown on the report's title page only."
+      "ask": "Optionally, the customer's logo.",
+      "why": "Shown on the report's cover beside your practice's logo (set once in Settings → Readout branding). Without one, the customer's name is shown."
     },
     "customer.details": {
       "ask": "Optionally, your industry, headquarters, website, number of employees and any notes.",
@@ -180,8 +180,8 @@
       "why": "Advisory only. It never changes your data, and the workshop works without it."
     },
     "summary.headline": {
-      "ask": "What you save each year, once every contract has renewed.",
-      "why": "The sum of duplicate spend, consolidation and over-licensing, per year at the full run rate. Below it, the ramp shows how that is reached year by year as each contract renews."
+      "ask": "What the full run rate is worth over the period modelled.",
+      "why": "What you save each year once every contract has renewed (the sum of duplicate spend, consolidation and over-licensing), times the years modelled. Below it, the ramp shows how that run rate is reached year by year as each contract renews, and how much lands within the period."
     },
     "summary.duplicate_spend": {
       "ask": "Tools you can retire without changing any Microsoft licence.",
@@ -243,7 +243,7 @@
     },
     {
       "title": "Timing",
-      "body": "The headline is what you save each year once every contract has renewed. Below it, the ramp counts each saving from the renewal that allows it, to the end of the period modelled. A tool stops at its renewal. A Microsoft increase starts when the first tool that only the new plan can retire renews, or straight away if there is none. A Microsoft reduction waits for your Microsoft renewal. Where no renewal date was given, we treat the contract as month-to-month with no lock-in, so it counts from today; these are marked."
+      "body": "The headline is the full run rate over the period modelled: what you save each year once every contract has renewed, times the years modelled. Below it, the ramp counts each saving from the renewal that allows it, to the end of the period modelled. A tool stops at its renewal. A Microsoft increase starts when the first tool that only the new plan can retire renews, or straight away if there is none. A Microsoft reduction waits for your Microsoft renewal. Where no renewal date was given, we treat the contract as month-to-month with no lock-in, so it counts from today; these are marked."
     },
     {
       "title": "New capabilities",

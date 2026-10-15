@@ -10,5 +10,6 @@ openpyxl==3.1.5
 msal==1.31.1
 pytest==8.3.4
 pypdf==6.17.0  # tests: read the customer PDF's text
-# The customer PDF (services/customer_report). Pure Python — no system packages.
-reportlab==4.2.5
+# The customer PDF: the readout's HTML printed (services/readout). Needs Pango —
+# installed in the Dockerfile.
+weasyprint==66.0

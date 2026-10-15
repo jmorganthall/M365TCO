@@ -1,5 +1,6 @@
-"""Customer-facing HTML readout: no internal QA data, conditional sections, and
-the computed math matches the /compute result the web app shows."""
+"""The customer readout (services/readout — the HTML readout and the PDF are one
+document): no internal QA data, conditional sections, and the computed math
+matches the /compute result the web app shows."""
 
 
 def _outcome(client, eid, seed_key):
@@ -27,14 +28,17 @@ def test_readout_minimal_omits_internal_and_inapplicable_sections(client):
     assert "tool-seats" not in html
     assert "distinct-people count" not in html
     # Sections that don't apply are omitted (not shown as "None").
-    assert "what happens to each" not in html       # no third-party tools
-    assert "What this retires" not in html           # nothing eliminated
-    assert "Tooling split" not in html               # no managed tools
-    assert "Assumed full elimination" not in html
+    assert "What happens to each tool" not in html   # no third-party tools
+    assert "Retired completely" not in html          # nothing eliminated
+    assert "bought as a managed service" not in html  # no managed tools
+    assert "assumed fully retired" not in html
+    assert "Quick wins" not in html
     assert ">None<" not in html
-    # The customer-facing core is present, and the persona/math pulled in.
-    assert "Per-persona scenarios" in html
-    assert "Knowledge Worker" in html
+    # The customer-facing core is present, and the persona/math pulled in: the
+    # headline, the persona's own page and the bridge.
+    assert "What this is worth" in html
+    assert "<h1>Knowledge Worker</h1>" in html
+    assert "How we get to the number" in html
 
 
 def test_readout_conditionals_show_when_managed_and_eliminated(client):
@@ -60,18 +64,17 @@ def test_readout_conditionals_show_when_managed_and_eliminated(client):
 
     html = client.get(f"/api/engagements/{eid}/readout.html").text
     assert "Population check" not in html
-    assert "Third-party tools — what happens to each" in html
-    assert "What this retires" in html
-    assert "Tools fully eliminated" in html and "Okta" in html
-    assert "Tooling split" in html          # a managed tool exists
-    assert "50%" in html                     # the per-line tooling override is surfaced
+    assert "What happens to each tool" in html
+    assert "<span class='tag retire'>Retire</span>" in html
+    assert "Retired completely" in html and "Okta" in html
+    assert "bought as a managed service; 50% of its price" in html  # the tool's own split
 
     # The math from the web pulls into the readout: the net delta the /compute
     # endpoint returns appears verbatim in the HTML.
     result = client.post(f"/api/engagements/{eid}/compute").json()
     delta = result["rollup"]["net_tco_delta_annual"]
-    usd = f"${abs(delta):,.0f}" if delta >= 0 else f"-${abs(delta):,.0f}"
-    assert usd in html
+    usd = f"${abs(delta):,.0f}" if delta >= 0 else f"−${abs(delta):,.0f}"
+    assert f"'>{usd}</td></tr>" in html                  # the bridge's net change
 
 
 def test_readout_breaks_bridge_down_per_persona(client):
@@ -114,28 +117,31 @@ def test_readout_breaks_bridge_down_per_persona(client):
     # has no current Microsoft spend, so the move is honestly a cost increase:
     # Sales +40k/yr (60k target − 20k freed Okta), Engineering +10k. With new
     # capabilities confirmed, the headline leads with what the investment buys.
-    assert "Invest $50,000 <span class='headline-word'>per year to gain" in html
-    # Okta renews at the workshop, so the ramp is the run rate for every year.
-    assert "Over 36 months: $150,000 added" in html
-    # Hero figures are all per year: the components sum to the headline.
-    # Finance notation: added expense in parentheses, black; savings plain green.
-    assert "($40,000)</span><span class='move-desc'><b>Sales</b> (100) → <b>Microsoft 365 E5</b></span>" in html
-    assert "($10,000)</span><span class='move-desc'><b>Engineering</b> (50) → <b>Microsoft 365 E3</b></span>" in html
+    # 50,000 a year added × 3 years = 150,000 over the horizon at full run rate.
+    assert "<div class='hero-figure added'>Invest $150,000</div>" in html
+    assert "over 36 months at full run rate to gain" in html
+    # Okta renews at the workshop, so the ramp lands the full run rate every year.
+    assert "Within the first 36 months, $150,000 is added" in html
+    # The consolidation source lists each persona's move with its own amount, per
+    # year. Finance notation: added expense in parentheses; savings plain green.
+    assert ("<td class='num'>($40,000)</td><td><b>Sales</b> <span class='muted'>(100)</span>"
+            " → <b>Microsoft 365 E5</b></td>") in html
+    assert ("<td class='num'>($10,000)</td><td><b>Engineering</b> <span class='muted'>(50)</span>"
+            " → <b>Microsoft 365 E3</b></td>") in html
     # The bridge is a matrix: a column head per persona (→ its target) + Total.
-    assert "Sales <small>→ Microsoft 365 E5</small>" in html
-    assert "Engineering <small>→ Microsoft 365 E3</small>" in html
+    assert "Sales<div class='muted'>→ Microsoft 365 E5</div>" in html
+    assert "Engineering<div class='muted'>→ Microsoft 365 E3</div>" in html
     assert "<th class='num'>Total</th>" in html
     # The freed-up tool sub-row splits per persona: Okta's per-unit cost is
     # 30000/150 = $200, credited 100 and 50 seats → −$20k + −$10k = −$30k total.
-    assert "−$20,000.00" in html and "−$10,000.00" in html and "−$30,000.00" in html
-    # New outcomes: the targets cover far more than Okta (identity-sso) delivers
-    # today, so both personas get a per-persona block of newly-lit capabilities.
-    assert "<h2>New outcomes</h2>" in html
-    assert "<h3>Sales <span class='muted'>(100) → Microsoft 365 E5</span></h3>" in html
-    assert "<h3>Engineering <span class='muted'>(50) → Microsoft 365 E3</span></h3>" in html
-    # Each capability is a chip (the GUI's pill treatment, not a text run),
-    # with the outcome's description as hover text.
-    assert "class='chip'" in html
+    assert "−$20,000" in html and "−$10,000" in html and "−$30,000" in html
+    # New capabilities: the targets cover far more than Okta (identity-sso)
+    # delivers today, so each persona's page lists its newly-lit capabilities.
+    sales_page = html.split("<h1>Sales</h1>")[1].split("<section")[0]
+    eng_page = html.split("<h1>Engineering</h1>")[1].split("<section")[0]
+    assert "New capabilities" in sales_page and "New capabilities" in eng_page
+    # Each capability is a chip, with the outcome's description as hover text.
+    assert "class='chip new'" in html
     # The engagement OWNS its outcome copy: editing a description in the GUI
     # (PATCH /outcomes) flows straight into the chip tooltip.
     edr = next(o for o in client.get(f"/api/engagements/{eid}/outcomes").json()
@@ -147,17 +153,19 @@ def test_readout_breaks_bridge_down_per_persona(client):
     # Okta's outcome is delivered today, so it is NOT listed as new.
     outcomes = {o["seed_key"]: o["name"]
                 for o in client.get(f"/api/engagements/{eid}/outcomes").json()}
-    new_section = html.split("<h2>New outcomes</h2>")[1].split("</section>")[0]
+    new_section = sales_page.split("New capabilities")[1].split("</div></div>")[0]
     assert outcomes["identity-sso"] not in new_section
 
 
 def test_readout_renders_business_narrative_when_present(client, monkeypatch):
-    """When per-persona narratives are attached to the result, the readout renders
-    'The business case' section (advisory; generation is wired separately)."""
-    from app.services import exporter
+    """When per-persona narratives are attached to the result, each persona's page
+    leads with its story (advisory; generation is wired separately)."""
+    from app.services import branding, readout
     from app import models
 
     eng = models.Engagement(customer_name="Story Co")
+    eng.personas, eng.third_party_products, eng.outcomes = [], [], []
+    eng.coverage_entries, eng.current_licenses, eng.scenarios = [], [], []
 
     result = {
         "rollup": {
@@ -167,14 +175,19 @@ def test_readout_renders_business_narrative_when_present(client, monkeypatch):
             "eliminated_renewal_cycles": [], "residual_third_party_cost_annual": 0,
             "quick_wins": [], "quick_win_savings_annual": 0,
         },
-        "scenarios": [], "dispositions": [],
+        "scenarios": [{
+            "persona_id": "p1", "persona_name": "Knowledge Worker", "headcount": 10,
+            "in_scope": True, "target_sku_reference": "Microsoft 365 E5",
+            "target_spend_annual": 0, "current_microsoft_annual": 0, "delta_annual": 0,
+            "move_incremental_delta_annual": 0, "offsets": []}],
+        "dispositions": [],
         "narratives": [
             {"persona": "Knowledge Worker", "today": "On E3 + Okta.",
              "whats_new": "E5 consolidates identity.", "value": "Saves $45k/yr."}
         ],
     }
-    html = exporter.build_html(eng, result)
-    assert "The business case" in html
+    html = readout.build_html(eng, result, [], branding.resolved(None))
+    assert "<div class='narrative'>" in html
     assert "Knowledge Worker" in html and "Saves $45k/yr." in html
     assert "Population check" not in html
 
@@ -196,9 +209,9 @@ def test_readout_disclosures_soft_inputs_and_honest_currency(client):
 
     html = client.get(f"/api/engagements/{eid}/readout.html").text
     assert "Inputs carried as assumptions" in html
-    assert "KW <span class='muted'>(persona)</span>: estimate" in html
-    assert "Okta <span" not in html          # hard-tagged input is not disclosed
-    assert "US/USD" in html                  # engagement market/currency, printed live
+    assert "KW (persona: estimate)" in html
+    assert "Okta (tool" not in html          # hard-tagged input is not disclosed
+    assert "Figures in USD, US pricing" in html  # engagement market/currency, printed live
 
     # All-hard engagement: the assumptions block is omitted, never a placeholder.
     eng2 = client.post("/api/engagements", json={"customer_name": "Hard Co"}).json()

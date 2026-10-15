@@ -397,7 +397,8 @@ def test_stored_narratives_reach_the_html_and_xlsx_readouts(client, monkeypatch)
                  json={"value": "Reviewed: consolidates two vendors."})
 
     html = client.get(f"/api/engagements/{eid}/readout.html").text
-    assert "The business case" in html
+    # The narrative leads the persona's page.
+    assert "<div class='narrative'>" in html
     assert "Reviewed: consolidates two vendors." in html
     assert "Draft value." not in html  # the operator's edit is the record
 

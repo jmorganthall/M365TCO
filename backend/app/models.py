@@ -121,13 +121,11 @@ class Engagement(Base):
     default_segment: Mapped[str] = mapped_column(String, default="Commercial")
     default_term_duration: Mapped[str] = mapped_column(String, default="P1Y")
     default_billing_plan: Mapped[str] = mapped_column(String, default="Annual")
-    # Readout branding (user-entered runtime data — never a hard-coded identity).
-    # A customer/practice logo as a base64 data URL, plus two theme colors applied
-    # to the HTML readout. Blank = the neutral built-in theme. (A future reusable
-    # BrandTheme library would seed these; today they're per-engagement fields.)
+    # The customer's own logo (TARGET_SCHEMA §4.1 `customer_logo`): optional, a
+    # base64 image data URL shown on the readout cover beside the practice logo.
+    # User-entered runtime data — never a hard-coded identity. The practice's own
+    # branding is PracticeBranding (D25).
     brand_logo_data_url: Mapped[str] = mapped_column(Text, default="")
-    brand_primary_color: Mapped[str] = mapped_column(String, default="")
-    brand_accent_color: Mapped[str] = mapped_column(String, default="")
     # Engagement-level "respect the Microsoft 365 Business seat cap in best-bundle
     # recommendations" toggle. When on, the optimizer is given the remaining headroom
     # under each max_total_seats LicenseLimit (300 for Business) net of seats already
@@ -927,6 +925,29 @@ class GlobalDefaults(Base):
     # Feed OpenRouter's web-search plugin to the sanity-check call. Off by default
     # to keep this frequent, low-stakes pass cheap and fast. Operational config.
     sanity_check_web_search: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class PracticeBranding(Base):
+    """How the practice brands the customer readout (TARGET_SCHEMA §3.5, D25): one
+    install-wide row, entered in the GUI (Settings → Readout branding), never
+    hard-coded — the white-label rule. Every field is nullable: NULL means the
+    built-in default (services/branding), resolved at render time and never
+    written back. The rich-text blocks are sanitized HTML fragments (bold, italic,
+    links and a highlight span only)."""
+
+    __tablename__ = "practice_branding"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default="singleton")
+    # One logo (PNG, JPEG or SVG as a base64 data URL), placed only on white.
+    logo_data_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    primary_color: Mapped[str | None] = mapped_column(String, nullable=True)
+    accent_color: Mapped[str | None] = mapped_column(String, nullable=True)
+    highlight_color: Mapped[str | None] = mapped_column(String, nullable=True)
+    tagline: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cover_subtitle: Mapped[str | None] = mapped_column(Text, nullable=True)
+    closing_block: Mapped[str | None] = mapped_column(Text, nullable=True)
+    footer_disclaimer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class PriceSyncSettings(Base):
