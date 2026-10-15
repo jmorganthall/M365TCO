@@ -32,6 +32,7 @@ from tco_engine.engine import EngineResult
 
 from .. import models
 from . import bundles, limits, seeds
+from . import personas as persona_order
 
 
 def _dec(value) -> Decimal:
@@ -146,7 +147,8 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
     }
 
     personas = [
-        EngPersona(id=p.id, name=p.name, headcount=p.headcount) for p in eng.personas
+        EngPersona(id=p.id, name=p.name, headcount=p.headcount)
+        for p in persona_order.ordered(eng.personas)
     ]
 
     current_lines = [
@@ -491,6 +493,17 @@ def compute_and_persist(db: Session, engagement_id: str) -> EngineResult:
     """
     hydrated = hydrate(db, engagement_id)
     result = engine_compute(hydrated)
+    # Every carve-out directly after its parent, for every consumer of the result
+    # (services/personas); the engine itself is order-free.
+    order = persona_order.rank(db.get(models.Engagement, engagement_id).personas)
+    result.scenarios.sort(key=lambda r: order.get(r.persona_id, len(order)))
+    if result.rollup.headline is not None:
+        # Same for the headline's timed items, within each sub-line.
+        items = result.rollup.headline.items
+        group = {}
+        for i in items:
+            group.setdefault(i.sub_line, len(group))
+        items.sort(key=lambda i: (group[i.sub_line], order.get(i.persona_id, -1)))
 
     # Persist scenario-derived spend (5.8 cached fields).
     scenarios = {s.id: s for s in db.get(models.Engagement, engagement_id).scenarios}
@@ -615,7 +628,7 @@ def persona_coverage_gaps(db: Session, engagement_id: str) -> list[dict]:
         return out
 
     personas = []
-    for p in eng.personas:
+    for p in persona_order.ordered(eng.personas):
         target_outcomes = target_by_persona.get(p.id, set())
         # Current Microsoft licensing that applies to this persona (tagged to it, or
         # untagged = org-wide). A persona can hold SEVERAL current licenses (a

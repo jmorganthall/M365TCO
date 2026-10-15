@@ -28,17 +28,17 @@ def test_readout_minimal_omits_internal_and_inapplicable_sections(client):
     assert "tool-seats" not in html
     assert "distinct-people count" not in html
     # Sections that don't apply are omitted (not shown as "None").
-    assert "What happens to each tool" not in html   # no third-party tools
-    assert "Retired completely" not in html          # nothing eliminated
+    assert "Third-Party Tools" not in html   # no third-party tools
+    assert "Retired Completely" not in html          # nothing eliminated
     assert "bought as a managed service" not in html  # no managed tools
     assert "assumed fully retired" not in html
-    assert "Quick wins" not in html
+    assert "Quick Wins" not in html
     assert ">None<" not in html
     # The customer-facing core is present, and the persona/math pulled in: the
     # headline, the persona's own page and the bridge.
-    assert "What this is worth" in html
+    assert "The Opportunity" in html
     assert "<h1>Knowledge Worker</h1>" in html
-    assert "How we get to the number" in html
+    assert "Spend Bridge" in html
 
 
 def test_readout_conditionals_show_when_managed_and_eliminated(client):
@@ -64,9 +64,9 @@ def test_readout_conditionals_show_when_managed_and_eliminated(client):
 
     html = client.get(f"/api/engagements/{eid}/readout.html").text
     assert "Population check" not in html
-    assert "What happens to each tool" in html
+    assert "Third-Party Tools" in html
     assert "<span class='tag retire'>Retire</span>" in html
-    assert "Retired completely" in html and "Okta" in html
+    assert "Retired Completely" in html and "Okta" in html
     assert "bought as a managed service; 50% of its price" in html  # the tool's own split
 
     # The math from the web pulls into the readout: the net delta the /compute
@@ -211,7 +211,7 @@ def test_readout_disclosures_soft_inputs_and_honest_currency(client):
     assert "Inputs carried as assumptions" in html
     assert "KW (persona: estimate)" in html
     assert "Okta (tool" not in html          # hard-tagged input is not disclosed
-    assert "Figures in USD, US pricing" in html  # engagement market/currency, printed live
+    assert "Figures in USD" in html  # the engagement's currency, printed live
 
     # All-hard engagement: the assumptions block is omitted, never a placeholder.
     eng2 = client.post("/api/engagements", json={"customer_name": "Hard Co"}).json()

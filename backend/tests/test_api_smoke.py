@@ -208,7 +208,7 @@ def test_quick_wins_surface_in_readout(client):
     assert result["rollup"]["quick_win_savings_annual"] == 45000.0
 
     html_body = client.get(f"/api/engagements/{eid}/readout.html").text
-    assert "Quick wins" in html_body and "Okta" in html_body
+    assert "<h2>Quick Wins</h2>" in html_body and "Okta" in html_body
 
 
 def test_readout_delta_sign_and_color_convention(client):

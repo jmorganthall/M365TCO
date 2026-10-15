@@ -42,7 +42,7 @@ def test_in_scope_persona_with_nothing_new_is_still_listed_with_a_reason(client)
     assert result["dropped_capability"] == []
 
     html = client.get(f"/api/engagements/{eid}/readout.html").text
-    assert "<h3>Capability changes</h3>" in html    # the section survives
+    assert "<h3>Capability Changes</h3>" in html    # the section survives
     assert "Knowledge Workers" in html
     assert "Nothing new" in html
 

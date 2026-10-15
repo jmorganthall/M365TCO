@@ -245,3 +245,31 @@ def test_duplicating_an_engagement_keeps_the_lineage(client):
     # The link points at the COPY's parent, not the original engagement's.
     assert child["parent_persona_id"] == new_parent["id"]
     assert {p["headcount"] for p in personas} == {2218, 300}
+
+
+def test_a_carve_out_sits_directly_under_its_parent_everywhere(client):
+    """A carve-out made after other personas still reads as part of its parent:
+    the persona list, the engine's scenarios, the headline's timed items and the
+    readout all put it right after the persona it came from (services/personas)."""
+    eid, p = _setup(client, headcount=600)
+    other = client.post(f"/api/engagements/{eid}/personas",
+                        json={"name": "Shared Device", "headcount": 26}).json()
+    client.post(f"/api/engagements/{eid}/scenarios", json={
+        "persona_id": other["id"], "target_sku_reference": "Microsoft 365 E3",
+        "target_unit_price_annual": 432, "in_scope": True})
+    child = client.post(f"/api/engagements/{eid}/personas/{p['id']}/carve", json={
+        "seats": 100, "name": "Property Ops (small sites)",
+        "target_sku_reference": "Microsoft 365 Business Premium"}).json()
+
+    names = [x["name"] for x in client.get(f"/api/engagements/{eid}/personas").json()]
+    assert names == ["Property Ops", "Property Ops (small sites)", "Shared Device"]
+
+    r = client.post(f"/api/engagements/{eid}/compute").json()
+    assert [s["persona_name"] for s in r["scenarios"]] == names
+    pids = [i["persona_id"] for i in r["rollup"]["headline"]["items"]
+            if i["sub_line"] == "consolidation"]
+    assert pids.index(child["id"]) < pids.index(other["id"])
+
+    html = client.get(f"/api/engagements/{eid}/readout.html").text
+    assert (html.index("<h1>Property Ops</h1>") < html.index("<h1>Property Ops (small sites)</h1>")
+            < html.index("<h1>Shared Device</h1>"))

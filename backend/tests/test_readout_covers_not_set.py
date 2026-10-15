@@ -39,7 +39,7 @@ def test_html_readout_explains_zero_covers_instead_of_contradicting(client):
     # …but the customer readout explains the unset covers rather than printing a
     # contradictory "Retire fully · 0 seats retired".
     html = client.get(f"/api/engagements/{eid}/readout.html").text
-    assert "What happens to each tool" in html
+    assert "Third-Party Tools" in html
     assert "<span class='tag retire'>Retire</span>" in html
     assert "Users not set" in html
 
