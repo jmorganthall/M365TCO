@@ -185,7 +185,8 @@ are left out (§5) and the card, Coverage check and Review all say so.
   - term and payment;
   - in scope;
   - the Business seat-cap switch;
-  - splitting off a sub-persona (carve-out).
+  - splitting off a sub-persona (carve-out); a carve-out is listed directly under its
+    parent on every screen and in every export.
 
 ### Step 5 — Coverage check
 
@@ -350,10 +351,11 @@ With AI on, the AI sanity check adds its findings to the same list.
 The PDF is the leave-behind for the customer. It is the HTML readout printed: one
 design, one template (TARGET_SCHEMA D26), branded by the practice once (D25):
 
-1. **Cover:** the practice logo and the customer's logo (or name) on white; a band in
-   the practice's primary colour with the customer, the subtitle, the workshop date
-   and the tagline.
-2. **What this is worth:**
+1. **Cover:** on white, the practice logo and the customer's logo side by side (either
+   may be absent), the customer's name as the title, the subtitle, and the headline
+   figure; a band in the practice's primary colour with the brand's diagonal accent,
+   the dates and the tagline. Headings throughout are short and in Title Case.
+2. **The Opportunity:**
    - the headline: the full run rate over the period modelled ("$X saved over 36
      months at full run rate"), the run rate per year beside it, and when it is reached;
    - its sources — ① duplicate tools, ② each persona's move, ③ unused licences — each

@@ -29,7 +29,7 @@ def test_branding_defaults_are_null_and_resolved_at_render(client):
     assert all(b[k] is None for k in ("logo_data_url", "primary_color", "tagline",
                                       "closing_block", "footer_disclaimer"))
     assert b["resolved"]["primary_color"].startswith("#")
-    assert b["resolved"]["cover_subtitle"] == "Microsoft 365 total cost of ownership"
+    assert b["resolved"]["cover_subtitle"] == "Microsoft 365 Total Cost of Ownership"
     # Reading never writes the defaults back.
     assert client.get("/api/admin/branding").json()["primary_color"] is None
 
@@ -82,7 +82,8 @@ def test_readout_carries_the_practice_branding_and_customer_logo(client):
 def test_the_customer_name_stands_in_when_there_is_no_customer_logo(client):
     eid = client.post("/api/engagements", json={"customer_name": "Plain Co"}).json()["id"]
     html = client.get(f"/api/engagements/{eid}/readout.html").text
-    assert "<div class='cover-customer-name'>Plain Co</div>" in html
+    # No customer logo: the name is the cover title; no logo slot stands empty.
+    assert "<h1 class='cover-title'>Plain Co</h1>" in html
 
 
 def test_third_party_spend_bar_reconciles_to_todays_spend(client):

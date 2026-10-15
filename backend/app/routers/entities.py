@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..db import get_db
 from ..services import bundles, compute, inspector, library_updates, licence_names
+from ..services import personas as persona_order
 
 router = APIRouter(prefix="/api/engagements/{engagement_id}", tags=["entities"])
 
@@ -90,9 +91,10 @@ def _renormalize_third_party_covers(db: Session, engagement_id: str) -> None:
 @router.get("/personas", response_model=list[schemas.PersonaOut])
 def list_personas(engagement_id: str, db: Session = Depends(get_db)):
     _require_engagement(db, engagement_id)
-    return db.execute(
+    # Carve-outs directly under their parent (services/personas).
+    return persona_order.ordered(db.execute(
         select(models.Persona).where(models.Persona.engagement_id == engagement_id)
-    ).scalars().all()
+    ).scalars().all())
 
 
 def _set_persona_requirements(db: Session, row: models.Persona, outcome_ids: list[str]):

@@ -166,9 +166,9 @@ def test_readouts_show_how_the_headline_is_timed(client):
         "sku_reference": "E3", "quantity_purchased": 110, "quantity_assigned": 100,
         "unit_price_paid_annual": 240, "unused_seats_answer": "NotNeeded"})
     html = client.get(f"/api/engagements/{eid}/readout.html").text
-    assert "How the run rate is reached" in html
+    assert "Path to Full Run Rate" in html
     assert "Year 1" in html and "Full run rate" in html
-    assert "Unused licences" in html and "not needed — counted as over-licensing" in html
+    assert "Unused Licences" in html and "not needed — counted as over-licensing" in html
     # No Microsoft renewal date given: month-to-month, counted from today.
     assert "<td>no date — from today</td>" in html
     wb = load_workbook(io.BytesIO(client.get(f"/api/engagements/{eid}/readout.xlsx").content))
@@ -258,5 +258,5 @@ def test_the_pdf_leads_with_the_run_rate_and_names_out_of_scope_licences(client)
     text = " ".join(p.extract_text() for p in pypdf.PdfReader(io.BytesIO(pdf)).pages)
     text = " ".join(text.split())
     assert "$25,200 per year saved" in text                  # 100 × (684 − 432)
-    assert "How the run rate is reached" in text and "Full run rate" in text
+    assert "Path to Full Run Rate" in text and "Full run rate" in text
     assert "Not part of this workshop, and in no figure: Teams Rooms Pro (4)" in text

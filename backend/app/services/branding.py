@@ -31,7 +31,7 @@ DEFAULT_COLORS = {
 }
 DEFAULT_TEXT = {
     "tagline": "",
-    "cover_subtitle": "Microsoft 365 total cost of ownership",
+    "cover_subtitle": "Microsoft 365 Total Cost of Ownership",
     "closing_block": "",
     "footer_disclaimer": (
         "Licensing-only view. Migration services, Microsoft funding, Azure consumption "

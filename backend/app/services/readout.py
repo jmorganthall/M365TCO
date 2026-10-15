@@ -94,12 +94,39 @@ def _ratio(v) -> str:
     return format(d, "f")
 
 
+_SMALL = {"a", "an", "and", "as", "at", "but", "by", "for", "in", "of", "on", "or", "the",
+          "to", "vs", "with"}
+
+
+def _title(text: str) -> str:
+    """Title Case for a heading taken from content (help text): capitalise each
+    word except short joining words, keeping words already capitalised."""
+    words = (text or "").split(" ")
+    return " ".join(
+        w if (w[:1].isupper() or (i and w.lower() in _SMALL)) else w[:1].upper() + w[1:]
+        for i, w in enumerate(words))
+
+
 def _chip(o: dict, cls: str) -> str:
     """A capability chip; its description (the engagement's own, editable) rides
     as hover text on screen."""
     desc = (o.get("description") or "").strip()
     title = f" title=\"{E(desc, quote=True)}\"" if desc else ""
     return f"<span class='chip {cls}'{title}>{E(o['name'])}</span>"
+
+
+def _cover_art(b: dict) -> str:
+    """Geometric slices for the cover band — the brand's diagonal motif, in the
+    practice's colours (written in: the PDF renderer doesn't apply CSS variables
+    inside SVG). The colours are validated hex values (services/branding)."""
+    accent, hl = b["accent_color"], b["highlight_color"]
+    return ("<svg class='cover-art' viewBox='0 0 400 260' preserveAspectRatio='xMaxYMax slice' "
+            "xmlns='http://www.w3.org/2000/svg' aria-hidden='true'>"
+            "<polygon points='170,260 310,0 400,0 400,260' fill='#ffffff' fill-opacity='0.05'/>"
+            f"<polygon points='250,260 360,0 400,0 400,260' fill='{accent}' fill-opacity='0.85'/>"
+            f"<polygon points='318,260 400,95 400,260' fill='{hl}' fill-opacity='0.9'/>"
+            f"<line x1='150' y1='260' x2='290' y2='0' stroke='{hl}' stroke-width='1.2' "
+            "stroke-opacity='0.8'/></svg>")
 
 
 def _image(data_url: str | None) -> str:
@@ -195,34 +222,46 @@ class _Context:
 
     # ---- 1. Cover --------------------------------------------------------------
     def cover(self) -> str:
-        b, eng = self.brand, self.eng
-        practice_logo = (f"<img class='cover-logo' src='{E(self.logo, quote=True)}' alt=''>"
-                         if self.logo else "")
+        b, eng, h = self.brand, self.eng, self.h
         customer = eng.customer_name or "Customer"
         cust = _image(eng.brand_logo_data_url)
-        customer_logo = (f"<img class='cover-logo customer' src='{E(cust, quote=True)}' "
-                         f"alt='{E(customer, quote=True)}'>" if cust else
-                         f"<div class='cover-customer-name'>{E(customer)}</div>")
-        meta = []
+        # Logos sit on white, side by side, practice first; with one logo it
+        # stands alone at the left, with none the row is left out.
+        logos = [f"<img class='cover-logo' src='{E(src, quote=True)}' alt='{E(alt, quote=True)}'>"
+                 for src, alt in ((self.logo, ""), (cust, customer)) if src]
+        logo_row = ""
+        if logos:
+            logo_row = ("<div class='cover-logos'>"
+                        + "<span class='cover-logo-divider'></span>".join(
+                            f"<span class='cover-logo-cell'>{l}</span>" for l in logos)
+                        + "</div>")
+        # The headline on the cover, so the first page says what this is worth.
+        rr = _f(h.get("run_rate_annual"))
+        teaser = ""
+        if rr and self.months:
+            word = "saved" if rr > 0 else "added"
+            teaser = (f"<div class='cover-figure {'saved' if rr > 0 else 'added'}'>"
+                      f"<div class='cover-figure-value'>{_usd0(h.get('run_rate_horizon_amount'))}</div>"
+                      f"<div class='cover-figure-label'>{word} over {self.months} months<br>"
+                      f"at full run rate</div></div>")
+        meta = [f"Prepared {_date(self.prepared.isoformat())}"]
         if eng.workshop_date:
             meta.append(f"Workshop {_date(eng.workshop_date)}")
-        meta.append(f"Prepared {_date(self.prepared.isoformat())}")
-        if self.months:
-            meta.append(f"{self.months} months modelled")
-        meta.append(f"Figures in {E(eng.currency or 'USD')}, {E(eng.market or 'US')} pricing")
-        tagline = (f"<div class='cover-tagline'>{b['tagline']}</div>" if b["tagline"] else "")
+        meta.append(f"Figures in {E(eng.currency or 'USD')}")
+        tagline = f"<div class='cover-tagline'>{b['tagline']}</div>" if b["tagline"] else ""
         return (
             "<section class='cover'>"
-            f"<div class='cover-top'><div class='cover-logos'>"
-            f"<div class='cover-logo-slot'>{practice_logo}</div>"
-            f"<div class='cover-logo-slot right'>{customer_logo}</div></div></div>"
-            "<div class='cover-band'>"
-            "<div class='eyebrow on-dark'>Total cost of ownership readout</div>"
+            "<div class='cover-strip'></div>"
+            f"<div class='cover-body'>{logo_row}"
+            "<div class='cover-titles'>"
+            "<div class='eyebrow'>TCO Readout</div>"
             f"<h1 class='cover-title'>{E(customer)}</h1>"
             f"<div class='cover-subtitle'>{b['cover_subtitle']}</div>"
-            f"<div class='cover-meta'>{' · '.join(meta)}</div>"
-            "<div class='cover-foot'><div class='brand-rule'><span></span><span></span></div>"
-            f"{tagline}</div>"
+            "<div class='cover-bar'></div>"
+            f"{teaser}</div></div>"
+            "<div class='cover-band'>" + _cover_art(b) +
+            "<div class='cover-band-inner'><div class='brand-rule'><span></span><span></span></div>"
+            f"<div class='cover-meta'>{' · '.join(meta)}</div>{tagline}</div>"
             "</div></section>"
         )
 
@@ -254,7 +293,7 @@ class _Context:
         per_year = ("saved" if rr > 0 else "added" if rr < 0 else "no change")
         band = (
             "<div class='hero-band'>"
-            "<div class='eyebrow on-dark'>The opportunity</div>"
+            "<div class='eyebrow on-dark'>Total Opportunity</div>"
             f"<div class='hero-figure {cls}'>{pre}{_usd0(horizon_total)}</div>"
             f"<div class='hero-word'>{E(word)}</div>"
             f"<div class='hero-sub'><b>{_usd0(rr)}</b> per year {per_year} once every contract "
@@ -309,8 +348,8 @@ class _Context:
 
         return (
             "<section class='page opportunity'>"
-            "<div class='eyebrow'>Microsoft 365 · licensing view</div>"
-            "<h1>What this is worth</h1>"
+            "<div class='eyebrow'>Microsoft 365 · Licensing View</div>"
+            "<h1>The Opportunity</h1>"
             f"{band}<div class='sources'>{''.join(cards)}</div>{caveat}{self._ramp()}"
             "</section>"
         )
@@ -336,7 +375,7 @@ class _Context:
                 f"<td class='num'>{_amt(v)}{extra}</td></tr>")
         word = "saved" if timed > 0 else "added" if timed < 0 else "no net change"
         return (
-            "<div class='ramp-block'><h2>How the run rate is reached</h2>"
+            "<div class='ramp-block'><h2>Path to Full Run Rate</h2>"
             "<p class='lede'>Each saving starts when the contract that holds it renews, so the "
             f"first years build up to the full run rate. <b>Within the first {self.months} months, "
             f"{_usd0(timed)} is {word}</b> as contracts renew.</p>"
@@ -358,8 +397,8 @@ class _Context:
             + f"</td><td class='num'>{_amt(q['credited_annual'])}</td></tr>"
             for q in qws)
         return (
-            "<section class='block keep'><div class='eyebrow'>① Duplicate spend</div>"
-            "<h2>Quick wins — you're already covered</h2>"
+            "<section class='block keep'><div class='eyebrow'>① Duplicate Spend</div>"
+            "<h2>Quick Wins</h2>"
             "<p class='lede'>These tools deliver capabilities your <b>current</b> Microsoft licensing "
             f"already includes. Each can retire at its renewal with no licensing change: "
             f"<b class='pos'>{_usd0(total)}</b> a year.</p>"
@@ -443,7 +482,7 @@ class _Context:
         if today_only > 0:
             note += (f" Tools this persona could retire without any change ({_usd0(today_only)} a year) "
                      "are counted under ① Retire duplicate tools.")
-        impact = ("<div class='impact'><h3>Economic impact</h3>"
+        impact = ("<div class='impact'><h3>Economic Impact</h3>"
                   f"<table class='ledger'><tbody>{''.join(rows)}</tbody></table>"
                   f"<p class='note'>{note}</p></div>")
 
@@ -492,7 +531,7 @@ class _Context:
         if not parts:
             parts.append("<p class='muted'>Nothing new: everything this plan delivers is already "
                          "in place today.</p>")
-        return f"<div class='capabilities'><h3>Capability changes</h3>{''.join(parts)}</div>"
+        return f"<div class='capabilities'><h3>Capability Changes</h3>{''.join(parts)}</div>"
 
     def _narrative(self, s) -> str:
         n = self.narr_by_name.get(s["persona_name"])
@@ -573,8 +612,8 @@ class _Context:
             note += (f"<p class='note'>Dropping unused licences adds {_usd0(unused)} a year on top "
                      "(③ above); it is not part of this bridge.</p>")
         return (
-            "<section class='page'><div class='eyebrow'>The accounting</div>"
-            "<h1>How we get to the number</h1>"
+            "<section class='page'><div class='eyebrow'>The Accounting</div>"
+            "<h1>Spend Bridge</h1>"
             "<p class='lede'>The Microsoft licensing the recommended plans cost, less the licensing "
             "and tools they retire, building to the net change per year"
             + (", with each persona side by side." if cols else ".") + " Reductions show as −.</p>"
@@ -633,13 +672,13 @@ class _Context:
         retired = r.get("fully_eliminated_tools") or []
         retired_html = ""
         if retired:
-            retired_html = ("<h3>Retired completely</h3><ul class='retired'>" + "".join(
+            retired_html = ("<h3>Retired Completely</h3><ul class='retired'>" + "".join(
                 f"<li><b>{E(t)}</b>"
                 + (f" <span class='muted'>— renews {_date(renew[t])}; co-term the retirement</span>"
                    if renew.get(t) else "") + "</li>" for t in retired) + "</ul>")
         return (
-            "<section class='page'><div class='eyebrow'>Third-party tools</div>"
-            "<h1>What happens to each tool</h1>"
+            "<section class='page'><div class='eyebrow'>Disposition</div>"
+            "<h1>Third-Party Tools</h1>"
             f"<p class='lede'>Today these tools cost <b>{_usd0(today_total)}</b> a year in the "
             f"counted scope. After the move, <b>{_usd0(r.get('residual_third_party_cost_annual'))}</b> "
             "a year remains (reduced seats plus tools kept as they are).</p>"
@@ -665,7 +704,7 @@ class _Context:
                     note = " <span class='muted'>(list price assumed)</span>"
                 return (f"<tr><td>{E(lic.sku_reference)}{note}</td><td class='num'>{lic.quantity_assigned or 0:,}</td>"
                         f"<td class='num'>${eff:,.2f}</td><td class='num'>{_usd0(eff * (lic.quantity_assigned or 0))}</td></tr>")
-            parts.append("<h3>Your Microsoft licensing today</h3><table class='data'><thead><tr>"
+            parts.append("<h3>Current Licensing</h3><table class='data'><thead><tr>"
                          "<th>Licence</th><th class='num'>Seats assigned</th><th class='num'>Price / seat / yr</th>"
                          "<th class='num'>Per year</th></tr></thead><tbody>"
                          + "".join(lic_row(l) for l in eng.licenses_in_scope) + "</tbody></table>")
@@ -727,7 +766,7 @@ class _Context:
         if unused:
             answer = {"NotNeeded": "not needed — counted as over-licensing", "Intended": "kept on purpose — not counted",
                       None: "not answered — left out"}
-            parts.append("<h3>Unused licences</h3><table class='data'><thead><tr><th>Licence</th>"
+            parts.append("<h3>Unused Licences</h3><table class='data'><thead><tr><th>Licence</th>"
                          "<th class='num'>Unused seats</th><th class='num'>Per year</th><th>Your answer</th>"
                          "</tr></thead><tbody>" + "".join(
                              f"<tr><td>{E(u['sku_reference'] or '—')}</td><td class='num'>{u['unused_seats']:,}</td>"
@@ -740,7 +779,7 @@ class _Context:
                     "microsoft_reduction": "Microsoft reduction, at the Microsoft renewal",
                     "unused_seats": "unused licences, at the Microsoft renewal"}
             parts.append(
-                f"<h3>How the run rate is timed</h3><table class='data timing'><thead><tr><th>Item</th>"
+                f"<h3>Run-Rate Timing</h3><table class='data timing'><thead><tr><th>Item</th>"
                 "<th>Starts</th><th class='num'>Months counted</th><th class='num'>Per year</th>"
                 f"<th class='num'>Within {self.months} months</th></tr></thead><tbody>"
                 + "".join(
@@ -752,12 +791,12 @@ class _Context:
                 f"<td class='num'>{_amt(self.h.get('run_rate_annual'), cls=False)}</td>"
                 f"<td class='num'>{_amt(self.h.get('amount'), cls=False)}</td></tr></tbody></table>")
 
-        method = "".join(f"<div class='method-item'><h4>{E(m['title'])}</h4><p>{E(m['body'])}</p></div>"
+        method = "".join(f"<div class='method-item'><h4>{E(_title(m['title']))}</h4><p>{E(m['body'])}</p></div>"
                          for m in help_text.method())
         return (
-            "<section class='page'><div class='eyebrow'>Assumptions and sources</div>"
-            "<h1>What these figures rest on</h1>" + "".join(parts)
-            + f"<h2>How we calculated this</h2><div class='method'>{method}</div></section>"
+            "<section class='page'><div class='eyebrow'>The Basis</div>"
+            "<h1>Assumptions &amp; Sources</h1>" + "".join(parts)
+            + f"<h2>Methodology</h2><div class='method'>{method}</div></section>"
         )
 
     # ---- 8. Next steps and the close ---------------------------------------------
@@ -789,8 +828,8 @@ class _Context:
         closing = (f"<div class='closing'>{self.brand['closing_block']}</div>"
                    if self.brand["closing_block"] else "")
         return (
-            "<section class='block next'><div class='eyebrow'>Next steps</div>"
-            f"<h1>Where we go from here</h1><ol class='steps'>{steps}</ol>"
+            "<section class='block next'><div class='eyebrow'>Recommended</div>"
+            f"<h1>Next Steps</h1><ol class='steps'>{steps}</ol>"
             "<p class='note'>Savings are before one-time migration cost, and moving workloads "
             "(chat, device management, identity) is a change-management event, not just a licence "
             f"swap — both are scoped in the follow-on.</p>{closing}</section>"
@@ -805,7 +844,7 @@ class _Context:
         return (
             f"<footer class='doc-footer {cls}'>"
             f"<div class='footer-logo'>{logo}</div><div class='footer-text'>"
-            f"<div>{E(eng.customer_name or '')} · Microsoft 365 total cost of ownership · "
+            f"<div>{E(eng.customer_name or '')} · Microsoft 365 TCO Readout · "
             f"prepared {_date(self.prepared.isoformat())}</div>"
             f"<div class='disclaimer'>{b['footer_disclaimer']}</div></div></footer>"
         )
@@ -841,24 +880,31 @@ section.block.keep{break-inside:avoid}
 h1,h2,h3,.eyebrow,.label{break-after:avoid}
 
 /* Cover */
-section.cover{padding:0;display:block;break-after:page;page:cover;position:relative;height:11in;overflow:hidden}
-.cover-top{height:3.6in;padding:.85in .85in 0;background:#fff}
-.cover-logos{display:table;width:100%%}
-.cover-logo-slot{display:table-cell;vertical-align:middle;width:50%%}
-.cover-logo-slot.right{text-align:right}
-.cover-logo{max-height:.9in;max-width:3in}
-.cover-logo.customer{max-height:.8in;max-width:2.6in}
-.cover-customer-name{font-size:16pt;font-weight:700;color:var(--primary)}
-.cover-band{background:var(--primary);color:#fff;height:7.4in;padding:1.1in .85in .7in;position:relative}
-.cover-title{color:#fff;font-size:38pt;margin:.25in 0 .12in;letter-spacing:-.02em}
-.cover-subtitle{font-size:16pt;color:#fff;opacity:.92}
-.cover-meta{margin-top:.35in;font-size:10pt;letter-spacing:.06em;color:#fff;opacity:.75}
-.cover-foot{position:absolute;left:.85in;right:.85in;bottom:.75in}
-.brand-rule{display:table;width:100%%;height:2px;margin-bottom:.12in}
+section.cover{padding:0;break-after:page;page:cover;position:relative;height:11in;overflow:hidden;background:#fff}
+.cover-strip{height:.16in;background:var(--primary)}
+.cover-body{padding:.75in .85in 0;height:7.5in}
+.cover-logos{height:1.15in;white-space:nowrap}
+.cover-logo-cell{display:inline-block;vertical-align:middle}
+.cover-logo{max-height:.95in;max-width:3.1in;vertical-align:middle}
+.cover-logo-divider{display:inline-block;width:1px;height:.75in;background:var(--line);
+  margin:0 .32in;vertical-align:middle}
+.cover-titles{margin-top:1.15in}
+.cover-titles .eyebrow{font-size:9pt}
+.cover-title{color:var(--primary);font-size:46pt;line-height:1.02;margin:.08in 0 .1in;letter-spacing:-.025em}
+.cover-subtitle{font-size:17pt;color:var(--muted)}
+.cover-bar{width:.75in;height:4px;background:var(--hl);margin:.3in 0 .32in}
+.cover-figure{display:inline-block;border-left:4px solid var(--accent);padding:.02in 0 .02in .2in}
+.cover-figure-value{font-size:30pt;font-weight:700;color:var(--primary);letter-spacing:-.02em;line-height:1}
+.cover-figure-label{font-size:10pt;color:var(--muted);margin-top:.06in;line-height:1.3}
+.cover-band{position:absolute;left:0;right:0;bottom:0;height:3.34in;background:var(--primary);overflow:hidden}
+.cover-art{position:absolute;right:0;bottom:0;width:4.6in;height:3.34in}
+.cover-band-inner{position:absolute;left:.85in;bottom:.7in;width:4.4in}
+.brand-rule{display:table;width:100%%;height:2px;margin-bottom:.14in}
 .brand-rule span{display:table-cell;height:2px}
-.brand-rule span:first-child{width:18%%;background:var(--hl)}
+.brand-rule span:first-child{width:22%%;background:var(--hl)}
 .brand-rule span:last-child{background:var(--accent)}
-.cover-tagline{text-align:right;font-size:11pt;letter-spacing:.08em;color:#fff}
+.cover-meta{font-size:9.5pt;letter-spacing:.05em;color:#fff;opacity:.8}
+.cover-tagline{margin-top:.16in;font-size:13pt;letter-spacing:.06em;color:#fff}
 .cover-tagline .hl,.closing .hl,.disclaimer .hl{color:var(--hl);font-weight:700}
 .cover-tagline a{color:#fff}
 
@@ -992,9 +1038,11 @@ footer.doc-footer{display:table;width:100%%;margin-top:.4in;border-top:1px solid
 @media screen{
   body{background:#eef1f6}
   main{background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.08)}
-  section.cover{height:auto}
-  .cover-top{height:auto;padding:.5in .6in .4in}
-  .cover-band{height:auto;padding:.6in .6in 1.4in}
+  section.cover{height:auto;padding:0}
+  .cover-body{height:auto;padding:.5in .6in .5in}
+  .cover-titles{margin-top:.5in}
+  .cover-band{position:relative;height:2.2in}
+  .cover-band-inner{left:.6in;bottom:.4in}
   section{padding:.25in .6in}
   section.page{border-top:8px solid #eef1f6}
   footer.running-footer{display:none}
@@ -1002,8 +1050,12 @@ footer.doc-footer{display:table;width:100%%;margin-top:.4in;border-top:1px solid
 }
 @media screen and (max-width:720px){
   html{font-size:9.5pt}
-  section,.cover-top,.cover-band,footer.screen-footer{padding-left:16px;padding-right:16px}
-  .cover-title{font-size:26pt} .hero-figure{font-size:28pt}
+  section,.cover-body,footer.screen-footer{padding-left:16px;padding-right:16px}
+  section.cover{padding:0}
+  .cover-band-inner{left:16px;right:16px;width:auto}
+  .cover-logo{max-width:40vw}
+  .cover-art{opacity:.5}
+  .cover-title{font-size:30pt} .hero-figure{font-size:28pt}
   .cols,.col{display:block;padding:0}
   table.data,table.bridge{display:block;overflow-x:auto}
   .legend,.legend-item{display:block}
