@@ -90,8 +90,9 @@ card's expander.
 - **Ask:** who the customer is.
 - **Basics:**
   - customer name;
-  - workshop date (shown on the PDF title page);
-  - logo (shown on the PDF title page);
+  - workshop date (shown on the PDF cover);
+  - the customer's logo (shown on the PDF cover beside the practice's logo, which is
+    set once in Settings → Readout branding);
   - optional: industry, headquarters, website and notes, which are context for AI;
   - optional: employee count, which is context for AI and feeds a review check.
 - **Expander:**
@@ -346,28 +347,34 @@ With AI on, the AI sanity check adds its findings to the same list.
 
 ## 7. The PDF
 
-The PDF is the leave-behind for the customer. It has four parts:
+The PDF is the leave-behind for the customer. It is the HTML readout printed: one
+design, one template (TARGET_SCHEMA D26), branded by the practice once (D25):
 
-1. **Title page:** customer name, logo, workshop date.
-2. **Overview:**
-   - the run rate and its three sub-lines;
-   - every persona and its recommendation;
-   - the ramp: the yearly bars, "full run rate from month N", and the renewal table.
-3. **One section per persona:**
-   - current state;
-   - what is replaced: tools, with their renewal dates;
-   - future state;
-   - economic impact;
-   - capability changes, with new capabilities highlighted;
-   - AI narratives, when they have been generated.
-4. **How we calculated this:**
-   - the method, from the same text as the tooltips (§9);
-   - the assumptions: list prices assumed, the managed-service share, renewal dates
-     not given (counted from day one);
-   - "Not part of this workshop": the licences set aside as out of scope.
+1. **Cover:** the practice logo and the customer's logo (or name) on white; a band in
+   the practice's primary colour with the customer, the subtitle, the workshop date
+   and the tagline.
+2. **What this is worth:**
+   - the headline: the full run rate over the period modelled ("$X saved over 36
+     months at full run rate"), the run rate per year beside it, and when it is reached;
+   - its sources — ① duplicate tools, ② each persona's move, ③ unused licences — each
+     per year with its share of the savings (a cost is a "less" line with no share);
+   - the ramp: a bar per year, the full run rate, and what lands within the period.
+3. **Quick wins:** tools the current licences already cover.
+4. **One page per persona:** the narrative (when generated), today's licences and
+   tools, the recommended plan and what it replaces, the economic impact itemised to
+   its run rate, and capability changes as chips.
+5. **How we get to the number:** the spend bridge, one column per persona up to three.
+6. **What happens to each tool:** today's third-party spend split into retired now,
+   retired by the new plans, remaining on reduced tools and kept; then each tool.
+7. **What these figures rest on:** current licensing and prices (negotiated prices
+   disclosed), the assumptions, "Not part of this workshop", unused licences, how the
+   run rate is timed, and *How we calculated this* (the tooltips' text, §9).
+8. **Where we go from here:** next steps, the co-investment range when it applies,
+   and the practice's closing block.
 
-Anything left out (§5) does not appear. The Excel export stays as it is today, for
-the team.
+A running footer carries the practice logo, the customer, the date, the practice's
+disclaimer and the page number. Anything left out (§5) does not appear. The Excel
+export stays as it is today, for the team.
 
 ---
 
@@ -411,7 +418,7 @@ everything else sits in the card's expander.
 
   | Field | Its new reader |
   | --- | --- |
-  | Workshop date | PDF title page |
+  | Workshop date | PDF cover |
   | Persona description | the persona's PDF section |
   | Licence quantity purchased | over-licensing (§4) and the review (§6) |
   | Third-party vendor | the PDF's tool list and the AI coverage prompt |

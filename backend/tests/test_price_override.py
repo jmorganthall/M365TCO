@@ -72,8 +72,8 @@ def test_scenario_override_off_falls_back_to_discounted_net(client):
 
 
 def test_override_disclosed_in_readout(client):
-    """The readout discloses the negotiated override and the implied % off list,
-    both in the current-licensing table and the appendix."""
+    """The readout discloses the negotiated override and the implied % off list on
+    the licence's row in "Your Microsoft licensing today"."""
     eid, p = _setup(client)
     client.post(f"/api/engagements/{eid}/current-licenses", json={
         "sku_reference": "Microsoft 365 E5", "quantity_assigned": 100,
@@ -83,9 +83,8 @@ def test_override_disclosed_in_readout(client):
         "persona_id": p["id"], "target_sku_reference": "Microsoft 365 E3",
         "target_unit_price_annual": 400, "in_scope": True})
     html = client.get(f"/api/engagements/{eid}/readout.html").text
-    assert "Negotiated price overrides" in html
-    assert "−50% vs list" in html          # (600 − 300) / 600
-    assert "custom price" in html          # the current-licensing row note
+    # The current-licensing row carries the negotiated rate and its % off list.
+    assert "(negotiated price · 50% below list $600)" in html   # (600 − 300) / 600
 
 
 def test_override_survives_clone(client):

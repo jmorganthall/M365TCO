@@ -141,6 +141,8 @@ def _headline(h) -> dict | None:
         "consolidation_annual": _num(h.consolidation_annual),
         "overlicensing_annual": _num(h.overlicensing_annual),
         "direction": h.direction,
+        "run_rate_horizon_amount": _num(h.run_rate_horizon_amount),
+        "savings_shares": dict(h.savings_shares),
         "duplicate_spend_amount": _num(h.duplicate_spend_amount),
         "consolidation_amount": _num(h.consolidation_amount),
         "overlicensing_amount": _num(h.overlicensing_amount),

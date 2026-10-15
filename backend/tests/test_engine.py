@@ -1469,3 +1469,30 @@ def test_an_empty_headline_has_no_run_rate_month():
     assert h.run_rate_annual == D("0.00") and h.direction == "none"
     assert h.full_run_rate_month is None
     assert [y.amount for y in h.years] == [D("0.00")] * 3
+
+
+# ---- The headline figure and savings shares (ENGINE_SPEC 6.11) ---------------
+
+def test_headline_figure_is_the_run_rate_over_the_horizon():
+    h = _timed(*_upgrade_case())
+    # −15,000 a year at full rate × 3 years; the timing lands only −38,000 inside
+    # the horizon (the ramp), and the headline figure is never that.
+    assert h.run_rate_horizon_amount == D("-45000.00")
+    assert h.amount == D("-38000.00")
+    assert h.savings_shares == {}                          # nothing is a saving
+
+
+def test_savings_shares_are_of_the_savings_never_the_net():
+    from tco_engine.timing import savings_shares
+    # Every sub-line a saving: shares of the total, summing to 100.
+    assert savings_shares({"duplicate_spend": D("789000"), "consolidation": D("82680"),
+                           "overlicensing": D("0")}) == {"duplicate_spend": 91, "consolidation": 9}
+    # A cost sub-line has no share; the savings split the 100 between them.
+    assert savings_shares({"duplicate_spend": D("46725"), "consolidation": D("-107175"),
+                           "overlicensing": D("13800")}) == {"duplicate_spend": 77, "overlicensing": 23}
+    # Thirds round by largest remainder, ties to the earlier sub-line.
+    assert savings_shares({"duplicate_spend": D("1"), "consolidation": D("1"),
+                           "overlicensing": D("1")}) == {"duplicate_spend": 34, "consolidation": 33,
+                                                         "overlicensing": 33}
+    assert savings_shares({"duplicate_spend": D("0"), "consolidation": D("-5"),
+                           "overlicensing": D("0")}) == {}

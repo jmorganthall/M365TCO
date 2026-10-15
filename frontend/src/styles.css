@@ -371,3 +371,15 @@ button.badge.licence-flag { background: transparent; padding: .12rem .45rem; fon
 .library-notice { display: flex; gap: .6rem; align-items: center; justify-content: space-between;
   border: 1px solid var(--accent); border-radius: 8px; padding: .45rem .7rem; margin: 0 0 .8rem;
   font-size: .85rem; background: var(--panel); }
+
+/* Settings → Readout branding */
+.brand-logo-row { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; margin: .25rem 0; }
+.brand-logo-preview { max-height: 48px; max-width: 220px; background: #fff; padding: 4px; border-radius: 4px; }
+.brand-color-row { display: flex; align-items: center; gap: .5rem; }
+.brand-color-row input[type=color] { width: 2.4rem; height: 2rem; padding: 0; border: none; background: none; }
+.richtext { border: 1px solid var(--line, #d6dbe4); border-radius: 6px; background: #fff; color: #1b2433; }
+.richtext-bar { display: flex; gap: .25rem; padding: .25rem; border-bottom: 1px solid var(--line, #d6dbe4); flex-wrap: wrap; }
+.richtext-body { min-height: 2.4rem; padding: .45rem .6rem; outline: none; }
+.richtext-body:empty::before { content: attr(data-placeholder); color: #8a93a3; }
+.richtext .hl { color: var(--hl); font-weight: 700; }
+.richtext-bar button { color: #1b2433; background: #f3f5f8; border-color: #cfd5df; min-width: 2rem; }

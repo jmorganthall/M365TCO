@@ -62,6 +62,33 @@ class GlobalDefaultsUpdate(BaseModel):
     sanity_check_web_search: Optional[bool] = None
 
 
+class PracticeBrandingOut(BaseModel):
+    """The stored branding (NULL = built-in default) and, read-only, what the
+    readout resolves each field to."""
+    logo_data_url: Optional[str] = None
+    primary_color: Optional[str] = None
+    accent_color: Optional[str] = None
+    highlight_color: Optional[str] = None
+    tagline: Optional[str] = None
+    cover_subtitle: Optional[str] = None
+    closing_block: Optional[str] = None
+    footer_disclaimer: Optional[str] = None
+    updated_at: Optional[datetime] = None
+    resolved: dict = {}
+
+
+class PracticeBrandingUpdate(BaseModel):
+    """A partial update; an empty string clears a field back to its default."""
+    logo_data_url: Optional[str] = None
+    primary_color: Optional[str] = None
+    accent_color: Optional[str] = None
+    highlight_color: Optional[str] = None
+    tagline: Optional[str] = None
+    cover_subtitle: Optional[str] = None
+    closing_block: Optional[str] = None
+    footer_disclaimer: Optional[str] = None
+
+
 class DefaultOutcomeIn(BaseModel):
     name: str
     description: str = ""
@@ -148,8 +175,6 @@ class EngagementUpdate(BaseModel):
     default_term_duration: Optional[str] = None
     default_billing_plan: Optional[str] = None
     brand_logo_data_url: Optional[str] = None
-    brand_primary_color: Optional[str] = None
-    brand_accent_color: Optional[str] = None
     notes: Optional[str] = None
     business_cap_enabled: Optional[bool] = None
     managed_ms_account: Optional[bool] = None
@@ -175,8 +200,6 @@ class EngagementOut(ORMModel):
     default_term_duration: str
     default_billing_plan: str
     brand_logo_data_url: str
-    brand_primary_color: str
-    brand_accent_color: str
     notes: str
     business_cap_enabled: bool = False
     managed_ms_account: bool = False

@@ -20,6 +20,14 @@ ENV PYTHONUNBUFFERED=1 \
     TCO_DATABASE_URL=sqlite:////data/tco.db \
     TCO_DATA_DIR=/data
 
+# The customer PDF is the readout's HTML printed by WeasyPrint, which lays text out
+# with Pango. TeX Gyre Heros (fonts-texgyre, a free Helvetica-style face) is the
+# readout's typeface.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fontconfig fonts-texgyre \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY backend/requirements.txt ./
 RUN pip install -r requirements.txt
 

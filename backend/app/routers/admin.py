@@ -15,7 +15,7 @@ from ..db import get_db
 from sqlalchemy import func
 
 from ..services import (
-    ai, ai_prompts, bundles as bundles_service, defaults, licence_names,
+    ai, ai_prompts, branding, bundles as bundles_service, defaults, licence_names,
     limits as limits_service, secrets, seeds,
 )
 
@@ -81,6 +81,28 @@ def update_global_defaults(
     db.commit()
     db.refresh(row)
     return row
+
+
+# ---- Practice branding for the customer readout (TARGET_SCHEMA §3.5, D25) ----
+def _branding_out(row: models.PracticeBranding) -> dict:
+    out = {k: getattr(row, k) for k in schemas.PracticeBrandingUpdate.model_fields}
+    out["updated_at"] = row.updated_at
+    out["resolved"] = branding.resolved(row)
+    return out
+
+
+@router.get("/branding", response_model=schemas.PracticeBrandingOut)
+def get_branding(db: Session = Depends(get_db)):
+    return _branding_out(branding.get(db))
+
+
+@router.put("/branding", response_model=schemas.PracticeBrandingOut)
+def update_branding(payload: schemas.PracticeBrandingUpdate, db: Session = Depends(get_db)):
+    try:
+        row = branding.update(db, branding.get(db), payload.model_dump(exclude_unset=True))
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    return _branding_out(row)
 
 
 def _resolved_model(db: Session) -> str:

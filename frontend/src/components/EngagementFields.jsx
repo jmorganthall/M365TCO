@@ -48,8 +48,6 @@ function fromEngagement(e) {
     managed_ms_account: !!e.managed_ms_account,
     ecif_roi_conservative: Number(e.ecif_roi_conservative ?? 10),
     ecif_roi_generous: Number(e.ecif_roi_generous ?? 5),
-    brand_primary_color: e.brand_primary_color || '',
-    brand_accent_color: e.brand_accent_color || '',
   }
 }
 
@@ -90,7 +88,9 @@ export function CustomerCard({ engagement, meta, onUpdate }) {
 
   function onLogoFile(file) {
     if (!file) return
-    if (!file.type.startsWith('image/')) { setErr('The logo must be an image (PNG or JPG).'); return }
+    if (!/^image\/(png|jpeg|gif|webp|svg\+xml)$/.test(file.type)) {
+      setErr('The logo must be a PNG, JPEG, GIF, WebP or SVG image.'); return
+    }
     const reader = new FileReader()
     reader.onload = async () => {
       try { onUpdate?.(await api.patch(`/api/engagements/${engagement.id}`, { brand_logo_data_url: reader.result })) }
@@ -120,12 +120,13 @@ export function CustomerCard({ engagement, meta, onUpdate }) {
             onChange={(e) => { setF({ ...f, workshop_date: e.target.value }); commit('workshop_date', e.target.value) }} />
         </div>
         <div>
-          <label>Logo <Help k="customer.logo" /></label>
+          <label>Customer logo <Help k="customer.logo" /></label>
           {engagement.brand_logo_data_url
             ? <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}>
                 <img src={engagement.brand_logo_data_url} alt="Customer logo" style={{ maxHeight: 34, maxWidth: 140 }} />
                 <button className="ghost sm" onClick={clearLogo}>Remove</button></div>
-            : <input type="file" accept="image/png,image/jpeg" onChange={(e) => onLogoFile(e.target.files?.[0])} />}
+            : <input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+                onChange={(e) => onLogoFile(e.target.files?.[0])} />}
         </div>
       </div>
 
@@ -217,7 +218,9 @@ export function SummaryCard({ engagement, onUpdate, onPdfCreated }) {
         <button onClick={createPdf} disabled={making}>{making ? 'Creating…' : 'Create customer PDF'}</button>
       </div>
       <p className="hint" style={{ margin: '.3rem 0 .6rem' }}>
-        Title page, an overview of every persona, a page per persona and how we calculated it. <Help k="summary.pdf" />
+        The same document as the readout: the cover, what it's worth, a page per persona, the
+        accounting, every tool and the assumptions. Your practice's logo, colours and wording are
+        set once in Settings → Readout branding. <Help k="summary.pdf" />
         {presented && <> Last created <b>{new Date(presented.created_at).toLocaleString()}</b> — those are the
           numbers the customer was handed.</>}
       </p>
@@ -231,14 +234,6 @@ export function SummaryCard({ engagement, onUpdate, onPdfCreated }) {
       </div>
       <details className="more">
         <summary>Report options</summary>
-        <div className="grid c3">
-          <div><label>Title colour</label>
-            <input type="color" value={f.brand_primary_color || '#1a1f3c'}
-              onChange={(e) => { setF({ ...f, brand_primary_color: e.target.value }); commit('brand_primary_color', e.target.value) }} /></div>
-          <div><label>Accent colour (HTML readout)</label>
-            <input type="color" value={f.brand_accent_color || '#2563eb'}
-              onChange={(e) => { setF({ ...f, brand_accent_color: e.target.value }); commit('brand_accent_color', e.target.value) }} /></div>
-        </div>
         <label className="check" style={{ marginTop: '.6rem' }}>
           <input type="checkbox" checked={f.managed_ms_account}
             onChange={(e) => { setF({ ...f, managed_ms_account: e.target.checked }); commit('managed_ms_account', e.target.checked) }} />

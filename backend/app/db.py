@@ -143,6 +143,11 @@ _RETIRED_COLUMNS: tuple[tuple[str, str], ...] = (
     # Users / Devices / Units on a third-party tool: never read by any calculation
     # (everything is per person, TARGET_SCHEMA D13) — removed with the walkthrough.
     ("third_party_products", "unit_basis"),
+    # Per-engagement readout colours: the practice brands the readout once, in
+    # practice_branding (TARGET_SCHEMA D25); the engagement keeps only the
+    # customer's logo.
+    ("engagements", "brand_primary_color"),
+    ("engagements", "brand_accent_color"),
 )
 
 
