@@ -17,6 +17,9 @@
 >   the guided-walkthrough design, [`WALKTHROUGH.md`](WALKTHROUGH.md) §12. Those
 >   pieces may be built on today's schema ahead of the rebuild, in exactly the
 >   shape given here.
+> - Decisions D25–D26 and the pieces marked *(readout)* come from the branded
+>   customer-readout design. They too may be built on today's schema ahead of the
+>   rebuild, in exactly the shape given here.
 
 ---
 
@@ -39,7 +42,7 @@
 | D13 | **Everything is per person.** No device or unit pricing. | §4.5 |
 | D14 | **Proposals.** An engagement holds one or more proposals; each owns its future state. One is primary. | §5 |
 | D15 | **Delete means archive.** Archived rows leave the math and can be restored. Seeding never resurrects them. | §1.3 |
-| D16 | **One headline, led by the yearly run rate,** computed once in the engine: three sub-lines (duplicate spend today, consolidation, over-licensing), each a yearly amount once every contract has renewed. Then the ramp: each amount timed by the renewal that unlocks it, summed month by month over the modelling horizon and shown per year. | §7 |
+| D16 | **One headline, led by the full run rate over the modelling horizon,** computed once in the engine: the yearly run rate once every contract has renewed, times the horizon in years (36 months at the default three years). Beside it, the yearly run rate and its three sub-lines (duplicate spend today, consolidation, over-licensing). Then the ramp: each amount timed by the renewal that unlocks it, summed month by month over the modelling horizon and shown per year, ending at what lands within the horizon. *(Revised by the readout design; it was "led by the yearly run rate".)* | §7 |
 | D17 | **AI-provided values are marked** until a person confirms them. | §1.4 |
 | D18 | **Viewing never writes.** | §1.2 |
 | D19 | **Savings start when a contract allows it.** A tool's saving starts at its renewal; Microsoft increases start when the first tool only the move can retire renews; Microsoft reductions wait for the Microsoft renewal. A missing date means month-to-month with no lock-in: the amount starts on day one, and the timing says so. | §7.1 |
@@ -48,6 +51,8 @@
 | D22 | **AI is optional.** Nothing the engine, the interpreter or an export needs depends on an AI call. | §13 |
 | D23 | **Every Microsoft licence line is read or set aside.** A line is linked to a library plan, mapped to outcomes for this engagement, or marked out of scope (in no number at all). Until one of those, its cost still counts but its personas' outcome changes are left out. | §4.4, §6.3 |
 | D24 | **The library learns from the workshop.** Licence names that engagements had to link or map by hand are listed, with counts and never customer names, for an admin to add to the library as a plan or a name alias. | §3.1, §3.4 |
+| D25 | **The practice brands the readout once.** The practice's logo, colours and fixed wording (tagline, cover subtitle, closing block, footer disclaimer) are one install-wide record entered in the GUI, never hard-coded. An engagement holds only its customer's logo. | §3.5, §4.1 |
+| D26 | **One readout design.** The HTML readout and the customer PDF are one document rendered from one template; the PDF is that document printed. | §7 |
 
 ---
 
@@ -229,6 +234,22 @@ default segment / term / billing, default ECIF ratios, AI model choices,
 `restrict_engagement_access` (bool, default false — §9.2).
 **`ai_prompts`**, **`price_sync_settings`**: as today.
 
+**`practice_branding`** *(readout)* (single row; D25): how the practice brands the
+customer readout. Every column is nullable; `NULL` means the built-in neutral default
+and is never written back as the resolved value.
+
+- `logo_data_url`: one image (PNG, JPEG or SVG) as a base64 data URL. It is placed
+  only on white surfaces, so one version serves everywhere.
+- `primary_color`, `accent_color`, `highlight_color`: CSS hex colours. Primary is
+  the dark ink for headings and bands; accent the bright second colour; highlight
+  the warm colour for emphasis (the accent word, key figures on dark bands).
+- Rich-text blocks, each a sanitized HTML fragment limited to bold, italic, links
+  and a highlight span: `tagline`, `cover_subtitle`, `closing_block`,
+  `footer_disclaimer`.
+- `updated_at`, `updated_by`.
+
+There is no per-engagement override (D25).
+
 ---
 
 ## 4. Engagement raw layer (current state and needs)
@@ -239,7 +260,7 @@ customer as they are and what they need.
 ### 4.1 `engagements`
 
 - `customer_name`, `notes`, `market`, `currency`, `modeling_horizon_years`
-  (CHECK 1–10), `workshop_date`, branding fields, `business_cap_enabled`,
+  (CHECK 1–10), `workshop_date`, `customer_logo` *(readout)*, `business_cap_enabled`,
   `managed_ms_account`.
 - **Inheritable settings are nullable** (`NULL` = inherit from install settings):
   `tooling_pct`, `default_segment`, `default_term_duration`,
@@ -247,6 +268,11 @@ customer as they are and what they need.
 - **Customer profile** (AI research can fill these): `industry`, `hq_location`,
   `website`, `employee_count`, each with its own `<field>_source_tag`, and
   `profile_confirmed_by` / `profile_confirmed_at`.
+- `customer_logo` *(readout)*: the customer's own logo, optional, as a base64 image
+  data URL (PNG, JPEG or SVG); shown on the readout cover beside the practice logo,
+  or the customer name when empty. Today's `brand_logo_data_url`, relabelled
+  "Customer logo"; its data is kept as entered. The engagement's own brand colours
+  are retired: colours come from `practice_branding` (§3.5).
 - `presented_snapshot_id` (FK `engagement_snapshots`, nullable): the baseline for
   "changed since workshop" (§8).
 - `microsoft_renewal_date` (date, nullable) *(walkthrough)*: when the customer's
@@ -612,15 +638,16 @@ Written only by the engine from the interpreted layer, per proposal.
 
 | Table | Key | Holds |
 | --- | --- | --- |
-| `c_proposal_results` | `proposal_id` | rollup: current Microsoft and third-party spend, target spend, quick wins, the spend bridge components, net change per year; **the headline** (§7.1): `run_rate_annual` and each sub-line's yearly amount (`duplicate_spend_annual`, `consolidation_annual`, `overlicensing_annual`); the ramp over `headline_months` = horizon × 12 (each sub-line's timed amount `duplicate_spend_amount`, `consolidation_amount`, `overlicensing_amount`; `headline_amount` = their sum; `full_run_rate_month`); `headline_direction` ∈ {`saved`, `added`, `none`}, from the run rate; inputs fingerprint; engine version |
+| `c_proposal_results` | `proposal_id` | rollup: current Microsoft and third-party spend, target spend, quick wins, the spend bridge components, net change per year; **the headline** (§7.1): `run_rate_horizon_amount` *(readout)* = `run_rate_annual` × horizon years; `run_rate_annual` and each sub-line's yearly amount and, for a saving sub-line, its share *(readout)* (§7.1) (`duplicate_spend_annual`, `consolidation_annual`, `overlicensing_annual`); the ramp over `headline_months` = horizon × 12 (each sub-line's timed amount `duplicate_spend_amount`, `consolidation_amount`, `overlicensing_amount`; `headline_amount` = their sum; `full_run_rate_month`); `headline_direction` ∈ {`saved`, `added`, `none`}, from the run rate; inputs fingerprint; engine version |
 | `c_headline_years` *(walkthrough)* | (`proposal_id`, `year`) | the ramp per modelled year: that year's amount and the running total |
 | `c_timing_items` *(walkthrough)* | (`proposal_id`, `item_key`) | every timed amount behind the headline: sub-line, subject (`product_id`, `persona_id` or `license_id`), annual amount, start month, the date it was timed by and whether no date was given, months counted, amount over the horizon |
 | `c_scenario_results` | (`proposal_id`, `persona_id`) | current and target spend, delta, offsets |
 | `c_tool_results` | (`proposal_id`, `product_id`) | displaced people, disposition, residual people and cost |
 | `c_limit_results` | (`proposal_id`, `limit_key`) | seats counted against each licence cap (current + in-scope proposed), the cap, and whether it's exceeded |
 
-The headline is computed here once. The GUI, the HTML readout and the Excel
-readout display it; none computes it.
+The headline is computed here once. The GUI, the readout (HTML and PDF, one
+document — D26) and the Excel readout display it; none computes it, and none
+derives one figure from another (a share of savings, a horizon total) itself.
 
 The best-bundle recommender and the pre-readout sanity check stay pure reads over
 the interpreted and calculated layers. They store nothing, and they use the same
@@ -634,10 +661,17 @@ definitions as everything else (including Org-wide lines).
 | **Consolidation** | each in-scope persona's move: its displaced-tool credits beyond the quick-win portion, less its Microsoft change (the move value of ENGINE_SPEC §6.8a, so no dollar is counted in both sub-lines) | each tool credit at that tool's `renewal_date`; a Microsoft **increase** when the first tool only the move can retire renews — a tool whose credit the move itself unlocks, since a quick win retires without it (day one if there is none); a Microsoft **reduction** at the Microsoft renewal of the persona's lines |
 | **Over-licensing** | each `NotNeeded` line's unused seats × its effective price | the line's Microsoft renewal |
 
-- **The run rate leads.** `run_rate_annual` is the sum of every timing item's annual
+- **The run rate.** `run_rate_annual` is the sum of every timing item's annual
   amount: what the customer saves, or invests, each year once every contract has
-  renewed. Each sub-line's yearly amount is the sum of its items. This is the
-  headline; when it is a cost, the readout leads with the capabilities gained (D16).
+  renewed. Each sub-line's yearly amount is the sum of its items.
+- **The headline** *(readout)*: `run_rate_horizon_amount` = `run_rate_annual` ×
+  horizon years, labelled "over *N* months at full run rate", with the run rate and
+  `full_run_rate_month` beside it. It is the run rate's value over the horizon, not
+  cash in the horizon; that is `headline_amount`, shown with the ramp. When it is a
+  cost, the readout says "added" and leads with the capabilities gained (D16).
+- **Shares** *(readout)*: each sub-line that is a saving shows its share of the sum
+  of the saving sub-lines; a sub-line that is a cost shows no share and is listed
+  as a "less" line. Shares never use the net, which can be smaller than its parts.
 - **Months.** Month 0 is the `workshop_date`. An amount that starts at month *s*
   counts for `max(0, horizon × 12 − s)` months at one twelfth of its annual
   amount. `headline_amount` is the sum of every timed amount.
@@ -796,6 +830,8 @@ is in the engagement. Operational, short-lived.
 | the `$0 "Covered elsewhere (out of scope)"` placeholder tool and its coverage rows | `coverage_gap_answers` = `CoveredOutsideInventory` for each (persona, outcome) it covered; the tool row archived | the placeholder is the one tool Coverage Check creates under that exact name; the migration report lists every row it converts |
 | gaps resolved before the walkthrough ("leave as new" wrote nothing) | no answer row | they read as `Unconfirmed` until answered (D21); the before/after report shows each persona's new outcomes that become unconfirmed |
 | `global_defaults` | `install_settings` | |
+| `engagements.brand_logo_data_url` | `engagements.customer_logo` | relabelled "Customer logo" in the GUI now; renamed at the rebuild; data kept as entered |
+| `engagements.brand_primary_color`, `brand_accent_color` | retired | colours come from `practice_branding` (D25); dropped by the retired-columns list when the readout design lands |
 
 **Order of the move:** capture the before/after export on the live instance; copy the
 data to Postgres and verify the export reproduces exactly; then migrate to the
