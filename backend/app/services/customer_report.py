@@ -246,21 +246,21 @@ def build_pdf(eng: models.Engagement, result: dict, gaps: list[dict]) -> bytes:
     if float(h.get("duplicate_spend_annual") or 0):
         parts.append(["Retire duplicate tools — no licensing change",
                       _amount(h.get("duplicate_spend_annual"))])
-    parts.append(["Move each group to its recommended plan", _amount(h.get("consolidation_annual"))])
+    parts.append(["Move each persona to its recommended plan", _amount(h.get("consolidation_annual"))])
     if float(h.get("overlicensing_annual") or 0):
         parts.append(["Drop unused licences you confirmed aren't needed",
                       _amount(h.get("overlicensing_annual"))])
     parts.append(["Total per year", _amount(rr)])
     story += [_table(parts, [4.6 * inch, 1.6 * inch], num_cols=(1,), total=True), Spacer(1, 10)]
 
-    rows = [["Group", "People", "Recommended plan", "Per year", "New capabilities"]]
+    rows = [["Persona", "People", "Recommended plan", "Per year", "New capabilities"]]
     for s in scenarios:
         n_new = len((new_by_pid.get(s["persona_id"]) or {}).get("outcomes") or [])
         rows.append([P(E(s["persona_name"]), "small"), f"{s['headcount']:,}",
                      P(E(s.get("target_label") or s.get("target_sku_reference") or ""), "small"),
                      _amount(run_rate_by_pid.get(s["persona_id"], 0)), str(n_new) if n_new else "—"])
     if len(rows) > 1:
-        story += [P("Recommendations by group", "h2"),
+        story += [P("Recommendations by persona", "h2"),
                   _table(rows, [1.7 * inch, 0.7 * inch, 2.3 * inch, 1.2 * inch, 1.0 * inch],
                          num_cols=(1, 3, 4))]
 
@@ -354,7 +354,7 @@ def build_pdf(eng: models.Engagement, result: dict, gaps: list[dict]) -> bytes:
                     f"modelled, counting each part from its renewal: "
                     f"<b>{_amount(consolidation_by_pid.get(pid, 0))}</b>. Positive figures are savings; "
                     f"figures in brackets are added cost."
-                    + (f" Tools this group could retire without any change ({_usd0(today_only)} a year) "
+                    + (f" Tools this persona could retire without any change ({_usd0(today_only)} a year) "
                        "are counted under <i>Retire duplicate tools</i> instead."
                        if today_only > 0 else ""), "muted")]
 
@@ -377,7 +377,7 @@ def build_pdf(eng: models.Engagement, result: dict, gaps: list[dict]) -> bytes:
         unread = [u["sku_reference"] for u in g.get("unmapped_current_licenses") or []]
         if reason == "licence_unread":
             cap.insert(0, P(
-                f"Capability changes aren't shown for this group: we couldn't confirm what "
+                f"Capability changes aren't shown for this persona: we couldn't confirm what "
                 f"{E(', '.join(unread))} include{'s' if len(unread) == 1 else ''}, so we can't say "
                 f"what it gains or gives up. Its cost is counted above.", "muted"))
         elif reason == "awaiting_confirmation":
@@ -422,11 +422,11 @@ def build_pdf(eng: models.Engagement, result: dict, gaps: list[dict]) -> bytes:
     if unread_by_ref:
         assumptions.append(
             "We couldn't confirm what these licences include, so the capability changes of the "
-            "groups holding them are left out (their cost is counted): "
+            "personas holding them are left out (their cost is counted): "
             + "; ".join(f"{ref} ({', '.join(groups)})" for ref, groups in unread_by_ref.items()) + ".")
     groups_out = [s["persona_name"] for s in result.get("scenarios", []) if not s.get("in_scope")]
     if groups_out:
-        assumptions.append("Groups not included in the totals: " + ", ".join(groups_out) + ".")
+        assumptions.append("Personas not included in the totals: " + ", ".join(groups_out) + ".")
     licences_out = [f"{l.sku_reference or 'a licence'} ({l.quantity_assigned or l.quantity_purchased or 0})"
                     for l in eng.current_licenses if l.out_of_scope]
     if licences_out:

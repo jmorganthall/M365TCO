@@ -24,7 +24,7 @@ import { StepIntro } from './components/Help.jsx'
 // engagement tool reached from the header Tools menu.
 const STEPS = [
   ['customer', 'Customer'],
-  ['groups', 'Groups & licences'],
+  ['groups', 'Personas & licences'],
   ['tools', 'Other tools'],
   ['future', 'Future state'],
   ['gaps', 'Coverage check'],

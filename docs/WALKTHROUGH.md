@@ -27,14 +27,14 @@
 | W2 | **Unanswered means left out.** Anything the customer can't answer is left out of the numbers and the PDF. There are no escalation flags. | §5 |
 | W3 | **Never show another customer.** Nothing on the working screen lists or names other engagements. | §2 |
 | W4 | **One set of screens, two depths.** The basics are visible; unusual cases use each card's expander. There is no separate expert mode. | §3, §10 |
-| W5 | **Groups are defined by the licences they receive.** Each group has one future state: one scenario per persona per proposal, as in TARGET_SCHEMA §5.2. | §3 |
-| W6 | **Savings first.** Each group leads with what consolidation saves. Where a group can't save, it leads with the capabilities it gains. Every group shows both. | §3, §7 |
+| W5 | **Personas are defined by the licences they receive.** Each persona has one future state: one scenario per persona per proposal, as in TARGET_SCHEMA §5.2. | §3 |
+| W6 | **Savings first.** Each persona leads with what consolidation saves. Where a persona can't save, it leads with the capabilities it gains. Every persona shows both. | §3, §7 |
 | W7 | **The yearly run rate is the headline, then the ramp.** Three sub-lines: duplicate spend today, consolidation, over-licensing. The ramp shows how the run rate is reached, year by year. | §4 |
 | W8 | **Savings start when a contract allows it.** Each saving is timed by the renewal that unlocks it. No renewal date means month-to-month with no lock-in: it counts from day one. | §4 |
 | W9 | **The PDF is the leave-behind.** | §7 |
 | W10 | **AI is optional.** The workshop calculates and produces the PDF with AI off. | §8 |
 | W11 | **Help text is written for the customer to read**, and one file feeds both the tooltips and the PDF's method page. | §9 |
-| W12 | **Every Microsoft licence is read or set aside.** A licence the library doesn't know is answered on the Other tools step: the same as a library plan, the outcomes it delivers, or out of scope. Until then its group's capability changes are left out. Nothing is asked twice. | §3, §5 |
+| W12 | **Every Microsoft licence is read or set aside.** A licence the library doesn't know is answered on the Other tools step: the same as a library plan, the outcomes it delivers, or out of scope. Until then its persona's capability changes are left out. Nothing is asked twice. | §3, §5 |
 | W13 | **Library updates are reviewed, never automatic.** When the shared library changes after an engagement was created, the engagement shows each difference; nothing changes without a click, and "not for this customer" is remembered. | §3 |
 | W14 | **The library learns from the workshop.** Licence names AEs had to answer by hand are listed in Settings for an admin to add to the library. | §3 |
 
@@ -99,16 +99,16 @@ card's expander.
   - market and currency, shown but not editable (only the catalog's value is valid
     today).
 
-### Step 2 — Groups and their licences
+### Step 2 — Personas and their licences
 
 - **Ask:**
-  - "Which groups of users get different licences today? How many are in each, and
+  - "Which personas get different licences today? How many are in each, and
     what do they get?"
   - "When does your Microsoft agreement renew?"
   - For each licence with unused seats: "Are these spare seats intended?"
 - **Basics:**
-  - each group: name, headcount, and a description (shown on the group's PDF page);
-  - each licence: the product, the groups that receive it, the number bought, the
+  - each persona: name, headcount, and a description (shown on the persona's PDF page);
+  - each licence: the product, the personas that receive it, the number bought, the
     number assigned, and an optional "what do you pay?" (the default is list price);
   - the Microsoft renewal date, one per engagement;
   - for unused seats (bought − assigned): *intended*, meaning kept on hand for quick
@@ -119,7 +119,7 @@ card's expander.
   - the licence's pricing basis and price-override detail;
   - **out of scope for this workshop**: for licences no plan includes, such as Visio,
     Project or Teams Rooms. The line stays visible, greyed, and is in no number;
-  - the group's required capabilities (the default is everything it has today).
+  - the persona's required capabilities (the default is everything it has today).
 - A licence the library doesn't know is flagged on its row, with a link to the card on
   step 3 where it is answered. Nothing about it is asked here.
 
@@ -131,7 +131,7 @@ card's expander.
   - name;
   - cost and period (monthly or yearly);
   - renewal date;
-  - who uses it: whole groups, everyone, or a number of people;
+  - who uses it: whole personas, everyone, or a number of people;
   - whether it is bought directly or through a managed service (yes/no);
   - what it is used for: capabilities ticked by hand, or pre-ticked by AI and
     confirmed by the AE with the customer.
@@ -139,7 +139,7 @@ card's expander.
   - vendor;
   - tooling % for a managed service. The default is 30%: the share of a managed
     service's price that is software Microsoft 365 can replace (ENGINE_SPEC §6.5).
-  - the number of people covered, when it differs from the groups' headcount.
+  - the number of people covered, when it differs from the personas' headcount.
 - When every ticked use of a tool is covered by the customer's current Microsoft
   licences, the step says so right away: that tool is duplicate spend today (§4).
 - A use the customer confirms counts at once. The PDF labels it "confirmed by the
@@ -151,7 +151,7 @@ card's expander.
 A separate card on this step, beside the tools, because the question is the same one:
 "what does it deliver?". It lists each licence name from step 2 that the library
 doesn't know, or that this engagement has no coverage for, once per name, with the
-groups that hold it. Each takes one answer, written to every line with that name:
+personas that hold it. Each takes one answer, written to every line with that name:
 
 1. **It's the same as** a library plan, picked from a list. The customer's name for
    the line is kept; only this engagement records the link. Picking a plan this
@@ -163,16 +163,16 @@ groups that hold it. Each takes one answer, written to every line with that name
    engagement was created before it did.
 4. **Out of scope for this workshop:** the same answer as on the licence line (step 2).
 
-Until a licence is answered, its cost still counts, but its group's capability changes
+Until a licence is answered, its cost still counts, but its persona's capability changes
 are left out (§5) and the card, Coverage check and Review all say so.
 
-### Step 4 — Future state per group
+### Step 4 — Future state per persona
 
-- **Show:** each group's recommended plan, pre-filled by the best-bundle recommender.
-  It is the lowest-cost plan that keeps every capability the group has today, and the
+- **Show:** each persona's recommended plan, pre-filled by the best-bundle recommender.
+  It is the lowest-cost plan that keeps every capability the persona has today, and the
   AE can change it.
-- Each group shows its saving and the capabilities it gains. Where the best plan costs
-  more, the group leads with the capabilities gained.
+- Each persona shows its saving and the capabilities it gains. Where the best plan costs
+  more, the persona leads with the capabilities gained.
 - **Ask**, for any tool only partly replaced: keep it for the remaining users, or
   retire it?
   - *Keep* maps to today's intended residual.
@@ -184,7 +184,7 @@ are left out (§5) and the card, Coverage check and Review all say so.
   - term and payment;
   - in scope;
   - the Business seat-cap switch;
-  - splitting off a sub-group (carve-out).
+  - splitting off a sub-persona (carve-out).
 
 ### Step 5 — Coverage check
 
@@ -247,10 +247,10 @@ contract has renewed. It is made of three sub-lines, each also a yearly amount:
 | Sub-line | What it is | Today |
 | --- | --- | --- |
 | **Duplicate spend today** | Tools whose every use is already covered by the customer's current Microsoft licences. No licensing change. | Exists: "Retire duplicate tools today" (`frontend/src/components/Readout.jsx`) |
-| **Consolidation** | Moving each group to its future plan and retiring the tools it replaces. | Exists: "Move each persona to right-sized licensing" |
+| **Consolidation** | Moving each persona to its future plan and retiring the tools it replaces. | Exists: "Move each persona to right-sized licensing" |
 | **Over-licensing** | Unused seats the customer confirmed are not needed. | New |
 
-- Seats the customer says are intended are noted on the group's page and are not
+- Seats the customer says are intended are noted on the persona's page and are not
   counted anywhere.
 - Unanswered unused seats are left out.
 - When the run rate is a cost (an uplevel), the headline reads "Invest $X per year to
@@ -280,13 +280,13 @@ unlocks it:
 - **A tool stops at its renewal.** A tool's saving, whether duplicate spend or
   consolidation, starts at the tool's renewal date.
 - **Microsoft increases can start any time.** Microsoft lets a customer add seats or
-  add-ons, or upgrade, mid-term. So a group's added Microsoft cost starts when the
+  add-ons, or upgrade, mid-term. So a persona's added Microsoft cost starts when the
   first tool only the move can retire renews, because that is when the upgrade is
   needed. A duplicate tool (duplicate spend today) retires without the move, so it
-  does not pull the cost forward. A group whose move retires no such tool starts its
+  does not pull the cost forward. A persona whose move retires no such tool starts its
   added cost on day one.
 - **Microsoft reductions wait for the Microsoft renewal.** Removing unused seats
-  (over-licensing), or moving a group to a cheaper plan, starts at the Microsoft
+  (over-licensing), or moving a persona to a cheaper plan, starts at the Microsoft
   renewal date. That is the licence's own date if one is set, otherwise the
   engagement's.
 - **Missing dates.** No renewal date means month-to-month with no lock-in: the amount
@@ -312,7 +312,7 @@ Nothing is counted that the customer could not confirm.
 | Whether unused seats are intended | They are not counted. |
 | Keep or retire a partly replaced tool | The tool is assumed kept. Its remaining cost stays in the future state. |
 | A renewal date | Treated as month-to-month: counted from day one, and marked "no date" (§4). |
-| What a Microsoft licence delivers, when the library doesn't know it | Its cost still counts, but its group's capability changes are left out of the readout and the PDF (W12). |
+| What a Microsoft licence delivers, when the library doesn't know it | Its cost still counts, but its persona's capability changes are left out of the readout and the PDF (W12). |
 
 The review (§6) lists everything being left out, so the AE can ask before producing
 the PDF.
@@ -323,8 +323,8 @@ the PDF.
 
 These checks work without AI:
 
-- group headcounts compared with the employee count;
-- each licence's assigned seats compared with the headcount of the groups that
+- persona headcounts compared with the employee count;
+- each licence's assigned seats compared with the headcount of the personas that
   receive it;
 - tools with no cost, no users, or no uses ticked;
 - Microsoft licences the library doesn't know and that aren't answered yet (W12);
@@ -351,9 +351,9 @@ The PDF is the leave-behind for the customer. It has four parts:
 1. **Title page:** customer name, logo, workshop date.
 2. **Overview:**
    - the run rate and its three sub-lines;
-   - every group and its recommendation;
+   - every persona and its recommendation;
    - the ramp: the yearly bars, "full run rate from month N", and the renewal table.
-3. **One section per group:**
+3. **One section per persona:**
    - current state;
    - what is replaced: tools, with their renewal dates;
    - future state;
@@ -379,7 +379,7 @@ the team.
   - There is no customer research, no narratives and no sanity check.
 - **With AI on:**
   - AI pre-ticks tool uses, which the AE confirms live;
-  - it researches the customer and writes group narratives;
+  - it researches the customer and writes persona narratives;
   - it runs the sanity check and parses pasted lists.
   - Customer data, including the name, may be sent to the configured AI service.
 - **Rule:** nothing the engine or the PDF needs may depend on an AI call (§12).
@@ -412,7 +412,7 @@ everything else sits in the card's expander.
   | Field | Its new reader |
   | --- | --- |
   | Workshop date | PDF title page |
-  | Persona description | the group's PDF section |
+  | Persona description | the persona's PDF section |
   | Licence quantity purchased | over-licensing (§4) and the review (§6) |
   | Third-party vendor | the PDF's tool list and the AI coverage prompt |
 
@@ -469,7 +469,7 @@ No change is needed for:
 ## 13. Later, or out of scope
 
 - **An export for CSP quoting tools:** product, seat count, term and billing per
-  group. It comes later, and the pricing-basis fields stay for it.
+  persona. It comes later, and the pricing-basis fields stay for it.
 - **Side-by-side proposals** (TARGET_SCHEMA §5.1): not needed for the walkthrough.
 - **A shared library of common third-party tools and their usual uses:** not now.
   Without AI, AEs tick each tool's uses by hand.
@@ -485,8 +485,8 @@ No change is needed for:
 
 This rule was derived from the agreed principles but not discussed directly:
 
-- A group's added Microsoft cost starts when the first tool only the move can retire
-  renews (a duplicate tool retires without the move, so it doesn't count). A group
+- A persona's added Microsoft cost starts when the first tool only the move can retire
+  renews (a duplicate tool retires without the move, so it doesn't count). A persona
   whose move retires no such tool starts its added cost on day one (§4).
 
 The other rule once listed here, a missing renewal date, was settled in the follow-up

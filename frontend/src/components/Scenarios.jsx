@@ -231,7 +231,7 @@ function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove,
 // licensing, tools and required capabilities as they stand at that moment. Carve
 // before the baseline is entered and it copies nothing — and nothing added later
 // follows it. By the Scenarios step those inputs are in, and the operator is
-// looking at targets, which is when "part of this group should go elsewhere"
+// looking at targets, which is when "part of this persona should go elsewhere"
 // actually occurs to them.
 function CarvePanel({ eid, persona, bundles, onDone, onCancel }) {
   const [preview, setPreview] = useState(null)
@@ -278,7 +278,7 @@ function CarvePanel({ eid, persona, bundles, onDone, onCancel }) {
           : <>Right now <b>{persona.name}</b> has no current licensing, third-party tools or
             required capabilities recorded, so the carve-out would copy <b>nothing</b> — and
             anything you add later would land on {persona.name} alone. Finish the baseline
-            first unless you mean to model this group from scratch.</>)}
+            first unless you mean to model this persona from scratch.</>)}
         {preview && !preview.has_scenario && (
           <> <b>{persona.name} has no target scenario yet</b>, so the carve-out would have no
             future state until you give it one.</>)}
@@ -392,18 +392,18 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo', onChange
   return (
     <div className="card">
       <div className="flex-between">
-        <h2 style={{ marginTop: 0 }}>Future state per group <Help k="future.plan" /></h2>
+        <h2 style={{ marginTop: 0 }}>Future state per persona <Help k="future.plan" /></h2>
         <button onClick={compute}>Recompute</button>
       </div>
       <p className="hint">A plan is a base bundle plus any add-ons; their capabilities combine and
-        their prices add up. ⚡ shows the options for a group; ▸ holds add-ons, agreed prices and
-        splitting a group <Help k="future.carve" />. Prices are per seat per month.</p>
+        their prices add up. ⚡ shows the options for a persona; ▸ holds add-ons, agreed prices and
+        splitting a persona <Help k="future.carve" />. Prices are per seat per month.</p>
 
       {err && <div className="err">{err}</div>}
 
       <table className="resp-table">
         <thead><tr>
-          <th></th><th>Group</th><th className="num">People</th><th>Plan</th>
+          <th></th><th>Persona</th><th className="num">People</th><th>Plan</th>
           <th className="num">Net $/seat/mo</th><th>In scope <Help k="future.in_scope" /></th><th className="num">Today</th>
           <th className="num">Future</th><th className="num">Change</th><th></th>
         </tr></thead>

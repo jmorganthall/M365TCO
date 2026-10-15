@@ -37,7 +37,7 @@ Gotchas:
 - Navigation: there is no engagement list. Go straight to
   `http://localhost:8471/#/e/<engagement id>/<step>`, or type part of the customer
   name in the Open-engagement search box and click the result; then use the step
-  buttons (`Customer`, `Groups & licences`, `Other tools`, `Future state`,
+  buttons (`Customer`, `Personas & licences`, `Other tools`, `Future state`,
   `Coverage check`, `Review`, `Summary & PDF`) or the step key in the URL
   (`customer`, `groups`, `tools`, `future`, `gaps`, `review`, `summary`).
 - Recommendations need prices: a fresh database has no price list, so load one

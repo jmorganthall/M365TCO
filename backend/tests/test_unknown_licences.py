@@ -99,7 +99,7 @@ def test_the_pdf_says_capability_changes_are_left_out_never_already_in_place(cli
     text = " ".join(text.split())
     assert f"we couldn't confirm what {UNKNOWN} includes" in text
     assert "already in place today" not in text
-    assert f"capability changes of the groups holding them are left out (their cost is counted): " \
+    assert f"capability changes of the personas holding them are left out (their cost is counted): " \
            f"{UNKNOWN} (Contractors)" in text
 
 

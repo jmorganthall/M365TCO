@@ -148,7 +148,7 @@ export function CustomerCard({ engagement, meta, onUpdate }) {
           <div><label>Employees {saved('employee_count')}</label>
             <input type="number" min="0" value={f.employee_count} onChange={set('employee_count')}
               onBlur={(e) => commit('employee_count', e.target.value)} />
-            <small className="src">Used to check that the groups add up.</small></div>
+            <small className="src">Used to check that the personas add up.</small></div>
         </div>
         <div style={{ marginTop: '.5rem' }}>
           <label>Notes {saved('notes')}</label>
@@ -217,7 +217,7 @@ export function SummaryCard({ engagement, onUpdate, onPdfCreated }) {
         <button onClick={createPdf} disabled={making}>{making ? 'Creating…' : 'Create customer PDF'}</button>
       </div>
       <p className="hint" style={{ margin: '.3rem 0 .6rem' }}>
-        Title page, an overview of every group, a page per group and how we calculated it. <Help k="summary.pdf" />
+        Title page, an overview of every persona, a page per persona and how we calculated it. <Help k="summary.pdf" />
         {presented && <> Last created <b>{new Date(presented.created_at).toLocaleString()}</b> — those are the
           numbers the customer was handed.</>}
       </p>
