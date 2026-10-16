@@ -20,7 +20,8 @@
 > - Decisions D25–D26 and the pieces marked *(readout)* come from the branded
 >   customer-readout design. They too may be built on today's schema ahead of the
 >   rebuild, in exactly the shape given here.
->   Decision D27 (the Business seat cap split) may be built ahead the same way.
+>   Decisions D27 (the Business seat cap split) and D28 (a recommended plan keeps
+  what the persona has today) may be built ahead the same way.
 
 ---
 
@@ -55,6 +56,7 @@
 | D25 | **The practice brands the readout once.** The practice's logo, colours and fixed wording (tagline, cover subtitle, closing block, footer disclaimer) are one install-wide record entered in the GUI, never hard-coded. An engagement holds only its customer's logo. | §3.5, §4.1 |
 | D26 | **One readout design.** The HTML readout and the customer PDF are one document rendered from one template; the PDF is that document printed. | §7 |
 | D27 | **The Business seat cap is met by splitting, never by a hidden swap.** The recommender always proposes the best plan for a persona's requirements. When that is a capped plan (the Business family, 300 seats tenant-wide) and the persona is larger than the seats left in the **future state**, the persona is offered a split: a carve-out of exactly the seats left on the capped plan, the rest on the recommender's best uncapped plan; the larger side is the parent. A person makes the split; until then Review flags the breach. No engagement setting turns the cap on or off. | §3.1, §4.3, §6.4 |
+| D28 | **A recommended plan keeps what the persona has today.** A plan is eligible only if it, with add-ons, delivers every outcome the persona has today: from its Microsoft licences, its declared requirements, **and the third-party tools it holds**. The cheapest eligible plan, net of the tools it retires, is recommended. An outcome that no priced plan or add-on in the library can deliver stays with its tool and does not block a recommendation; the recommender says which. The split's other side (D27) is chosen the same way, so it keeps what its colleagues keep. | §7 |
 
 ---
 
@@ -319,7 +321,8 @@ its headcount exceeds the seats left (§3.1), the GUI offers a split, derived on
 (nothing stored until a person confirms):
 
 - the capped side: exactly the seats left, on the capped plan; the other side: the
-  rest, on the recommender's best plan with every capped bundle excluded;
+  rest, on the recommender's best plan with every capped bundle excluded, which
+  keeps everything the persona has today (D28);
 - **the larger side is the parent** (it keeps the persona's id, name and scenario;
   only its target may change); the smaller side is the carve-out;
 - default carve-out names: the capped side "*Persona* (Up to *N* Business User
@@ -679,6 +682,22 @@ The best-bundle recommender and the pre-readout sanity check stay pure reads ove
 the interpreted and calculated layers. They store nothing, and they use the same
 definitions as everything else (including Org-wide lines).
 
+**What a recommended plan must keep (D28).** For a persona *P* the recommender's
+required set is the union of:
+
+- the outcomes *P*'s current Microsoft licence lines deliver;
+- *P*'s declared requirements (`persona_requirements`);
+- the outcomes delivered by every third-party tool that applies to *P* (tagged to
+  *P*, or tagged to no persona), less any outcome that no priced plan or add-on in
+  the engagement's library delivers. Such an outcome stays with its tool, is listed
+  as "kept by *tool*", and never makes every plan ineligible.
+
+A candidate (a base plan plus the cheapest add-ons that close its gaps) that
+leaves any required outcome uncovered is shown with that gap and never recommended.
+Among the rest, the lowest net cost wins, where net cost already credits the tools
+the plan retires. Each required outcome carries its source (licence, requirement or
+tool) so the GUI can say why it is required.
+
 ### 7.1 The headline's sub-lines and their timing *(walkthrough)*
 
 | Sub-line | Annual amount | Starts at |
@@ -988,7 +1007,7 @@ what people own.
   "EPM is now in E3" a one-row edit. Microsoft publishes the component list for every
   licence ("Product names and service plan identifiers for licensing", Microsoft
   Learn), so the components could be loaded rather than typed. Not designed yet.
-- **The recommender.** "Fill in recommended plans" today ranks each base plan plus
-  the cheapest gap-closing add-ons purely by net cost. Still to design: composing
-  add-ons that retire third-party tools, a preference for upleveling, and pricing a
-  new customer on the "(no Teams)" suites plus Teams Enterprise.
+- **The recommender.** "Fill in recommended plans" ranks each base plan plus the
+  cheapest gap-closing add-ons by net cost, among plans that keep what the persona
+  has today (D28). Still to design: a preference for upleveling, and pricing a new
+  customer on the "(no Teams)" suites plus Teams Enterprise.
