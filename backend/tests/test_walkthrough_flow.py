@@ -190,7 +190,9 @@ def test_customer_pdf_economic_impact_matches_the_run_rate(client):
     text = " ".join(p.extract_text() for p in PdfReader(BytesIO(pdf)).pages)
     text = re.sub(r"\s+", " ", text)
     change = re.search(r"Change per year (\(?\$[\d,]+\)?)", text).group(1)
-    run_rate = re.search(r"Per year once every contract has renewed: (\(?\$[\d,]+\)?)", text).group(1)
-    assert change == run_rate
+    h = client.post(f"/api/engagements/{eid}/compute").json()["rollup"]["headline"]
+    rr = sum(i["annual_amount"] for i in h["items"]
+             if i["sub_line"] == "consolidation" and i["persona_id"] == kw["id"])
+    assert change == (f"${rr:,.0f}" if rr >= 0 else f"(${abs(rr):,.0f})")   # the persona's run rate
     # The part retired without any change is shown, with its amount.
-    assert re.search(r"retire without any change \(\$[\d,]+ a year\)", text)
+    assert re.search(r"A further \$[\d,]+ a year of these tools is already covered", text)

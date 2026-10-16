@@ -124,3 +124,22 @@ def test_engagement_brand_colours_are_retired(client):
     cols = {c["name"] for c in inspect(engine).get_columns("engagements")}
     assert "brand_primary_color" not in cols and "brand_accent_color" not in cols
     assert "brand_logo_data_url" in cols             # kept: the customer's logo
+
+
+def test_spend_bridge_ends_on_the_headline_run_rate(client):
+    """The bridge reconciles to the headline: its last line is the run rate per year,
+    in the same notation (savings plain, costs in brackets)."""
+    eid = client.post("/api/engagements", json={"customer_name": "Bridge Co"}).json()["id"]
+    p = client.post(f"/api/engagements/{eid}/personas", json={"name": "Staff", "headcount": 100}).json()
+    client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "Microsoft 365 E3", "quantity_purchased": 120, "quantity_assigned": 100,
+        "unit_price_paid_annual": 432, "persona_ids": [p["id"]], "unused_seats_answer": "NotNeeded"})
+    client.post(f"/api/engagements/{eid}/scenarios", json={
+        "persona_id": p["id"], "target_sku_reference": "Microsoft 365 E5",
+        "target_unit_price_annual": 684, "in_scope": True})
+    rr = client.post(f"/api/engagements/{eid}/compute").json()["rollup"]["headline"]["run_rate_annual"]
+    html = client.get(f"/api/engagements/{eid}/readout.html").text
+    bridge = html.split("<h1>Spend Bridge</h1>")[1].split("</section>")[0]
+    want = f"${abs(rr):,.0f}" if rr >= 0 else f"(${abs(rr):,.0f})"
+    assert f"<td>Run rate per year</td><td class='num {'pos' if rr > 0 else ''}'>{want}</td>" in bridge
+    assert "−$" not in bridge                       # one sign convention, no minus signs

@@ -35,12 +35,13 @@ E = html.escape
 
 SUB_LINES = (
     ("duplicate_spend", "duplicate_spend_annual", "Retire duplicate tools",
-     "no licensing change"),
-    ("consolidation", "consolidation_annual", "Move each persona to right-sized licensing",
-     "the recommended plan for each persona"),
+     "Already covered by your current licences"),
+    ("consolidation", "consolidation_annual", "Move to the recommended plans",
+     "Each persona's new Microsoft plan, and the tools it replaces"),
     ("overlicensing", "overlicensing_annual", "Drop unused licences",
-     "seats you confirmed aren't needed"),
+     "Seats you confirmed aren't needed"),
 )
+_WORDS = ("no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine")
 ACTION = {"FullyEliminated": ("Retire", "retire"), "PartiallyReduced": ("Reduce seats", "reduce"),
           "Unchanged": ("Keep", "keep")}
 
@@ -82,6 +83,11 @@ def _date(iso) -> str:
         return date.fromisoformat(str(iso)[:10]).strftime("%-d %b %Y")
     except ValueError:
         return E(str(iso))
+
+
+def _count(n: int) -> str:
+    """A small count in words, as running text reads it ("three", not "3")."""
+    return _WORDS[n] if 0 <= n < len(_WORDS) else f"{n:,}"
 
 
 def _plural(n: int, one: str, many: str | None = None) -> str:
@@ -283,21 +289,20 @@ class _Context:
             pre = ""
         elif rr < 0 and n_new:
             # A cost that buys confirmed new capabilities leads with what it buys (W6).
-            pre, cls = "Invest ", "added"
-            word = (f"over {months} months at full run rate to gain {n_new} new "
-                    f"{_plural(n_new, 'capability', 'capabilities')}")
+            pre, cls = "", "added"
+            word = (f"investment over {months} months at full run rate, gaining {_count(n_new)} "
+                    f"new {_plural(n_new, 'capability', 'capabilities')}")
         elif rr < 0:
-            pre, word, cls = "", f"added over {months} months at full run rate", "added"
+            pre, word, cls = "", f"net added cost over {months} months at full run rate", "added"
         else:
             pre, word, cls = "", "no net change at full run rate", "added"
-        per_year = ("saved" if rr > 0 else "added" if rr < 0 else "no change")
         band = (
             "<div class='hero-band'>"
-            "<div class='eyebrow on-dark'>Total Opportunity</div>"
+            "<div class='eyebrow on-dark'>The Bottom Line</div>"
             f"<div class='hero-figure {cls}'>{pre}{_usd0(horizon_total)}</div>"
             f"<div class='hero-word'>{E(word)}</div>"
-            f"<div class='hero-sub'><b>{_usd0(rr)}</b> per year {per_year} once every contract "
-            f"has renewed{(' · ' + reach) if reach else ''}</div>"
+            f"<div class='hero-sub'><b>{_usd0(rr)}</b> a year once every contract has renewed"
+            f"{(' · ' + reach) if reach else ''}</div>"
             "</div>"
         )
 
@@ -314,9 +319,7 @@ class _Context:
             n += 1
             share = (f"<div class='share'>{shares[key]}%<span>of the savings</span></div>"
                      if key in shares else "")
-            # A cost is a "less" line against the savings; with no savings it is
-            # simply the cost.
-            head = f"{mark}{'Less: ' if v < 0 and shares else ''}{E(label)}"
+            head = f"{mark}{E(label)}"   # a cost needs no "less": its brackets say so
             body = ""
             if key == "consolidation" and self.in_scope:
                 rows = "".join(
@@ -327,8 +330,8 @@ class _Context:
                 body = f"<table class='moves'>{rows}</table>"
             cards.append(
                 f"<div class='source {'cost' if v < 0 else ''}'><div class='source-main'>"
-                f"<div class='source-label'>{head} <span class='muted'>— {E(note)}</span></div>"
-                f"<div class='source-value'>{_amt(v)} <span class='per'>per year</span></div>"
+                f"<div class='source-label'>{head}</div><div class='source-note'>{E(note)}</div>"
+                f"<div class='source-value'>{_amt(v)} <span class='per'>a year</span></div>"
                 f"{body}</div>{share}</div>")
 
         caveats = []
@@ -338,8 +341,9 @@ class _Context:
                            f"{_plural(assumed, 'licence')}; your invoices may move this number.")
         missing = int(h.get("missing_dates") or 0)
         if missing:
-            caveats.append(f"{missing} {_plural(missing, 'amount has', 'amounts have')} no renewal "
-                           f"date and {_plural(missing, 'counts', 'count')} from today.")
+            caveats.append(f"{_count(missing).capitalize()} renewal "
+                           f"{_plural(missing, 'date was', 'dates were')} not provided, so "
+                           f"{_plural(missing, 'that amount counts', 'those amounts count')} from today.")
         n_drop = len(self.result.get("dropped_capability") or [])
         if n_drop:
             caveats.append(f"Includes capability trade-offs for {n_drop} "
@@ -367,7 +371,7 @@ class _Context:
         out = []
         for label, v, cum in rows:
             width = max(round(abs(v) / peak * 100, 1), 0.5 if v else 0)
-            extra = (f"<span class='muted'> · running total {_amt(cum, cls=False)}</span>"
+            extra = (f"<span class='muted'> · cumulative {_amt(cum, cls=False)}</span>"
                      if cum is not None else "")
             out.append(
                 f"<tr class='{'full' if cum is None else ''}'><th>{label}</th>"
@@ -376,8 +380,8 @@ class _Context:
         word = "saved" if timed > 0 else "added" if timed < 0 else "no net change"
         return (
             "<div class='ramp-block'><h2>Path to Full Run Rate</h2>"
-            "<p class='lede'>Each saving starts when the contract that holds it renews, so the "
-            f"first years build up to the full run rate. <b>Within the first {self.months} months, "
+            "<p class='lede'>Each change starts when the contract behind it renews, so the first "
+            f"years build toward the full run rate. <b>Within the first {self.months} months, "
             f"{_usd0(timed)} is {word}</b> as contracts renew.</p>"
             f"<table class='ramp'>{''.join(out)}</table></div>"
         )
@@ -393,17 +397,17 @@ class _Context:
             f"<td>{''.join(f'<span class=chip>{E(self.outcome_name.get(i, i))}</span>' for i in q['duplicated_outcome_ids'])}</td>"
             f"<td class='num'>{q['covered_count']:,}</td>"
             f"<td class='num'>{q['displaced_today']:,}"
-            + (f" <span class='muted'>({q['residual_today']:,} left)</span>" if q["residual_today"] else "")
+            + (f" <span class='muted'>of {q['covered_count']:,}</span>" if q["residual_today"] else "")
             + f"</td><td class='num'>{_amt(q['credited_annual'])}</td></tr>"
             for q in qws)
         return (
             "<section class='block keep'><div class='eyebrow'>① Duplicate Spend</div>"
             "<h2>Quick Wins</h2>"
-            "<p class='lede'>These tools deliver capabilities your <b>current</b> Microsoft licensing "
-            f"already includes. Each can retire at its renewal with no licensing change: "
+            "<p class='lede'>Your current Microsoft licences already do what these tools do. Each "
+            "can be switched off at its renewal, with no licensing change: "
             f"<b class='pos'>{_usd0(total)}</b> a year.</p>"
-            "<table class='data'><thead><tr><th>Tool</th><th>Already in your licensing</th>"
-            "<th class='num'>Seats</th><th class='num'>Redundant today</th><th class='num'>Per year</th>"
+            "<table class='data'><thead><tr><th>Tool</th><th>Already in your licences</th>"
+            "<th class='num'>Seats</th><th class='num'>Covered today</th><th class='num'>A year</th>"
             f"</tr></thead><tbody>{rows}</tbody></table></section>"
         )
 
@@ -444,13 +448,13 @@ class _Context:
         today += "</div>"
 
         per_seat = (_f(s["target_spend_annual"]) / s["headcount"]) if s.get("headcount") else 0
-        plan = ("<div class='col'><h3>Recommended</h3>"
+        plan = ("<div class='col'><h3>Recommended Plan</h3>"
                 f"<div class='plan'>{E(self._tlabel(s))}</div>"
                 f"<div class='muted'>{_usd0(per_seat)} per person per year</div>")
         offs = s.get("offsets") or []
         replaced = [o for o in offs if _f(o.get("credited_offset_annual")) > 0]
         if replaced:
-            plan += ("<div class='label'>What it replaces</div><table class='data compact'><tbody>"
+            plan += ("<div class='label'>Tools it covers</div><table class='data compact'><tbody>"
                      + "".join(
                          f"<tr><td>{E(o['third_party_product_name'])}</td>"
                          f"<td class='num'>{_usd0(o['credited_offset_annual'])}</td></tr>"
@@ -476,12 +480,11 @@ class _Context:
             f"<tr class='total'><td>Change per year</td>"
             f"<td class='num'>{_amt(-_f(s.get('move_incremental_delta_annual')))}</td></tr>",
         ]
-        note = (f"Per year once every contract has renewed: <b>{_amt(self.run_rate_by_pid.get(pid, 0), cls=False)}</b>. "
-                f"Within the {self.months} months modelled, counting each part from its renewal: "
-                f"{_amt(self.timed_by_pid.get(pid, 0), cls=False)}.")
+        note = (f"Within the {self.months} months modelled, as each contract renews: "
+                f"<b>{_amt(self.timed_by_pid.get(pid, 0), cls=False)}</b>.")
         if today_only > 0:
-            note += (f" Tools this persona could retire without any change ({_usd0(today_only)} a year) "
-                     "are counted under ① Retire duplicate tools.")
+            note += (f" A further {_usd0(today_only)} a year of these tools is already covered by "
+                     "today's licences, so it is counted under ① Retire duplicate tools.")
         impact = ("<div class='impact'><h3>Economic Impact</h3>"
                   f"<table class='ledger'><tbody>{''.join(rows)}</tbody></table>"
                   f"<p class='note'>{note}</p></div>")
@@ -509,15 +512,16 @@ class _Context:
         if dropped:
             parts.append("<div class='label'>No longer included</div><div class='chips'>"
                          + "".join(_chip(o, "drop") for o in dropped)
-                         + "</div>")
+                         + "</div><p class='muted'>The saving assumes none of these is still "
+                           "needed; confirm before you commit.</p>")
         if outside:
             parts.append("<p class='muted'>Covered outside this review (not counted): "
                          + E(", ".join(o["name"] for o in outside)) + "</p>")
         # Why nothing is new, in the customer's words (compute.new_outcomes gives the
         # reason; its own sentence is written for the operator).
         if reason == "awaiting_confirmation":
-            parts.append("<p class='muted'>Capabilities this plan would add weren't confirmed in "
-                         "the workshop, so none is shown as new.</p>")
+            parts.append("<p class='muted'>New capabilities from this plan are still to be "
+                         "confirmed, so none is claimed yet.</p>")
         elif reason == "target_unmapped":
             refs = ", ".join(r["reference"] for r in g.get("unmapped_target") or []) or "this plan"
             parts.append(f"<p class='muted'>Capability changes aren't shown: what {E(refs)} "
@@ -544,6 +548,10 @@ class _Context:
 
     # ---- 5. How we get to the number -------------------------------------------
     def bridge(self) -> str:
+        """The accounting, in the document's one convention (savings plain, costs in
+        brackets), ending on exactly the headline's run rate: what the plans retire,
+        less what they cost, gives the moves' net change; quick wins no move touches
+        and the unused licences complete the run rate (ENGINE_SPEC 6.8a, 6.11)."""
         r = self.rollup
         if not self.in_scope:
             return ""
@@ -561,63 +569,60 @@ class _Context:
             return next((_f(o.get(offset_key[field])) for o in s.get("offsets", [])
                          if o["third_party_product_id"] == pid), 0.0)
 
-        def cells(values, total, negate=False, cls=""):
-            def fmt(v):
-                return (f"−{_usd0(v)}" if v else "$0") if negate else _usd(v)
-            return ("".join(f"<td class='num {cls}'>{fmt(v)}</td>" for v in values)
-                    + f"<td class='num {cls}'>{fmt(total)}</td>")
+        def cells(values, total, cls=""):
+            if values is None:                       # a total-only row
+                values = [None] * len(cols)
+            return ("".join(f"<td class='num'>{'' if v is None else _amt(v, cls=False)}</td>"
+                            for v in values)
+                    + f"<td class='num {cls}'>{_amt(total, cls=False)}</td>")
 
-        def group(label, sub, items, field):
+        def group(label, items, field):
             items = [f for f in items if _f(f.get(field))]
             if not items:
                 return ""
-            head = (f"<tr class='group'><td>Less: {label} <span class='muted'>{sub}</span></td>"
+            head = (f"<tr class='group'><td>{label}</td>"
                     + cells([sum(off(s, f["third_party_product_id"], field) for f in items) for s in cols],
-                            sum(_f(f[field]) for f in items), negate=True, cls="pos") + "</tr>")
+                            sum(_f(f[field]) for f in items)) + "</tr>")
             return head + "".join(
                 f"<tr class='sub'><td>{E(f['third_party_product_name'])}</td>"
-                + cells([off(s, f["third_party_product_id"], field) for s in cols], f[field],
-                        negate=True) + "</tr>"
+                + cells([off(s, f["third_party_product_id"], field) for s in cols], f[field]) + "</tr>"
                 for f in items)
 
-        delta = _f(r.get("net_tco_delta_annual"))
+        delta = _f(r.get("net_tco_delta_annual"))            # cost-positive
+        gap = _f(r.get("quick_win_savings_annual")) - _f(r.get("freed_redundant_today_annual"))
+        unused = _f(self.h.get("overlicensing_annual"))
+        rr = _f(self.h.get("run_rate_annual"))
         thead = ("<thead><tr><th></th>" + "".join(
-            f"<th class='num'>{E(s['persona_name'])}<div class='muted'>→ {E(self._tlabel(s))}</div></th>"
+            f"<th class='num'>{E(s['persona_name'])}<div class='muted'>{E(self._tlabel(s))}</div></th>"
             for s in cols) + "<th class='num'>Total</th></tr></thead>")
         rows = (
-            "<tr><td>Microsoft licensing with the recommended plans</td>"
-            + cells([_f(s["target_spend_annual"]) for s in cols], r.get("target_microsoft_annual")) + "</tr>"
-            "<tr><td>Less: Microsoft licensing retired <span class='muted'>(current, assigned)</span></td>"
-            + cells([_f(s["current_microsoft_annual"]) for s in cols], r.get("existing_microsoft_annual"),
-                    negate=True, cls="pos") + "</tr>"
-            + group("tools redundant today", "(the quick wins — no licensing change)", already,
-                    "redundant_today_annual")
-            + group("further seats on those tools", "(retired once the plan lands)", already,
-                    "move_unlocked_annual")
-            + group("tools the new plan retires", "(the capability arrives with the plan)", newly,
-                    "credited_annual")
-            + "<tr class='total'><td>Net change per year "
-            f"<span class='muted'>({_usd0(delta)} {'saved' if delta < 0 else 'added' if delta > 0 else 'no change'})</span></td>"
-            + "".join(f"<td class='num {'pos' if _f(s['delta_annual']) < 0 else ''}'>{_usd(s['delta_annual'])}</td>"
-                      for s in cols)
-            + f"<td class='num {'pos' if delta < 0 else ''}'>{_usd(delta)}</td></tr>")
-        note = ""
-        gap = _f(r.get("quick_win_savings_annual")) - _f(r.get("freed_redundant_today_annual"))
+            "<tr class='group'><td>Current Microsoft licences</td>"
+            + cells([_f(s["current_microsoft_annual"]) for s in cols], r.get("existing_microsoft_annual"))
+            + "</tr>"
+            + group("Tools already covered today", already, "redundant_today_annual")
+            + group("Remaining seats the new plans retire", already, "move_unlocked_annual")
+            + group("Tools the new plans replace", newly, "credited_annual")
+            + "<tr class='group'><td>Less: recommended Microsoft plans</td>"
+            + cells([-_f(s["target_spend_annual"]) for s in cols], -_f(r.get("target_microsoft_annual")))
+            + "</tr>"
+            + "<tr class='subtotal'><td>Change from the new plans</td>"
+            + cells([-_f(s["delta_annual"]) for s in cols], -delta) + "</tr>")
         if abs(gap) >= 0.5:
-            note = (f"<p class='note'>A further {_usd0(gap)} a year of quick wins sits outside this "
-                    "bridge: tools retirable today that no persona's move touches. Together with "
-                    "the bridge they make the run rate.</p>")
-        unused = _f(self.h.get("overlicensing_annual"))
+            rows += ("<tr><td>Tools retirable today that no plan change touches</td>"
+                     + cells(None, gap) + "</tr>")
         if unused:
-            note += (f"<p class='note'>Dropping unused licences adds {_usd0(unused)} a year on top "
-                     "(③ above); it is not part of this bridge.</p>")
+            rows += "<tr><td>Unused licences dropped (③)</td>" + cells(None, unused) + "</tr>"
+        rows += ("<tr class='total'><td>Run rate per year</td>"
+                 + cells(None, rr, "pos" if rr > 0 else "") + "</tr>")
         return (
             "<section class='page'><div class='eyebrow'>The Accounting</div>"
             "<h1>Spend Bridge</h1>"
-            "<p class='lede'>The Microsoft licensing the recommended plans cost, less the licensing "
-            "and tools they retire, building to the net change per year"
-            + (", with each persona side by side." if cols else ".") + " Reductions show as −.</p>"
-            f"<table class='bridge'>{thead}<tbody>{rows}</tbody></table>{note}</section>"
+            "<p class='lede'>What the recommended plans retire, less what they cost, gives the "
+            "change per year"
+            + (", persona by persona" if cols else "")
+            + f". It ends on the run rate behind the headline: {_amt(rr, cls=False)} a year. "
+            "Savings are shown plain, costs in brackets.</p>"
+            f"<table class='bridge'>{thead}<tbody>{rows}</tbody></table></section>"
         )
 
     # ---- 6. Third-party tools --------------------------------------------------
@@ -674,15 +679,17 @@ class _Context:
         if retired:
             retired_html = ("<h3>Retired Completely</h3><ul class='retired'>" + "".join(
                 f"<li><b>{E(t)}</b>"
-                + (f" <span class='muted'>— renews {_date(renew[t])}; co-term the retirement</span>"
+                + (f" <span class='muted'>— renews {_date(renew[t])}; switch it off then</span>"
                    if renew.get(t) else "") + "</li>" for t in retired) + "</ul>")
         return (
-            "<section class='page'><div class='eyebrow'>Disposition</div>"
+            f"<section class='block flow{' keep' if len(self.dispositions) <= 8 else ''}'>"
+            "<div class='eyebrow'>Disposition</div>"
             "<h1>Third-Party Tools</h1>"
             f"<p class='lede'>Today these tools cost <b>{_usd0(today_total)}</b> a year in the "
             f"counted scope. After the move, <b>{_usd0(r.get('residual_third_party_cost_annual'))}</b> "
             "a year remains (reduced seats plus tools kept as they are).</p>"
-            f"<table class='stack'><tr>{bar}</tr></table><div class='legend'>{legend}</div>"
+            f"<div class='stack-block'><table class='stack'><tr>{bar}</tr></table>"
+            f"<div class='legend'>{legend}</div></div>"
             "<table class='data'><thead><tr><th>Tool</th><th>Action</th><th class='num'>Seats retired</th>"
             "<th class='num'>Seats kept</th><th class='num'>Today / yr</th><th class='num'>Remains / yr</th>"
             f"</tr></thead><tbody>{''.join(row(d) for d in self.dispositions)}</tbody></table>"
@@ -810,18 +817,19 @@ class _Context:
         if eng.managed_ms_account and _f(r.get("msft_uplift_annual")) > 0:
             fund = (
                 "<li><b>Fund.</b> As a managed Microsoft account, this move lifts annual Microsoft "
-                f"spend by {_usd0(r['msft_uplift_annual'])}. Per standard Microsoft investment ROI, "
+                f"spend by {_usd0(r['msft_uplift_annual'])}. At Microsoft's usual investment ratios, "
                 f"that uplift may unlock a one-time co-investment (ECIF) of roughly "
                 f"<b>{_usd0(r.get('ecif_funding_low'))}–{_usd0(r.get('ecif_funding_high'))}</b> "
                 f"(≈ 1/{_ratio(eng.ecif_roi_conservative)}–1/{_ratio(eng.ecif_roi_generous)} of the "
                 "annual uplift) toward assessment, design, implementation and migration work. "
-                "Indicative only; scoped with the Microsoft account team.</li>")
+                "Indicative only, to be scoped with the Microsoft account team.</li>")
         steps = (
-            "<li><b>Validate.</b> Confirm licence counts and third-party invoices, and the contract "
-            f"end dates for the {n_retire} {_plural(n_retire, 'tool')} to retire — turning the "
-            "assumptions here into an invoice-verified business case.</li>"
-            "<li><b>Sequence.</b> Co-term each retirement against its renewal. The ramp already "
-            "counts each saving from its renewal; confirm any amount with no date.</li>"
+            "<li><b>Validate.</b> Confirm licence counts, third-party invoices and the contract "
+            f"end {_plural(n_retire, 'date', 'dates')} for the "
+            f"{(_count(n_retire) + ' ') if n_retire > 1 else ''}{_plural(n_retire, 'tool')} to retire, "
+            "so every assumption here becomes an invoiced figure.</li>"
+            "<li><b>Sequence.</b> Time each retirement to its renewal, as the path to full run rate "
+            "already does, and supply any missing renewal dates.</li>"
             + fund +
             "<li><b>Decide.</b> A 30-day validation sprint turns this readout into an "
             "invoice-verified, phased business case.</li>")
@@ -877,6 +885,8 @@ section{padding:0 .1in}
 section.page{break-before:page;padding-top:.05in}
 section.block{margin-top:1.6rem}
 section.block.keep{break-inside:avoid}
+section.block.flow{margin-top:.45in}
+.stack-block{break-inside:avoid}
 h1,h2,h3,.eyebrow,.label{break-after:avoid}
 
 /* Cover */
@@ -919,7 +929,8 @@ section.cover{padding:0;break-after:page;page:cover;position:relative;height:11i
   border-radius:5px;padding:.11in .16in;margin:.08in 0;break-inside:avoid;background:#fff}
 .source.cost{border-left-color:var(--kept)}
 .source-main{display:table-cell;vertical-align:top}
-.source-label{font-size:9pt;font-weight:700}
+.source-label{font-size:9.5pt;font-weight:700}
+.source-note{font-size:8pt;color:var(--muted);margin-top:.01in}
 .source-value{font-size:15pt;font-weight:700;margin-top:.03in}
 .source-value .per{font-size:9pt;font-weight:400;color:var(--muted)}
 .share{display:table-cell;width:1.1in;text-align:right;vertical-align:middle;font-size:22pt;
@@ -959,7 +970,12 @@ th.num{text-align:right}
   font-weight:700;margin:.1in 0 .03in}
 
 /* Persona pages */
-.persona-head{border-bottom:2px solid var(--line);padding-bottom:.1in;margin-bottom:.12in}
+.persona-head{border-bottom:2px solid var(--line);padding-bottom:.08in;margin-bottom:.1in}
+.persona h3{margin:.08in 0 .25rem}
+.persona .label{margin:.07in 0 .02in}
+.persona table.data.compact td{padding:.03in .05in;font-size:8.5pt}
+.persona table.data.compact .muted{font-size:7.5pt}
+.persona .chip{font-size:7.5pt;padding:.015in .08in}
 .persona-head h1{margin-bottom:.04in}
 .persona-meta{color:var(--muted)}
 .cols{display:table;width:100%%;table-layout:fixed}
@@ -974,8 +990,8 @@ table.ledger tr.sub td{color:var(--muted);font-size:8.5pt;padding-left:.18in}
 table.ledger tr.total td{border-top:1.5px solid var(--primary);border-bottom:none;font-weight:700;
   font-size:11pt;padding-top:.06in}
 .capabilities{break-inside:avoid}
-.narrative{border-left:3px solid var(--hl);padding:.02in .16in;margin:.04in 0 .14in;break-inside:avoid;font-size:9.5pt}
-.narrative p{margin:.06in 0}
+.narrative{border-left:3px solid var(--hl);padding:.02in .16in;margin:.02in 0 .1in;break-inside:avoid;font-size:9pt}
+.narrative p{margin:.035in 0}
 
 /* Bridge */
 table.bridge{width:100%%;border-collapse:collapse;font-size:9pt;margin-top:.1in}
@@ -985,7 +1001,9 @@ table.bridge td{padding:.05in .07in;border-bottom:1px solid var(--line)}
 table.bridge tr.sub td{color:var(--muted);font-size:8.5pt}
 table.bridge tr.sub td:first-child{padding-left:.25in}
 table.bridge tr.group td{font-weight:700}
-table.bridge tr.total td{border-top:2px solid var(--ink);border-bottom:none;font-weight:700;font-size:10.5pt}
+table.bridge tr.subtotal td{border-top:1.5px solid var(--primary);font-weight:700}
+table.bridge tr.total td{border-top:2px solid var(--ink);border-bottom:none;font-weight:700;font-size:11pt;
+  background:var(--soft)}
 table.bridge tr{break-inside:avoid}
 
 /* Third-party */
@@ -1017,15 +1035,15 @@ ol.steps li{margin:.08in 0}
 
 /* Footer */
 footer.doc-footer{display:table;width:100%%;margin-top:.4in;border-top:1px solid var(--line);
-  padding-top:.08in;font-size:7pt;color:var(--muted)}
-.footer-logo{display:table-cell;width:1.1in;vertical-align:middle}
-.footer-logo img{max-height:.22in;max-width:1in}
+  padding-top:.07in;font-size:7pt;color:var(--muted);line-height:1.35}
+.footer-logo{display:table-cell;width:.85in;vertical-align:middle}
+.footer-logo img{max-height:.2in;max-width:.75in}
 .footer-text{display:table-cell;vertical-align:middle}
-.disclaimer{margin-top:.02in}
+.disclaimer{margin-top:.01in;font-size:6.5pt;opacity:.85}
 .disclaimer a{color:var(--muted)}
 
 @page{size:Letter;margin:.6in .7in .95in;
-  @bottom-left{content:element(footer);width:6.4in;vertical-align:top;padding-top:.15in}
+  @bottom-left{content:element(footer);width:6.7in;vertical-align:top;padding-top:.15in}
   @bottom-right{content:counter(page);font-family:'TeX Gyre Heros',Helvetica,Arial,sans-serif;
     font-size:8pt;color:#5d6778;vertical-align:top;padding-top:.28in}}
 @page cover{margin:0;@bottom-left{content:none}@bottom-right{content:none}}
