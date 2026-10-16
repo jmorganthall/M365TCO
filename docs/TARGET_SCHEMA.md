@@ -20,6 +20,7 @@
 > - Decisions D25–D26 and the pieces marked *(readout)* come from the branded
 >   customer-readout design. They too may be built on today's schema ahead of the
 >   rebuild, in exactly the shape given here.
+>   Decision D27 (the Business seat cap split) may be built ahead the same way.
 
 ---
 
@@ -53,6 +54,7 @@
 | D24 | **The library learns from the workshop.** Licence names that engagements had to link or map by hand are listed, with counts and never customer names, for an admin to add to the library as a plan or a name alias. | §3.1, §3.4 |
 | D25 | **The practice brands the readout once.** The practice's logo, colours and fixed wording (tagline, cover subtitle, closing block, footer disclaimer) are one install-wide record entered in the GUI, never hard-coded. An engagement holds only its customer's logo. | §3.5, §4.1 |
 | D26 | **One readout design.** The HTML readout and the customer PDF are one document rendered from one template; the PDF is that document printed. | §7 |
+| D27 | **The Business seat cap is met by splitting, never by a hidden swap.** The recommender always proposes the best plan for a persona's requirements. When that is a capped plan (the Business family, 300 seats tenant-wide) and the persona is larger than the seats left in the **future state**, the persona is offered a split: a carve-out of exactly the seats left on the capped plan, the rest on the recommender's best uncapped plan; the larger side is the parent. A person makes the split; until then Review flags the breach. No engagement setting turns the cap on or off. | §3.1, §4.3, §6.4 |
 
 ---
 
@@ -194,6 +196,15 @@ exports ("Exchange Online (Plan 2)", "Office 365 E3 (no Teams)").
 **`license_limits`** (PK `key`) + **`license_limit_members`**
 (PK `limit_key`, `bundle_key`) — seat caps shared by a family of bundles, as today.
 
+- **Seats left are measured in the future state (D27).** For a persona *P* and a
+  tenant-scope limit: seats left = `max_total_seats` − Σ over every other persona of
+  its future seats on member bundles. A persona with a scenario counts its
+  headcount when the scenario's base or an add-on is a member (in scope only); a
+  persona with no scenario counts the assigned seats of its current lines on member
+  bundles (its licences are unchanged). Current lines of a persona that has a
+  scenario never count: the move replaces them. Untagged (Org-wide) current lines
+  count once, against personas without a scenario.
+
 ### 3.2 Outcome library
 
 **`outcomes`** — capabilities, both library and custom.
@@ -260,7 +271,7 @@ customer as they are and what they need.
 ### 4.1 `engagements`
 
 - `customer_name`, `notes`, `market`, `currency`, `modeling_horizon_years`
-  (CHECK 1–10), `workshop_date`, `customer_logo` *(readout)*, `business_cap_enabled`,
+  (CHECK 1–10), `workshop_date`, `customer_logo` *(readout)*,
   `managed_ms_account`.
 - **Inheritable settings are nullable** (`NULL` = inherit from install settings):
   `tooling_pct`, `default_segment`, `default_term_duration`,
@@ -302,6 +313,20 @@ A carve-out is an ordinary persona with `parent_persona_id` set. Creating one co
 the parent's licence tags, tool tags and requirements onto the child (as today),
 records the carved seats as the child's headcount, and records a single history
 entry for the operation. Scenario add-ons are copied too.
+
+**The Business cap split (D27).** When a persona's scenario is on a capped plan and
+its headcount exceeds the seats left (§3.1), the GUI offers a split, derived on read
+(nothing stored until a person confirms):
+
+- the capped side: exactly the seats left, on the capped plan; the other side: the
+  rest, on the recommender's best plan with every capped bundle excluded;
+- **the larger side is the parent** (it keeps the persona's id, name and scenario;
+  only its target may change); the smaller side is the carve-out;
+- default carve-out names: the capped side "*Persona* (Up to *N* Business User
+  Cap)", the other side "*Persona* (Over Business User Cap)", where *N* is the
+  limit's `max_total_seats`; editable before confirming;
+- with no seats left, no split is offered and the recommender proposes the best
+  uncapped plan, saying why.
 
 ### 4.4 `current_microsoft_licenses`
 
@@ -602,6 +627,7 @@ and quick-win rules; the difference is one definition used everywhere.
 | `license_out_of_scope` *(walkthrough)* | a licence line is set aside as out of scope (a note; the PDF's method page lists it) |
 | `library_update_pending` *(walkthrough)* | the Library updates review has items not yet applied or declined (a note) |
 | `seats_mismatch` | a per-user line's seats ≠ the headcount it applies to (suggest carve-out) |
+| `seat_cap_exceeded` *(D27)* | a persona's scenario is on a capped plan but its headcount exceeds the future-state seats left; links to its split offer |
 | `applies_to_assumed` | a line or tool is `Unspecified`, read as Org-wide |
 | `applies_to_empty` | a `Personas` line or tool has no active tags left (e.g. its only persona was archived) |
 | `scenario_incomplete` | no base bundle, or no price and no override |
@@ -830,6 +856,7 @@ is in the engagement. Operational, short-lived.
 | the `$0 "Covered elsewhere (out of scope)"` placeholder tool and its coverage rows | `coverage_gap_answers` = `CoveredOutsideInventory` for each (persona, outcome) it covered; the tool row archived | the placeholder is the one tool Coverage Check creates under that exact name; the migration report lists every row it converts |
 | gaps resolved before the walkthrough ("leave as new" wrote nothing) | no answer row | they read as `Unconfirmed` until answered (D21); the before/after report shows each persona's new outcomes that become unconfirmed |
 | `global_defaults` | `install_settings` | |
+| `engagements.business_cap_enabled` | retired | the cap is met by the split offer (D27), never by a setting; dropped by the retired-columns list |
 | `engagements.brand_logo_data_url` | `engagements.customer_logo` | relabelled "Customer logo" in the GUI now; renamed at the rebuild; data kept as entered |
 | `engagements.brand_primary_color`, `brand_accent_color` | retired | colours come from `practice_branding` (D25); dropped by the retired-columns list when the readout design lands |
 
