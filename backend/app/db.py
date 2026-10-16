@@ -148,6 +148,9 @@ _RETIRED_COLUMNS: tuple[tuple[str, str], ...] = (
     # customer's logo.
     ("engagements", "brand_primary_color"),
     ("engagements", "brand_accent_color"),
+    # The "respect the Business seat cap" toggle: the cap now always applies, in the
+    # future state, and is met by a split a person confirms (TARGET_SCHEMA D27).
+    ("engagements", "business_cap_enabled"),
 )
 
 

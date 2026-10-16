@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from tco_engine import compute as engine_compute
 
 from .. import models
-from . import bundles, compute, library_updates
+from . import bundles, compute, library_updates, seat_cap
 
 STEP_ORDER = ["customer", "groups", "tools", "future", "gaps", "review", "summary"]
 
@@ -99,6 +99,20 @@ def review(db: Session, engagement_id: str) -> dict:
         if p.id not in with_scenario:
             check("group_without_plan", "future",
                   f"{p.name} has no future plan yet, so it isn't in the totals.")
+    # The Business seat cap, in the future state (TARGET_SCHEMA D27): a plan that
+    # needs more Business seats than are left is not something Microsoft will sell.
+    for o in seat_cap.split_offers(db, engagement_id):
+        if o["kind"] == "no_seats":
+            msg = (f"{o['persona_name']}: {o['headcount']:,} people on {o['plan']}, but no Business "
+                   f"seats are left ({o['used_elsewhere']:,} of {o['cap']:,} are used by other personas). "
+                   f"Choose another plan on Future state.")
+        elif o["kind"] == "nested":
+            msg = (f"{o['persona_name']}: {o['headcount']:,} people on {o['plan']}, but only "
+                   f"{o['seats_left']:,} Business seats are left. Reduce this carve-out on Future state.")
+        else:
+            msg = (f"{o['persona_name']}: {o['headcount']:,} people on {o['plan']}, but only "
+                   f"{o['seats_left']:,} Business seats are left. Split it on Future state.")
+        check("seat_cap_exceeded", "future", msg)
     for d in result.dispositions:
         if d.requires_residual_classification:
             check("residual_unanswered", "future",

@@ -354,7 +354,7 @@ def catalog_annual_erp(
     baseline; sheet prices are annualized on import, so ÷12 is the monthly
     payment) of the deterministically-selected row — see catalog_price_row.
     0 if the catalog isn't loaded / no match. Shared by the recommend-a-path
-    optimizer (services/compute), the Business Premium swap (services/swap),
+    optimizer (services/compute), the seat-cap split (services/seat_cap),
     the scenario requote (routers/entities), and the bundle-list autofill
     (routers/catalog) so all price identically."""
     row = catalog_price_row(

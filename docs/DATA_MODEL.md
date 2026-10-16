@@ -122,7 +122,7 @@ FK, UUID PK, cascade-deleted with the engagement.
   ENGINE_SPEC 6.11; the run rate per year doesn't depend on it),
   `notes`, `global_tooling_pct`, `default_segment`,
   `default_term_duration`, `default_billing_plan`,
-  `business_cap_enabled`, `managed_ms_account`, the ECIF ROI ratios
+  `managed_ms_account`, the ECIF ROI ratios
   `ecif_roi_conservative` / `ecif_roi_generous`, the customer's logo
   `brand_logo_data_url` (TARGET_SCHEMA `customer_logo`),
   and the Customer-Info metadata `workshop_date` / `industry` / `hq_location` /
@@ -498,6 +498,16 @@ linked to the first by `parent_persona_id`:
   existing first-class objects** (the correct "don't create second-class data"
   outcome, like §4.10a); the result rides on the compute/readout response as
   `license_limits` and is shown on the Readout, so a violation is never hidden.
+- **Seats left and the split (TARGET_SCHEMA D27):** `services/limits.seat_cap_context`
+  gives one persona the seats left in the **future state** (other personas' in-scope
+  scenarios, or their current member lines when they have no scenario; a moving
+  persona's current lines never count). The best-bundle optimizer always uses it:
+  with no seats left a capped plan isn't recommended; with too few, the plan stays
+  recommended and `services/seat_cap.split_offer` offers a split — the seats left on
+  the capped plan, the rest on the best uncapped plan, the larger side the parent —
+  shown on the Future state row (`GET …/seat-cap-splits`) and confirmed by a person
+  (`POST …/personas/{id}/seat-cap-split`, a carve-out). Until then Review raises
+  `seat_cap_exceeded`. There is no setting.
 - **CRUD:** `GET/POST/PATCH/DELETE /api/admin/license-limits` +
   `PUT …/{id}/members` (replace the member set), edited in Settings → License
   limits. `key` is immutable; `limit_type` validated against `LIMIT_TYPES`; members

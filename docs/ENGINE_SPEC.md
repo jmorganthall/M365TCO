@@ -206,17 +206,31 @@ is a legitimate positive (cost-increase) delta.
 > **and** the persona's declared required capabilities (`PersonaRequirement`, the
 > Personas tab) — so a needed capability with no current license still forces a gap.
 >
-> Seat-cap gate: candidates in a seat-capped bundle family (a `LicenseLimit` of type
-> `max_total_seats`, e.g. Microsoft 365 Business ≤ 300 seats/tenant) are gated by the
-> remaining headroom. The data layer (`services/limits.seat_cap_context`) computes the
-> seats already committed to that family — current-license seats **plus** the headcount
-> of every OTHER in-scope persona scenario whose target is in the family — and passes
-> `cap_headroom = cap − consumed` per capped reference. A candidate whose persona
-> headcount exceeds its headroom is flagged `cap_limited` and, like a gapped or unpriced
-> candidate, is returned/shown but never recommended; the recommendation falls to the
-> next-best bundle that is not seat-capped. The gate is applied only when the engagement
-> opts in (`Engagement.business_cap_enabled`); the pure optimizer stays cap-agnostic
-> unless the caller supplies headroom, so the language-neutral math is unchanged.
+> Seat cap (TARGET_SCHEMA D27): candidates in a seat-capped bundle family (a
+> `LicenseLimit` of type `max_total_seats`, e.g. Microsoft 365 Business ≤ 300 seats per
+> tenant) carry the seats left for that family, measured in the **future state** by the
+> data layer (`services/limits.seat_cap_context`), excluding the persona analysed:
+>
+> ```
+> consumed = Σ over other personas with an in-scope scenario touching the family: headcount
+>          + Σ over current member lines: assigned × (headcount of the personas it applies
+>            to that have no in-scope scenario, excluding this one) / (headcount of all the
+>            personas it applies to)          # untagged lines apply to every persona
+> seats_left = max(0, cap − consumed)
+> ```
+>
+> A persona that moves never counts its current lines: the move replaces them.
+>
+> - `seats_left = 0` → the candidate is `cap_limited`: shown, never recommended; the
+>   recommendation falls to the next-best plan.
+> - `0 < seats_left < headcount` → the candidate stays eligible and carries
+>   `over_cap_by = headcount − seats_left`. The caller offers a split
+>   (`services/seat_cap.split_offer`): `seats_left` on the capped plan, the rest on the
+>   best plan the optimizer finds for that remainder with every capped candidate removed;
+>   the larger side is the parent. Nothing is split until a person confirms it.
+>
+> There is no setting: the pure optimizer stays cap-agnostic unless the caller supplies
+> seats left, so the language-neutral math is unchanged.
 
 ## Rollup (6.8) with integrity rules (6.9)
 

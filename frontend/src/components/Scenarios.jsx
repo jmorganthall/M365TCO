@@ -325,7 +325,8 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo', onChange
   const [err, setErr] = useState('')
   const [analyzePersona, setAnalyzePersona] = useState(null)
   const [carvePersona, setCarvePersona] = useState(null)
-  const [capEnabled, setCapEnabled] = useState(!!engagement.business_cap_enabled)
+  const [splits, setSplits] = useState([])        // seat-cap split offers (D27)
+  const [dismissed, setDismissed] = useState({})   // "Not now", this visit only
 
   function load() {
     api.get(`/api/engagements/${eid}/personas`).then(setPersonas)
@@ -345,12 +346,6 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo', onChange
   const scenarioFor = (pid) => scenarios.find((s) => s.persona_id === pid)
   const resultFor = (sid) => result?.scenarios.find((r) => r.scenario_id === sid)
 
-  async function toggleCap(on) {
-    setCapEnabled(on)  // optimistic
-    setErr('')
-    try { await api.patch(`/api/engagements/${eid}`, { business_cap_enabled: on }); compute() }
-    catch (e) { setErr(e.message); setCapEnabled(!on) }
-  }
   // Engagement pricing-basis default, so a target bundle resolves to the right
   // segment/term variant's list price (same chain as Current Licensing).
   const basis = effectiveBasis(null, engagement)
@@ -369,6 +364,7 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo', onChange
   async function compute() {
     setErr('')
     try { setResult(await api.post(`/api/engagements/${eid}/compute`)); onChanged?.() } catch (e) { setErr(e.message) }
+    api.get(`/api/engagements/${eid}/seat-cap-splits`).then(setSplits).catch(() => setSplits([]))
   }
 
   async function applyBundle(persona, { sku_reference, price, addons }) {
@@ -427,6 +423,19 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo', onChange
                   onCarve={p.parent_persona_id ? null
                     : () => setCarvePersona(carvePersona?.id === p.id ? null : p)}
                   parentName={personas.find((x) => x.id === p.parent_persona_id)?.name} />
+                {(() => {
+                  const o = splits.find((x) => x.persona_id === p.id)
+                  return o && !dismissed[p.id] && (
+                    <tr className="detail-row">
+                      <td></td>
+                      <td colSpan={9} style={{ background: 'var(--panel2)' }}>
+                        <SplitOffer eid={eid} offer={o}
+                          onLater={() => setDismissed({ ...dismissed, [p.id]: true })}
+                          onDone={() => { load(); compute() }} />
+                      </td>
+                    </tr>
+                  )
+                })()}
                 {carvePersona?.id === p.id && (
                   <tr className="detail-row">
                     <td></td>
@@ -445,7 +454,6 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo', onChange
 
       {analyzePersona && (
         <BundleAnalysis engagement={engagement} persona={analyzePersona}
-          capEnabled={capEnabled} onToggleCap={toggleCap}
           onApply={(composed) => applyBundle(analyzePersona, composed)}
           onClose={() => setAnalyzePersona(null)} />
       )}
@@ -472,6 +480,56 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo', onChange
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+
+// The Business seat cap split (TARGET_SCHEMA D27). Shown under a persona whose plan
+// needs more Business seats than the future state has left. The offer comes from
+// the server; confirming re-derives it there, so what is split is what is shown.
+function SplitOffer({ eid, offer: o, onLater, onDone }) {
+  const [name, setName] = useState(o.carve_out_name || '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const elsewhere = o.used_elsewhere
+    ? ` (the rest of the future state uses ${o.used_elsewhere.toLocaleString()} of ${o.cap.toLocaleString()})` : ''
+  const head = (
+    <><b>Over the {o.cap.toLocaleString()}-seat Business cap.</b> {o.headcount.toLocaleString()} people on{' '}
+      {o.plan}, {o.seats_left.toLocaleString()} Business seats left{elsewhere}.</>
+  )
+  if (o.kind !== 'split') {
+    const why = {
+      no_seats: 'No Business seats are left, so there is nothing to split — choose another plan for this persona.',
+      nested: 'This is a carve-out; reduce its seats, or split its parent instead.',
+      no_alternative: 'No priced plan outside the Business family covers what these people need, so the rest can\u2019t be placed.',
+    }[o.kind]
+    return <div className="popcheck warn-box">{head} <span className="muted">{why}</span></div>
+  }
+  const capped = `${o.capped_seats.toLocaleString()} on ${o.plan}`
+  const other = `${o.other_seats.toLocaleString()} on ${o.other_plan}`
+  async function split() {
+    setBusy(true); setErr('')
+    try {
+      await api.post(`/api/engagements/${eid}/personas/${o.persona_id}/seat-cap-split`, { name })
+      onDone?.()
+    } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+  return (
+    <div className="popcheck">
+      <div>{head}</div>
+      <div style={{ margin: '.35rem 0' }}>
+        Split it: <b>{o.persona_name}</b> keeps {o.parent_side === 'capped' ? capped : other}; a carve-out
+        takes {o.parent_side === 'capped' ? other : capped} — {o.other_plan} is the best plan for them
+        without the Business cap. The carve-out keeps their licences, tools and requirements.
+      </div>
+      <div style={{ display: 'flex', gap: '.5rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 280 }}><label>Carve-out name</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} /></div>
+        <button onClick={split} disabled={busy}>{busy ? 'Splitting…' : 'Split'}</button>
+        <button className="ghost" onClick={onLater} disabled={busy}>Not now</button>
+      </div>
+      {err && <div className="err">{err}</div>}
     </div>
   )
 }

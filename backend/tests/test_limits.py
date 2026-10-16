@@ -119,76 +119,128 @@ _PRICED_CSV = (
 )
 
 
-def test_best_bundle_respects_business_cap_when_enabled(client):
-    """The best-bundle optimizer only gates on the Business seat cap when the
-    engagement opts in. A 400-seat persona can't fit under the 300 cap, so the
-    cheaper Business Premium is flagged and de-recommended in favor of E3."""
+def _cap_engagement(client, name, headcount):
+    """One persona on Office 365 E3 today, so Business Premium is gapless for it and
+    cheaper than E3 (264 vs 432): the recommender's best plan is Business Premium."""
     client.post("/api/catalog/import-csv", files={"file": ("p.csv", _PRICED_CSV, "text/csv")})
-    eng = client.post("/api/engagements", json={"customer_name": "OptCap Co"}).json()
-    eid = eng["id"]
+    eid = client.post("/api/engagements", json={"customer_name": name}).json()["id"]
     p = client.post(f"/api/engagements/{eid}/personas",
-                    json={"name": "KW", "headcount": 400}).json()
-    # On Office 365 E3 today → required ⊆ Business Premium coverage (gapless).
-    # (M365 E3 would no longer qualify: it now carries Endpoint Privilege
-    # Management, which Business Premium lacks — a genuine capability gap.)
+                    json={"name": "Office", "headcount": headcount}).json()
     client.post(f"/api/engagements/{eid}/current-licenses", json={
-        "sku_reference": "Office 365 E3", "quantity_assigned": 400,
+        "sku_reference": "Office 365 E3", "quantity_assigned": headcount,
         "unit_price_paid_annual": 432, "persona_ids": [p["id"]]})
-    url = f"/api/engagements/{eid}/personas/{p['id']}/bundle-analysis"
+    return eid, p
 
-    # Cap OFF (default): the cheaper Business Premium is recommended, no cap context.
-    res = client.post(url).json()
-    by = {b["sku_reference"]: b for b in res["bundles"]}
-    assert by["Microsoft 365 Business Premium"]["recommended"] is True
-    assert by["Microsoft 365 Business Premium"]["cap_limited"] is False
-    assert res["seat_caps"] == []
 
-    # Cap ON: 400 > 300 → Business Premium flagged cap_limited and de-recommended; E3 wins.
-    client.patch(f"/api/engagements/{eid}", json={"business_cap_enabled": True})
-    res = client.post(url).json()
-    by = {b["sku_reference"]: b for b in res["bundles"]}
-    assert by["Microsoft 365 Business Premium"]["cap_limited"] is True
-    assert by["Microsoft 365 Business Premium"]["cap_headroom"] == 300
-    assert by["Microsoft 365 Business Premium"]["recommended"] is False
-    assert by["Microsoft 365 E3"]["recommended"] is True
+def _plan(client, eid, pid, ref, price):
+    return client.post(f"/api/engagements/{eid}/scenarios", json={
+        "persona_id": pid, "target_sku_reference": ref,
+        "target_unit_price_annual": price, "in_scope": True}).json()
+
+
+def test_business_premium_stays_the_recommendation_over_the_cap(client):
+    """The cap always applies (no setting): a 400-person persona whose best plan is
+    Business Premium keeps it as the recommendation, flagged over the cap by 100 —
+    the split is offered, never a silent swap to the next-best plan (D27)."""
+    eid, p = _cap_engagement(client, "OptCap Co", 400)
+    res = client.post(f"/api/engagements/{eid}/personas/{p['id']}/bundle-analysis").json()
+    bp = next(b for b in res["bundles"] if b["sku_reference"] == "Microsoft 365 Business Premium")
+    assert bp["recommended"] is True and bp["cap_limited"] is False
+    assert bp["cap_headroom"] == 300 and bp["over_cap_by"] == 100
     cap = next(c for c in res["seat_caps"] if c["cap"] == 300)
     assert cap["consumed"] == 0 and cap["headroom"] == 300
 
 
-def test_best_bundle_cap_counts_seats_recommended_for_other_personas(client):
-    """Headroom nets out seats already recommended for OTHER personas, and excludes
-    the persona being analyzed from its own count."""
+def test_seats_left_are_measured_in_the_future_state(client):
+    """Other personas count what they will hold: a persona moving OFF Business frees
+    its seats; one moving ONTO Business uses them; one with no plan keeps its current
+    Business licences. The persona analysed never counts itself."""
     client.post("/api/catalog/import-csv", files={"file": ("p.csv", _PRICED_CSV, "text/csv")})
-    eng = client.post("/api/engagements", json={"customer_name": "OptCap2"}).json()
-    eid = eng["id"]
-    client.patch(f"/api/engagements/{eid}", json={"business_cap_enabled": True})
-    big = client.post(f"/api/engagements/{eid}/personas",
-                      json={"name": "Big", "headcount": 250}).json()
-    small = client.post(f"/api/engagements/{eid}/personas",
-                        json={"name": "Small", "headcount": 40}).json()
-    # Big is already planned onto Business Premium (in-scope) → 250 Business seats committed.
-    client.post(f"/api/engagements/{eid}/scenarios", json={
-        "persona_id": big["id"], "target_sku_reference": "Microsoft 365 Business Premium",
-        "target_unit_price_annual": 264, "in_scope": True})
-    # Small is on E3 today so Business Premium is gapless for it.
+    eid = client.post("/api/engagements", json={"customer_name": "Future Cap"}).json()["id"]
+    mk = lambda n, hc: client.post(f"/api/engagements/{eid}/personas",  # noqa: E731
+                                   json={"name": n, "headcount": hc}).json()
+    leaving, staying, joining, me = mk("Leaving", 250), mk("Staying", 30), mk("Joining", 80), mk("Me", 40)
+    for who, n in ((leaving, 250), (staying, 30)):
+        client.post(f"/api/engagements/{eid}/current-licenses", json={
+            "sku_reference": "Microsoft 365 Business Premium", "quantity_assigned": n,
+            "unit_price_paid_annual": 264, "persona_ids": [who["id"]]})
     client.post(f"/api/engagements/{eid}/current-licenses", json={
-        "sku_reference": "Office 365 E3", "quantity_assigned": 40,
-        "unit_price_paid_annual": 432, "persona_ids": [small["id"]]})
-
-    # Analyzing Small (40): 250 already recommended, 50 left → 40 fits, BP still recommended.
-    res = client.post(f"/api/engagements/{eid}/personas/{small['id']}/bundle-analysis").json()
+        "sku_reference": "Office 365 E3", "quantity_assigned": 120,
+        "unit_price_paid_annual": 432, "persona_ids": [joining["id"], me["id"]]})
+    _plan(client, eid, leaving["id"], "Microsoft 365 E3", 432)               # frees 250
+    _plan(client, eid, joining["id"], "Microsoft 365 Business Premium", 264)  # uses 80
+    res = client.post(f"/api/engagements/{eid}/personas/{me['id']}/bundle-analysis").json()
     cap = next(c for c in res["seat_caps"] if c["cap"] == 300)
-    assert cap["consumed"] == 250 and cap["headroom"] == 50
-    by = {b["sku_reference"]: b for b in res["bundles"]}
-    assert by["Microsoft 365 Business Premium"]["cap_limited"] is False
-    assert by["Microsoft 365 Business Premium"]["recommended"] is True
+    # Staying keeps its 30 current Business seats; Joining adds 80; Leaving's 250 don't count.
+    assert cap["consumed"] == 110 and cap["headroom"] == 190
 
-    # Analyzing Big (250) itself: its OWN 250 is excluded → consumed 0, headroom 300, fits.
-    res2 = client.post(f"/api/engagements/{eid}/personas/{big['id']}/bundle-analysis").json()
-    cap2 = next(c for c in res2["seat_caps"] if c["cap"] == 300)
-    assert cap2["consumed"] == 0 and cap2["headroom"] == 300
-    by2 = {b["sku_reference"]: b for b in res2["bundles"]}
-    assert by2["Microsoft 365 Business Premium"]["recommended"] is True
+
+def test_no_business_seats_left_recommends_the_next_best_plan(client):
+    """With every Business seat used by other personas there is nothing to split:
+    Business Premium is shown but not recommended, and E3 is."""
+    eid, p = _cap_engagement(client, "Full Cap", 40)
+    other = client.post(f"/api/engagements/{eid}/personas", json={"name": "Others", "headcount": 300}).json()
+    _plan(client, eid, other["id"], "Microsoft 365 Business Premium", 264)
+    res = client.post(f"/api/engagements/{eid}/personas/{p['id']}/bundle-analysis").json()
+    by = {b["sku_reference"]: b for b in res["bundles"]}
+    assert by["Microsoft 365 Business Premium"]["cap_limited"] is True
+    assert by["Microsoft 365 Business Premium"]["recommended"] is False
+    assert by["Microsoft 365 E3"]["recommended"] is True
+
+
+def test_split_offer_larger_capped_side_is_the_parent(client):
+    """400 on Business Premium with 300 seats left: Office keeps 300 on Business
+    Premium; the 100 over the cap are carved onto the best uncapped plan (E3)."""
+    eid, p = _cap_engagement(client, "Split Co", 400)
+    _plan(client, eid, p["id"], "Microsoft 365 Business Premium", 264)
+    offers = client.get(f"/api/engagements/{eid}/seat-cap-splits").json()
+    assert len(offers) == 1
+    o = offers[0]
+    assert (o["kind"], o["capped_seats"], o["other_seats"], o["parent_side"]) == ("split", 300, 100, "capped")
+    assert o["other_plan"] == "Microsoft 365 E3"
+    assert o["carve_out_name"] == "Office (Over Business User Cap)"
+    review = client.get(f"/api/engagements/{eid}/review").json()["checks"]
+    assert any(c["code"] == "seat_cap_exceeded" and "Split it on Future state" in c["message"]
+               for c in review)
+
+    child = client.post(f"/api/engagements/{eid}/personas/{p['id']}/seat-cap-split", json={}).json()
+    assert child["name"] == "Office (Over Business User Cap)" and child["headcount"] == 100
+    personas = {x["id"]: x for x in client.get(f"/api/engagements/{eid}/personas").json()}
+    assert personas[p["id"]]["name"] == "Office" and personas[p["id"]]["headcount"] == 300
+    plans = {s["persona_id"]: s["target_sku_reference"]
+             for s in client.get(f"/api/engagements/{eid}/scenarios").json()}
+    assert plans == {p["id"]: "Microsoft 365 Business Premium", child["id"]: "Microsoft 365 E3"}
+    # Resolved: no offer, no Review check.
+    assert client.get(f"/api/engagements/{eid}/seat-cap-splits").json() == []
+    review = client.get(f"/api/engagements/{eid}/review").json()["checks"]
+    assert not any(c["code"] == "seat_cap_exceeded" for c in review)
+
+
+def test_split_offer_larger_uncapped_side_is_the_parent(client):
+    """2,500 on Business Premium: the parent (2,200) moves to E3 and keeps its name;
+    the 300 who fit are carved onto Business Premium as "(Up to 300 Business User
+    Cap)". A custom name is honoured."""
+    eid, p = _cap_engagement(client, "Big Split", 2500)
+    _plan(client, eid, p["id"], "Microsoft 365 Business Premium", 264)
+    o = client.get(f"/api/engagements/{eid}/seat-cap-splits").json()[0]
+    assert (o["capped_seats"], o["other_seats"], o["parent_side"]) == (300, 2200, "other")
+    assert o["carve_out_name"] == "Office (Up to 300 Business User Cap)"
+    child = client.post(f"/api/engagements/{eid}/personas/{p['id']}/seat-cap-split",
+                        json={"name": "Office small sites"}).json()
+    assert child["name"] == "Office small sites" and child["headcount"] == 300
+    plans = {s["persona_id"]: (s["target_sku_reference"], float(s["target_unit_price_annual"]))
+             for s in client.get(f"/api/engagements/{eid}/scenarios").json()}
+    assert plans[p["id"]] == ("Microsoft 365 E3", 432.0)
+    assert plans[child["id"]] == ("Microsoft 365 Business Premium", 264.0)
+    assert client.get(f"/api/engagements/{eid}/seat-cap-splits").json() == []
+
+
+def test_a_persona_that_fits_gets_no_offer(client):
+    eid, p = _cap_engagement(client, "Fits Co", 250)
+    _plan(client, eid, p["id"], "Microsoft 365 Business Premium", 264)
+    assert client.get(f"/api/engagements/{eid}/seat-cap-splits").json() == []
+    r = client.post(f"/api/engagements/{eid}/personas/{p['id']}/seat-cap-split", json={})
+    assert r.status_code == 409
 
 
 def test_new_bundle_coverage_backfill_is_additive(client):

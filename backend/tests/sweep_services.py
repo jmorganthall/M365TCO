@@ -63,7 +63,7 @@ def load_catalog(client) -> None:
 # --------------------------------------------------------------------------
 
 def build_case(client, *, headcounts, tool_covered, tool_personas, tool_outcome,
-               target_sku, cap_on):
+               target_sku):
     """One engagement through the public API. Returns its dict shape."""
     eid = client.post("/api/engagements", json={"customer_name": "Sweep"}).json()["id"]
     outcomes = client.get(f"/api/engagements/{eid}/outcomes").json()
@@ -103,7 +103,6 @@ def build_case(client, *, headcounts, tool_covered, tool_personas, tool_outcome,
             "target_unit_price_annual": 491.40, "in_scope": True}).json()
         for p in people
     ]
-    client.patch(f"/api/engagements/{eid}", json={"business_cap_enabled": cap_on})
     return {"eid": eid, "personas": people, "tool": tool, "scenarios": scenarios}
 
 
@@ -130,15 +129,12 @@ def iter_cases(client, level: str = "full"):
                 continue
             for outcome in outcomes:
                 for target in targets:
-                    for cap_on in (False, True):
-                        label = (
-                            f"hc={hcs} tool=({covered},{tool_pids}) out={outcome} "
-                            f"target={target} cap={cap_on}"
-                        )
-                        yield label, build_case(
-                            client, headcounts=hcs, tool_covered=covered,
-                            tool_personas=tool_pids, tool_outcome=outcome,
-                            target_sku=target, cap_on=cap_on)
+                    # The seat cap always applies (TARGET_SCHEMA D27); no toggle.
+                    label = (f"hc={hcs} tool=({covered},{tool_pids}) out={outcome} "
+                             f"target={target}")
+                    yield label, build_case(
+                        client, headcounts=hcs, tool_covered=covered,
+                        tool_personas=tool_pids, tool_outcome=outcome, target_sku=target)
 
 
 # --------------------------------------------------------------------------

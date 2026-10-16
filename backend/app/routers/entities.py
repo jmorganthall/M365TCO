@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
-from ..services import bundles, compute, inspector, library_updates, licence_names
+from ..services import bundles, compute, inspector, library_updates, licence_names, seat_cap
 from ..services import personas as persona_order
 
 router = APIRouter(prefix="/api/engagements/{engagement_id}", tags=["entities"])
@@ -230,11 +230,21 @@ def carve_persona(engagement_id: str, persona_id: str, payload: schemas.PersonaC
     parent = db.get(models.Persona, persona_id)
     if parent is None or parent.engagement_id != engagement_id:
         raise HTTPException(404, "Persona not found")
+    child = _carve(db, engagement_id, parent, int(payload.seats or 0), payload.name,
+                   payload.target_sku_reference, payload.target_unit_price_annual)
+    db.commit()
+    db.refresh(child)
+    return child
+
+
+def _carve(db: Session, engagement_id: str, parent: models.Persona, seats: int,
+           name: str | None, target_sku_reference: str | None,
+           target_unit_price_annual) -> models.Persona:
+    """The carve itself (see carve_persona); flushes, doesn't commit."""
     if parent.parent_persona_id is not None:
         raise HTTPException(
             422, "Carve from the original persona, not from a carve-out — nested "
                  "splits would make the lineage ambiguous.")
-    seats = int(payload.seats or 0)
     if seats <= 0:
         raise HTTPException(422, "Carve out at least one seat.")
     if seats >= parent.headcount:
@@ -249,9 +259,9 @@ def carve_persona(engagement_id: str, persona_id: str, payload: schemas.PersonaC
         )
     ).scalars().first()
 
-    target_ref = (payload.target_sku_reference or "").strip() or (
+    target_ref = (target_sku_reference or "").strip() or (
         parent_scenario.target_sku_reference if parent_scenario else "")
-    name = (payload.name or "").strip() or (
+    name = (name or "").strip() or (
         f"{parent.name} — {target_ref}" if target_ref else f"{parent.name} — carve-out")
 
     child = models.Persona(
@@ -293,7 +303,7 @@ def carve_persona(engagement_id: str, persona_id: str, payload: schemas.PersonaC
     # The child needs a scenario or it contributes no future state. Copy the
     # parent's quoting basis so only the target differs.
     if parent_scenario is not None:
-        price = payload.target_unit_price_annual
+        price = target_unit_price_annual
         if price is None:
             price = parent_scenario.target_unit_price_annual
         child_scenario = models.PersonaScenario(
@@ -311,7 +321,7 @@ def carve_persona(engagement_id: str, persona_id: str, payload: schemas.PersonaC
         # at this engagement's basis, exactly as changing a target elsewhere does.
         # (An explicit price in the request always wins; an uncatalogued target
         # keeps the inherited figure rather than dropping to a silent zero.)
-        if (payload.target_unit_price_annual is None
+        if (target_unit_price_annual is None
                 and target_ref != parent_scenario.target_sku_reference):
             db.add(child_scenario)
             _requote_scenario(db, db.get(models.Engagement, engagement_id), child_scenario)
@@ -326,6 +336,76 @@ def carve_persona(engagement_id: str, persona_id: str, payload: schemas.PersonaC
     # sum to what the parent alone was, so covers are unchanged — recompute so that
     # stays true rather than merely likely.
     _renormalize_third_party_covers(db, engagement_id)
+    return child
+
+
+# ---- The Business seat cap split (TARGET_SCHEMA D27) -------------------------
+@router.get("/seat-cap-splits")
+def list_seat_cap_splits(engagement_id: str, db: Session = Depends(get_db)):
+    """Every persona whose plan is over the future-state Business seats left, with
+    its split offer (services/seat_cap). A pure read."""
+    _require_engagement(db, engagement_id)
+    return seat_cap.split_offers(db, engagement_id)
+
+
+def _set_plan(db: Session, s: models.PersonaScenario, ref: str, price, addons: list[dict]):
+    """Put a scenario on a plan the recommender composed: base, its price, and the
+    add-ons that close its gaps (replacing the old plan's add-ons)."""
+    s.target_sku_reference = ref
+    if price is not None:
+        s.target_unit_price_annual = price
+    for a in list(s.addons):
+        db.delete(a)
+    db.flush()
+    for a in addons:
+        db.add(models.ScenarioAddon(scenario_id=s.id, bundle_id=a["bundle_id"],
+                                    unit_price_annual=a["unit_price_annual"]))
+
+
+@router.post("/personas/{persona_id}/seat-cap-split", response_model=schemas.PersonaOut,
+             status_code=201)
+def split_for_seat_cap(engagement_id: str, persona_id: str,
+                       payload: schemas.SeatCapSplitIn, db: Session = Depends(get_db)):
+    """Confirm a persona's seat-cap split: the seats left stay on the capped plan,
+    the rest move to the recommender's best uncapped plan, and the larger side is
+    the parent. The offer is recomputed here, never taken from the client, so it is
+    the split the GUI showed only if nothing changed in between. Returns the
+    carve-out."""
+    _require_engagement(db, engagement_id)
+    offer = seat_cap.split_offer(db, engagement_id, persona_id)
+    if offer is None:
+        raise HTTPException(409, "This persona now fits the Business seats left; nothing to split.")
+    if offer["kind"] != "split":
+        raise HTTPException(422, {
+            "no_seats": "No Business seats are left, so there is nothing to split: choose "
+                        "another plan for this persona.",
+            "nested": "This is a carve-out; split its parent instead.",
+            "no_alternative": "No priced plan outside the Business family covers what these "
+                              "people need, so the rest can't be placed.",
+        }[offer["kind"]])
+    parent = db.get(models.Persona, persona_id)
+    s = seat_cap._scenario(db, persona_id)
+    name = (payload.name or "").strip() or offer["carve_out_name"]
+    capped = {"ref": s.target_sku_reference, "price": s.target_unit_price_annual,
+              "addons": [{"bundle_id": a.bundle_id, "unit_price_annual": a.unit_price_annual}
+                         for a in s.addons]}
+    other = {"ref": offer["other_plan"], "price": offer["other_price_annual"],
+             "addons": offer["other_addons"]}
+    if offer["parent_side"] == "capped":
+        # The parent keeps its plan; the people over the cap are carved onto the other.
+        child = _carve(db, engagement_id, parent, offer["other_seats"], name, other["ref"], other["price"])
+        child_plan = other
+    else:
+        # The people over the cap are the larger side: the parent moves to the other
+        # plan (its negotiated price was for the capped plan, so it no longer
+        # applies), and the seats left are carved onto the capped plan.
+        s.price_override = False
+        _set_plan(db, s, other["ref"], other["price"], other["addons"])
+        child = _carve(db, engagement_id, parent, offer["capped_seats"], name, capped["ref"], capped["price"])
+        child_plan = capped
+    cs = seat_cap._scenario(db, child.id)
+    if cs is not None:
+        _set_plan(db, cs, child_plan["ref"], child_plan["price"], child_plan["addons"])
     db.commit()
     db.refresh(child)
     return child

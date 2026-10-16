@@ -176,7 +176,6 @@ class EngagementUpdate(BaseModel):
     default_billing_plan: Optional[str] = None
     brand_logo_data_url: Optional[str] = None
     notes: Optional[str] = None
-    business_cap_enabled: Optional[bool] = None
     managed_ms_account: Optional[bool] = None
     ecif_roi_conservative: Optional[Decimal] = None
     ecif_roi_generous: Optional[Decimal] = None
@@ -201,7 +200,6 @@ class EngagementOut(ORMModel):
     default_billing_plan: str
     brand_logo_data_url: str
     notes: str
-    business_cap_enabled: bool = False
     managed_ms_account: bool = False
     ecif_roi_conservative: Decimal = Decimal("10")
     ecif_roi_generous: Decimal = Decimal("5")
@@ -285,6 +283,11 @@ class PersonaCarveIn(BaseModel):
 
 
 # ---- Outcome ----
+class SeatCapSplitIn(BaseModel):
+    """Confirm a seat-cap split; `name` overrides the carve-out's default name."""
+    name: str = ""
+
+
 class OutcomeIn(BaseModel):
     # Default "" so partial PATCH bodies validate (create guards non-empty).
     name: str = ""

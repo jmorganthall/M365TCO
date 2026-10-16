@@ -676,43 +676,34 @@ def test_analyze_bundles_ignores_tools_another_persona_holds():
     assert res[0].third_party_offset_annual == D("10000.00")
 
 
-def test_analyze_bundles_seat_cap_excludes_over_cap_business_from_recommendation():
+def test_analyze_bundles_seat_cap_flags_over_cap_and_excludes_only_with_no_seats():
     # Two gapless, priced candidates. "Business" is the biggest saver but is a
-    # seat-capped family; "Enterprise" is not capped. With only 50 Business seats
-    # left and a 100-person persona, Business cannot cover the whole persona.
+    # seat-capped family; "Enterprise" is not capped (ENGINE_SPEC 6.13).
     candidates = [
         CandidateBundle("Business", frozenset({A}), D("20")),    # cheapest
         CandidateBundle("Enterprise", frozenset({A}), D("40")),  # not capped
     ]
-    res = analyze_bundles(
-        headcount=100,
-        current_microsoft_annual=D("0"),
-        required_outcome_ids=frozenset({A}),
-        current_capability_outcome_ids=frozenset({A}),
-        candidates=candidates,
-        third_party_products=[],
-        cap_headroom_by_reference={"Business": 50},  # 50 seats left, persona is 100
-    )
-    by_ref = {b.sku_reference: b for b in res}
-    # Business is flagged cap-limited and not recommended despite the lower cost.
-    assert by_ref["Business"].cap_limited is True
-    assert by_ref["Business"].cap_headroom == 50
-    assert by_ref["Business"].recommended is False
-    # The recommendation falls through to the within-cap Enterprise bundle.
-    assert by_ref["Enterprise"].cap_limited is False
-    assert by_ref["Enterprise"].recommended is True
-    assert res[0].sku_reference == "Enterprise"
 
-    # Same inputs but ample headroom (300 left) -> Business fits and wins again.
-    res2 = analyze_bundles(
-        headcount=100, current_microsoft_annual=D("0"),
-        required_outcome_ids=frozenset({A}), current_capability_outcome_ids=frozenset({A}),
-        candidates=candidates, third_party_products=[],
-        cap_headroom_by_reference={"Business": 300},
-    )
-    by_ref2 = {b.sku_reference: b for b in res2}
-    assert by_ref2["Business"].cap_limited is False
-    assert by_ref2["Business"].recommended is True
+    def run(seats_left):
+        res = analyze_bundles(
+            headcount=100, current_microsoft_annual=D("0"),
+            required_outcome_ids=frozenset({A}), current_capability_outcome_ids=frozenset({A}),
+            candidates=candidates, third_party_products=[],
+            cap_headroom_by_reference={"Business": seats_left})
+        return {b.sku_reference: b for b in res}
+
+    # 50 seats left for a 100-person persona: Business stays the recommendation,
+    # 50 over the cap — the caller offers a split, never a silent swap.
+    by = run(50)
+    assert by["Business"].recommended is True and by["Business"].cap_limited is False
+    assert by["Business"].over_cap_by == 50 and by["Business"].cap_headroom == 50
+    # Ample seats: recommended, not over.
+    by = run(300)
+    assert by["Business"].recommended is True and by["Business"].over_cap_by == 0
+    # No seats left: nothing to split, so it is cap-limited and Enterprise wins.
+    by = run(0)
+    assert by["Business"].cap_limited is True and by["Business"].recommended is False
+    assert by["Enterprise"].recommended is True and by["Enterprise"].over_cap_by == 0
 
 
 def test_analyze_bundles_net_increase_still_shows_added_outcomes():

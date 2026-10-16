@@ -10,13 +10,14 @@ Ranking (v1): among bundles that cover every REQUIRED outcome (no capability
 gap), the one with the highest annual delta (savings vs today) is recommended.
 Bundles with gaps are returned and flagged, but never recommended.
 
-Seat caps (v2): a candidate may belong to a seat-capped bundle family (e.g.
-Microsoft 365 Business is limited to 300 seats per tenant). The caller passes the
-remaining headroom for such references; a candidate whose whole persona headcount
-would not fit the remaining seats is flagged `cap_limited` and, like a gapped or
-unpriced bundle, is returned but never recommended — the optimizer falls through to
-the next-best bundle that is not seat-capped. This keeps the recommendation from
-proposing a Business plan for more users than the tenant may license.
+Seat caps (v3, ENGINE_SPEC 6.13): a candidate may belong to a seat-capped bundle
+family (e.g. Microsoft 365 Business is limited to 300 seats per tenant). The caller
+passes the seats left for such references, measured in the future state. A capped
+candidate stays recommendable while any seats are left: if the persona is larger
+than the seats left it carries `over_cap_by`, and the caller offers a split (the
+seats left on the capped plan, the rest on the best uncapped plan). Only with NO
+seats left is it `cap_limited` — returned but never recommended, like a gapped or
+unpriced bundle — so the recommendation falls through to the next-best plan.
 """
 
 from __future__ import annotations
@@ -55,12 +56,13 @@ class BundleAnalysis:
     covers_all_required: bool
     price_known: bool
     recommended: bool = False
-    # Seat-cap gate: True when this candidate is a seat-capped family (e.g. M365
-    # Business) and the persona's headcount exceeds the remaining seats under the
-    # tenant cap. cap_headroom is the remaining seats for that family (None = the
-    # candidate is not seat-capped). A cap_limited candidate is never recommended.
+    # Seat cap (6.13). cap_headroom: the seats left for this candidate's capped
+    # family in the future state (None = not seat-capped). cap_limited: no seats
+    # left, so never recommended. over_cap_by: seats beyond those left — the
+    # candidate is still recommendable and the caller offers a split.
     cap_limited: bool = False
     cap_headroom: int | None = None
+    over_cap_by: int = 0
 
 
 def analyze_bundles(
@@ -75,9 +77,10 @@ def analyze_bundles(
 ) -> list[BundleAnalysis]:
     """`cap_headroom_by_reference` maps a candidate's `sku_reference` to the seats
     still available under a tenant cap its bundle family shares (e.g. all Business
-    references → the seats left under the 300 cap). A candidate whose reference is in
-    the map and whose `headcount` exceeds that headroom is flagged `cap_limited` and
-    excluded from the recommendation. Omit (or pass empty) for no cap awareness.
+    references → the seats left under the 300 cap). With no seats left a candidate is
+    `cap_limited` and excluded from the recommendation; with some left but fewer than
+    `headcount` it stays eligible and carries `over_cap_by` (the caller offers a
+    split). Omit (or pass empty) for no cap awareness.
 
     `persona_id` is the persona being analyzed. Third-party credit follows the
     engine's rules exactly (§6.3a) — a tool is only creditable to a persona that
@@ -122,7 +125,9 @@ def analyze_bundles(
 
         # Seat-cap gate: only when the caller supplied headroom for this reference.
         headroom = caps.get(c.sku_reference)
-        cap_limited = headroom is not None and headcount > headroom
+        cap_limited = headroom is not None and headroom <= 0
+        over_cap_by = (max(0, headcount - headroom)
+                       if headroom is not None and headroom > 0 else 0)
 
         results.append(
             BundleAnalysis(
@@ -140,6 +145,7 @@ def analyze_bundles(
                 price_known=c.target_unit_price_annual > 0,
                 cap_limited=cap_limited,
                 cap_headroom=headroom,
+                over_cap_by=over_cap_by,
             )
         )
 
