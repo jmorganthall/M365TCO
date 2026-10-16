@@ -243,6 +243,90 @@ def test_a_persona_that_fits_gets_no_offer(client):
     assert r.status_code == 409
 
 
+# Adds Intune Plan 1 to the price sheet so device management can be bought on its own.
+_INTUNE_CSV = _PRICED_CSV + (
+    "Office 365 E3,P3,003,O365 E3,P1Y,Annual,US,USD,276,2026-01-01,2026-12-31,276,Commercial\n"
+    "Microsoft Intune Plan 1,P4,004,Intune P1,P1Y,Annual,US,USD,96,2026-01-01,2026-12-31,96,Commercial\n"
+)
+
+
+def _with_mdm_tool(client, name, headcount):
+    """A persona on Office 365 E3 whose device management comes from a third-party
+    MDM tool — the capability lives in the tool, not in any Microsoft licence."""
+    client.post("/api/catalog/import-csv", files={"file": ("p.csv", _INTUNE_CSV, "text/csv")})
+    eid, p = _cap_engagement(client, name, headcount)
+    dm = next(o for o in client.get(f"/api/engagements/{eid}/outcomes").json()
+              if o["seed_key"] == "device-management")
+    tool = client.post(f"/api/engagements/{eid}/third-party", json={
+        "name": "MDM", "raw_cost": headcount * 96, "cost_period": "Annual",
+        "persona_ids": [p["id"]]}).json()
+    client.post(f"/api/engagements/{eid}/coverage", json={
+        "outcome_id": dm["id"], "product_kind": "ThirdParty",
+        "third_party_product_id": tool["id"], "coverage": "Full", "ratified": True})
+    return eid, p, dm
+
+
+def test_a_tools_outcomes_are_required(client):
+    """D28: what a held tool delivers is required, labelled with the tool. A plan
+    without device management shows the gap or composes Intune; it can't win on
+    price by leaving the MDM tool in place."""
+    eid, p, dm = _with_mdm_tool(client, "Tool Req", 120)
+    res = client.post(f"/api/engagements/{eid}/personas/{p['id']}/bundle-analysis").json()
+    req = {r["id"]: r for r in res["required_outcomes"]}
+    assert req[dm["id"]]["sources"] == ["tool:MDM"]
+    for b in res["bundles"]:
+        if b["covers_all_required"]:
+            assert "MDM" in b["displaced_products"], b["sku_reference"]
+    rec = next(b for b in res["bundles"] if b["recommended"])
+    assert dm["name"] in rec["covered_required_outcomes"]
+
+
+def test_split_rest_keeps_what_the_tool_delivered(client):
+    """The people over the cap keep device management too: the rest are placed on
+    the best uncapped plan that delivers it (here Office 365 E3 + Intune Plan 1),
+    retiring their share of the MDM tool like their colleagues on Business Premium."""
+    eid, p, dm = _with_mdm_tool(client, "Tool Split", 326)
+    _plan(client, eid, p["id"], "Microsoft 365 Business Premium", 264)
+    o = client.get(f"/api/engagements/{eid}/seat-cap-splits").json()[0]
+    assert (o["capped_seats"], o["other_seats"]) == (300, 26)
+    assert all(a["unit_price_annual"] > 0 for a in o["other_addons"])
+    child = client.post(f"/api/engagements/{eid}/personas/{p['id']}/seat-cap-split", json={}).json()
+    rows = {r["persona_id"]: r for r in client.post(f"/api/engagements/{eid}/compute").json()["scenarios"]}
+    assert rows[child["id"]]["current_third_party_offset_annual"] == 26 * 96  # MDM retired here too
+    covered = client.post(f"/api/engagements/{eid}/personas/{child['id']}/bundle-analysis").json()
+    assert dm["name"] not in next(b for b in covered["bundles"]
+                                  if b["sku_reference"] == o["other_plan"])["gap_outcomes"]
+
+
+def test_an_outcome_no_plan_delivers_stays_with_its_tool(client):
+    """An outcome only the tool can deliver is listed as kept by the tool and never
+    makes every plan ineligible."""
+    eid, p = _cap_engagement(client, "Kept Co", 50)
+    custom = client.post(f"/api/engagements/{eid}/outcomes", json={"name": "Shop-floor scanning"}).json()
+    tool = client.post(f"/api/engagements/{eid}/third-party", json={
+        "name": "Scanner suite", "raw_cost": 5000, "cost_period": "Annual",
+        "persona_ids": [p["id"]]}).json()
+    client.post(f"/api/engagements/{eid}/coverage", json={
+        "outcome_id": custom["id"], "product_kind": "ThirdParty",
+        "third_party_product_id": tool["id"], "coverage": "Full", "ratified": True})
+    res = client.post(f"/api/engagements/{eid}/personas/{p['id']}/bundle-analysis").json()
+    assert custom["id"] not in {r["id"] for r in res["required_outcomes"]}
+    assert res["kept_by_tool"] == [{"id": custom["id"], "name": "Shop-floor scanning",
+                                    "tools": ["Scanner suite"]}]
+    assert any(b["recommended"] for b in res["bundles"])
+
+
+def test_an_unpriced_base_is_never_recommended_on_its_add_ons_price(client):
+    """A base plan with no price must not borrow its add-ons' price: "E3 (no Teams)
+    + Teams Enterprise" with E3 unpriced is not a $5.25 plan."""
+    eid, p = _cap_engagement(client, "Unpriced Base", 40)
+    res = client.post(f"/api/engagements/{eid}/personas/{p['id']}/bundle-analysis",
+                      json={"prices": {"Microsoft Teams Enterprise": 63}}).json()
+    for b in res["bundles"]:
+        if b["base_price_annual"] <= 0:
+            assert not b["recommended"] and not b["addons"] and not b["price_known"], b["sku_reference"]
+
+
 def test_new_bundle_coverage_backfill_is_additive(client):
     """On an already-seeded DB, the startup backfill seeds default coverage for a
     brand-new bundle (Business Standard) without disturbing existing bundles."""

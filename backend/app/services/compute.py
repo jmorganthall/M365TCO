@@ -313,9 +313,12 @@ def analyze_persona_bundles(
     hc = {p.id: p.headcount for p in eng.personas}
     persona_lines = [l for l in eng.licenses_in_scope if persona_id in l.persona_ids]
     required: set[str] = set()
+    sources: dict[str, list[str]] = {}  # outcome -> why it is required (D28)
     current_ms = Decimal("0")
     for line in persona_lines:
         required |= readings[line.id].outcomes
+        for oid in readings[line.id].outcomes:
+            sources.setdefault(oid, ["licence"])
         line_total = Decimal(line.quantity_assigned) * line.effective_unit_price_annual
         tagged = [pid for pid in line.persona_ids if pid in hc]
         tagged_hc = sum(hc[pid] for pid in tagged)
@@ -323,18 +326,26 @@ def analyze_persona_bundles(
             else Decimal(1) / Decimal(len(tagged) or 1)
         current_ms += line_total * share
 
-    # Everything they have today (MS + third-party) — used to compute the ADDED
-    # outcomes a bundle brings that they don't have at all.
+    # The tools that apply to this persona: tagged to it, or to no persona (the
+    # engine's rule, ENGINE_SPEC 6.3a).
+    held_tools = [tp for tp in eng.third_party_products
+                  if not tp.persona_ids or persona_id in tp.persona_ids]
+
+    # Everything they have today (MS + this persona's tools) — used to compute the
+    # ADDED outcomes a bundle brings that they don't have at all.
     current_capability = set(required)
-    for tp_id, outs in tp_outcomes.items():
-        current_capability |= outs
+    for tp in held_tools:
+        current_capability |= tp_outcomes.get(tp.id, set())
 
     # Persona-declared required capabilities (Personas tab) are ALSO required for
     # gap detection, even when no current license delivers them — this is what
     # keeps a persona that needs Desktop Software off a Frontline bundle. Added to
     # `required` only (not `current_capability`), so such a bundle still surfaces
     # it as a newly-added capability.
-    required |= {oid for oid in persona.required_outcome_ids if oid in outcome_names}
+    for oid in persona.required_outcome_ids:
+        if oid in outcome_names:
+            required.add(oid)
+            sources.setdefault(oid, []).append("requirement")
 
     third_party = [
         EngThirdParty(
@@ -354,9 +365,34 @@ def analyze_persona_bundles(
     prices = prices or {}
     basis = bundles.engagement_price_basis(eng)
 
+    price_cache: dict[str, Decimal] = {}
+
     def _price(bundle) -> Decimal:
-        override = prices.get(bundle.name)
-        return Decimal(str(override)) if override is not None else _catalog_annual_erp(db, bundle, basis)
+        if bundle.id not in price_cache:
+            override = prices.get(bundle.name)
+            price_cache[bundle.id] = (Decimal(str(override)) if override is not None
+                                      else _catalog_annual_erp(db, bundle, basis))
+        return price_cache[bundle.id]
+
+    # A plan must keep what the persona has today (TARGET_SCHEMA D28), including
+    # what its third-party tools deliver: otherwise a plan without, say, device
+    # management wins on price by leaving the MDM tool in place. An outcome no priced
+    # plan or add-on delivers stays with its tool and never makes every plan
+    # ineligible.
+    deliverable: set[str] = set()
+    for b in base_bundles + addon_bundles:
+        if _price(b) > 0:
+            deliverable |= sku_outcomes.get(b.id, set())
+    kept_by_tool: dict[str, list[str]] = {}
+    for tp in held_tools:
+        for oid in tp_outcomes.get(tp.id, set()):
+            if oid not in outcome_names:
+                continue
+            if oid in deliverable:
+                required.add(oid)
+                sources.setdefault(oid, []).append(f"tool:{tp.name}")
+            elif oid not in required:
+                kept_by_tool.setdefault(oid, []).append(tp.name)
 
     # Compose each base bundle with the cheapest add-ons that close its gaps. An
     # add-on is applicable to a base when it is eligible for it — à-la-carte add-ons
@@ -375,10 +411,15 @@ def analyze_persona_bundles(
             if not bundles.addon_applies(a.id, base.id, elig_map):
                 continue
             cover = frozenset(sku_outcomes.get(a.id, set())) & gaps
-            if cover:  # only add-ons that close a real gap are worth composing
+            # Only add-ons that close a real gap are worth composing, and only priced
+            # ones: an unpriced add-on would join at $0 and make the plan read as
+            # cheaper than anything the customer can buy.
+            if cover and _price(a) > 0:
                 options.append({"bundle": a, "cover": cover, "price": _price(a)})
         closeable = frozenset().union(*[o["cover"] for o in options]) if options else frozenset()
-        chosen = _min_cost_cover(closeable, options)
+        # An unpriced base stays unpriced: composing priced add-ons onto it would
+        # quote the add-ons alone as the plan's price (and could recommend it).
+        chosen = _min_cost_cover(closeable, options) if base_price > 0 else []
 
         composed_cover = set(base_cover)
         addon_total = Decimal("0")
@@ -457,8 +498,15 @@ def analyze_persona_bundles(
         "persona_name": persona.name,
         "headcount": n,
         "current_microsoft_annual": float(current_ms),
+        # Each with why it is required: "licence", "requirement" or "tool:<name>".
         "required_outcomes": [
-            {"id": i, "name": outcome_names.get(i, i)} for i in sorted(required)
+            {"id": i, "name": outcome_names.get(i, i), "sources": sources.get(i, [])}
+            for i in sorted(required, key=lambda x: outcome_names.get(x, x))
+        ],
+        # Outcomes a tool delivers that no priced plan or add-on can: the tool keeps them.
+        "kept_by_tool": [
+            {"id": i, "name": outcome_names.get(i, i), "tools": sorted(t)}
+            for i, t in sorted(kept_by_tool.items(), key=lambda kv: outcome_names.get(kv[0], kv[0]))
         ],
         "bundles": [
             {

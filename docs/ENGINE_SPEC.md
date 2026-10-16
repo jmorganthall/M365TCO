@@ -202,9 +202,15 @@ is a legitimate positive (cost-increase) delta.
 > on contact. (Both limits were missing until the service sweep caught them:
 > unbounded `headcount × per_unit` credit made a bundle read as saving $181,120
 > where applying it yielded $91,120.) The **required** set (what a candidate must cover or show a
-> gap) is the union of the outcomes the persona's current Microsoft licenses deliver
-> **and** the persona's declared required capabilities (`PersonaRequirement`, the
-> Personas tab) — so a needed capability with no current license still forces a gap.
+> gap) is the union of the outcomes the persona's current Microsoft licenses deliver,
+> the persona's declared required capabilities (`PersonaRequirement`, the Personas
+> tab) — so a needed capability with no current license still forces a gap — **and**
+> the outcomes of every third-party tool that applies to the persona (TARGET_SCHEMA
+> D28): a plan keeps what the persona has today, so it cannot win on price by
+> leaving a tool in place. An outcome that no priced plan or add-on delivers is left
+> out of the set and reported as kept by its tool. Only **priced** add-ons are
+> composed, and only onto a priced base: an unpriced one would join at $0 and quote a
+> plan no one can buy.
 >
 > Seat cap (TARGET_SCHEMA D27): candidates in a seat-capped bundle family (a
 > `LicenseLimit` of type `max_total_seats`, e.g. Microsoft 365 Business ≤ 300 seats per

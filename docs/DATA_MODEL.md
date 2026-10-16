@@ -877,10 +877,12 @@ existing first-class objects** — it stores no new state, which is the correct
 "don't create second-class data" outcome:
 - **Candidate bundles**: the `is_bundle` Microsoft SKUs from the coverage seed,
   intersected with the engagement's ratified `CoverageMapEntry` rows.
-- **Required outcomes** (v1): derived from the outcomes the persona's current
-  Microsoft licenses deliver (gap detection baseline). *If explicit per-persona
-  requirements are later wanted, add a `PersonaOutcomeRequirement` first-class
-  join following §2 — do not stash them in a blob.*
+- **Required outcomes** (TARGET_SCHEMA D28): the outcomes the persona's current
+  Microsoft licenses deliver, its declared requirements (`PersonaRequirement`), and
+  what the third-party tools it holds deliver — less any outcome no priced plan or
+  add-on delivers, which is returned as `kept_by_tool`. Each required outcome
+  carries `sources` (`licence`, `requirement`, `tool:<name>`), shown in the ⚡ panel.
+  Only priced add-ons are composed.
 - **Added outcomes**: bundle coverage minus everything the persona has today
   (MS + third-party) — the upside story.
 - **Prices**: catalog annual ERP (the customer-facing retail baseline), resolved

@@ -40,16 +40,24 @@ export default function BundleAnalysis({ engagement, persona, onApply, onClose }
       </div>
       <p className="hint">Each option is a <b>base bundle + the cheapest add-ons that close the gaps</b>
         &nbsp;(outcomes union, prices sum). <b>Recommended</b> = highest monthly savings with no
-        capability lost. Rows still showing gaps have an outcome no bundle/add-on covers — use those
+        capability lost, counting what their third-party tools deliver. Rows still showing gaps have an outcome no priced bundle/add-on covers — use those
         only if you reimagine what the persona truly requires. Base price is editable ($/seat/mo).</p>
       {err && <div className="err">{err}</div>}
 
       {data && (
         <div className="muted" style={{ marginBottom: '.5rem', fontSize: '.8rem' }}>
-          Required today (from current Microsoft licensing):{' '}
+          Must keep (what they have today):{' '}
           {data.required_outcomes.length
-            ? data.required_outcomes.map((o) => o.name).join(', ')
+            ? data.required_outcomes.map((o) => {
+                const why = (o.sources || []).map((s) =>
+                  s.startsWith('tool:') ? s.slice(5) : s === 'requirement' ? 'declared' : null).filter(Boolean)
+                return why.length ? `${o.name} (${why.join(', ')})` : o.name
+              }).join(', ')
             : 'none recorded — add current licensing for gap detection'}
+          {data.kept_by_tool?.length > 0 && (
+            <div>Kept by the tool (no priced plan or add-on delivers it):{' '}
+              {data.kept_by_tool.map((o) => `${o.name} (${o.tools.join(', ')})`).join(', ')}</div>
+          )}
         </div>
       )}
 
