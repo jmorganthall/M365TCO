@@ -83,7 +83,10 @@ def test_recommend_a_path_composes_o365_e3_plus_ems_to_preserve_capability(clien
                     json={"sku_reference": sku, "quantity_assigned": 700,
                           "unit_price_paid_annual": 100, "persona_ids": [persona["id"]]})
 
-    res = client.post(f"/api/engagements/{eid}/personas/{persona['id']}/bundle-analysis").json()
+    # Priced: only priced add-ons are composed (an unpriced one would join at $0).
+    res = client.post(f"/api/engagements/{eid}/personas/{persona['id']}/bundle-analysis",
+                      json={"prices": {"Office 365 E3": 276,
+                                       "Enterprise Mobility + Security E3": 127.2}}).json()
     o365e3 = next(b for b in res["bundles"] if b["sku_reference"] == "Office 365 E3")
     addon_names = {a["name"] for a in o365e3["addons"]}
     assert "Enterprise Mobility + Security E3" in addon_names

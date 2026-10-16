@@ -697,8 +697,8 @@ def test_recommend_path_composes_base_plus_gap_closing_addon(client):
                       "third_party_product_id": edr["id"], "coverage": "Full", "ratified": True})
 
     # Price E3 at 400 and the E5 Security add-on at 100; other add-ons have no
-    # catalog price (0). The composition should pick the cheapest set that closes
-    # the gap — Defender for Endpoint P2 (free, covers EDR) beats E5 Security (100).
+    # catalog price. Only priced add-ons are composed — an unpriced one would join
+    # at $0 and quote a plan nobody can buy — so E5 Security closes the gap.
     res = client.post(f"/api/engagements/{eid}/personas/{kw['id']}/bundle-analysis",
                       json={"prices": {"Microsoft 365 E3": 400, "Microsoft 365 E5 Security": 100}}).json()
     by_ref = {b["sku_reference"]: b for b in res["bundles"]}
@@ -713,9 +713,9 @@ def test_recommend_path_composes_base_plus_gap_closing_addon(client):
     assert e3["target_unit_price_annual"] == 400.0 + e3["addon_total_annual"]  # base + add-ons
     assert "CrowdStrike" in e3["displaced_products"]             # composed path displaces the EDR
 
-    # Cheapest cover: a free add-on that covers EDR beats the priced E5 Security
-    # bundle, so no add-on cost is incurred to close that gap.
-    assert e3["addon_total_annual"] == 0.0
+    # The unpriced Defender for Endpoint P2 also covers EDR but is never composed.
+    assert [a["name"] for a in e3["addons"]] == ["Microsoft 365 E5 Security"]
+    assert e3["addon_total_annual"] == 100.0
 
 
 def test_telephony_split_pbx_vs_pstn(client):
