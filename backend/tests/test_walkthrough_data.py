@@ -257,6 +257,6 @@ def test_the_pdf_leads_with_the_run_rate_and_names_out_of_scope_licences(client)
     pdf = client.post(f"/api/engagements/{eid}/customer-report.pdf").content
     text = " ".join(p.extract_text() for p in pypdf.PdfReader(io.BytesIO(pdf)).pages)
     text = " ".join(text.split())
-    assert "$25,200 per year saved" in text                  # 100 × (684 − 432)
+    assert "$25,200 a year once every contract has renewed" in text   # 100 × (684 − 432)
     assert "Path to Full Run Rate" in text and "Full run rate" in text
     assert "Not part of this workshop, and in no figure: Teams Rooms Pro (4)" in text

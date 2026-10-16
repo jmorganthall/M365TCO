@@ -230,11 +230,11 @@ def test_readout_delta_sign_and_color_convention(client):
     html_body = client.get(f"/api/engagements/{eid}/readout.html").text
     assert "<div class='hero-figure saved'>$90,000</div>" in html_body
     assert "saved over 36 months at full run rate" in html_body
-    assert "<b>$30,000</b> per year saved once every contract has renewed" in html_body
+    assert "<b>$30,000</b> a year once every contract has renewed" in html_body
     # The reduction waits for the Microsoft renewal; with none given it is
     # month-to-month, so all 36 months count (ENGINE_SPEC 6.11) and the readout says so.
     assert "Within the first 36 months, $90,000 is saved" in html_body
-    assert "1 amount has no renewal date and counts from today" in html_body
+    assert "One renewal date was not provided, so that amount counts from today." in html_body
     # Renewing in a year, the ramp shows 24 of 36 months; the run rate is unchanged.
     workshop = date.fromisoformat(eng["workshop_date"])
     client.patch(f"/api/engagements/{eid}", json={
@@ -243,7 +243,7 @@ def test_readout_delta_sign_and_color_convention(client):
     # The headline is the run rate's value over the horizon — unchanged by timing;
     # the ramp shows what lands within it.
     assert "<div class='hero-figure saved'>$90,000</div>" in html_body
-    assert "<b>$30,000</b> per year saved" in html_body
+    assert "<b>$30,000</b> a year once every contract has renewed" in html_body
     assert "Within the first 36 months, $60,000 is saved" in html_body
     assert "full run rate from month 12" in html_body
 
@@ -260,8 +260,8 @@ def test_readout_delta_sign_and_color_convention(client):
     assert r2["rollup"]["net_tco_delta_annual"] == 50000.0  # positive = cost increase
     html2 = client.get(f"/api/engagements/{e2}/readout.html").text
     assert "<div class='hero-figure added'>$150,000</div>" in html2   # neutral, not red
-    assert "added over 36 months at full run rate" in html2
-    assert "<b>$50,000</b> per year added" in html2
+    assert "net added cost over 36 months at full run rate" in html2
+    assert "<b>$50,000</b> a year once every contract has renewed" in html2
 
 
 def test_readout_branding_applied_and_sanitized(client):

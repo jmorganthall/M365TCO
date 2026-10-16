@@ -73,8 +73,9 @@ def test_readout_conditionals_show_when_managed_and_eliminated(client):
     # endpoint returns appears verbatim in the HTML.
     result = client.post(f"/api/engagements/{eid}/compute").json()
     delta = result["rollup"]["net_tco_delta_annual"]
-    usd = f"${abs(delta):,.0f}" if delta >= 0 else f"−${abs(delta):,.0f}"
-    assert f"'>{usd}</td></tr>" in html                  # the bridge's net change
+    # Savings plain, costs in brackets: the bridge's change is the delta, sign flipped.
+    usd = f"(${abs(delta):,.0f})" if delta > 0 else f"${abs(delta):,.0f}"
+    assert f"<td>Change from the new plans</td><td class='num '>{usd}</td>" in html
 
 
 def test_readout_breaks_bridge_down_per_persona(client):
@@ -118,8 +119,8 @@ def test_readout_breaks_bridge_down_per_persona(client):
     # Sales +40k/yr (60k target − 20k freed Okta), Engineering +10k. With new
     # capabilities confirmed, the headline leads with what the investment buys.
     # 50,000 a year added × 3 years = 150,000 over the horizon at full run rate.
-    assert "<div class='hero-figure added'>Invest $150,000</div>" in html
-    assert "over 36 months at full run rate to gain" in html
+    assert "<div class='hero-figure added'>$150,000</div>" in html
+    assert "investment over 36 months at full run rate, gaining" in html
     # Okta renews at the workshop, so the ramp lands the full run rate every year.
     assert "Within the first 36 months, $150,000 is added" in html
     # The consolidation source lists each persona's move with its own amount, per
@@ -129,12 +130,14 @@ def test_readout_breaks_bridge_down_per_persona(client):
     assert ("<td class='num'>($10,000)</td><td><b>Engineering</b> <span class='muted'>(50)</span>"
             " → <b>Microsoft 365 E3</b></td>") in html
     # The bridge is a matrix: a column head per persona (→ its target) + Total.
-    assert "Sales<div class='muted'>→ Microsoft 365 E5</div>" in html
-    assert "Engineering<div class='muted'>→ Microsoft 365 E3</div>" in html
+    assert "Sales<div class='muted'>Microsoft 365 E5</div>" in html
+    assert "Engineering<div class='muted'>Microsoft 365 E3</div>" in html
     assert "<th class='num'>Total</th>" in html
     # The freed-up tool sub-row splits per persona: Okta's per-unit cost is
-    # 30000/150 = $200, credited 100 and 50 seats → −$20k + −$10k = −$30k total.
-    assert "−$20,000" in html and "−$10,000" in html and "−$30,000" in html
+    # 30000/150 = $200, credited 100 and 50 seats → $20k + $10k = $30k total.
+    bridge = html.split("<h1>Spend Bridge</h1>")[1].split("</section>")[0]
+    assert "<tr class='sub'><td>Okta</td><td class='num'>$20,000</td><td class='num'>$10,000</td>" \
+           "<td class='num '>$30,000</td></tr>" in bridge
     # New capabilities: the targets cover far more than Okta (identity-sso)
     # delivers today, so each persona's page lists its newly-lit capabilities.
     sales_page = html.split("<h1>Sales</h1>")[1].split("<section")[0]
