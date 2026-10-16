@@ -56,7 +56,7 @@
 | D25 | **The practice brands the readout once.** The practice's logo, colours and fixed wording (tagline, cover subtitle, closing block, footer disclaimer) are one install-wide record entered in the GUI, never hard-coded. An engagement holds only its customer's logo. | §3.5, §4.1 |
 | D26 | **One readout design.** The HTML readout and the customer PDF are one document rendered from one template; the PDF is that document printed. | §7 |
 | D27 | **The Business seat cap is met by splitting, never by a hidden swap.** The recommender always proposes the best plan for a persona's requirements. When that is a capped plan (the Business family, 300 seats tenant-wide) and the persona is larger than the seats left in the **future state**, the persona is offered a split: a carve-out of exactly the seats left on the capped plan, the rest on the recommender's best uncapped plan; the larger side is the parent. A person makes the split; until then Review flags the breach. No engagement setting turns the cap on or off. | §3.1, §4.3, §6.4 |
-| D28 | **A recommended plan keeps what the persona has today.** A plan is eligible only if it, with add-ons, delivers every outcome the persona has today: from its Microsoft licences, its declared requirements, **and the third-party tools it holds**. The cheapest eligible plan, net of the tools it retires, is recommended. An outcome that no priced plan or add-on in the library can deliver stays with its tool and does not block a recommendation; the recommender says which. The split's other side (D27) is chosen the same way, so it keeps what its colleagues keep. | §7 |
+| D28 | **A recommended plan keeps what the persona has today, the cheapest way.** *(Revised.)* A plan must deliver what the persona's Microsoft licences deliver today and what it declares it needs. An outcome a third-party tool delivers is kept either by that tool (it stays and keeps costing) or by Microsoft (the plan, with add-ons, covers everything the tool does, so the tool retires). An add-on is added to retire a tool only when that lowers the persona's total cost. The cheapest result wins, and the recommender says which tools each option keeps and which add-on retires which tool. The split's other side (D27) is chosen the same way. | §7 |
 
 ---
 
@@ -322,7 +322,7 @@ its headcount exceeds the seats left (§3.1), the GUI offers a split, derived on
 
 - the capped side: exactly the seats left, on the capped plan; the other side: the
   rest, on the recommender's best plan with every capped bundle excluded, which
-  keeps everything the persona has today (D28);
+  keeps what the persona has today the cheapest way (D28);
 - **the larger side is the parent** (it keeps the persona's id, name and scenario;
   only its target may change); the smaller side is the carve-out;
 - default carve-out names: the capped side "*Persona* (Up to *N* Business User
@@ -682,21 +682,22 @@ The best-bundle recommender and the pre-readout sanity check stay pure reads ove
 the interpreted and calculated layers. They store nothing, and they use the same
 definitions as everything else (including Org-wide lines).
 
-**What a recommended plan must keep (D28).** For a persona *P* the recommender's
-required set is the union of:
+**What a recommended plan must keep (D28, revised).** For a persona *P*:
 
-- the outcomes *P*'s current Microsoft licence lines deliver;
-- *P*'s declared requirements (`persona_requirements`);
-- the outcomes delivered by every third-party tool that applies to *P* (tagged to
-  *P*, or tagged to no persona), less any outcome that no priced plan or add-on in
-  the engagement's library delivers. Such an outcome stays with its tool, is listed
-  as "kept by *tool*", and never makes every plan ineligible.
-
-A candidate (a base plan plus the cheapest add-ons that close its gaps) that
-leaves any required outcome uncovered is shown with that gap and never recommended.
-Among the rest, the lowest net cost wins, where net cost already credits the tools
-the plan retires. Each required outcome carries its source (licence, requirement or
-tool) so the GUI can say why it is required.
+- **Required** (a candidate that leaves one uncovered shows the gap and is never
+  recommended): the outcomes *P*'s current Microsoft licence lines deliver, and
+  *P*'s declared requirements (`persona_requirements`). Each carries its source.
+- **Kept by a tool or by Microsoft**: an outcome delivered by a third-party tool that
+  applies to *P* (tagged to *P*, or tagged to no persona). A tool retires only when
+  the candidate covers every outcome it delivers; otherwise it stays, its outcomes
+  stay delivered, and its cost stays in the future state.
+- **Composition**: each base plan gets the cheapest add-ons that close its required
+  gaps, then any further priced add-ons whose cost is less than the credit of the
+  tools they retire, choosing the set with the lowest net cost. An add-on that
+  retires nothing is never added for a tool.
+- The recommendation is the gap-free candidate with the lowest net cost. Each option
+  lists the tools it keeps and, for every add-on, the required outcome it closes or
+  the tool it retires.
 
 ### 7.1 The headline's sub-lines and their timing *(walkthrough)*
 
@@ -1008,6 +1009,6 @@ what people own.
   licence ("Product names and service plan identifiers for licensing", Microsoft
   Learn), so the components could be loaded rather than typed. Not designed yet.
 - **The recommender.** "Fill in recommended plans" ranks each base plan plus the
-  cheapest gap-closing add-ons by net cost, among plans that keep what the persona
-  has today (D28). Still to design: a preference for upleveling, and pricing a new
+  cheapest gap-closing add-ons, plus add-ons that retire a tool for less than it
+  costs, by net cost (D28). Still to design: a preference for upleveling, and pricing a new
   customer on the "(no Teams)" suites plus Teams Enterprise.
