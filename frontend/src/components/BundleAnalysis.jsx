@@ -39,25 +39,20 @@ export default function BundleAnalysis({ engagement, persona, onApply, onClose }
         <button className="ghost sm" onClick={onClose}>Close</button>
       </div>
       <p className="hint">Each option is a <b>base bundle + the cheapest add-ons that close the gaps</b>
-        &nbsp;(outcomes union, prices sum). <b>Recommended</b> = highest monthly savings with no
-        capability lost, counting what their third-party tools deliver. Rows still showing gaps have an outcome no priced bundle/add-on covers — use those
-        only if you reimagine what the persona truly requires. Base price is editable ($/seat/mo).</p>
+        &nbsp;(outcomes union, prices sum), plus any add-on that <b>retires a third-party tool for less
+        than the tool costs</b>. A tool the option doesn't fully cover stays and keeps costing (Keeps).{' '}
+        <b>Recommended</b> = highest monthly savings with no capability lost. Rows still showing gaps
+        have an outcome no priced bundle/add-on covers — use those only if you reimagine what the
+        persona truly requires. Base price is editable ($/seat/mo).</p>
       {err && <div className="err">{err}</div>}
 
       {data && (
         <div className="muted" style={{ marginBottom: '.5rem', fontSize: '.8rem' }}>
-          Must keep (what they have today):{' '}
+          Must keep (their Microsoft licences today, plus declared needs):{' '}
           {data.required_outcomes.length
-            ? data.required_outcomes.map((o) => {
-                const why = (o.sources || []).map((s) =>
-                  s.startsWith('tool:') ? s.slice(5) : s === 'requirement' ? 'declared' : null).filter(Boolean)
-                return why.length ? `${o.name} (${why.join(', ')})` : o.name
-              }).join(', ')
+            ? data.required_outcomes.map((o) =>
+                (o.sources || []).includes('requirement') ? `${o.name} (declared)` : o.name).join(', ')
             : 'none recorded — add current licensing for gap detection'}
-          {data.kept_by_tool?.length > 0 && (
-            <div>Kept by the tool (no priced plan or add-on delivers it):{' '}
-              {data.kept_by_tool.map((o) => `${o.name} (${o.tools.join(', ')})`).join(', ')}</div>
-          )}
         </div>
       )}
 
@@ -102,7 +97,10 @@ export default function BundleAnalysis({ engagement, persona, onApply, onClose }
                     <div className="pill-list" style={{ marginTop: 3 }}>
                       {b.addons.map((a) => (
                         <span key={a.bundle_id} className="badge muted"
-                          title={`Closes: ${a.closes.join(', ')}`}>+ {a.name}</span>
+                          title={[a.closes.length && `Closes: ${a.closes.join(', ')}`,
+                                  a.retires?.length && `Retires: ${a.retires.join(', ')}`].filter(Boolean).join(' · ')}>
+                          + {a.name}{a.retires?.length ? ` · retires ${a.retires.join(', ')}`
+                            : a.closes.length ? ` · for ${a.closes.map(short).join(', ')}` : ''}</span>
                       ))}
                     </div>
                   )}
@@ -119,6 +117,10 @@ export default function BundleAnalysis({ engagement, persona, onApply, onClose }
                 <td style={{ fontSize: '.78rem' }}>{b.positioning}</td>
                 <td style={{ fontSize: '.78rem' }}>
                   {b.displaced_products.length ? b.displaced_products.join(', ') : <span className="muted">—</span>}
+                  {b.kept_products?.length > 0 && (
+                    <div className="muted" title="Not fully covered by this option, so these tools stay and keep costing.">
+                      Keeps: {b.kept_products.join(', ')}</div>
+                  )}
                 </td>
                 <td><div className="pill-list">
                   {b.gap_outcomes.map((o) => <span key={o} className="badge neg" title={o}>{short(o)}</span>)}

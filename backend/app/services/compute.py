@@ -313,7 +313,7 @@ def analyze_persona_bundles(
     hc = {p.id: p.headcount for p in eng.personas}
     persona_lines = [l for l in eng.licenses_in_scope if persona_id in l.persona_ids]
     required: set[str] = set()
-    sources: dict[str, list[str]] = {}  # outcome -> why it is required (D28)
+    sources: dict[str, list[str]] = {}  # outcome -> why it is required
     current_ms = Decimal("0")
     for line in persona_lines:
         required |= readings[line.id].outcomes
@@ -374,25 +374,20 @@ def analyze_persona_bundles(
                                       else _catalog_annual_erp(db, bundle, basis))
         return price_cache[bundle.id]
 
-    # A plan must keep what the persona has today (TARGET_SCHEMA D28), including
-    # what its third-party tools deliver: otherwise a plan without, say, device
-    # management wins on price by leaving the MDM tool in place. An outcome no priced
-    # plan or add-on delivers stays with its tool and never makes every plan
-    # ineligible.
-    deliverable: set[str] = set()
-    for b in base_bundles + addon_bundles:
-        if _price(b) > 0:
-            deliverable |= sku_outcomes.get(b.id, set())
-    kept_by_tool: dict[str, list[str]] = {}
-    for tp in held_tools:
-        for oid in tp_outcomes.get(tp.id, set()):
-            if oid not in outcome_names:
-                continue
-            if oid in deliverable:
-                required.add(oid)
-                sources.setdefault(oid, []).append(f"tool:{tp.name}")
-            elif oid not in required:
-                kept_by_tool.setdefault(oid, []).append(tp.name)
+    # A tool's outcomes are kept by the tool or by Microsoft (TARGET_SCHEMA D28):
+    # it retires only when a plan covers everything it delivers. An add-on joins to
+    # retire tools only when its cost is less than their credit — the engine's credit
+    # (ENGINE_SPEC 6.3a: this persona's tools, at most the seats they cover).
+    n = persona.headcount if headcount is None else headcount
+    held_eng = [t for t in third_party
+                if (not t.persona_ids or persona_id in t.persona_ids) and t.delivered_outcome_ids]
+
+    def _retired(cover: set[str]) -> list:
+        return [t for t in held_eng if t.delivered_outcome_ids <= cover]
+
+    def _credit(tools) -> Decimal:
+        return sum((Decimal(min(n, t.covered_count)) * t.per_unit_annual_cost for t in tools),
+                   Decimal("0"))
 
     # Compose each base bundle with the cheapest add-ons that close its gaps. An
     # add-on is applicable to a base when it is eligible for it — à-la-carte add-ons
@@ -402,6 +397,31 @@ def analyze_persona_bundles(
     elig_map = bundles.eligibility_map(db)
     candidates = []
     composition: dict[str, dict] = {}
+    kept_tools: dict[str, list[str]] = {}
+
+    def _retiring_addons(cover: set[str], taken: list[str], base_id: str) -> list[dict]:
+        """The priced add-ons worth adding to retire tools this composition keeps:
+        the set whose tool credit most exceeds its cost (none when nothing pays)."""
+        missing = set().union(*[t.delivered_outcome_ids for t in held_eng
+                                if not t.delivered_outcome_ids <= cover]) - cover
+        opts = []
+        for a in addon_bundles:
+            if a.id in taken or not bundles.addon_applies(a.id, base_id, elig_map):
+                continue
+            helps = frozenset(sku_outcomes.get(a.id, set())) & missing
+            if helps and _price(a) > 0:
+                opts.append({"bundle": a, "cover": helps, "price": _price(a)})
+        opts = sorted(opts, key=lambda o: o["price"])[:10]  # exhaustive, kept small
+        base_credit = _credit(_retired(cover))
+        best: tuple[Decimal, Decimal, list[dict]] = (Decimal("0"), Decimal("0"), [])
+        for mask in range(1, 1 << len(opts)):
+            pick = [opts[i] for i in range(len(opts)) if mask & (1 << i)]
+            cost = sum((o["price"] for o in pick), Decimal("0"))
+            c = set(cover).union(*[sku_outcomes.get(o["bundle"].id, set()) for o in pick])
+            gain = _credit(_retired(c)) - base_credit - Decimal(n) * cost
+            if gain > best[0] or (gain == best[0] and gain > 0 and cost < best[1]):
+                best = (gain, cost, pick)
+        return best[2]
     for base in base_bundles:
         base_cover = set(sku_outcomes.get(base.id, set()))
         base_price = _price(base)
@@ -420,19 +440,32 @@ def analyze_persona_bundles(
         # An unpriced base stays unpriced: composing priced add-ons onto it would
         # quote the add-ons alone as the plan's price (and could recommend it).
         chosen = _min_cost_cover(closeable, options) if base_price > 0 else []
+        cover_now = set(base_cover).union(*[sku_outcomes.get(o["bundle"].id, set()) for o in chosen])
+        if base_price > 0:
+            chosen = chosen + _retiring_addons(
+                cover_now, [o["bundle"].id for o in chosen], base.id)
 
         composed_cover = set(base_cover)
         addon_total = Decimal("0")
-        chosen_meta = []
         for o in chosen:
             composed_cover |= sku_outcomes.get(o["bundle"].id, set())
             addon_total += o["price"]
+        retired_ids = {t.id for t in _retired(composed_cover)}
+        chosen_meta = []
+        for o in chosen:
+            # The tools this add-on is what retires: retired with it, not without it.
+            without = set(base_cover).union(*[sku_outcomes.get(x["bundle"].id, set())
+                                              for x in chosen if x is not o])
+            retires = sorted(t.name for t in _retired(composed_cover)
+                             if t.id not in {r.id for r in _retired(without)})
             chosen_meta.append({
                 "bundle_id": o["bundle"].id,
                 "name": o["bundle"].name,
                 "unit_price_annual": float(o["price"]),
                 "closes": [outcome_names.get(x, x) for x in sorted(o["cover"])],
+                "retires": retires,
             })
+        kept_tools[base.name] = sorted(t.name for t in held_eng if t.id not in retired_ids)
         candidates.append(
             CandidateBundle(
                 sku_reference=base.name,  # the bundle name is what a scenario targets
@@ -464,7 +497,6 @@ def analyze_persona_bundles(
                     cap["headroom"], cap_headroom_by_reference.get(ref, cap["headroom"])
                 )
 
-    n = persona.headcount if headcount is None else headcount
     if headcount is not None and persona.headcount:
         current_ms = current_ms * Decimal(n) / Decimal(persona.headcount)
     analyses = analyze_bundles(
@@ -498,15 +530,10 @@ def analyze_persona_bundles(
         "persona_name": persona.name,
         "headcount": n,
         "current_microsoft_annual": float(current_ms),
-        # Each with why it is required: "licence", "requirement" or "tool:<name>".
+        # Each with why it is required: "licence" and/or "requirement".
         "required_outcomes": [
             {"id": i, "name": outcome_names.get(i, i), "sources": sources.get(i, [])}
             for i in sorted(required, key=lambda x: outcome_names.get(x, x))
-        ],
-        # Outcomes a tool delivers that no priced plan or add-on can: the tool keeps them.
-        "kept_by_tool": [
-            {"id": i, "name": outcome_names.get(i, i), "tools": sorted(t)}
-            for i, t in sorted(kept_by_tool.items(), key=lambda kv: outcome_names.get(kv[0], kv[0]))
         ],
         "bundles": [
             {
@@ -523,6 +550,8 @@ def analyze_persona_bundles(
                 "gap_outcomes": names(b.gap_outcome_ids),
                 "added_outcomes": names(b.added_outcome_ids),
                 "displaced_products": [tp_names.get(i, i) for i in b.displaced_product_ids],
+                # This persona's tools the option leaves in place (they keep costing).
+                "kept_products": kept_tools.get(b.sku_reference, []),
                 "covers_all_required": b.covers_all_required,
                 "price_known": b.price_known,
                 "recommended": b.recommended,
