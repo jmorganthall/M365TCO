@@ -145,7 +145,7 @@
     },
     "future.recommend": {
       "ask": "Fill in the recommended plan for every persona that doesn't have one.",
-      "why": "The recommendation is the lowest-cost plan, plus any add-ons, that keeps everything the persona has today, including what its third-party tools deliver. You can change it. Business plans are capped at 300 seats across the whole tenant: if a persona is too big for the seats left, its row offers to split the rest onto the best other plan."
+      "why": "The recommendation is the lowest-cost plan, plus any add-ons, that keeps everything the persona has today. A third-party tool is replaced by a Microsoft add-on only when that costs less than keeping it. You can change it. Business plans are capped at 300 seats across the whole tenant: if a persona is too big for the seats left, its row offers to split the rest onto the best other plan."
     },
     "future.addons": {
       "ask": "Any add-ons on top of the plan?",

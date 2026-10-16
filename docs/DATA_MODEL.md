@@ -877,12 +877,13 @@ existing first-class objects** — it stores no new state, which is the correct
 "don't create second-class data" outcome:
 - **Candidate bundles**: the `is_bundle` Microsoft SKUs from the coverage seed,
   intersected with the engagement's ratified `CoverageMapEntry` rows.
-- **Required outcomes** (TARGET_SCHEMA D28): the outcomes the persona's current
-  Microsoft licenses deliver, its declared requirements (`PersonaRequirement`), and
-  what the third-party tools it holds deliver — less any outcome no priced plan or
-  add-on delivers, which is returned as `kept_by_tool`. Each required outcome
-  carries `sources` (`licence`, `requirement`, `tool:<name>`), shown in the ⚡ panel.
-  Only priced add-ons are composed.
+- **Required outcomes**: the outcomes the persona's current Microsoft licenses
+  deliver and its declared requirements (`PersonaRequirement`); each carries
+  `sources` (`licence`, `requirement`). A third-party tool's outcomes are kept the
+  cheapest way (TARGET_SCHEMA D28): an add-on joins only when it retires a tool for
+  less than the tool's credit. Each add-on carries `closes` / `retires`, and each
+  option `kept_products` (tools it leaves in place), all shown in the ⚡ panel.
+  Only priced add-ons are composed, onto a priced base.
 - **Added outcomes**: bundle coverage minus everything the persona has today
   (MS + third-party) — the upside story.
 - **Prices**: catalog annual ERP (the customer-facing retail baseline), resolved

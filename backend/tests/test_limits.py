@@ -250,15 +250,16 @@ _INTUNE_CSV = _PRICED_CSV + (
 )
 
 
-def _with_mdm_tool(client, name, headcount):
+def _with_mdm_tool(client, name, headcount, per_seat=120):
     """A persona on Office 365 E3 whose device management comes from a third-party
-    MDM tool — the capability lives in the tool, not in any Microsoft licence."""
+    MDM tool (per_seat a year) — the capability lives in the tool, not in any
+    Microsoft licence. Intune Plan 1 is priced at 96."""
     client.post("/api/catalog/import-csv", files={"file": ("p.csv", _INTUNE_CSV, "text/csv")})
     eid, p = _cap_engagement(client, name, headcount)
     dm = next(o for o in client.get(f"/api/engagements/{eid}/outcomes").json()
               if o["seed_key"] == "device-management")
     tool = client.post(f"/api/engagements/{eid}/third-party", json={
-        "name": "MDM", "raw_cost": headcount * 96, "cost_period": "Annual",
+        "name": "MDM", "raw_cost": headcount * per_seat, "cost_period": "Annual",
         "persona_ids": [p["id"]]}).json()
     client.post(f"/api/engagements/{eid}/coverage", json={
         "outcome_id": dm["id"], "product_kind": "ThirdParty",
@@ -266,41 +267,44 @@ def _with_mdm_tool(client, name, headcount):
     return eid, p, dm
 
 
-def test_a_tools_outcomes_are_required(client):
-    """D28: what a held tool delivers is required, labelled with the tool. A plan
-    without device management shows the gap or composes Intune; it can't win on
-    price by leaving the MDM tool in place."""
-    eid, p, dm = _with_mdm_tool(client, "Tool Req", 120)
-    res = client.post(f"/api/engagements/{eid}/personas/{p['id']}/bundle-analysis").json()
-    req = {r["id"]: r for r in res["required_outcomes"]}
-    assert req[dm["id"]]["sources"] == ["tool:MDM"]
-    for b in res["bundles"]:
-        if b["covers_all_required"]:
-            assert "MDM" in b["displaced_products"], b["sku_reference"]
-    rec = next(b for b in res["bundles"] if b["recommended"])
-    assert dm["name"] in rec["covered_required_outcomes"]
+def _o365e3(client, eid, pid):
+    res = client.post(f"/api/engagements/{eid}/personas/{pid}/bundle-analysis").json()
+    return res, next(b for b in res["bundles"] if b["sku_reference"] == "Office 365 E3")
 
 
-def test_split_rest_keeps_what_the_tool_delivered(client):
-    """The people over the cap keep device management too: the rest are placed on
-    the best uncapped plan that delivers it (here Office 365 E3 + Intune Plan 1),
-    retiring their share of the MDM tool like their colleagues on Business Premium."""
-    eid, p, dm = _with_mdm_tool(client, "Tool Split", 326)
+def test_an_add_on_retires_a_tool_only_when_it_is_cheaper(client):
+    """D28 (revised): a tool's outcome is kept by the tool or by Microsoft, the
+    cheapest way. Intune (96) retires an MDM tool costing 120 a seat, so it is added
+    and says so; against a 50-a-seat tool it isn't, and the tool is kept."""
+    eid, p, dm = _with_mdm_tool(client, "Retire Co", 120, per_seat=120)
+    res, e3 = _o365e3(client, eid, p["id"])
+    assert dm["id"] not in {r["id"] for r in res["required_outcomes"]}  # not forced
+    assert [(a["name"], a["retires"]) for a in e3["addons"]] == [("Microsoft Intune Plan 1", ["MDM"])]
+    assert e3["displaced_products"] == ["MDM"] and e3["kept_products"] == []
+
+    eid, p, dm = _with_mdm_tool(client, "Keep Co", 120, per_seat=50)
+    res, e3 = _o365e3(client, eid, p["id"])
+    assert e3["addons"] == [] and e3["kept_products"] == ["MDM"]
+
+
+def test_split_rest_retires_the_tool_when_that_is_cheaper(client):
+    """The people over the cap get the cheapest plan that keeps what they have:
+    here Office 365 E3 + Intune, retiring their share of the 120-a-seat MDM tool,
+    like their colleagues on Business Premium."""
+    eid, p, dm = _with_mdm_tool(client, "Tool Split", 326, per_seat=120)
     _plan(client, eid, p["id"], "Microsoft 365 Business Premium", 264)
     o = client.get(f"/api/engagements/{eid}/seat-cap-splits").json()[0]
     assert (o["capped_seats"], o["other_seats"]) == (300, 26)
-    assert all(a["unit_price_annual"] > 0 for a in o["other_addons"])
+    assert o["other_plan"] == "Office 365 E3"
+    assert [a["name"] for a in o["other_addons"]] == ["Microsoft Intune Plan 1"]
     child = client.post(f"/api/engagements/{eid}/personas/{p['id']}/seat-cap-split", json={}).json()
     rows = {r["persona_id"]: r for r in client.post(f"/api/engagements/{eid}/compute").json()["scenarios"]}
-    assert rows[child["id"]]["current_third_party_offset_annual"] == 26 * 96  # MDM retired here too
-    covered = client.post(f"/api/engagements/{eid}/personas/{child['id']}/bundle-analysis").json()
-    assert dm["name"] not in next(b for b in covered["bundles"]
-                                  if b["sku_reference"] == o["other_plan"])["gap_outcomes"]
+    assert rows[child["id"]]["current_third_party_offset_annual"] == 26 * 120  # MDM retired here too
 
 
-def test_an_outcome_no_plan_delivers_stays_with_its_tool(client):
-    """An outcome only the tool can deliver is listed as kept by the tool and never
-    makes every plan ineligible."""
+def test_a_tool_no_plan_can_replace_is_kept(client):
+    """A tool whose outcome nothing Microsoft sells delivers stays, is listed as kept,
+    and never stops a recommendation."""
     eid, p = _cap_engagement(client, "Kept Co", 50)
     custom = client.post(f"/api/engagements/{eid}/outcomes", json={"name": "Shop-floor scanning"}).json()
     tool = client.post(f"/api/engagements/{eid}/third-party", json={
@@ -310,10 +314,8 @@ def test_an_outcome_no_plan_delivers_stays_with_its_tool(client):
         "outcome_id": custom["id"], "product_kind": "ThirdParty",
         "third_party_product_id": tool["id"], "coverage": "Full", "ratified": True})
     res = client.post(f"/api/engagements/{eid}/personas/{p['id']}/bundle-analysis").json()
-    assert custom["id"] not in {r["id"] for r in res["required_outcomes"]}
-    assert res["kept_by_tool"] == [{"id": custom["id"], "name": "Shop-floor scanning",
-                                    "tools": ["Scanner suite"]}]
-    assert any(b["recommended"] for b in res["bundles"])
+    rec = next(b for b in res["bundles"] if b["recommended"])
+    assert rec["kept_products"] == ["Scanner suite"] and not rec["gap_outcomes"]
 
 
 def test_an_unpriced_base_is_never_recommended_on_its_add_ons_price(client):
