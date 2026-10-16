@@ -104,7 +104,8 @@ export default function Personas({ engagement, meta }) {
                       {parent && <span className="carve-elbow" aria-hidden="true">└</span>}
                       <TextInput value={p.name} onCommit={(v) => update(p.id, { name: v })} />
                     </div>
-                    {parent && (
+                    {/* The chip only when the name doesn't already say where the seats came from. */}
+                    {parent && !p.name.includes(parent.name) && (
                       <div className="pill-list" style={{ marginTop: 3, paddingLeft: '1.5rem' }}>
                         <span className="badge muted"
                           title={`These ${p.headcount} seats were carved out of ${parent.name}. Removing this persona returns them.`}>

@@ -96,8 +96,9 @@ function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove,
         <td><button className="ghost sm" onClick={() => setOpen(!open)}>{open ? '▾' : '▸'}</button></td>
         <td data-label="Persona">
           {parentName && <span className="carve-elbow" aria-hidden="true">└ </span>}
-          {p.name}
-          {parentName && (
+          <span title={parentName ? `Carved out of ${parentName}` : undefined}>{p.name}</span>
+          {/* The chip only when the name doesn't already say where the seats came from. */}
+          {parentName && !p.name.includes(parentName) && (
             <div className="pill-list" style={{ marginTop: 3 }}>
               <span className="badge muted" title={`Carved out of ${parentName}`}>
                 from {parentName}</span>
