@@ -246,7 +246,7 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
 
 def _catalog_annual_erp(db: Session, bundle, basis: dict) -> Decimal:
     """Catalog annual ERP for a bundle — delegates to the shared deterministic
-    price helper (services/bundles) so the optimizer and the BP swap price
+    price helper (services/bundles) so the optimizer and every scenario price
     identically: ratified SKU→Bundle rows first, then title match, ranked to
     the engagement's quoting basis (segment × term × billing plan)."""
     return bundles.catalog_annual_erp(db, bundle.name, bundle_id=bundle.id, **basis)
@@ -277,12 +277,18 @@ def _min_cost_cover(closeable: frozenset[str], options: list[dict]) -> list[dict
 
 
 def analyze_persona_bundles(
-    db: Session, engagement_id: str, persona_id: str, prices: dict | None = None
+    db: Session, engagement_id: str, persona_id: str, prices: dict | None = None,
+    *, headcount: int | None = None, exclude_capped: bool = False,
 ) -> dict:
     """Recommend a path for this persona: compose each staple base bundle with the
     cheapest add-ons that close its capability gaps, then rank the composed
     options by TCO. Each candidate is a base + gap-closing add-ons (outcomes
-    unioned, prices summed) — the same composition the scenario editor applies."""
+    unioned, prices summed) — the same composition the scenario editor applies.
+
+    The seat cap always applies, measured in the future state (TARGET_SCHEMA D27).
+    `headcount` analyses part of the persona (the remainder of a split) and
+    `exclude_capped` drops every seat-capped plan — together, "the best plan for
+    the people over the cap"."""
     eng = db.get(models.Engagement, engagement_id)
     if eng is None:
         raise ValueError("Engagement not found")
@@ -400,14 +406,16 @@ def analyze_persona_bundles(
             "addon_total_annual": float(addon_total),
         }
 
-    # Seat-cap headroom (opt-in): when the engagement enables the Business seat cap,
-    # tell the optimizer how many seats each capped family (e.g. M365 Business ≤ 300)
-    # has left AFTER the seats already recommended for OTHER personas + current
-    # licenses — so it won't recommend a Business plan this persona can't fully fit.
+    # Seat cap (D27): tell the optimizer how many seats each capped family (e.g.
+    # M365 Business ≤ 300) has left in the future state of everyone else. With none
+    # left the family isn't recommended; with too few, the recommendation stands and
+    # the persona is offered a split (limits.seat_cap_split).
     cap_headroom_by_reference: dict[str, int] = {}
-    seat_caps: list[dict] = []
-    if eng.business_cap_enabled:
-        seat_caps = limits.seat_cap_context(db, engagement_id, exclude_persona_id=persona_id)
+    seat_caps = limits.seat_cap_context(db, engagement_id, exclude_persona_id=persona_id)
+    if exclude_capped:
+        capped = {ref for cap in seat_caps for ref in cap["member_references"]}
+        candidates = [c for c in candidates if c.sku_reference not in capped]
+    else:
         for cap in seat_caps:
             for ref in cap["member_references"]:
                 # If a reference is capped by more than one limit, the tightest wins.
@@ -415,8 +423,11 @@ def analyze_persona_bundles(
                     cap["headroom"], cap_headroom_by_reference.get(ref, cap["headroom"])
                 )
 
+    n = persona.headcount if headcount is None else headcount
+    if headcount is not None and persona.headcount:
+        current_ms = current_ms * Decimal(n) / Decimal(persona.headcount)
     analyses = analyze_bundles(
-        persona.headcount, current_ms, frozenset(required),
+        n, current_ms, frozenset(required),
         frozenset(current_capability), candidates, third_party,
         cap_headroom_by_reference=cap_headroom_by_reference,
         persona_id=persona.id,
@@ -444,7 +455,7 @@ def analyze_persona_bundles(
     return {
         "persona_id": persona.id,
         "persona_name": persona.name,
-        "headcount": persona.headcount,
+        "headcount": n,
         "current_microsoft_annual": float(current_ms),
         "required_outcomes": [
             {"id": i, "name": outcome_names.get(i, i)} for i in sorted(required)
@@ -469,12 +480,13 @@ def analyze_persona_bundles(
                 "recommended": b.recommended,
                 "cap_limited": b.cap_limited,
                 "cap_headroom": b.cap_headroom,
+                "over_cap_by": b.over_cap_by,
                 "positioning": positioning(b),
             }
             for b in analyses
         ],
-        # Seat-cap context (empty unless the engagement opted in) so the UI can show
-        # how many capped-family seats are already recommended and how many remain.
+        # Seat-cap context: how many capped-family seats the rest of the future state
+        # uses and how many are left for this persona.
         "seat_caps": [
             {
                 "name": c["name"], "cap": c["cap"], "consumed": c["consumed"],

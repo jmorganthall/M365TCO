@@ -126,12 +126,6 @@ class Engagement(Base):
     # User-entered runtime data — never a hard-coded identity. The practice's own
     # branding is PracticeBranding (D25).
     brand_logo_data_url: Mapped[str] = mapped_column(Text, default="")
-    # Engagement-level "respect the Microsoft 365 Business seat cap in best-bundle
-    # recommendations" toggle. When on, the optimizer is given the remaining headroom
-    # under each max_total_seats LicenseLimit (300 for Business) net of seats already
-    # recommended, and will not recommend a Business plan for a persona that would push
-    # the tenant over the cap — it falls through to the next-best plan. User-entered.
-    business_cap_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     # Managed Microsoft account: the customer has a Microsoft Account Team Unit
     # (ATU) assigned. When on, the readout adds a Microsoft ECIF co-investment note
     # under Recommended next steps (Microsoft may fund partner professional services

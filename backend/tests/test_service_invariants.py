@@ -64,7 +64,7 @@ def test_sweep_covers_the_decision_space(swept):
 
     Set just under the current case count — this catches a generator that stopped
     producing, without failing every time the space is legitimately re-shaped."""
-    assert swept["total"] >= 14
+    assert swept["total"] >= 7   # the seat cap is no longer a toggle (D27), halving the space
 
 
 def test_no_invariant_violations_across_the_sweep(swept):

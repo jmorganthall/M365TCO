@@ -8,7 +8,7 @@ const toAnnual = (m) => Math.round(Number(m || 0) * 12 * 100) / 100
 // Recommend-a-path for one persona: each row is a base bundle composed with the
 // cheapest add-ons that close its capability gaps. Prices are per-seat monthly;
 // editing the base price re-ranks. "Use" applies the base + its add-ons.
-export default function BundleAnalysis({ engagement, persona, capEnabled, onToggleCap, onApply, onClose }) {
+export default function BundleAnalysis({ engagement, persona, onApply, onClose }) {
   const url = `/api/engagements/${engagement.id}/personas/${persona.id}/bundle-analysis`
   const [data, setData] = useState(null)
   const [prices, setPrices] = useState(null)   // bundle name -> BASE price (annual)
@@ -44,18 +44,6 @@ export default function BundleAnalysis({ engagement, persona, capEnabled, onTogg
         only if you reimagine what the persona truly requires. Base price is editable ($/seat/mo).</p>
       {err && <div className="err">{err}</div>}
 
-      <div className="popcheck" style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexWrap: 'wrap', marginBottom: '.5rem' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '.4rem', margin: 0 }}>
-          <input type="checkbox" checked={!!capEnabled}
-            onChange={async (e) => { await onToggleCap(e.target.checked); run(prices) }} />
-          <b>Respect the 300-seat Business cap in these suggestions</b>
-        </label>
-        <span className="muted" style={{ fontSize: '.8rem' }}>
-          A persona that would push the tenant past 300 Business seats (Basic/Standard/Premium) is
-          recommended the next-best plan instead. Applies to these suggestions only.
-        </span>
-      </div>
-
       {data && (
         <div className="muted" style={{ marginBottom: '.5rem', fontSize: '.8rem' }}>
           Required today (from current Microsoft licensing):{' '}
@@ -67,11 +55,12 @@ export default function BundleAnalysis({ engagement, persona, capEnabled, onTogg
 
       {data?.seat_caps?.map((c) => (
         <div key={c.name} className="popcheck" style={{ marginBottom: '.5rem', fontSize: '.8rem' }}>
-          <b>{c.name}:</b> {c.consumed} of {c.cap} seats already recommended ·{' '}
+          <b>{c.name}:</b> the rest of the future state uses {c.consumed} of {c.cap} seats ·{' '}
           <b>{c.headroom}</b> left for {persona.name} ({persona.headcount}).
-          {persona.headcount > c.headroom && (
-            <span className="neg"> Business plans can't cover all {persona.headcount} seats —
-              recommending the next-best plan instead.</span>
+          {c.headroom === 0 && <span className="neg"> No Business seats left, so Business plans aren't recommended.</span>}
+          {c.headroom > 0 && persona.headcount > c.headroom && (
+            <span> If a Business plan is used, its row offers to split the {persona.headcount - c.headroom} over
+              the cap onto the best other plan.</span>
           )}
         </div>
       ))}
@@ -91,9 +80,14 @@ export default function BundleAnalysis({ engagement, persona, capEnabled, onTogg
                   <b>{b.sku_reference}</b>{' '}
                   {b.recommended && <span className="badge pos">Recommended</span>}
                   {b.cap_limited && (
-                    <span className="badge neg"
-                      title={`Only ${b.cap_headroom} Business seats remain; this persona needs ${persona.headcount}.`}>
-                      Business cap reached
+                    <span className="badge neg" title="Other personas use every Business seat.">
+                      No Business seats left
+                    </span>
+                  )}
+                  {b.over_cap_by > 0 && (
+                    <span className="badge"
+                      title={`${b.cap_headroom} Business seats left; ${b.over_cap_by} of ${persona.headcount} would be over. After applying, split them on the row.`}>
+                      {b.over_cap_by} over the Business cap
                     </span>
                   )}
                   {b.addons.length > 0 && (

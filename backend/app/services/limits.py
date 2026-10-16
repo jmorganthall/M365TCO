@@ -201,15 +201,20 @@ def evaluate(db: Session, engagement_id: str) -> list[dict]:
 def seat_cap_context(
     db: Session, engagement_id: str, exclude_persona_id: str | None = None
 ) -> list[dict]:
-    """The remaining headroom under each tenant seat cap (max_total_seats), for the
-    best-bundle optimizer. Mirrors `evaluate`'s counting — current-license seats plus
-    the headcount of in-scope scenarios touching a member bundle — but EXCLUDES the
-    persona currently being analyzed, so the optimizer sees how many Business seats are
-    already recommended elsewhere and how many are left for this persona.
+    """Seats left under each tenant seat cap (max_total_seats), measured in the
+    FUTURE state (TARGET_SCHEMA §3.1, D27), for one persona's decision.
+
+    Every OTHER persona counts what it will hold: a persona with an in-scope
+    scenario counts its headcount when the scenario's base or an add-on is a member
+    bundle; a persona without one keeps its current licences, so it counts its
+    share of the assigned seats on member lines (a line shared by several personas
+    splits by headcount; an untagged line applies to everyone). The current lines
+    of a persona that is moving never count — the move replaces them — and nor do
+    the excluded persona's own seats: they are what is being decided.
 
     Returns one dict per cap: {name, cap, consumed, headroom, member_bundle_names,
-    member_references} where member_references are the member bundle NAMES (what an
-    optimizer candidate's sku_reference is). Empty when no such limit is defined."""
+    member_references}; member_references are the member bundle NAMES (an optimizer
+    candidate's sku_reference). Empty when no such limit is defined."""
     eng = db.get(models.Engagement, engagement_id)
     if eng is None:
         return []
@@ -225,7 +230,8 @@ def seat_cap_context(
 
     members = _members_by_limit(db)
     bundle_name = {b.id: b.name for b in db.execute(select(models.Bundle)).scalars().all()}
-    headcount = {p.id: p.headcount for p in eng.personas}
+    headcount = {p.id: p.headcount or 0 for p in eng.personas}
+    moving = {s.persona_id: s for s in eng.scenarios if s.in_scope}
 
     ref_cache: dict[str, str | None] = {}
 
@@ -240,16 +246,25 @@ def seat_cap_context(
     out: list[dict] = []
     for lim in limits:
         mset = members.get(lim.id, set())
-        consumed = sum(
-            lic.quantity_assigned
-            for lic in eng.licenses_in_scope
-            if _resolve(lic.sku_reference) in mset
-        )
-        for s in eng.scenarios:
-            if not s.in_scope or s.persona_id == exclude_persona_id:
+        consumed = 0.0
+        # Personas that move: their future plan.
+        for pid, s in moving.items():
+            if pid != exclude_persona_id and _scenario_bundle_ids(s) & mset:
+                consumed += headcount.get(pid, 0)
+        # Personas that stay as they are: their current member lines, shared by
+        # headcount among the personas each line applies to.
+        for lic in eng.licenses_in_scope:
+            if _resolve(lic.sku_reference) not in mset:
                 continue
-            if _scenario_bundle_ids(s) & mset:
-                consumed += headcount.get(s.persona_id, 0)
+            applies = list(lic.persona_ids) or list(headcount)
+            total_hc = sum(headcount.get(pid, 0) for pid in applies)
+            if not total_hc:
+                consumed += lic.quantity_assigned or 0      # no personas to share it
+                continue
+            staying = sum(headcount.get(pid, 0) for pid in applies
+                          if pid not in moving and pid != exclude_persona_id)
+            consumed += (lic.quantity_assigned or 0) * staying / total_hc
+        consumed = int(round(consumed))
         member_names = sorted(bundle_name[i] for i in mset if i in bundle_name)
         out.append({
             "name": lim.name,
