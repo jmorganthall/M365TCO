@@ -392,6 +392,11 @@ class _Context:
                 f"<td class='track'><div class='lane'>{axis}<div class='bar {'pos' if v >= 0 else 'neg'}' "
                 f"style='left:{left}%;width:{width}%'></div></div></td>"
                 f"<td class='num'>{_amt(v)}{extra}</td></tr>")
+        # The full run rate over the whole period modelled — the headline figure.
+        # A total, not a year, so no bar (it would dwarf the years' scale).
+        out.append(
+            f"<tr class='total'><th>{self.months} months × full run rate</th><td></td>"
+            f"<td class='num'><b>{_amt(h.get('run_rate_horizon_amount'))}</b></td></tr>")
         cost_note = (" A bar left of the line is a year that costs more than it saves — "
                      "spend that lands before the renewals that pay it back."
                      if neg else "")
@@ -1015,6 +1020,7 @@ table.ramp th{text-align:left;width:1.1in;font-size:9pt;padding:.04in 0}
 table.ramp td.track{padding:.04in .1in}
 table.ramp td.num{width:2.6in;text-align:right;font-size:9pt;white-space:nowrap}
 table.ramp tr.full th,table.ramp tr.full td{border-top:1px solid var(--line);padding-top:.07in}
+table.ramp tr.total th{width:auto;white-space:nowrap}
 .lane{position:relative;height:.15in}
 .zero{position:absolute;top:-.03in;bottom:-.03in;width:0;border-left:1px solid var(--muted)}
 .bar{position:absolute;top:0;height:.15in;border-radius:0 3px 3px 0;background:var(--now)}

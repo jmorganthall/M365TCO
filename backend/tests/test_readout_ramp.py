@@ -15,6 +15,7 @@ def _bars(html):
 def _ramp(years, run_rate):
     h = {"horizon_months": 12 * len(years), "amount": sum(a for a, _ in years),
          "run_rate_annual": run_rate,
+         "run_rate_horizon_amount": run_rate * len(years),
          "years": [{"year": i + 1, "amount": a, "cumulative": c} for i, (a, c) in enumerate(years)]}
     ctx = object.__new__(_Context)  # only the headline feeds the ramp
     ctx.h, ctx.months = h, h["horizon_months"]
@@ -30,6 +31,8 @@ def test_cost_year_grows_left_of_zero_and_savings_right():
     assert w1 > w2 and w3 > w1 and wf > w3                # one scale, by amount
     assert zero + wf <= 100.0001 and l1 >= 0
     assert "class='zero'" in html and "costs more than it saves" in html
+    # The run rate over the whole period closes the table: 3 years × $160,389.
+    assert "36 months × full run rate</th><td></td><td class='num'><b><span class='pos'>$481,167" in html
 
 
 def test_all_savings_start_at_the_left_edge_with_no_zero_line():

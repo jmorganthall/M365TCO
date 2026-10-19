@@ -189,6 +189,8 @@ tr.row-out > td { opacity: .55; }
 .ramp-bar.pos { background: #22a06b; }
 .ramp-bar.neg { background: #b565a8; }
 .ramp-value { flex: 0 0 9rem; text-align: right; }
+.ramp-total { justify-content: space-between; border-top: 1px solid var(--border, #2d3561); padding-top: .4rem; }
+.ramp-total .ramp-label { flex: 1 1 auto; }
 @media (max-width: 600px) { .ramp-label { flex-basis: 4.5rem; } .ramp-value { flex-basis: 6.5rem; } }
 .part-pct { flex: 0 0 auto; font-size: 1rem; font-weight: 600; color: var(--muted); opacity: .55; letter-spacing: -.02em; line-height: 1; }
 /* The readout's action bar: one horizontal row of controls across the top of

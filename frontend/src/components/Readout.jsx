@@ -651,6 +651,14 @@ function RampCard({ h }) {
             </div>
           </div>
         ))}
+        {/* The full run rate over the whole period — a total, so no bar (it would
+            dwarf the years' scale). */}
+        <div className="ramp-row ramp-total">
+          <div className="ramp-label">{h.horizon_months} months × full run rate</div>
+          <div className="ramp-value">
+            <b className={runRate > 0 ? 'pos' : runRate < 0 ? 'neg' : ''}>{fmt(Number(h.run_rate_horizon_amount) || 0)}</b>
+          </div>
+        </div>
       </div>
       <details>
         <summary style={{ cursor: 'pointer', listStyle: 'revert' }}><b>Each amount and its renewal</b>{' '}
