@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
-from ..services import bundles, compute, inspector, library_updates, licence_names, seat_cap
+from ..services import bundles, compute, inspector, library_updates, licence_names, lineage, seat_cap
 from ..services import personas as persona_order
 
 router = APIRouter(prefix="/api/engagements/{engagement_id}", tags=["entities"])
@@ -336,6 +336,33 @@ def _carve(db: Session, engagement_id: str, parent: models.Persona, seats: int,
     # sum to what the parent alone was, so covers are unchanged — recompute so that
     # stays true rather than merely likely.
     _renormalize_third_party_covers(db, engagement_id)
+    return child
+
+
+# ---- Carve-out lineage --------------------------------------------------------
+@router.get("/carve-out-drift")
+def list_carve_out_drift(engagement_id: str, db: Session = Depends(get_db)):
+    """Every carve-out whose licence or tool tags no longer match its parent's
+    (services/lineage). A pure read."""
+    _require_engagement(db, engagement_id)
+    return lineage.drift(db, engagement_id)
+
+
+@router.post("/personas/{persona_id}/match-parent", response_model=schemas.PersonaOut)
+def match_parent(engagement_id: str, persona_id: str, db: Session = Depends(get_db)):
+    """Give a carve-out exactly its parent's licence and tool tags — the person's
+    answer to a drift warning, never applied on its own."""
+    _require_engagement(db, engagement_id)
+    child = db.get(models.Persona, persona_id)
+    if child is None or child.engagement_id != engagement_id:
+        raise HTTPException(404, "Persona not found")
+    if child.parent_persona_id is None:
+        raise HTTPException(422, "Only a carve-out has a parent to match.")
+    lineage.match_parent(db, child)
+    # Tool covers derive from tagged headcount, so they move with the tags.
+    _renormalize_third_party_covers(db, engagement_id)
+    db.commit()
+    db.refresh(child)
     return child
 
 

@@ -3,6 +3,7 @@ import { api } from '../api'
 import Help from './Help.jsx'
 import Scenarios from './Scenarios.jsx'
 import PartlyReplaced from './PartlyReplaced.jsx'
+import CarveOutDrift from './CarveOutDrift.jsx'
 
 // Step 4 — Future state per persona (docs/WALKTHROUGH.md §3): fill in the
 // recommended plan for every persona without one, adjust plans, and answer the
@@ -12,6 +13,8 @@ export default function FutureState({ engagement, meta, moneyUnit }) {
   const [changed, setChanged] = useState(0)       // refresh the keep-or-retire card
   return (
     <>
+      <CarveOutDrift engagement={engagement} refreshKey={changed}
+        onMatched={() => { setPlansKey((k) => k + 1); setChanged((k) => k + 1) }} />
       <RecommendPlans engagement={engagement} changed={changed}
         onDone={() => { setPlansKey((k) => k + 1); setChanged((k) => k + 1) }} />
       <Scenarios key={plansKey} engagement={engagement} meta={meta} moneyUnit={moneyUnit}
