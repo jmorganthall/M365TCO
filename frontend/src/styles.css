@@ -191,6 +191,9 @@ tr.row-out > td { opacity: .55; }
    the headline card, wrapping on narrow screens. */
 .readout-toolbar { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center;
   padding-bottom: .65rem; margin-bottom: .85rem; border-bottom: 1px solid var(--border); }
+/* Quick wins: the "already covered for" line sits under its tool's row. */
+tr.qw-main td { border-bottom: none; padding-bottom: .1rem; }
+tr.qw-who td { padding-top: 0; font-size: .78rem; }
 table.bridge tr.bridge-sub td { color: var(--muted); padding-left: 1.4rem; font-size: .8rem; }
 table.bridge tr.bridge-total td { border-top: 1px solid var(--border); padding-top: .45rem; }
 .err { color: var(--neg); font-size: .82rem; margin: .4rem 0; }

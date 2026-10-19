@@ -400,12 +400,13 @@ class _Context:
             return ""
         total = self.rollup.get("quick_win_savings_annual") or 0
         rows = "".join(
-            f"<tr><td><b>{E(q['third_party_product_name'])}</b></td>"
+            f"<tr class='qw-main'><td><b>{E(q['third_party_product_name'])}</b></td>"
             f"<td>{''.join(f'<span class=chip>{E(self.outcome_name.get(i, i))}</span>' for i in q['duplicated_outcome_ids'])}</td>"
             f"<td class='num'>{q['covered_count']:,}</td>"
             f"<td class='num'>{q['displaced_today']:,}"
             + (f" <span class='muted'>of {q['covered_count']:,}</span>" if q["residual_today"] else "")
             + f"</td><td class='num'>{_amt(q['credited_annual'])}</td></tr>"
+            + self._quick_win_who(q)
             for q in qws)
         return (
             "<section class='block keep'><div class='eyebrow'>① Duplicate Spend</div>"
@@ -417,6 +418,25 @@ class _Context:
             "<th class='num'>Seats</th><th class='num'>Covered today</th><th class='num'>A year</th>"
             f"</tr></thead><tbody>{rows}</tbody></table></section>"
         )
+
+    @staticmethod
+    def _quick_win_who(q) -> str:
+        """The row under a quick win: which personas already have it, and through
+        which current licence (engine §6.10 covered_by), one entry per persona."""
+        by: dict[str, list[dict]] = {}
+        for c in q.get("covered_by") or []:
+            by.setdefault(c["persona_name"], []).append(c)
+        if not by:
+            return ""
+        parts = []
+        # Largest group first, so the line reads from the bulk of the saving down.
+        for name, cs in sorted(by.items(), key=lambda kv: -sum(c["seats"] for c in kv[1])):
+            lic = (E(cs[0]["sku_reference"] or "a current licence") if len(cs) == 1 else ", ".join(
+                f"{E(c['sku_reference'] or 'a current licence')} ({c['seats']:,})" for c in cs))
+            parts.append(f"<div class='who'><b>{E(name)}</b> · {sum(c['seats'] for c in cs):,} seats"
+                         f" <span class='muted'>via {lic}</span></div>")
+        return (f"<tr class='qw-who'><td></td><td colspan='4'><div class='who-label'>Already covered for</div>"
+                f"{''.join(parts)}</td></tr>")
 
     # ---- 4. One page per persona ----------------------------------------------
     def persona_pages(self) -> str:
@@ -996,6 +1016,11 @@ table.data td{padding:.06in .07in;border-bottom:1px solid var(--line);vertical-a
 table.data.compact td{padding:.04in .05in}
 table.data tr{break-inside:avoid}
 table.data tr.total td{border-top:1.5px solid var(--ink);font-weight:700}
+table.data tr.qw-main td{border-bottom:none;padding-bottom:.02in}
+table.data tr.qw-who td{padding-top:0;font-size:8pt}
+table.data tr.qw-who .who-label{font-size:6.5pt;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);
+  margin-bottom:.02in}
+table.data tr.qw-who .who{margin:.01in 0}
 .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 th.num{text-align:right}
 .chips{margin:.03in 0 .08in}

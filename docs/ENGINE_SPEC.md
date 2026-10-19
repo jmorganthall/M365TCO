@@ -405,6 +405,14 @@ for product with delivered_outcome_ids ≠ ∅ and covering_lines non-empty:
 quick_win_savings_annual = Σ credited_annual over quick-win products (credited > 0)
 ```
 
+Each quick win also reports the allocation behind `displaced_today` as
+`covered_by`: one `(persona, licence sku_reference, seats)` entry per seat grant
+above — a tenant-wide line granting a persona's remaining unmet headcount, a
+per-user pool granting its `take`. It is explanatory only (it feeds no money) and
+answers "which personas already have this, through which licence". Its seats sum
+to `Σ (P.headcount − unmet(P))`, i.e. to `displaced_today` unless the
+`covered_count` cap applies.
+
 Ordering the pools most-specific-first means a persona's own dedicated line
 fills it before an org-wide pool is drawn on, leaving the pool for personas that
 have nothing of their own; sorting by persona id makes the result independent of

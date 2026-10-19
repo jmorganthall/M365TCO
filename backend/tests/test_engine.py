@@ -1548,3 +1548,33 @@ def test_population_lists_only_the_personas_a_tagged_tool_applies_to():
     d = compute(_engagement(personas, [tool], [])).dispositions[0]
     assert [(p.persona_id, p.status) for p in d.population] == [("a", "NoPlan")]
     assert d.unassigned_count == 0
+
+
+# ----- Quick wins: who already has it, through what (Section 6.10 covered_by) -----
+
+def test_quick_win_reports_which_licence_covers_which_persona():
+    """Office holds a dedicated per-user pool (most specific first) and an org-wide
+    pool tops it up; Plant is covered by a tenant-wide line. covered_by names each
+    grant, and its seats add up to displaced_today."""
+    office = Persona(id="office", name="Office", headcount=300)
+    plant = Persona(id="plant", name="Plant", headcount=26)
+    tool = ThirdPartyProduct(id="mail", name="Mail filter", annual_cost=D("32600"),
+                             covered_count=326, delivered_outcome_ids=frozenset({EMAIL_SEC}))
+    lines = [
+        CurrentLicenseLine(quantity_assigned=280, unit_price_paid_annual=D("264"),
+                           sku_reference="Business Premium", persona_ids=("office",),
+                           covered_outcome_ids=frozenset({EMAIL_SEC})),
+        CurrentLicenseLine(quantity_assigned=50, unit_price_paid_annual=D("432"),
+                           sku_reference="E3", covered_outcome_ids=frozenset({EMAIL_SEC})),
+        CurrentLicenseLine(quantity_assigned=1, unit_price_paid_annual=D("0"),
+                           sku_reference="Tenant filter", persona_ids=("plant",),
+                           coverage_scope=CoverageScope.TENANT_WIDE,
+                           covered_outcome_ids=frozenset({EMAIL_SEC})),
+    ]
+    eng = Engagement(id="e", personas=[office, plant], third_party_products=[tool],
+                     scenarios=[], current_licenses=lines)
+    q = compute(eng).rollup.quick_wins[0]
+    got = sorted((c.persona_name, c.sku_reference, c.seats) for c in q.covered_by)
+    assert got == [("Office", "Business Premium", 280), ("Office", "E3", 20),
+                   ("Plant", "Tenant filter", 26)]
+    assert sum(c.seats for c in q.covered_by) == q.displaced_today == 326

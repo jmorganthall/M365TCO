@@ -118,13 +118,24 @@ export default function Readout({ engagement }) {
             </tr></thead>
             <tbody>
               {r.quick_wins.map((q) => (
-                <tr key={q.third_party_product_id}>
-                  <td>{q.third_party_product_name}</td>
-                  <td>{q.duplicated_outcome_ids.map(outcomeName).join(', ')}</td>
-                  <td className="num">{q.covered_count}</td>
-                  <td className="num">{q.displaced_today}{q.residual_today ? ` (${q.residual_today} left)` : ''}</td>
-                  <td className="num pos">{usd(q.credited_annual)}</td>
-                </tr>
+                <React.Fragment key={q.third_party_product_id}>
+                  <tr className={q.covered_by?.length ? 'qw-main' : ''}>
+                    <td>{q.third_party_product_name}</td>
+                    <td>{q.duplicated_outcome_ids.map(outcomeName).join(', ')}</td>
+                    <td className="num">{q.covered_count}</td>
+                    <td className="num">{q.displaced_today}{q.residual_today ? ` (${q.residual_today} left)` : ''}</td>
+                    <td className="num pos">{usd(q.credited_annual)}</td>
+                  </tr>
+                  {q.covered_by?.length > 0 && (
+                    <tr className="qw-who"><td></td><td colSpan={4}>
+                      <div className="muted">Already covered for</div>
+                      {quickWinWho(q).map((w) => (
+                        <div key={w.name}><b>{w.name}</b> · {w.seats} seats{' '}
+                          <span className="muted">via {w.licences}</span></div>
+                      ))}
+                    </td></tr>
+                  )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
@@ -772,4 +783,20 @@ function OverrideCell({ d, onSet }) {
   }
   // No residual and no classification — nothing to override.
   return <span className="muted">—</span>
+}
+
+// A quick win's seat allocation (engine §6.10 covered_by) grouped by persona:
+// who already has the tool's capability, how many seats, through which licence.
+function quickWinWho(q) {
+  const by = new Map()
+  for (const c of q.covered_by || []) {
+    if (!by.has(c.persona_name)) by.set(c.persona_name, [])
+    by.get(c.persona_name).push(c)
+  }
+  return [...by].map(([name, cs]) => ({
+    name,
+    seats: cs.reduce((t, c) => t + c.seats, 0),
+    licences: cs.length === 1 ? (cs[0].sku_reference || 'a current licence')
+      : cs.map((c) => `${c.sku_reference || 'a current licence'} (${c.seats})`).join(', '),
+  })).sort((a, b) => b.seats - a.seats)  // largest group first
 }
