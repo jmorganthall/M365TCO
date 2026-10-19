@@ -47,11 +47,20 @@ function Decision({ d, onDecide }) {
     else if (mode === '') onDecide(d, { override: 'None', residual_intent: 'None' })
   }
   const dirty = mode !== current || (mode === 'retire' && reason.trim() !== (d.override_reason || ''))
+  // A forced retirement zeroes the engine's residual, so show the people the
+  // plans actually leave uncovered (covered − displaced) and what retiring them claims.
+  const forced = d.override === 'ForceFullElimination'
+  const uncovered = Math.max((d.covered_count || 0) - (d.displaced_users || 0), 0)
   return (
     <div className="review-item">
       <div className="grow">
         <b>{d.third_party_product_name}</b>{' '}
-        <span className="muted">— still used by {d.residual_count} of {d.covered_count} people ({usd(d.residual_annual_cost)}/yr)</span>
+        {forced ? (
+          <span className="muted">— {uncovered} of {d.covered_count} people aren't covered by their plan;
+            retired anyway ({usd(uncovered * (d.per_unit_annual_cost || 0))}/yr counted as saved)</span>
+        ) : (
+          <span className="muted">— still used by {d.residual_count} of {d.covered_count} people ({usd(d.residual_annual_cost)}/yr)</span>
+        )}
         {!current && <span className="badge warn" style={{ marginLeft: 6 }}>not answered — assumed kept</span>}
         <div className="toolbar" style={{ marginTop: '.35rem', gap: '.4rem', alignItems: 'flex-end' }}>
           <select value={mode} onChange={(e) => setMode(e.target.value)} style={{ minWidth: 230 }}>
