@@ -151,8 +151,16 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .headline { font-size: 2rem; font-weight: 700; }
 .headline-xl { font-size: 2.6rem; }
 .popcheck { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: .6rem .8rem; margin: .6rem 0; }
+/* The per-persona bridge matrix, at every width: it scrolls inside its card
+   rather than spilling out; column heads (persona → plan + add-ons) wrap within
+   a capped width instead of stretching each money column to one long line; and
+   the label column keeps room to wrap in phrases, not one word per line. */
+.bridge-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 table.bridge td { border-bottom: none; padding: .3rem .55rem; }
-table.bridge th { font-size: .8rem; padding: .3rem .55rem; }
+table.bridge th { font-size: .8rem; padding: .3rem .55rem; vertical-align: bottom; }
+table.bridge th.num { white-space: normal; min-width: 7.5rem; max-width: 13rem; }
+table.bridge th .bridge-plan { display: block; font-weight: 400; }
+table.bridge td:first-child { min-width: 16rem; }
 ul.moves { list-style: none; margin: .4rem 0 0; padding: 0; }
 /* Two columns per move line: fixed amount column, wrapping description — a
    long bundle name wraps within its own column, never under the amount. */

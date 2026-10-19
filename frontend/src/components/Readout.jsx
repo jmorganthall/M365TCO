@@ -283,14 +283,14 @@ export default function Readout({ engagement }) {
             )
           }
           return (
-            <table className="bridge">
+            <div className="bridge-scroll"><table className="bridge">
               {cols.length > 0 && (
                 <thead>
                   <tr>
                     <th></th>
                     {cols.map((s) => (
-                      <th key={s.scenario_id} className="num">{s.persona_name}{' '}
-                        <small className="muted">→ {s.target_label || s.target_sku_reference}</small></th>
+                      <th key={s.scenario_id} className="num">{s.persona_name}
+                        <small className="muted bridge-plan">→ {s.target_label || s.target_sku_reference}</small></th>
                     ))}
                     <th className="num">Total</th>
                   </tr>
@@ -325,7 +325,7 @@ export default function Readout({ engagement }) {
                   <td className={`num ${saving ? 'pos' : ''}`}><b>{usd(r.net_tco_delta_annual)}</b></td>
                 </tr>
               </tbody>
-            </table>
+            </table></div>
           )
         })()}
         {engagement.managed_ms_account && r.msft_uplift_annual > 0 && (
