@@ -259,6 +259,7 @@ async def lifespan(_app: FastAPI):
         _backfill_endpoint_protection_coverage(db)
         _backfill_coverage_corrections(db)
         _retire_split_outcomes(db)  # drop split-away outcomes from the global library
+        _retire_coverage_pairs(db)  # drop coverage pairs the library no longer lists
         _reconcile_catalog_provenance(db)
     finally:
         db.close()
@@ -396,17 +397,17 @@ def _backfill_endpoint_protection_coverage(db) -> None:
 
 
 # Additive licensing corrections to the default coverage: E5's security cousins
-# that under-covered it, E7's full build-out, and the Intune Suite (Endpoint
-# Privilege Management) that Microsoft folded into M365 E3/E5 — re-added here so a
-# deployment that ran the earlier (mistaken) EPM retirement gets it back. Point
+# that under-covered it, E7's full build-out, and Endpoint Privilege Management on
+# M365 E5 (from July 2026 the Intune Suite is split across tiers: E3 gets Intune
+# Plan 2, Remote Help and Advanced Analytics; E5/E7 add EPM, Cloud PKI and
+# Enterprise App Management — Microsoft Learn, Intune planning guide). Point
 # corrections are explicit; E7's set is taken from the seed (the source of truth)
 # so it stays a superset of E5 + the AI outcomes.
 _COVERAGE_CORRECTIONS = (
     ("f5-security", "threat-vuln-management"),        # Defender for Endpoint P2 has TVM
     ("m365-business-premium", "threat-vuln-management"),  # Defender for Business has TVM
     ("m365-f1", "device-management"),                 # F1 includes Intune (MDM/MAM)
-    ("m365-e3", "endpoint-privilege-management"),     # Intune Suite EPM now in M365 E3
-    ("m365-e5", "endpoint-privilege-management"),     # Intune Suite EPM now in M365 E5
+    ("m365-e5", "endpoint-privilege-management"),     # Intune Suite EPM in M365 E5 (and E7)
     # Defender for Office 365 Plan 1 is in Office 365 E3 and Microsoft 365 E3 from
     # 1 July 2026 (Defender for Office 365 service description, Microsoft Learn).
     ("o365-e3", "email-atp"),
@@ -441,6 +442,31 @@ def _backfill_coverage_corrections(db) -> None:
             changed = True
     if changed:
         db.commit()
+
+
+# Default coverage pairs the library no longer lists, removed from the GLOBAL
+# template by explicit (bundle, outcome) pair so operator-added coverage is never
+# touched. Existing engagements keep their copy until a person applies the change
+# on the Coverage check's Library updates card.
+RETIRED_COVERAGE_PAIRS = (
+    # EPM is M365 E5/E7 only, not E3 (Intune planning guide, July 2026 packaging).
+    ("m365-e3", "endpoint-privilege-management"),
+    ("m365-e3-no-teams", "endpoint-privilege-management"),
+)
+
+
+def _retire_coverage_pairs(db) -> None:
+    """Remove the retired (bundle, outcome) pairs above from DefaultBundleCoverage.
+    Idempotent; a no-op once they are gone."""
+    from sqlalchemy import and_, delete, or_
+
+    from . import models
+
+    db.execute(delete(models.DefaultBundleCoverage).where(or_(*[
+        and_(models.DefaultBundleCoverage.bundle_key == b,
+             models.DefaultBundleCoverage.outcome_key == o)
+        for b, o in RETIRED_COVERAGE_PAIRS])))
+    db.commit()
 
 
 def _backfill_new_default_outcomes(db) -> None:

@@ -1034,7 +1034,7 @@ what people own.
   licences: Microsoft 365 E3 includes Exchange Online Plan 2, Entra ID P1, Intune
   Plan 1, Defender for Endpoint Plan 1 and more. Modelling a plan as its component
   licences, with outcomes attached to the components, would make a change such as
-  "EPM is now in E3" a one-row edit. Microsoft publishes the component list for every
+  "Remote Help is now in E3" a one-row edit. Microsoft publishes the component list for every
   licence ("Product names and service plan identifiers for licensing", Microsoft
   Learn), so the components could be loaded rather than typed. Not designed yet.
 - **The recommender.** "Fill in recommended plans" ranks each base plan plus the

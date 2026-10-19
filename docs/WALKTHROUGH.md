@@ -207,7 +207,7 @@ are left out (§5) and the card, Coverage check and Review all say so.
   step 2. The unknown-licence warning is shown first, and loudly.
 - **Library updates** (W13): a card listing each difference between the shared
   library and this engagement's copy (TARGET_SCHEMA §4.7). For example:
-  - "Microsoft 365 E3 now includes Endpoint Privilege Management";
+  - "Microsoft 365 E5 now includes Endpoint Privilege Management";
   - "The library no longer lists X for Y";
   - "New outcome: Email & Calendar (in E1, E3, E5, …)";
   - "The library now has Exchange Online (Plan 2): this engagement lists A and B,
