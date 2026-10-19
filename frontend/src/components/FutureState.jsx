@@ -25,7 +25,8 @@ export default function FutureState({ engagement, meta, moneyUnit }) {
 }
 
 // One click fills every persona that has no plan with the recommender's choice: the
-// lowest-cost plan (plus add-ons) that keeps everything the persona has today. An
+// lowest-cost plan (plus add-ons) that keeps everything the persona has today; a
+// persona and its carve-outs decide each tool together (TARGET_SCHEMA D29). An
 // explicit action, never automatic — and every plan stays editable.
 function RecommendPlans({ engagement, changed, onDone }) {
   const eid = engagement.id

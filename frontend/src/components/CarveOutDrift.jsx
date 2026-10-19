@@ -6,7 +6,9 @@ import Help from './Help.jsx'
 // licences and tools. Tags added to one side after the carve don't reach the
 // other, and the recommender then plans the carve-out without them. This card
 // lists every carve-out that no longer matches; "Match parent" copies the
-// parent's tags onto it. Nothing changes until someone clicks.
+// parent's tags onto it. It also flags a carve-out whose chosen plan keeps a
+// tool its parent's plan retires, or the reverse (TARGET_SCHEMA D29): re-run ⚡
+// to fix that. Nothing changes until someone clicks.
 export default function CarveOutDrift({ engagement, refreshKey, onMatched }) {
   const eid = engagement.id
   const [rows, setRows] = useState([])
@@ -36,10 +38,15 @@ export default function CarveOutDrift({ engagement, refreshKey, onMatched }) {
               {[...r.missing_tools, ...r.missing_licenses].length > 0 &&
                 <>Missing: {[...r.missing_tools, ...r.missing_licenses].join(', ')}. </>}
               {[...r.extra_tools, ...r.extra_licenses].length > 0 &&
-                <>Only here: {[...r.extra_tools, ...r.extra_licenses].join(', ')}.</>}
+                <>Only here: {[...r.extra_tools, ...r.extra_licenses].join(', ')}. </>}
+              {r.plan_keeps.length > 0 &&
+                <>Plan keeps {r.plan_keeps.join(', ')}; {r.parent_name}'s retires it. </>}
+              {r.plan_retires.length > 0 &&
+                <>Plan retires {r.plan_retires.join(', ')}; {r.parent_name}'s keeps it. </>}
             </div>
           </div>
-          <button className="sm" onClick={() => match(r)}>Match parent</button>
+          {[...r.missing_tools, ...r.missing_licenses, ...r.extra_tools, ...r.extra_licenses].length > 0 &&
+            <button className="sm" onClick={() => match(r)}>Match parent</button>}
         </div>
       ))}
     </div>

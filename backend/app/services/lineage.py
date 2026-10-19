@@ -6,7 +6,11 @@ differs. Tags added or removed afterwards are per persona, so they don't reach t
 other side — a tool tagged to the parent later is simply missing from the
 carve-out, and the recommender then plans the carve-out as if the tool weren't
 there. This module says where the two sides differ. It only reads; the GUI's
-"Match parent" action is what changes the carve-out's tags, when a person asks."""
+"Match parent" action is what changes the carve-out's tags, when a person asks.
+
+It also says where their chosen plans decide a tool differently — one side's plan
+retires a tool the other's keeps (TARGET_SCHEMA D29). No plan is ever changed for
+that; the person re-runs the recommendation."""
 
 from __future__ import annotations
 
@@ -28,17 +32,36 @@ def _rows(db: Session, engagement_id: str):
     return licences, tools
 
 
+def _plan_retires(db: Session, persona_id: str, tools, sku_outcomes, tp_outcomes) -> set[str] | None:
+    """The tools (of `tools`) this persona's chosen plan retires — base plus add-ons
+    cover everything the tool delivers. None when it has no plan."""
+    from .compute import _cover_key
+
+    sc = db.execute(select(models.PersonaScenario).where(
+        models.PersonaScenario.persona_id == persona_id)).scalars().first()
+    if sc is None:
+        return None
+    cover = set(sku_outcomes.get(_cover_key(db, sc.target_sku_reference), set()))
+    for addon in sc.addons:
+        cover |= sku_outcomes.get(addon.bundle_id, set())
+    return {t.id for t in tools if tp_outcomes.get(t.id) and tp_outcomes[t.id] <= cover}
+
+
 def drift(db: Session, engagement_id: str) -> list[dict]:
-    """Every carve-out whose licence or tool tags differ from its parent's: what the
-    parent has that it lacks (`missing_*`) and what it has that the parent doesn't
-    (`extra_*`), by name. Carve-outs that match are left out."""
+    """Every carve-out that differs from its parent: tags the parent has that it
+    lacks (`missing_*`) or has that the parent doesn't (`extra_*`), and tools its
+    chosen plan keeps while the parent's retires (`plan_keeps`) or retires while the
+    parent's keeps (`plan_retires`), by name. Carve-outs that match are left out."""
     from . import personas as persona_order
+    from .compute import _ratified_sku_outcomes, _ratified_thirdparty_outcomes
 
     eng = db.get(models.Engagement, engagement_id)
     if eng is None:
         return []
     by_id = {p.id: p for p in eng.personas}
     licences, tools = _rows(db, engagement_id)
+    sku_outcomes = _ratified_sku_outcomes(db, engagement_id)
+    tp_outcomes = _ratified_thirdparty_outcomes(db, engagement_id)
     out = []
     for child in persona_order.ordered(eng.personas):
         parent = by_id.get(child.parent_persona_id or "")
@@ -51,7 +74,16 @@ def drift(db: Session, engagement_id: str) -> list[dict]:
             mine, theirs = _tagged(items, child.id), _tagged(items, parent.id)
             row[f"missing_{kind}"] = sorted(label(r) for i, r in theirs.items() if i not in mine)
             row[f"extra_{kind}"] = sorted(label(r) for i, r in mine.items() if i not in theirs)
-        if any(row[k] for k in ("missing_licenses", "extra_licenses", "missing_tools", "extra_tools")):
+        # Plans: only tools both sides hold (applies to no persona, or tagged to both).
+        shared = [t for t in tools if not t.persona_ids
+                  or (child.id in t.persona_ids and parent.id in t.persona_ids)]
+        mine = _plan_retires(db, child.id, shared, sku_outcomes, tp_outcomes)
+        theirs = _plan_retires(db, parent.id, shared, sku_outcomes, tp_outcomes)
+        names = {t.id: t.name or "(unnamed tool)" for t in shared}
+        row["plan_keeps"] = sorted(names[i] for i in (theirs - mine)) if mine is not None and theirs is not None else []
+        row["plan_retires"] = sorted(names[i] for i in (mine - theirs)) if mine is not None and theirs is not None else []
+        if any(row[k] for k in ("missing_licenses", "extra_licenses", "missing_tools", "extra_tools",
+                                "plan_keeps", "plan_retires")):
             out.append(row)
     return out
 
