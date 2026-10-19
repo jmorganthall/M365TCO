@@ -157,10 +157,10 @@ def test_customer_pdf_skips_an_unreadable_logo(client):
 
 
 def test_customer_pdf_economic_impact_matches_the_run_rate(client):
-    """A persona's Economic impact table must total to the per-year figure under it.
-
-    Tools the persona could retire without any change belong to "Retire duplicate
-    tools" (ENGINE_SPEC 6.8a), so the table credits only what the move unlocks."""
+    """A persona's Economic impact reads Today → With this plan → net, and adds up:
+    cost today − cost with the plan = the net; the net = the tools today's
+    licences already cover ("Retire duplicate tools") + the move itself, which is
+    the persona's consolidation run rate (ENGINE_SPEC 6.8a)."""
     from io import BytesIO
     from pypdf import PdfReader
 
@@ -189,10 +189,20 @@ def test_customer_pdf_economic_impact_matches_the_run_rate(client):
     pdf = client.post(f"/api/engagements/{eid}/customer-report.pdf").content
     text = " ".join(p.extract_text() for p in PdfReader(BytesIO(pdf)).pages)
     text = re.sub(r"\s+", " ", text)
-    change = re.search(r"Change per year (\(?\$[\d,]+\)?)", text).group(1)
+    def money(pattern):
+        m = re.search(pattern + r" (\(?)\$([\d,]+)\)?", text)
+        v = float(m.group(2).replace(",", ""))
+        return -v if m.group(1) else v
+
+    today = money(r"Cost today")
+    plan = money(r"Cost with this plan")
+    net = money(r"Saves per year") if "Saves per year" in text else -money(r"Costs more per year")
+    dup = money(r"Tools today's licences already cover \(SSO Tool\)")
+    move = money(r"Moving to this plan")
+    assert abs((today - plan) - net) <= 1
+    assert abs((dup + move) - net) <= 1
     h = client.post(f"/api/engagements/{eid}/compute").json()["rollup"]["headline"]
     rr = sum(i["annual_amount"] for i in h["items"]
              if i["sub_line"] == "consolidation" and i["persona_id"] == kw["id"])
-    assert change == (f"${rr:,.0f}" if rr >= 0 else f"(${abs(rr):,.0f})")   # the persona's run rate
-    # The part retired without any change is shown, with its amount.
-    assert re.search(r"A further \$[\d,]+ a year of these tools is already covered", text)
+    assert abs(move - rr) <= 1   # the move is the persona's consolidation run rate
+    assert dup > 0 and "EDR Tool" in text
