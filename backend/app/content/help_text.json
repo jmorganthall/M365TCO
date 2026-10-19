@@ -117,7 +117,7 @@
     },
     "tools.renewal": {
       "ask": "When does it renew?",
-      "why": "A tool can only stop at its renewal, so its saving counts from this date. Left blank, we treat it as month-to-month with no lock-in: the saving counts from today, and the report says so."
+      "why": "A tool can only stop at its renewal, so its saving counts from this date. Left blank, we treat it as month-to-month with no lock-in: the saving counts from today, and the report says so. A Microsoft upgrade starts when the first tool it retires renews, so a blank date here can start that upgrade from today too."
     },
     "tools.used_by": {
       "ask": "Who uses it?",

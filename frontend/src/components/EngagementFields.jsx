@@ -180,7 +180,7 @@ export function AgreementCard({ engagement, onUpdate }) {
           <label>Renews on <Help k="agreement.renewal" /> {saved('microsoft_renewal_date')}</label>
           <DateInput value={f.microsoft_renewal_date}
             onCommit={(d) => { setF({ ...f, microsoft_renewal_date: d || '' }); commit('microsoft_renewal_date', d) }} />
-          {!f.microsoft_renewal_date && <small className="src warn">Not given — assumed one year after the workshop.</small>}
+          {!f.microsoft_renewal_date && <small className="src warn">Not given — treated as month-to-month: reductions and unused-seat savings count from today.</small>}
         </div>
       </div>
     </div>
