@@ -217,6 +217,13 @@ class _Context:
                     self.tool_uses.setdefault(ce.third_party_product_id, []).append(name)
         self.run_rate_by_pid: dict[str, float] = {}
         self.timed_by_pid: dict[str, float] = {}
+        # Each duplicate tool's share of its year counted within the horizon (its
+        # quick win's timed amount ÷ annual amount), to time a persona's part of it.
+        self.qw_factor: dict[str, float] = {
+            i["item_key"][3:]: _f(i["amount"]) / _f(i["annual_amount"])
+            for i in self.items
+            if i.get("kind") == "quick_win" and str(i.get("item_key", "")).startswith("qw:")
+            and _f(i.get("annual_amount"))}
         for i in self.items:
             if i.get("sub_line") == "consolidation" and i.get("persona_id"):
                 pid = i["persona_id"]
@@ -454,37 +461,68 @@ class _Context:
         offs = s.get("offsets") or []
         replaced = [o for o in offs if _f(o.get("credited_offset_annual")) > 0]
         if replaced:
-            plan += ("<div class='label'>Tools it covers</div><table class='data compact'><tbody>"
-                     + "".join(
-                         f"<tr><td>{E(o['third_party_product_name'])}</td>"
-                         f"<td class='num'>{_usd0(o['credited_offset_annual'])}</td></tr>"
-                         for o in replaced)
-                     + "</tbody></table>")
+            # Named here; their amounts are in the Economic Impact below.
+            plan += ("<div class='label'>Replaces</div><div class='chips'>"
+                     + "".join(f"<span class='chip plain'>{E(o['third_party_product_name'])}</span>"
+                               for o in replaced) + "</div>")
         plan += "</div>"
 
-        # Economic impact: itemised to this persona's run rate. Tools it could
-        # retire without any change are the duplicate-spend source (ENGINE_SPEC
-        # 6.8a), so only the part the move unlocks is credited here.
-        today_only = sum(_f(o.get("redundant_today_annual")) for o in offs)
-        unlocked = [o for o in offs if _f(o.get("move_unlocked_annual")) > 0]
+        # Economic impact, told the way a person reads it: what this group costs
+        # today (Microsoft + the tools the plan replaces), what it costs with the
+        # plan, and the net. The net is then split into the tools today's
+        # licences already cover (headline ① Retire duplicate tools) and the move
+        # itself (② consolidation, ENGINE_SPEC 6.8a), so it still reconciles with
+        # the headline and nothing is counted twice.
+        replaced_total = sum(_f(o["credited_offset_annual"]) for o in replaced)
+        today_total = _f(s["current_microsoft_annual"]) + replaced_total
+        net = -_f(s.get("delta_annual"))                      # savings-positive
+        dup = [o for o in offs if _f(o.get("redundant_today_annual")) > 0]
+        today_only = sum(_f(o["redundant_today_annual"]) for o in dup)
+        move = -_f(s.get("move_incremental_delta_annual"))    # savings-positive
+        kept = [t.name for t in tools
+                if t.id not in {o["third_party_product_id"] for o in replaced}]
+
+        def money_row(label, value, cls=""):
+            return (f"<tr{' class=' + repr(cls) if cls else ''}><td>{label}</td>"
+                    f"<td class='num'>{value}</td></tr>")
+
         rows = [
-            f"<tr><td>Microsoft licences today</td><td class='num'>{_usd0(s['current_microsoft_annual'])}</td></tr>",
-            f"<tr><td>Tools only this plan retires</td><td class='num'>"
-            f"{_usd0(sum(_f(o['move_unlocked_annual']) for o in unlocked))}</td></tr>",
-        ] + [
-            f"<tr class='sub'><td>{E(o['third_party_product_name'])}</td>"
-            f"<td class='num'>{_usd0(o['move_unlocked_annual'])}</td></tr>" for o in unlocked
-        ] + [
-            f"<tr><td>Less: Microsoft licences with this plan</td>"
-            f"<td class='num'>({_usd0(s['target_spend_annual'])})</td></tr>",
-            f"<tr class='total'><td>Change per year</td>"
-            f"<td class='num'>{_amt(-_f(s.get('move_incremental_delta_annual')))}</td></tr>",
+            money_row("<b>Today</b>", ""),
+            money_row("Microsoft licences", _usd0(s["current_microsoft_annual"])),
         ]
-        note = (f"Within the {self.months} months modelled, as each contract renews: "
-                f"<b>{_amt(self.timed_by_pid.get(pid, 0), cls=False)}</b>.")
+        if replaced:
+            rows.append(money_row("Third-party tools this plan replaces", _usd0(replaced_total)))
+            rows += [money_row(E(o["third_party_product_name"]), _usd0(o["credited_offset_annual"]), "sub")
+                     for o in replaced]
+        rows += [
+            money_row("Cost today", f"<b>{_usd0(today_total)}</b>", "subtotal"),
+            money_row("<b>With this plan</b>", ""),
+            money_row("Microsoft licences", _usd0(s["target_spend_annual"])),
+        ]
+        rows.append(money_row("Cost with this plan", f"<b>{_usd0(s['target_spend_annual'])}</b>", "subtotal"))
+        if net > 0:
+            rows.append(money_row("Saves per year", f"<span class='pos'>{_usd0(net)}</span>", "total"))
+        elif net < 0:
+            rows.append(money_row("Costs more per year", _usd0(net), "total"))
+        else:
+            rows.append(money_row("No change per year", "$0", "total"))
         if today_only > 0:
-            note += (f" A further {_usd0(today_only)} a year of these tools is already covered by "
-                     "today's licences, so it is counted under ① Retire duplicate tools.")
+            names = ", ".join(sorted({o["third_party_product_name"] for o in dup}))
+            rows += [
+                money_row(f"Tools today's licences already cover ({E(names)})", _amt(today_only), "sub"),
+                money_row("Moving to this plan", _amt(move), "sub"),
+            ]
+
+        # Over the horizon: the move's timed items plus this group's share of each
+        # duplicate tool, timed from that tool's renewal like its quick win.
+        timed = self.timed_by_pid.get(pid, 0.0) + sum(
+            _f(o["redundant_today_annual"]) * self.qw_factor.get(o["third_party_product_id"], 0.0)
+            for o in dup)
+        word = "saves" if timed > 0 else "costs" if timed < 0 else "changes"
+        note = (f"Over the {self.months} months modelled, as each contract renews, this "
+                f"{word} <b>{_usd0(timed)}</b>.")
+        if kept:
+            note += f" Stays as it is, at today's cost: {E(', '.join(sorted(kept)))}."
         impact = ("<div class='impact'><h3>Economic Impact</h3>"
                   f"<table class='ledger'><tbody>{''.join(rows)}</tbody></table>"
                   f"<p class='note'>{note}</p></div>")
@@ -987,6 +1025,7 @@ th.num{text-align:right}
 table.ledger{width:100%%;border-collapse:collapse;font-size:9.5pt}
 table.ledger td{padding:.035in 0;border-bottom:1px solid var(--line)}
 table.ledger tr.sub td{color:var(--muted);font-size:8.5pt;padding-left:.18in}
+table.ledger tr.subtotal td{border-bottom:2px solid var(--line)}
 table.ledger tr.total td{border-top:1.5px solid var(--primary);border-bottom:none;font-weight:700;
   font-size:11pt;padding-top:.06in}
 .capabilities{break-inside:avoid}
