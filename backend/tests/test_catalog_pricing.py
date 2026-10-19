@@ -247,3 +247,30 @@ def test_basis_options_are_data_driven(client, db):
     sku = next(s for s in client.get("/api/catalog/skus").json()
                if s["product_id"] == "CFQ7FUTURE01" and s["term_duration"] == "P5Y")
     assert sku["annual_erp_price"] == 1200.0  # 6000 / 60 months × 12
+
+
+@pytest.mark.parametrize("current_first", [True, False])
+def test_sheet_repeating_a_key_imports_the_current_row(client, db, current_first):
+    """A sheet can list one natural key twice — the October sheet carries a
+    week-long dated row beside the open-ended current row for some Education
+    SKUs, in either order. The import keeps the latest-ending row instead of
+    inserting both and failing the commit on the unique constraint."""
+    header = ("ProductTitle,ProductId,SkuId,SkuTitle,TermDuration,BillingPlan,Market,"
+              "Currency,UnitPrice,EffectiveStartDate,EffectiveEndDate,ERP Price,Segment\n")
+    stub = ("Dup Suite,CFQ7DUPKEY01,0001,Dup Suite,P1Y,Annual,UM,USD,"
+            "90.00,2026-10-01,2026-10-08,108.00,Education\n")
+    current = ("Dup Suite,CFQ7DUPKEY01,0001,Dup Suite,P1Y,Annual,UM,USD,"
+               "448.00,2026-10-08,9999-11-30,537.60,Education\n")
+    rows = current + stub if current_first else stub + current
+    resp = client.post("/api/catalog/import-csv",
+                       files={"file": ("dup.csv", header + rows, "text/csv")},
+                       data={"catalog_version": _VERSION})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert (body["inserted"], body["updated"], body["skipped"]) == (1, 0, 1)
+
+    from app import models
+    skus = db.query(models.MicrosoftSku).filter_by(product_id="CFQ7DUPKEY01").all()
+    assert len(skus) == 1
+    assert str(skus[0].effective_end_date) == "9999-11-30"
+    assert skus[0].annual_erp_price == Decimal("537.60")
