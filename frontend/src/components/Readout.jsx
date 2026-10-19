@@ -621,23 +621,32 @@ function RampCard({ h }) {
   const runRate = Number(h.run_rate_annual) || 0
   const rows = [...(h.years || []).map((y) => ({ label: `Year ${y.year}`, v: Number(y.amount), cum: Number(y.cumulative) })),
     { label: 'Full run rate', v: runRate, cum: null }]
-  const peak = Math.max(1, ...rows.map((r) => Math.abs(r.v)))
+  // Bars grow from a shared zero line: a net cost to its left, a saving to its
+  // right, one scale (sizing by magnitude alone drew a cost year longer than a
+  // smaller saving year).
+  const neg = Math.max(0, ...rows.map((r) => -r.v))
+  const span = (neg + Math.max(0, ...rows.map((r) => r.v))) || 1
+  const zero = neg / span * 100
   const fmt = (v) => (v > 0 ? usd0(v) : v < 0 ? `(${usd0(v)})` : '$0')
   const reach = reachText(h.full_run_rate_month, h.horizon_months)
   return (
     <div className="card">
       <h2 style={{ marginTop: 0 }}>How the run rate is reached</h2>
       <p className="hint">Each saving starts when the contract that holds it renews{reach ? `; ${reach}` : ''}.
-        Amounts with no renewal date count from today.</p>
+        Amounts with no renewal date count from today.{neg > 0 && <> A bar left of the line is a
+        year that costs more than it saves — spend that lands before the renewals that pay it back.</>}</p>
       <div className="ramp">
         {rows.map((r) => (
           <div key={r.label} className="ramp-row">
             <div className="ramp-label">{r.label}</div>
             <div className="ramp-track">
-              <div className={`ramp-bar ${r.v >= 0 ? 'pos' : ''}`} style={{ width: `${Math.round(Math.abs(r.v) / peak * 100)}%` }} />
+              {neg > 0 && <div className="ramp-zero" style={{ left: `${zero}%` }} />}
+              <div className={`ramp-bar ${r.v >= 0 ? 'pos' : 'neg'}`} style={{
+                left: `${r.v >= 0 ? zero : zero - Math.abs(r.v) / span * 100}%`,
+                width: `${Math.abs(r.v) / span * 100}%` }} />
             </div>
             <div className="ramp-value">
-              <span className={r.v > 0 ? 'pos' : ''}>{fmt(r.v)}</span>
+              <span className={r.v > 0 ? 'pos' : r.v < 0 ? 'neg' : ''}>{fmt(r.v)}</span>
               {r.cum !== null && <div className="muted" style={{ fontSize: '.78rem' }}>running total {fmt(r.cum)}</div>}
             </div>
           </div>
