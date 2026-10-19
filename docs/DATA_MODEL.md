@@ -884,6 +884,14 @@ existing first-class objects** — it stores no new state, which is the correct
   less than the tool's credit. Each add-on carries `closes` / `retires`, and each
   option `kept_products` (tools it leaves in place), all shown in the ⚡ panel.
   Only priced add-ons are composed, onto a priced base.
+- **Carve-out family** (TARGET_SCHEMA D29): for a persona with a parent or carve-outs,
+  the family decides each tool together (retire for all or none, lowest family net
+  cost). The response's `family` names the members and what the decision retires and
+  keeps; the recommended row carries `family_choice`, and the persona's own cheaper
+  plan stays listed with `cheaper_alone` / `alone_saves_annual`. All derived, nothing
+  stored. `GET /carve-out-drift` (services/lineage) also lists carve-outs whose
+  chosen plan keeps a tool the parent's retires, or the reverse (`plan_keeps`,
+  `plan_retires`), shown on Future state.
 - **Added outcomes**: bundle coverage minus everything the persona has today
   (MS + third-party) — the upside story.
 - **Prices**: catalog annual ERP (the customer-facing retail baseline), resolved

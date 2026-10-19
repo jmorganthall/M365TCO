@@ -214,6 +214,17 @@ is a legitimate positive (cost-increase) delta.
 > **priced** add-ons are composed, and only onto a priced base: an unpriced one would
 > join at $0 and quote a plan no one can buy.
 >
+> Carve-out family (TARGET_SCHEMA D29): a persona with carve-outs and those carve-outs
+> decide each tool together. Over every set *R* of the family's tools that some priced
+> plan could cover, each member takes its cheapest priced, gap-free, not-cap-limited
+> plan that retires exactly the tools of *R* it holds (base + cheapest add-ons covering
+> its required gaps and every outcome of *R*); the *R* with the lowest family net cost
+> (Σ headcount × price − capped credit of the retired tools) wins, ties to the larger
+> *R*. That plan is the member's recommendation (`family_choice`); its D28 plan is kept
+> and tagged `cheaper_alone` (with `alone_saves_annual`) when cheaper. No *R* that works
+> for every member → each falls back to D28 (`family.fallback`). The seat-cap split's
+> other side takes *R* = the tools the capped side's chosen plan retires.
+>
 > Seat cap (TARGET_SCHEMA D27): candidates in a seat-capped bundle family (a
 > `LicenseLimit` of type `max_total_seats`, e.g. Microsoft 365 Business ≤ 300 seats per
 > tenant) carry the seats left for that family, measured in the **future state** by the

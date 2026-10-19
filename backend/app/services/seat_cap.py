@@ -80,9 +80,11 @@ def split_offer(db: Session, engagement_id: str, persona_id: str) -> dict | None
         return {**offer, "kind": "no_seats"}
     if persona.parent_persona_id is not None:
         return {**offer, "kind": "nested"}
-    # The best plan for the people over the cap, with every capped plan removed.
+    # The best plan for the people over the cap, with every capped plan removed,
+    # deciding each tool the way the capped side's plan does (D29).
     rest = compute.analyze_persona_bundles(
-        db, engagement_id, persona_id, headcount=other_seats, exclude_capped=True)
+        db, engagement_id, persona_id, headcount=other_seats, exclude_capped=True,
+        follow_own_plan=True)
     best = next((b for b in rest["bundles"] if b["recommended"]), None)
     if best is None:
         return {**offer, "kind": "no_alternative"}

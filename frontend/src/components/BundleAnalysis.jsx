@@ -41,7 +41,8 @@ export default function BundleAnalysis({ engagement, persona, onApply, onClose }
       <p className="hint">Each option is a <b>base bundle + the cheapest add-ons that close the gaps</b>
         &nbsp;(outcomes union, prices sum), plus any add-on that <b>retires a third-party tool for less
         than the tool costs</b>. A tool the option doesn't fully cover stays and keeps costing (Keeps).{' '}
-        <b>Recommended</b> = highest monthly savings with no capability lost. Rows still showing gaps
+        <b>Recommended</b> = highest monthly savings with no capability lost; for a persona with
+        carve-outs, the whole family's. Rows still showing gaps
         have an outcome no priced bundle/add-on covers — use those only if you reimagine what the
         persona truly requires. Base price is editable ($/seat/mo).</p>
       {err && <div className="err">{err}</div>}
@@ -53,6 +54,17 @@ export default function BundleAnalysis({ engagement, persona, onApply, onClose }
             ? data.required_outcomes.map((o) =>
                 (o.sources || []).includes('requirement') ? `${o.name} (declared)` : o.name).join(', ')
             : 'none recorded — add current licensing for gap detection'}
+        </div>
+      )}
+
+      {data?.family?.basis === 'family' && (
+        <div className="popcheck" style={{ marginBottom: '.5rem', fontSize: '.8rem' }}>
+          <b>Decided with its family</b> ({data.family.members.map((m) => `${m.name} ${m.headcount}`).join(', ')}):
+          the same people, so each tool retires for all of them or none, whichever costs the family less.
+          {data.family.fallback
+            ? <span className="neg"> No plan works for the whole family, so this persona gets its own cheapest plan.</span>
+            : <>{data.family.retires.length > 0 && <> Retires: {data.family.retires.join(', ')}.</>}
+                {data.family.keeps.length > 0 && <> Keeps: {data.family.keeps.join(', ')}.</>}</>}
         </div>
       )}
 
@@ -77,11 +89,21 @@ export default function BundleAnalysis({ engagement, persona, onApply, onClose }
           </tr></thead>
           <tbody>
             {data.bundles.map((b) => (
-              <tr key={b.sku_reference}
+              <tr key={`${b.sku_reference}|${b.addons.map((a) => a.bundle_id).join(',')}`}
                 style={b.recommended ? { boxShadow: 'inset 3px 0 0 var(--accent)' } : {}}>
                 <td>
                   <b>{b.sku_reference}</b>{' '}
                   {b.recommended && <span className="badge pos">Recommended</span>}
+                  {b.family_choice && data.family?.basis === 'family' && (
+                    <span className="badge" title="The plan the family's shared tool decision gives this persona.">
+                      Same as family</span>
+                  )}
+                  {b.cheaper_alone && (
+                    <span className="badge muted"
+                      title="This persona's own cheapest plan. It decides a tool differently from the rest of its family.">
+                      Cheaper alone{b.kept_products?.length ? ` · keeps ${b.kept_products.join(', ')}` : ''}
+                      {' · '}{usd(b.alone_saves_annual / 12)}/mo less</span>
+                  )}
                   {b.cap_limited && (
                     <span className="badge neg" title="Other personas use every Business seat.">
                       No Business seats left

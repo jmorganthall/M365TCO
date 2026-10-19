@@ -279,6 +279,7 @@ def _min_cost_cover(closeable: frozenset[str], options: list[dict]) -> list[dict
 def analyze_persona_bundles(
     db: Session, engagement_id: str, persona_id: str, prices: dict | None = None,
     *, headcount: int | None = None, exclude_capped: bool = False,
+    follow_own_plan: bool = False,
 ) -> dict:
     """Recommend a path for this persona: compose each staple base bundle with the
     cheapest add-ons that close its capability gaps, then rank the composed
@@ -288,7 +289,13 @@ def analyze_persona_bundles(
     The seat cap always applies, measured in the future state (TARGET_SCHEMA D27).
     `headcount` analyses part of the persona (the remainder of a split) and
     `exclude_capped` drops every seat-capped plan — together, "the best plan for
-    the people over the cap"."""
+    the people over the cap". `follow_own_plan` makes that plan decide each tool
+    the way the persona's own chosen plan does (the split's other side, D29).
+
+    A persona in a carve-out family (a parent and its carve-outs) is recommended
+    the plan the family's shared tool decision gives it (TARGET_SCHEMA D29); its
+    own cheapest plan stays listed, tagged, when it is cheaper and decides
+    differently."""
     eng = db.get(models.Engagement, engagement_id)
     if eng is None:
         raise ValueError("Engagement not found")
@@ -486,9 +493,10 @@ def analyze_persona_bundles(
     # the persona is offered a split (limits.seat_cap_split).
     cap_headroom_by_reference: dict[str, int] = {}
     seat_caps = limits.seat_cap_context(db, engagement_id, exclude_persona_id=persona_id)
+    capped_refs: set[str] = set()
     if exclude_capped:
-        capped = {ref for cap in seat_caps for ref in cap["member_references"]}
-        candidates = [c for c in candidates if c.sku_reference not in capped]
+        capped_refs = {ref for cap in seat_caps for ref in cap["member_references"]}
+        candidates = [c for c in candidates if c.sku_reference not in capped_refs]
     else:
         for cap in seat_caps:
             for ref in cap["member_references"]:
@@ -505,6 +513,157 @@ def analyze_persona_bundles(
         cap_headroom_by_reference=cap_headroom_by_reference,
         persona_id=persona.id,
     )
+
+    # ---- Carve-out family (TARGET_SCHEMA D29) ---------------------------------
+    def _tool_credit(tools, seats: int) -> Decimal:
+        return sum((Decimal(min(seats, t.covered_count)) * t.per_unit_annual_cost for t in tools),
+                   Decimal("0"))
+
+    def _plan_fitting(pid: str, seats: int, req: set[str], held: list, want: set[str],
+                      caps: dict[str, int], excluded: set[str]) -> dict | None:
+        """The cheapest priced, gap-free, not-cap-limited plan for this member that
+        retires exactly the tools in `want` (of those it holds): each base plus the
+        cheapest add-ons covering its required gaps and every outcome of `want`."""
+        need = set(req).union(*[t.delivered_outcome_ids for t in held if t.id in want])
+        best = None
+        for base in base_bundles:
+            base_price = _price(base)
+            headroom = caps.get(base.name)
+            if base_price <= 0 or base.name in excluded or (headroom is not None and headroom <= 0):
+                continue
+            base_cover = set(sku_outcomes.get(base.id, set()))
+            missing = frozenset(need - base_cover)
+            opts = []
+            for a in addon_bundles:
+                if not bundles.addon_applies(a.id, base.id, elig_map):
+                    continue
+                helps = frozenset(sku_outcomes.get(a.id, set())) & missing
+                if helps and _price(a) > 0:
+                    opts.append({"bundle": a, "cover": helps, "price": _price(a)})
+            if not missing <= frozenset().union(*[o["cover"] for o in opts]):
+                continue
+            chosen = _min_cost_cover(missing, opts)
+            cover = base_cover.union(*[sku_outcomes.get(o["bundle"].id, set()) for o in chosen])
+            retired = {t.id for t in held if t.delivered_outcome_ids <= cover}
+            if retired != want:
+                continue  # covers another tool incidentally: a different decision
+            price = base_price + sum((o["price"] for o in chosen), Decimal("0"))
+            cost = Decimal(seats) * price - _tool_credit([t for t in held if t.id in retired], seats)
+            if best is None or (cost, price) < (best["cost"], best["price"]):
+                best = {"base": base, "base_price": base_price, "addons": chosen, "price": price,
+                        "cover": cover, "base_cover": base_cover, "retired": retired, "cost": cost}
+        return best
+
+    def _scenario_cover(pid: str) -> set[str] | None:
+        """What a persona's chosen plan (base + add-ons) covers; None with no plan."""
+        sc = db.execute(select(models.PersonaScenario).where(
+            models.PersonaScenario.persona_id == pid)).scalars().first()
+        if sc is None:
+            return None
+        cover = set(sku_outcomes.get(_cover_key(db, sc.target_sku_reference), set()))
+        for addon in sc.addons:
+            cover |= sku_outcomes.get(addon.bundle_id, set())
+        return cover
+
+    def _family_summary(members, retires: set[str], fallback: bool, basis: str) -> dict:
+        held_ids = {t.id for m in members for t in third_party
+                    if (not t.persona_ids or m.id in t.persona_ids) and t.delivered_outcome_ids}
+        return {
+            "basis": basis,  # "family": decided with the carve-outs; "split": follows its own plan
+            "members": [{"id": m.id, "name": m.name, "headcount": m.headcount} for m in members],
+            "retires": sorted(tp_names.get(i, i) for i in retires),
+            "keeps": sorted(tp_names.get(i, i) for i in held_ids - retires),
+            # No plan fits the shared decision for every member: each is on its own (D28).
+            "fallback": fallback,
+        }
+
+    def _apply_family_plan(rows: list[dict], plan: dict) -> None:
+        """Make `plan` this persona's recommendation, tagged as the family's choice;
+        tag the persona's own cheaper plan when it decides a tool differently."""
+        cand = CandidateBundle(sku_reference=plan["base"].name,
+                               covered_outcome_ids=frozenset(plan["cover"]),
+                               target_unit_price_annual=plan["price"])
+        [b] = analyze_bundles(n, current_ms, frozenset(required), frozenset(current_capability),
+                              [cand], third_party,
+                              cap_headroom_by_reference=cap_headroom_by_reference,
+                              persona_id=persona.id)
+        addons = []
+        for o in plan["addons"]:
+            without = plan["base_cover"].union(*[sku_outcomes.get(x["bundle"].id, set())
+                                                 for x in plan["addons"] if x is not o])
+            addons.append({
+                "bundle_id": o["bundle"].id, "name": o["bundle"].name,
+                "unit_price_annual": float(o["price"]),
+                "closes": [outcome_names.get(x, x) for x in sorted(o["cover"] & required)],
+                "retires": sorted(t.name for t in _retired(plan["cover"])
+                                  if t.id not in {r.id for r in _retired(without)}),
+            })
+        comp = {"base_bundle_id": plan["base"].id, "base_price_annual": float(plan["base_price"]),
+                "addons": addons,
+                "addon_total_annual": float(sum((o["price"] for o in plan["addons"]), Decimal("0")))}
+        kept = sorted(t.name for t in held_eng if t.id not in plan["retired"])
+        alone = next((r for r in rows if r["recommended"]), None)
+        ids = sorted(a["bundle_id"] for a in addons)
+        fam = next((r for r in rows if r["sku_reference"] == plan["base"].name
+                    and sorted(a["bundle_id"] for a in r["addons"]) == ids), None)
+        if fam is None:
+            fam = _row(b, comp, kept)
+            rows.append(fam)
+        for r in rows:
+            r["recommended"] = False
+        fam["recommended"] = fam["family_choice"] = True
+        if alone is not None and alone is not fam and alone["delta_annual"] < fam["delta_annual"]:
+            alone["cheaper_alone"] = True
+            alone["alone_saves_annual"] = round(fam["delta_annual"] - alone["delta_annual"], 2)
+        rows.sort(key=lambda r: (not r["family_choice"], not r["cheaper_alone"]))
+
+    def _family_decision(rows: list[dict]) -> dict | None:
+        """D29: the family's tools retire for every member or none, whichever costs
+        the family less (ties retire more); this persona gets its plan under it."""
+        root = persona if persona.parent_persona_id is None else db.get(models.Persona, persona.parent_persona_id)
+        if root is None:
+            return None
+        members = [root] + [p for p in eng.personas if p.parent_persona_id == root.id]
+        if len(members) < 2:
+            return None
+        ctx = {}
+        for m in members:
+            if m.id == persona.id:
+                ctx[m.id] = (n, required, held_eng, cap_headroom_by_reference)
+                continue
+            lines = [l for l in eng.licenses_in_scope if m.id in l.persona_ids]
+            req = set().union(*[readings[l.id].outcomes for l in lines])
+            req |= {oid for oid in m.required_outcome_ids if oid in outcome_names}
+            held = [t for t in third_party
+                    if (not t.persona_ids or m.id in t.persona_ids) and t.delivered_outcome_ids]
+            caps: dict[str, int] = {}
+            for cap in limits.seat_cap_context(db, engagement_id, exclude_persona_id=m.id):
+                for ref in cap["member_references"]:
+                    caps[ref] = min(cap["headroom"], caps.get(ref, cap["headroom"]))
+            ctx[m.id] = (m.headcount, req, held, caps)
+        # Only a tool some priced plan could cover can retire; the rest are kept.
+        sellable = set().union(*[sku_outcomes.get(b.id, set()) for b in base_bundles + addon_bundles
+                                 if _price(b) > 0])
+        tools = sorted({t.id for c in ctx.values() for t in c[2] if t.delivered_outcome_ids <= sellable})
+        best = None
+        if len(tools) <= 12:  # exhaustive; a family rarely holds more than a few tools
+            for mask in range(1 << len(tools)):
+                retire = {tools[i] for i in range(len(tools)) if mask & (1 << i)}
+                plans, total = {}, Decimal("0")
+                for m in members:
+                    seats, req, held, caps = ctx[m.id]
+                    plan = _plan_fitting(m.id, seats, req, held, retire & {t.id for t in held},
+                                         caps, capped_refs)
+                    if plan is None:
+                        break
+                    plans[m.id], total = plan, total + plan["cost"]
+                else:
+                    if best is None or (total, -len(retire)) < (best[0], -len(best[1])):
+                        best = (total, retire, plans)
+        if best is None:
+            return _family_summary(members, set(), True, "family")
+        _apply_family_plan(rows, best[2][persona.id])
+        return _family_summary(members, best[1], False, "family")
 
     def names(ids):
         return [outcome_names.get(i, i) for i in ids]
@@ -525,6 +684,52 @@ def analyze_persona_bundles(
             return "Higher cost — consider reimagining required outcomes"
         return "Cost-neutral"
 
+    def _row(b, comp: dict | None = None, kept: list[str] | None = None) -> dict:
+        comp = composition.get(b.sku_reference, {}) if comp is None else comp
+        return {
+            "sku_reference": b.sku_reference,
+            "base_price_annual": comp.get("base_price_annual", 0.0),
+            "addons": comp.get("addons", []),
+            "addon_total_annual": comp.get("addon_total_annual", 0.0),
+            "target_unit_price_annual": float(b.target_unit_price_annual),
+            "target_spend_annual": float(b.target_spend_annual),
+            "current_spend_annual": float(b.current_spend_annual),
+            "delta_annual": float(b.delta_annual),
+            "third_party_offset_annual": float(b.third_party_offset_annual),
+            "covered_required_outcomes": names(b.covered_required_outcome_ids),
+            "gap_outcomes": names(b.gap_outcome_ids),
+            "added_outcomes": names(b.added_outcome_ids),
+            "displaced_products": [tp_names.get(i, i) for i in b.displaced_product_ids],
+            # This persona's tools the option leaves in place (they keep costing).
+            "kept_products": kept_tools.get(b.sku_reference, []) if kept is None else kept,
+            "covers_all_required": b.covers_all_required,
+            "price_known": b.price_known,
+            "recommended": b.recommended,
+            "cap_limited": b.cap_limited,
+            "cap_headroom": b.cap_headroom,
+            "over_cap_by": b.over_cap_by,
+            "positioning": positioning(b),
+            # D29: the family's shared tool decision gives this plan; and this
+            # persona's own cheaper plan, which decides a tool differently.
+            "family_choice": False,
+            "cheaper_alone": False,
+            "alone_saves_annual": 0.0,
+        }
+
+    rows = [_row(b) for b in analyses]
+    family = None
+    if follow_own_plan:
+        own = _scenario_cover(persona.id)
+        if own is not None:
+            want = {t.id for t in held_eng if t.delivered_outcome_ids <= own}
+            plan = _plan_fitting(persona.id, n, required, held_eng, want,
+                                 cap_headroom_by_reference, capped_refs)
+            family = _family_summary([persona], want, plan is None, "split")
+            if plan:
+                _apply_family_plan(rows, plan)
+    else:
+        family = _family_decision(rows)
+
     return {
         "persona_id": persona.id,
         "persona_name": persona.name,
@@ -535,33 +740,9 @@ def analyze_persona_bundles(
             {"id": i, "name": outcome_names.get(i, i), "sources": sources.get(i, [])}
             for i in sorted(required, key=lambda x: outcome_names.get(x, x))
         ],
-        "bundles": [
-            {
-                "sku_reference": b.sku_reference,
-                "base_price_annual": composition.get(b.sku_reference, {}).get("base_price_annual", 0.0),
-                "addons": composition.get(b.sku_reference, {}).get("addons", []),
-                "addon_total_annual": composition.get(b.sku_reference, {}).get("addon_total_annual", 0.0),
-                "target_unit_price_annual": float(b.target_unit_price_annual),
-                "target_spend_annual": float(b.target_spend_annual),
-                "current_spend_annual": float(b.current_spend_annual),
-                "delta_annual": float(b.delta_annual),
-                "third_party_offset_annual": float(b.third_party_offset_annual),
-                "covered_required_outcomes": names(b.covered_required_outcome_ids),
-                "gap_outcomes": names(b.gap_outcome_ids),
-                "added_outcomes": names(b.added_outcome_ids),
-                "displaced_products": [tp_names.get(i, i) for i in b.displaced_product_ids],
-                # This persona's tools the option leaves in place (they keep costing).
-                "kept_products": kept_tools.get(b.sku_reference, []),
-                "covers_all_required": b.covers_all_required,
-                "price_known": b.price_known,
-                "recommended": b.recommended,
-                "cap_limited": b.cap_limited,
-                "cap_headroom": b.cap_headroom,
-                "over_cap_by": b.over_cap_by,
-                "positioning": positioning(b),
-            }
-            for b in analyses
-        ],
+        "bundles": rows,
+        # The carve-out family's shared tool decision (D29); None outside a family.
+        "family": family,
         # Seat-cap context: how many capped-family seats the rest of the future state
         # uses and how many are left for this persona.
         "seat_caps": [

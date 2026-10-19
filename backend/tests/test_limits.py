@@ -353,3 +353,94 @@ def test_new_bundle_coverage_backfill_is_additive(client):
         assert ("m365-e3", "desktop-software") in keys                 # untouched
     finally:
         db.close()
+
+
+# ---- D29: a carve-out family decides each tool together ----------------------
+# A parent and its carve-out are the same people, so the MDM tool retires for both
+# or for neither, whichever costs the family less; each member's own cheaper plan is
+# still listed, tagged. (Kept at the end of this file: they load the Intune price
+# sheet into the shared test catalog.)
+
+
+def _family(client, per_seat=50):
+    """The reported case: 300 people on Business Premium (which includes Intune and
+    retires the MDM tool), and a 50-seat carve-out on Office 365 E3 with no Business
+    seats left. Alone, the carve-out keeps the 50-a-seat MDM tool rather than buy
+    Intune at 96."""
+    client.post("/api/catalog/import-csv", files={"file": ("p.csv", _INTUNE_CSV, "text/csv")})
+    eid = client.post("/api/engagements", json={"customer_name": "Family Co"}).json()["id"]
+    p = client.post(f"/api/engagements/{eid}/personas", json={"name": "Office", "headcount": 350}).json()
+    client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "Office 365 E3", "quantity_assigned": 350,
+        "unit_price_paid_annual": 432, "persona_ids": [p["id"]]})
+    dm = next(o for o in client.get(f"/api/engagements/{eid}/outcomes").json()
+              if o["seed_key"] == "device-management")
+    tool = client.post(f"/api/engagements/{eid}/third-party", json={
+        "name": "MDM", "raw_cost": 350 * per_seat, "cost_period": "Annual",
+        "persona_ids": [p["id"]]}).json()
+    client.post(f"/api/engagements/{eid}/coverage", json={
+        "outcome_id": dm["id"], "product_kind": "ThirdParty",
+        "third_party_product_id": tool["id"], "coverage": "Full", "ratified": True})
+    _plan(client, eid, p["id"], "Microsoft 365 Business Premium", 264)
+    child = client.post(f"/api/engagements/{eid}/personas/{p['id']}/carve", json={
+        "seats": 50, "name": "Carve", "target_sku_reference": "Office 365 E3",
+        "target_unit_price_annual": 276}).json()
+    return eid, p, child
+
+
+def _analysis(client, eid, pid):
+    return client.post(f"/api/engagements/{eid}/personas/{pid}/bundle-analysis").json()
+
+
+def test_the_carve_out_retires_the_tool_with_its_parent(client):
+    eid, p, child = _family(client)
+    res = _analysis(client, eid, child["id"])
+    rec = next(b for b in res["bundles"] if b["recommended"])
+    assert rec["family_choice"] and rec["displaced_products"] == ["MDM"] and rec["kept_products"] == []
+    assert res["family"]["retires"] == ["MDM"] and not res["family"]["fallback"]
+    assert {m["name"] for m in res["family"]["members"]} == {"Office", "Carve"}
+    # Its own cheaper plan stays listed: Office 365 E3 keeping the 50-a-seat tool
+    # instead of Intune at 96 is 46 a seat cheaper for these 50 people.
+    alone = next(b for b in res["bundles"] if b["cheaper_alone"])
+    assert alone["sku_reference"] == "Office 365 E3" and alone["kept_products"] == ["MDM"]
+    assert not alone["recommended"] and alone["alone_saves_annual"] == 50 * 46
+
+
+def test_the_parent_is_recommended_its_side_of_the_same_decision(client):
+    eid, p, child = _family(client)
+    res = _analysis(client, eid, p["id"])
+    rec = next(b for b in res["bundles"] if b["recommended"])
+    assert rec["family_choice"] and "MDM" in rec["displaced_products"]
+    assert res["family"]["retires"] == ["MDM"]
+
+
+def test_a_persona_with_no_carve_outs_is_unchanged(client):
+    client.post("/api/catalog/import-csv", files={"file": ("p.csv", _INTUNE_CSV, "text/csv")})
+    eid = client.post("/api/engagements", json={"customer_name": "Solo Co"}).json()["id"]
+    p = client.post(f"/api/engagements/{eid}/personas", json={"name": "Office", "headcount": 100}).json()
+    res = _analysis(client, eid, p["id"])
+    assert res["family"] is None
+    assert not any(b["family_choice"] or b["cheaper_alone"] for b in res["bundles"])
+
+
+def test_split_rest_follows_the_capped_side_even_when_keeping_is_cheaper(client):
+    """The over-cap side follows the plan a person chose for the capped side: Business
+    Premium retires the MDM tool, so the rest gets Intune even though keeping a
+    50-a-seat tool would be cheaper for them alone."""
+    client.post("/api/catalog/import-csv", files={"file": ("p.csv", _INTUNE_CSV, "text/csv")})
+    eid, p, dm = _with_mdm_tool(client, "Follow Split", 326, per_seat=50)
+    _plan(client, eid, p["id"], "Microsoft 365 Business Premium", 264)
+    o = client.get(f"/api/engagements/{eid}/seat-cap-splits").json()[0]
+    assert o["other_plan"] == "Office 365 E3"
+    assert [a["name"] for a in o["other_addons"]] == ["Microsoft Intune Plan 1"]
+
+
+def test_chosen_plans_that_decide_a_tool_differently_are_flagged(client):
+    """The carve-out's chosen Office 365 E3 keeps the MDM tool its parent's Business
+    Premium retires: flagged, and nothing is changed for it."""
+    eid, p, child = _family(client)
+    [row] = client.get(f"/api/engagements/{eid}/carve-out-drift").json()
+    assert row["persona_id"] == child["id"]
+    assert (row["plan_keeps"], row["plan_retires"], row["missing_tools"]) == (["MDM"], [], [])
+    s = next(s for s in client.get(f"/api/engagements/{eid}/scenarios").json() if s["persona_id"] == child["id"])
+    assert s["target_sku_reference"] == "Office 365 E3"
