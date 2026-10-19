@@ -195,6 +195,13 @@ def import_price_sheet(db: Session, text: str, catalog_version: str) -> dict:
     product+sku+term+billing+market by EffectiveEndDate."""
     inserted = updated = skipped = 0
     data_date = None  # newest date the sheet reports about itself
+    # Rows this import already inserted or updated, by natural key. A sheet can
+    # list one key twice (a short-lived dated row beside the open-ended current
+    # one), and the session doesn't autoflush, so the query below can't see a
+    # pending insert — without this the second copy is inserted too and the
+    # commit fails on the unique constraint. A repeat counts as skipped so the
+    # inserted + updated total stays one per catalog row.
+    seen: dict[tuple, models.MicrosoftSku] = {}
     for rec in parse_rows(text):
         # Not a catalog column — it dates the sheet, not the SKU row.
         last_updated = rec.pop("last_updated_date", None)
@@ -204,18 +211,25 @@ def import_price_sheet(db: Session, text: str, catalog_version: str) -> dict:
         if last_updated and (data_date is None or last_updated > data_date):
             data_date = last_updated
 
-        existing = db.execute(
-            select(models.MicrosoftSku).where(
-                models.MicrosoftSku.product_id == rec["product_id"],
-                models.MicrosoftSku.sku_id == rec["sku_id"],
-                models.MicrosoftSku.term_duration == rec["term_duration"],
-                models.MicrosoftSku.billing_plan == rec["billing_plan"],
-                models.MicrosoftSku.market == rec["market"],
-            )
-        ).scalar_one_or_none()
+        key = (rec["product_id"], rec["sku_id"], rec["term_duration"],
+               rec["billing_plan"], rec["market"])
+        repeat = key in seen
+        existing = seen.get(key)
+        if existing is None:
+            existing = db.execute(
+                select(models.MicrosoftSku).where(
+                    models.MicrosoftSku.product_id == rec["product_id"],
+                    models.MicrosoftSku.sku_id == rec["sku_id"],
+                    models.MicrosoftSku.term_duration == rec["term_duration"],
+                    models.MicrosoftSku.billing_plan == rec["billing_plan"],
+                    models.MicrosoftSku.market == rec["market"],
+                )
+            ).scalar_one_or_none()
 
         if existing is None:
-            db.add(models.MicrosoftSku(catalog_version=catalog_version, **rec))
+            row = models.MicrosoftSku(catalog_version=catalog_version, **rec)
+            db.add(row)
+            seen[key] = row
             inserted += 1
         else:
             # Keep the latest active row by EffectiveEndDate.
@@ -225,9 +239,13 @@ def import_price_sheet(db: Session, text: str, catalog_version: str) -> dict:
                 for k, v in rec.items():
                     setattr(existing, k, v)
                 existing.catalog_version = catalog_version
-                updated += 1
+                if repeat:
+                    skipped += 1
+                else:
+                    updated += 1
             else:
                 skipped += 1
+            seen[key] = existing
 
     db.commit()
     return {
