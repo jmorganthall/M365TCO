@@ -20,8 +20,9 @@
 > - Decisions D25–D26 and the pieces marked *(readout)* come from the branded
 >   customer-readout design. They too may be built on today's schema ahead of the
 >   rebuild, in exactly the shape given here.
->   Decisions D27 (the Business seat cap split) and D28 (a recommended plan keeps
-  what the persona has today) may be built ahead the same way.
+>   Decisions D27 (the Business seat cap split), D28 (a recommended plan keeps
+  what the persona has today) and D29 (a carve-out family decides each tool
+  together) may be built ahead the same way.
 
 ---
 
@@ -57,6 +58,7 @@
 | D26 | **One readout design.** The HTML readout and the customer PDF are one document rendered from one template; the PDF is that document printed. | §7 |
 | D27 | **The Business seat cap is met by splitting, never by a hidden swap.** The recommender always proposes the best plan for a persona's requirements. When that is a capped plan (the Business family, 300 seats tenant-wide) and the persona is larger than the seats left in the **future state**, the persona is offered a split: a carve-out of exactly the seats left on the capped plan, the rest on the recommender's best uncapped plan; the larger side is the parent. A person makes the split; until then Review flags the breach. No engagement setting turns the cap on or off. | §3.1, §4.3, §6.4 |
 | D28 | **A recommended plan keeps what the persona has today, the cheapest way.** *(Revised.)* A plan must deliver what the persona's Microsoft licences deliver today and what it declares it needs. An outcome a third-party tool delivers is kept either by that tool (it stays and keeps costing) or by Microsoft (the plan, with add-ons, covers everything the tool does, so the tool retires). An add-on is added to retire a tool only when that lowers the persona's total cost. The cheapest result wins, and the recommender says which tools each option keeps and which add-on retires which tool. The split's other side (D27) is chosen the same way. | §7 |
+| D29 | **A carve-out family decides each tool together.** A persona and its carve-outs are the same people (D11), so for each third-party tool they hold, either every member's plan retires it or none does. The family takes whichever costs the whole family less, summed over every member; on a tie, the tool retires (Microsoft). Each member then gets its cheapest plan within that decision, and that is its recommendation. A member's own cheapest plan is still shown beside it when it costs less and decides differently. Personas outside a family are unchanged (D28). Plans already chosen are never changed; a member whose chosen plan decides a tool differently from the rest of its family is flagged. | §7 |
 
 ---
 
@@ -322,7 +324,10 @@ its headcount exceeds the seats left (§3.1), the GUI offers a split, derived on
 
 - the capped side: exactly the seats left, on the capped plan; the other side: the
   rest, on the recommender's best plan with every capped bundle excluded, which
-  keeps what the persona has today the cheapest way (D28);
+  keeps what the persona has today the cheapest way (D28) and decides each tool
+  the way the capped side's plan does (D29): the capped side's plan is the one a
+  person chose, so the other side follows it. When no priced uncapped plan can,
+  the other side gets its own cheapest plan and the family is flagged;
 - **the larger side is the parent** (it keeps the persona's id, name and scenario;
   only its target may change); the smaller side is the carve-out;
 - default carve-out names: the capped side "*Persona* (Up to *N* Business User
@@ -699,6 +704,30 @@ definitions as everything else (including Org-wide lines).
   lists the tools it keeps and, for every add-on, the required outcome it closes or
   the tool it retires.
 
+**A carve-out family decides each tool together (D29).** A family is a persona with
+no parent plus its carve-outs; it applies only when there is at least one carve-out.
+
+- **The family's tools**: every tool that applies to at least one member, with at
+  least one ratified outcome.
+- **A decision** is the set *R* of the family's tools that retire. A member's plan
+  fits *R* when it retires exactly the tools in *R* that apply to that member. For
+  a member and a base plan, the plan for *R* is the base plus the cheapest add-ons
+  that close its required gaps and cover every outcome of the tools in *R*; it is
+  usable for *R* only if it fits *R* (it may cover a tool outside *R* incidentally,
+  and then it belongs to a different decision).
+- **The family's choice**: for every *R*, each member's cheapest gap-free, priced,
+  not-cap-limited plan that fits *R*; a decision where some member has no such plan
+  is out. The decision with the lowest family net cost wins (the sum over members
+  of target spend less the capped credit of the tools retired, ENGINE_SPEC §6.3a);
+  on a tie, the decision that retires more tools wins.
+- **Each member's recommendation** is its plan under the family's choice. Its own
+  cheapest plan (D28) is listed as well when it is cheaper and decides differently,
+  showing the tools it keeps and the annual difference for that member. When no
+  decision is possible for the whole family, each member falls back to D28 and the
+  family is flagged.
+- **Already chosen plans**: a member whose chosen plan retires a tool that another
+  member's chosen plan keeps is flagged on Future state; no plan is changed.
+
 ### 7.1 The headline's sub-lines and their timing *(walkthrough)*
 
 | Sub-line | Annual amount | Starts at |
@@ -1010,5 +1039,5 @@ what people own.
   Learn), so the components could be loaded rather than typed. Not designed yet.
 - **The recommender.** "Fill in recommended plans" ranks each base plan plus the
   cheapest gap-closing add-ons, plus add-ons that retire a tool for less than it
-  costs, by net cost (D28). Still to design: a preference for upleveling, and pricing a new
+  costs, by net cost (D28); a carve-out family decides each tool together (D29). Still to design: a preference for upleveling, and pricing a new
   customer on the "(no Teams)" suites plus Teams Enterprise.
