@@ -67,6 +67,10 @@
       "ask": "A short description of the persona, in your words.",
       "why": "Shown on the persona's page of the report. It does not change the numbers."
     },
+    "groups.carve_out_drift": {
+      "ask": "Should this carve-out hold the same licences and tools as the persona it came from?",
+      "why": "A carve-out is the same people as its parent, so it copies the parent's licences and tools when it is made. Tags added or removed on one side afterwards don't reach the other, and the recommendation then plans the carve-out without them. Match parent copies the parent's tags onto the carve-out."
+    },
     "groups.required_capabilities": {
       "ask": "Only if a persona needs something it doesn't have today: which capabilities must its future plan include?",
       "why": "By default the recommended plan keeps everything the persona has today. Listing a requirement here makes the recommendation include it too."
