@@ -244,12 +244,12 @@ def hydrate(db: Session, engagement_id: str) -> EngEngagement:
     )
 
 
-def _catalog_annual_erp(db: Session, bundle, basis: dict) -> Decimal:
+def _catalog_annual_erp(db: Session, bundle, basis: dict, catalog=None) -> Decimal:
     """Catalog annual ERP for a bundle — delegates to the shared deterministic
     price helper (services/bundles) so the optimizer and every scenario price
     identically: ratified SKU→Bundle rows first, then title match, ranked to
     the engagement's quoting basis (segment × term × billing plan)."""
-    return bundles.catalog_annual_erp(db, bundle.name, bundle_id=bundle.id, **basis)
+    return bundles.catalog_annual_erp(db, bundle.name, bundle_id=bundle.id, catalog=catalog, **basis)
 
 
 def _min_cost_cover(closeable: frozenset[str], options: list[dict]) -> list[dict]:
@@ -373,12 +373,18 @@ def analyze_persona_bundles(
     basis = bundles.engagement_price_basis(eng)
 
     price_cache: dict[str, Decimal] = {}
+    catalog = None  # bundles.PriceCatalog, read once on the first catalog lookup
 
     def _price(bundle) -> Decimal:
+        nonlocal catalog
         if bundle.id not in price_cache:
             override = prices.get(bundle.name)
-            price_cache[bundle.id] = (Decimal(str(override)) if override is not None
-                                      else _catalog_annual_erp(db, bundle, basis))
+            if override is not None:
+                price_cache[bundle.id] = Decimal(str(override))
+            else:
+                if catalog is None:
+                    catalog = bundles.PriceCatalog(db)
+                price_cache[bundle.id] = _catalog_annual_erp(db, bundle, basis, catalog)
         return price_cache[bundle.id]
 
     # A tool's outcomes are kept by the tool or by Microsoft (TARGET_SCHEMA D28):

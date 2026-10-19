@@ -123,11 +123,12 @@ def list_basis_options(db: Session = Depends(get_db)):
     }
 
 
-def _bundle_list_price(db: Session, bundle, basis: dict) -> float:
+def _bundle_list_price(db: Session, bundle, basis: dict, catalog=None) -> float:
     """Catalog price for a bundle: the annual ERP (the customer-facing retail
     baseline) via the shared deterministic resolver, so the UI autofill and the
     recommend-a-path optimizer quote the same number for the same bundle."""
-    return float(bundles_service.catalog_annual_erp(db, bundle.name, bundle_id=bundle.id, **basis))
+    return float(bundles_service.catalog_annual_erp(
+        db, bundle.name, bundle_id=bundle.id, catalog=catalog, **basis))
 
 
 @router.get("/bundles")
@@ -145,6 +146,7 @@ def list_bundles(engagement_id: str | None = None, db: Session = Depends(get_db)
     by_id = {b.id: b for b in rows}
     elig_map = bundles_service.eligibility_map(db)
     aliases = bundles_service.aliases_by_bundle(db)
+    catalog = bundles_service.PriceCatalog(db)
     out = []
     for b in rows:
         eligible = sorted(elig_map.get(b.id, set()))
@@ -152,7 +154,7 @@ def list_bundles(engagement_id: str | None = None, db: Session = Depends(get_db)
             "id": b.id, "key": b.key, "name": b.name, "kind": b.kind,
             "base_bundle_id": b.base_bundle_id,
             "base_name": by_id[b.base_bundle_id].name if b.base_bundle_id in by_id else None,
-            "list_price_annual": _bundle_list_price(db, b, basis),
+            "list_price_annual": _bundle_list_price(db, b, basis, catalog),
             "sort_order": b.sort_order,
             # Eligibility (only meaningful for add-ons).
             "eligible_base_ids": eligible,
