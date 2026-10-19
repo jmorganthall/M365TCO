@@ -112,6 +112,32 @@ else:
     if residual_intent == None: requires_residual_classification = true
 ```
 
+### Who the covered population is (6.4a)
+
+Each disposition also reports, persona by persona, where the product's covered
+population sits, so the residual can be traced to the people it comes from. It is
+explanatory only and feeds no money:
+
+```
+for each persona p where applies(product, p):
+    status(p) = Replaced    if p has a scenario in `displacing`
+              = PlanGap     elif p has an in-scope scenario s
+                            (missing_outcome_ids = product.delivered_outcome_ids
+                                                   − s.target_covered_outcome_ids)
+              = OutOfScope  elif p has a scenario (none in scope)
+              = NoPlan      otherwise
+    population += (p, headcount(p), status(p))
+
+unassigned_count = covered_count − Σ headcount over population   # may be negative
+```
+
+Because carve-outs take their seats out of the parent, persona headcounts are
+disjoint, so `Σ headcount over non-Replaced population + unassigned_count =
+covered_count − displaced_users` — exactly the pre-clamp residual (and, before any
+override, `residual_count` whenever that is positive). A negative
+`unassigned_count` means the product counts fewer users than the personas holding
+it.
+
 ## Per-persona scenario math (6.2 / 6.3)
 
 ```

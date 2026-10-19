@@ -1487,3 +1487,64 @@ def test_savings_shares_are_of_the_savings_never_the_net():
                                                          "overlicensing": 33}
     assert savings_shares({"duplicate_spend": D("0"), "consolidation": D("-5"),
                            "overlicensing": D("0")}) == {}
+
+
+# ----- Who the covered population is (Section 6.4a) -----
+
+def _population_case(covered_count):
+    """Three personas hold an EDR tool: one moves to a plan that covers it, one to
+    a plan that misses it, one has its plan set out of scope; a fourth has none."""
+    personas = [
+        Persona(id="office", name="Office", headcount=300),
+        Persona(id="plant", name="Plant", headcount=26),
+        Persona(id="lab", name="Lab", headcount=10),
+        Persona(id="new", name="New hires", headcount=4),
+    ]
+    edr = ThirdPartyProduct(
+        id="edr", name="EDR tool", annual_cost=D(covered_count * 100),
+        covered_count=covered_count, delivered_outcome_ids=frozenset({ENDPOINT, IDENTITY}),
+    )
+    scenarios = [
+        PersonaScenario(id="s-office", persona_id="office", target_sku_reference="Full",
+                        target_unit_price_annual=D("400"),
+                        target_covered_outcome_ids=frozenset({ENDPOINT, IDENTITY})),
+        PersonaScenario(id="s-plant", persona_id="plant", target_sku_reference="Lite",
+                        target_unit_price_annual=D("120"),
+                        target_covered_outcome_ids=frozenset({IDENTITY})),
+        PersonaScenario(id="s-lab", persona_id="lab", target_sku_reference="Full",
+                        target_unit_price_annual=D("400"), in_scope=False,
+                        target_covered_outcome_ids=frozenset({ENDPOINT, IDENTITY})),
+    ]
+    return compute(_engagement(personas, [edr], scenarios)).dispositions[0]
+
+
+def test_population_traces_the_residual_to_personas_and_uncounted_people():
+    d = _population_case(390)
+    by = {p.persona_id: p for p in d.population}
+    assert by["office"].status == "Replaced"
+    assert by["plant"].status == "PlanGap"
+    assert by["plant"].missing_outcome_ids == (ENDPOINT,)
+    assert by["lab"].status == "OutOfScope"
+    assert by["new"].status == "NoPlan"
+    # 390 users, 340 in the personas holding it → 50 the personas don't account for.
+    assert d.unassigned_count == 50
+    # Reconciles exactly with the residual: 26 + 10 + 4 + 50 = 90 = 390 − 300.
+    left = sum(p.headcount for p in d.population if p.status != "Replaced")
+    assert left + d.unassigned_count == d.covered_count - d.displaced_users == d.residual_count == 90
+
+
+def test_population_unassigned_goes_negative_when_tool_counts_fewer_users():
+    d = _population_case(320)
+    assert d.unassigned_count == -20
+    left = sum(p.headcount for p in d.population if p.status != "Replaced")
+    assert left + d.unassigned_count == d.residual_count == 20
+
+
+def test_population_lists_only_the_personas_a_tagged_tool_applies_to():
+    personas = [Persona(id="a", name="A", headcount=10), Persona(id="b", name="B", headcount=5)]
+    tool = ThirdPartyProduct(id="t", name="T", annual_cost=D("1000"), covered_count=10,
+                             delivered_outcome_ids=frozenset({ENDPOINT}),
+                             persona_ids=frozenset({"a"}))
+    d = compute(_engagement(personas, [tool], [])).dispositions[0]
+    assert [(p.persona_id, p.status) for p in d.population] == [("a", "NoPlan")]
+    assert d.unassigned_count == 0

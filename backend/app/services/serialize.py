@@ -64,6 +64,13 @@ def result_to_dict(result: EngineResult) -> dict:
                 "residual_intent": d.residual_intent.value,
                 "renewal_date": d.renewal_date,
                 "requires_residual_classification": d.requires_residual_classification,
+                "population": [
+                    {"persona_id": p.persona_id, "persona_name": p.persona_name,
+                     "headcount": p.headcount, "status": p.status,
+                     "missing_outcome_ids": list(p.missing_outcome_ids)}
+                    for p in d.population
+                ],
+                "unassigned_count": d.unassigned_count,
             }
             for d in result.dispositions
         ],
