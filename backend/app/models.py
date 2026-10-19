@@ -100,8 +100,9 @@ class Engagement(Base):
     # When the customer's Microsoft agreement renews — the default renewal for
     # every licence line (a line's own renewal_date overrides it). Times when a
     # Microsoft reduction or an over-licensing saving can start (ENGINE_SPEC
-    # 6.11). NULL = not given: one year after the workshop is assumed, and the
-    # readout says so. Asked on Customer Info.
+    # 6.11). NULL = not given: month-to-month with no lock-in, so those savings
+    # count from the workshop date (day one), and the readout says so. Asked on
+    # Customer Info.
     microsoft_renewal_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     # The snapshot taken when the customer PDF was last produced — the numbers the
     # customer was handed (TARGET_SCHEMA §8). Set only by that deliberate action;

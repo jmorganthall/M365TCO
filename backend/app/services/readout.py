@@ -374,22 +374,38 @@ class _Context:
         timed = _f(h.get("amount"))
         rows = [(f"Year {y['year']}", _f(y["amount"]), _f(y["cumulative"])) for y in years]
         rows.append(("Full run rate", rr, None))
-        peak = max([abs(v) for _, v, _ in rows] + [1.0])
+        # Bars grow from a shared zero line: a net cost to its left, a saving to
+        # its right, both on one scale — sizing by magnitude alone drew a cost
+        # year longer than a smaller saving year.
+        neg = max([-v for _, v, _ in rows if v < 0] + [0.0])
+        span = (neg + max([v for _, v, _ in rows if v > 0] + [0.0])) or 1.0
+        zero = round(neg / span * 100, 1)
+        axis = f"<div class='zero' style='left:{zero}%'></div>" if neg else ""
         out = []
         for label, v, cum in rows:
-            width = max(round(abs(v) / peak * 100, 1), 0.5 if v else 0)
+            width = max(round(abs(v) / span * 100, 1), 0.5 if v else 0)
+            left = zero if v >= 0 else round(zero - width, 1)
             extra = (f"<span class='muted'> · cumulative {_amt(cum, cls=False)}</span>"
                      if cum is not None else "")
             out.append(
                 f"<tr class='{'full' if cum is None else ''}'><th>{label}</th>"
-                f"<td class='track'><div class='bar {'pos' if v >= 0 else 'neg'}' style='width:{width}%'></div></td>"
+                f"<td class='track'><div class='lane'>{axis}<div class='bar {'pos' if v >= 0 else 'neg'}' "
+                f"style='left:{left}%;width:{width}%'></div></div></td>"
                 f"<td class='num'>{_amt(v)}{extra}</td></tr>")
+        # The full run rate over the whole period modelled — the headline figure.
+        # A total, not a year, so no bar (it would dwarf the years' scale).
+        out.append(
+            f"<tr class='total'><th>{self.months} months × full run rate</th><td></td>"
+            f"<td class='num'><b>{_amt(h.get('run_rate_horizon_amount'))}</b></td></tr>")
+        cost_note = (" A bar left of the line is a year that costs more than it saves — "
+                     "spend that lands before the renewals that pay it back."
+                     if neg else "")
         word = "saved" if timed > 0 else "added" if timed < 0 else "no net change"
         return (
             "<div class='ramp-block'><h2>Path to Full Run Rate</h2>"
             "<p class='lede'>Each change starts when the contract behind it renews, so the first "
             f"years build toward the full run rate. <b>Within the first {self.months} months, "
-            f"{_usd0(timed)} is {word}</b> as contracts renew.</p>"
+            f"{_usd0(timed)} is {word}</b> as contracts renew.{cost_note}</p>"
             f"<table class='ramp'>{''.join(out)}</table></div>"
         )
 
@@ -922,7 +938,7 @@ def _css(b: dict) -> str:
     return """
 :root{--primary:%(primary)s;--accent:%(accent)s;--hl:%(hl)s;--ink:#1b2433;--muted:#5d6778;
   --line:#e2e7ef;--soft:#f3f6fb;--pos:#127436;--warn:#9a6700;--now:#127436;--move:%(accent)s;
-  --reduced:#C98500;--kept:#9aa3b2}
+  --reduced:#C98500;--kept:#9aa3b2;--cost:#a34f97}
 *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 html{font-size:10pt}
 body{margin:0;background:#fff;color:var(--ink);
@@ -1004,8 +1020,11 @@ table.ramp th{text-align:left;width:1.1in;font-size:9pt;padding:.04in 0}
 table.ramp td.track{padding:.04in .1in}
 table.ramp td.num{width:2.6in;text-align:right;font-size:9pt;white-space:nowrap}
 table.ramp tr.full th,table.ramp tr.full td{border-top:1px solid var(--line);padding-top:.07in}
-.bar{height:.15in;border-radius:0 3px 3px 0;background:var(--now)}
-.bar.neg{background:var(--kept)}
+table.ramp tr.total th{width:auto;white-space:nowrap}
+.lane{position:relative;height:.15in}
+.zero{position:absolute;top:-.03in;bottom:-.03in;width:0;border-left:1px solid var(--muted)}
+.bar{position:absolute;top:0;height:.15in;border-radius:0 3px 3px 0;background:var(--now)}
+.bar.neg{border-radius:3px 0 0 3px;background:var(--cost)}
 tr.full .bar.pos{background:var(--primary)}
 
 /* Tables */

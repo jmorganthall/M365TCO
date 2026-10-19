@@ -69,7 +69,9 @@ function ProductRow({ t, meta, personas, moneyUnit, update, remove }) {
         </td>
         <td data-label="Renews"><DateInput value={t.renewal_date} style={{ width: 140 }}
           onCommit={(d) => update(t.id, { renewal_date: d })} />
-          {!t.renewal_date && <div className="src warn" style={{ fontSize: '.72rem' }}>assumed in a year</div>}</td>
+          {!t.renewal_date && <div className="src warn" style={{ fontSize: '.72rem' }}
+            title="Treated as month-to-month with no lock-in: its saving, and any Microsoft upgrade that retires it, count from today">
+            no date — counted from today</div>}</td>
         <td data-label="Used by"><UsedBy personas={personas} tagIds={tagIds} dimmed={overridden}
           onChange={(ids) => update(t.id, { persona_ids: ids })} />
           {overridden && <div className="src" style={{ fontSize: '.72rem' }}>covers {t.covered_count_override} (set in details)</div>}</td>
