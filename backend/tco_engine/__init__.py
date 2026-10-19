@@ -30,6 +30,7 @@ from .engine import (
     RollupResult,
     FreedThirdParty,
     QuickWin,
+    QuickWinCover,
     EngineResult,
 )
 from .timing import Headline, HeadlineYear, TimingItem, UnusedSeatLine, ramp_years, start_month
@@ -58,6 +59,7 @@ __all__ = [
     "RollupResult",
     "FreedThirdParty",
     "QuickWin",
+    "QuickWinCover",
     "EngineResult",
     "Headline",
     "HeadlineYear",

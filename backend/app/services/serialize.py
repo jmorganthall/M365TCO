@@ -123,6 +123,11 @@ def result_to_dict(result: EngineResult) -> dict:
                     "displaced_today": q.displaced_today,
                     "residual_today": q.residual_today,
                     "credited_annual": _num(q.credited_annual),
+                    "covered_by": [
+                        {"persona_id": c.persona_id, "persona_name": c.persona_name,
+                         "sku_reference": c.sku_reference, "seats": c.seats}
+                        for c in q.covered_by
+                    ],
                 }
                 for q in result.rollup.quick_wins
             ],

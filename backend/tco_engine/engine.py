@@ -149,6 +149,18 @@ class FreedThirdParty:
 
 
 @dataclass
+class QuickWinCover:
+    """Which current licence covers how many of one persona's seats for a quick
+    win (Section 6.10) — the "who already has this, through what" behind
+    `displaced_today`. Explanatory only; it never feeds the money."""
+
+    persona_id: str
+    persona_name: str
+    sku_reference: str
+    seats: int
+
+
+@dataclass
 class QuickWin:
     """A third-party product whose every delivered outcome is ALREADY covered by
     the customer's current Microsoft licensing — a duplicate they can drop today,
@@ -163,6 +175,8 @@ class QuickWin:
     displaced_today: int
     residual_today: int
     credited_annual: Decimal
+    # The seat allocation behind displaced_today, persona by licence (6.10).
+    covered_by: list[QuickWinCover] = field(default_factory=list)
 
 
 @dataclass
@@ -251,9 +265,10 @@ def _quick_win_seats(
     product: ThirdPartyProduct,
     covering_lines: list,
     personas: dict[str, Persona],
-) -> int:
+) -> tuple[int, list[QuickWinCover]]:
     """Section 6.10: how many of a tool's seats the CURRENT licensing already
-    covers — the seats retirable today, with no move.
+    covers — the seats retirable today, with no move — and the allocation behind
+    it (which licence covered how many of which persona's seats).
 
     Seats are finite and personal. Each covering line entitles seats — its whole
     population when TENANT_WIDE, exactly its assigned seats when PER_USER — and
@@ -274,7 +289,7 @@ def _quick_win_seats(
         pid for pid in (product.persona_ids or personas.keys()) if pid in personas
     )
     if not pop:
-        return 0
+        return 0, []
     # Headcount not yet shown to hold covering licensing.
     unmet = {pid: personas[pid].headcount for pid in pop}
 
@@ -282,9 +297,17 @@ def _quick_win_seats(
         """The tool-using personas this line covers (an untagged line is org-wide)."""
         return sorted(pid for pid in (line.persona_ids or pop) if pid in unmet)
 
+    covers: list[QuickWinCover] = []
+
+    def record(pid: str, line, seats: int) -> None:
+        if seats > 0:
+            covers.append(QuickWinCover(persona_id=pid, persona_name=personas[pid].name,
+                                        sku_reference=line.sku_reference, seats=seats))
+
     for line in covering_lines:
         if line.coverage_scope is CoverageScope.TENANT_WIDE:
             for pid in applies_to(line):
+                record(pid, line, unmet[pid])
                 unmet[pid] = 0
 
     per_user = sorted(
@@ -298,11 +321,12 @@ def _quick_win_seats(
             if seats <= 0:
                 break
             take = min(seats, unmet[pid])
+            record(pid, line, take)
             unmet[pid] -= take
             seats -= take
 
     covered = sum(personas[pid].headcount for pid in pop) - sum(unmet.values())
-    return min(product.covered_count, covered)
+    return min(product.covered_count, covered), covers
 
 
 def compute(engagement: Engagement) -> EngineResult:
@@ -421,7 +445,7 @@ def compute(engagement: Engagement) -> EngineResult:
         if not covering_lines:
             continue
 
-        displaced_today = _quick_win_seats(product, covering_lines, personas)
+        displaced_today, covered_by = _quick_win_seats(product, covering_lines, personas)
 
         credited = _money(Decimal(displaced_today) * product.per_unit_annual_cost)
         if credited <= 0:
@@ -435,6 +459,7 @@ def compute(engagement: Engagement) -> EngineResult:
                 displaced_today=displaced_today,
                 residual_today=max(product.covered_count - displaced_today, 0),
                 credited_annual=credited,
+                covered_by=covered_by,
             )
         )
     quick_win_ids = {q.third_party_product_id for q in quick_wins}
