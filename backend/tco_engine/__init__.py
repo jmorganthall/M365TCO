@@ -25,6 +25,7 @@ from .models import (
 from .engine import (
     compute,
     ScenarioResult,
+    PopulationShare,
     ProductDispositionResult,
     RollupResult,
     FreedThirdParty,
@@ -52,6 +53,7 @@ __all__ = [
     "Engagement",
     "compute",
     "ScenarioResult",
+    "PopulationShare",
     "ProductDispositionResult",
     "RollupResult",
     "FreedThirdParty",

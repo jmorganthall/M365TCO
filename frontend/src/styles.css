@@ -366,6 +366,22 @@ details.more[open] > summary { margin-bottom: .5rem; }
 .review-item { display: flex; gap: .6rem; align-items: flex-start; padding: .45rem 0; border-bottom: 1px solid var(--border); }
 .review-item:last-child { border-bottom: none; }
 .review-item .grow { flex: 1; }
+/* Partly replaced tools: the decision on the left, where the uncovered people
+   come from on the right; stacks on narrow screens. */
+.partly-item { gap: 1.2rem; }
+.partly-item > .grow { min-width: 0; }
+.where-from { flex: 0 0 24rem; max-width: 45%; background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 8px; padding: .55rem .75rem; font-size: .8rem; }
+.where-from-head { font-weight: 600; margin-bottom: .35rem; }
+.partly-question { margin-top: .35rem; font-weight: 600; font-size: .84rem; }
+.where-bar { display: flex; height: .4rem; border-radius: 3px; overflow: hidden; background: var(--border); margin-bottom: .5rem; }
+.where-bar .seg.replaced { background: var(--pos); opacity: .75; }
+.where-bar .seg.left { background: var(--warn); }
+.where-list { list-style: none; margin: 0; padding: 0; }
+.where-list li { display: flex; gap: .6rem; align-items: baseline; padding: .15rem 0; }
+.where-list .n { flex: 0 0 2.6rem; text-align: right; font-weight: 700; color: var(--warn); font-variant-numeric: tabular-nums; }
+.where-replaced { margin-top: .4rem; padding-top: .35rem; border-top: 1px solid var(--border); font-size: .75rem; }
+@media (max-width: 760px) { .partly-item { flex-direction: column; } .where-from { flex-basis: auto; max-width: none; width: 100%; } }
 
 /* The unknown-licence card (WALKTHROUGH step 3): loud while a licence is unread. */
 .card.card-loud { border-color: var(--warn); box-shadow: inset 4px 0 0 var(--warn); }

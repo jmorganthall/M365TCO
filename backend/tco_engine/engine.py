@@ -74,6 +74,22 @@ class ScenarioResult:
 
 
 @dataclass
+class PopulationShare:
+    """One persona's share of a product's users and what its plan does with them
+    (Section 6.4a) — the persona-by-persona answer to "where do the residual
+    users come from". Explanatory only: it never feeds the money."""
+
+    persona_id: str
+    persona_name: str
+    headcount: int
+    # "Replaced" — an in-scope plan displaces the tool for these people;
+    # "PlanGap" — an in-scope plan that misses `missing_outcome_ids`;
+    # "OutOfScope" — the persona's plan is set out of scope; "NoPlan" — none yet.
+    status: str
+    missing_outcome_ids: tuple[str, ...] = ()
+
+
+@dataclass
 class ProductDispositionResult:
     third_party_product_id: str
     third_party_product_name: str
@@ -93,6 +109,11 @@ class ProductDispositionResult:
     # True when a residual exists but the user has not classified it as either
     # an override or an intended out-of-scope residual (Section 6.9 rule 2).
     requires_residual_classification: bool
+    # Who the covered population is (Section 6.4a): each persona that holds the
+    # tool, and the people the tool counts beyond them (negative when it counts
+    # fewer). Σ non-Replaced headcount + unassigned_count = covered − displaced.
+    population: list[PopulationShare] = field(default_factory=list)
+    unassigned_count: int = 0
 
 
 @dataclass
@@ -304,6 +325,32 @@ def compute(engagement: Engagement) -> EngineResult:
         displacing_scenarios_by_product[product.id] = displacing
 
         displaced_users = sum(personas[s.persona_id].headcount for s in displacing)
+
+        # Section 6.4a: the same test, persona by persona, so the residual can be
+        # traced to the personas (and the uncounted people) it comes from.
+        displacing_pids = {s.persona_id for s in displacing}
+        population: list[PopulationShare] = []
+        for persona in engagement.personas:
+            if not _product_applies_to_persona(product, persona.id):
+                continue
+            own = [s for s in engagement.scenarios if s.persona_id == persona.id]
+            in_scope = [s for s in own if s.in_scope]
+            missing: tuple[str, ...] = ()
+            if persona.id in displacing_pids:
+                status = "Replaced"
+            elif in_scope:
+                status = "PlanGap"
+                missing = tuple(sorted(
+                    product.delivered_outcome_ids - in_scope[0].target_covered_outcome_ids))
+            elif own:
+                status = "OutOfScope"
+            else:
+                status = "NoPlan"
+            population.append(PopulationShare(
+                persona_id=persona.id, persona_name=persona.name,
+                headcount=persona.headcount, status=status,
+                missing_outcome_ids=missing))
+        unassigned_count = product.covered_count - sum(p.headcount for p in population)
         per_unit = product.per_unit_annual_cost
 
         override = product.override
@@ -349,6 +396,8 @@ def compute(engagement: Engagement) -> EngineResult:
                 residual_intent=product.residual_intent,
                 renewal_date=product.renewal_date,
                 requires_residual_classification=requires_classification,
+                population=population,
+                unassigned_count=unassigned_count,
             )
         )
 

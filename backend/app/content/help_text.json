@@ -169,7 +169,7 @@
     },
     "future.keep_or_retire": {
       "ask": "This tool is only partly replaced. Will you keep it for the remaining users, or retire it entirely?",
-      "why": "Kept tools stay in your future costs. Retiring needs a reason, which is printed on the report. Unanswered, the tool is assumed kept."
+      "why": "Kept tools stay in your future costs. Retiring needs a reason, which is printed on the report. Unanswered, the tool is assumed kept. The panel beside each tool shows where its remaining users come from: a persona whose plan doesn't cover it, or seats the tool is licensed for beyond the people in this analysis. When it is only the latter, the question is whether our headcount is right and the tool simply over-licensed."
     },
     "gaps.answer": {
       "ask": "You don't have this today. Is that expected, or is it covered somehow outside this inventory?",
