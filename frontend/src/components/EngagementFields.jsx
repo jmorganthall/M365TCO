@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { api } from '../api'
 import { EngagementBasisEditor } from './basis.jsx'
 import Help from './Help.jsx'
+import DateInput from './DateInput.jsx'
 
 // The engagement's own fields, placed where the walkthrough asks for them
 // (docs/WALKTHROUGH.md §3): the customer on step 1, the Microsoft agreement on
@@ -116,8 +117,8 @@ export function CustomerCard({ engagement, meta, onUpdate }) {
         </div>
         <div>
           <label>Workshop date <Help k="customer.workshop_date" /> {saved('workshop_date')}</label>
-          <input type="date" value={f.workshop_date}
-            onChange={(e) => { setF({ ...f, workshop_date: e.target.value }); commit('workshop_date', e.target.value) }} />
+          <DateInput value={f.workshop_date}
+            onCommit={(d) => { setF({ ...f, workshop_date: d || '' }); commit('workshop_date', d) }} />
         </div>
         <div>
           <label>Customer logo <Help k="customer.logo" /></label>
@@ -177,8 +178,8 @@ export function AgreementCard({ engagement, onUpdate }) {
       <div className="grid c3">
         <div>
           <label>Renews on <Help k="agreement.renewal" /> {saved('microsoft_renewal_date')}</label>
-          <input type="date" value={f.microsoft_renewal_date}
-            onChange={(e) => { setF({ ...f, microsoft_renewal_date: e.target.value }); commit('microsoft_renewal_date', e.target.value) }} />
+          <DateInput value={f.microsoft_renewal_date}
+            onCommit={(d) => { setF({ ...f, microsoft_renewal_date: d || '' }); commit('microsoft_renewal_date', d) }} />
           {!f.microsoft_renewal_date && <small className="src warn">Not given — assumed one year after the workshop.</small>}
         </div>
       </div>
