@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { api, money, pct } from '../api'
 import Help from './Help.jsx'
+import DateInput from './DateInput.jsx'
 
 // A number input for an inline (auto-saving) line-item field. Holds local text
 // state so you can clear it and TYPE a new number freely; it commits on blur or
@@ -66,8 +67,8 @@ function ProductRow({ t, meta, personas, moneyUnit, update, remove }) {
             {(meta?.cost_periods || []).map((s) => <option key={s}>{s}</option>)}
           </select>
         </td>
-        <td data-label="Renews"><input type="date" value={t.renewal_date || ''} style={{ width: 140 }}
-          onChange={(e) => update(t.id, { renewal_date: e.target.value || null })} />
+        <td data-label="Renews"><DateInput value={t.renewal_date} style={{ width: 140 }}
+          onCommit={(d) => update(t.id, { renewal_date: d })} />
           {!t.renewal_date && <div className="src warn" style={{ fontSize: '.72rem' }}>assumed in a year</div>}</td>
         <td data-label="Used by"><UsedBy personas={personas} tagIds={tagIds} dimmed={overridden}
           onChange={(ids) => update(t.id, { persona_ids: ids })} />

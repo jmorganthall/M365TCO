@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import Help from './Help.jsx'
+import DateInput from './DateInput.jsx'
 import { api, usd, pct } from '../api'
 import SkuCombobox, { loadSkus, matchSku } from './SkuCombobox.jsx'
 import { BasisSelect, billingLabel, effectiveBasis, termLabel } from './basis.jsx'
@@ -250,8 +251,8 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove, reading, 
                     : <>Set Assigned below Qty to record unused seats.</>}
                 </small></div>
               <div><label>Renews (this line) <Help k="licences.renewal" /></label>
-                <input type="date" value={l.renewal_date || ''}
-                  onChange={(e) => update(l.id, { renewal_date: e.target.value || null })} />
+                <DateInput value={l.renewal_date}
+                  onCommit={(d) => update(l.id, { renewal_date: d })} />
                 <small className="src">Only when this line renews on a different date from the
                   agreement{eng.microsoft_renewal_date ? <> ({eng.microsoft_renewal_date})</> : ''}.
                   Blank = the agreement's date.</small></div>
