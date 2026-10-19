@@ -57,6 +57,16 @@ export default function App() {
   const [active, setActive] = useState(null)
   const [loadErr, setLoadErr] = useState('')
   const [meta, setMeta] = useState(null)
+  // The practice's uploaded logo (Settings → Readout branding), shown in the top
+  // bar so the workshop carries the practice's brand; refreshed when it's saved.
+  const [logo, setLogo] = useState('')
+  useEffect(() => {
+    const loadLogo = () => api.get('/api/admin/branding')
+      .then((b) => setLogo(b.resolved?.logo_data_url || '')).catch(() => {})
+    loadLogo()
+    window.addEventListener('branding-saved', loadLogo)
+    return () => window.removeEventListener('branding-saved', loadLogo)
+  }, [])
   const [returnTo, setReturnTo] = useState('/')
   // Money display unit ($/mo default — humans gut-check monthly; data stays annualized).
   const [moneyUnit, setMoneyUnit] = useState(loadMoneyUnit())
@@ -124,6 +134,7 @@ export default function App() {
             <button className="ghost sm" title="Open another engagement"
               onClick={() => go('/')}>‹ Engagements</button>
           )}
+          {logo && <img src={logo} alt="Practice logo" className="topbar-logo" />}
           <div className="topbar-brand">Microsoft 365 TCO</div>
         </div>
         <button className={`gear ${route.view === 'settings' ? 'active' : ''}`} title="Settings"

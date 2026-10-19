@@ -28,6 +28,7 @@ export default function ReadoutBranding({ onMsg, onErr }) {
   async function save(changes) {
     try {
       setB(await api.put('/api/admin/branding', changes))
+      window.dispatchEvent(new Event('branding-saved'))  // the top bar shows the logo
       onMsg('Readout branding saved.')
     } catch (e) { onErr(e.message) }
   }
@@ -47,7 +48,8 @@ export default function ReadoutBranding({ onMsg, onErr }) {
     <div className="card">
       <h2>Readout branding</h2>
       <p className="hint">How your practice brands the customer readout and PDF, for every
-        engagement. The customer’s own logo is set on each engagement’s Customer step.
+        engagement; your logo also appears in the app's top bar. The customer’s own logo is
+        set on each engagement’s Customer step.
         Leave a field empty to use the built-in default.
         {b.updated_at && <> Last saved <b>{new Date(b.updated_at + 'Z').toLocaleString()}</b>.</>}</p>
 
