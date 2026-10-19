@@ -254,7 +254,7 @@ def _pref_rank(value: str, preferred: str, fallback: dict[str, int]) -> int:
     return 1 + fallback.get(value, len(fallback))
 
 
-def _title_candidates(rows, reference: str):
+def _title_candidates(titled, reference: str):
     """Catalog rows whose title matches the reference, tiered so broader matching
     never shadows a direct hit:
     1. reference contained in a title (classic), or the reference being exactly
@@ -265,24 +265,46 @@ def _title_candidates(rows, reference: str):
     2. only if tier 1 is empty: a title STARTING WITH the reference minus its
        'Microsoft ' prefix (e.g. 'Defender for Office 365 P2 Add On'). Starts-with,
        not contains, because stripped references get loose ('Microsoft 365 E3' →
-       '365 e3' must not match Office 365 E3 titles)."""
+       '365 e3' must not match Office 365 E3 titles).
+    `titled` is the catalog as (row, normalized titles) pairs — see _titled."""
     ref = _norm(reference)
     if not ref:
         return []
 
-    def titles(r):
-        return [t for t in (_norm(r.sku_title or ""), _norm(r.product_title or "")) if t]
-
     direct = [
-        r for r in rows
-        if any(ref in t or f"microsoft {t}" == ref for t in titles(r))
+        r for r, titles in titled
+        if any(ref in t or f"microsoft {t}" == ref for t in titles)
     ]
     if direct:
         return direct
     stripped = ref.removeprefix("microsoft ")
     if stripped == ref:
         return []
-    return [r for r in rows if any(t.startswith(stripped) for t in titles(r))]
+    return [r for r, titles in titled if any(t.startswith(stripped) for t in titles)]
+
+
+def _titled(rows) -> list[tuple]:
+    """Catalog rows paired with their normalized SKU and product titles."""
+    return [
+        (r, [t for t in (_norm(r.sku_title or ""), _norm(r.product_title or "")) if t])
+        for r in rows
+    ]
+
+
+class PriceCatalog:
+    """The catalog read once, for pricing many bundles in one request. Without
+    it every catalog_price_row title match re-reads the whole price sheet —
+    thousands of rows — once per bundle, which made recommend-a-path and the
+    bundle list take seconds. Same rows and order as the per-call queries, so
+    the chosen price row is identical."""
+
+    def __init__(self, db: Session):
+        rows = db.execute(select(models.MicrosoftSku)).scalars().all()
+        self.by_bundle: dict[str, list] = {}
+        for r in rows:
+            if r.bundle_id is not None:
+                self.by_bundle.setdefault(r.bundle_id, []).append(r)
+        self.titled = _titled(rows)
 
 
 def engagement_price_basis(eng) -> dict:
@@ -300,7 +322,7 @@ def engagement_price_basis(eng) -> dict:
 def catalog_price_row(
     db: Session, sku_reference: str, *,
     bundle_id: str | None = None, segment: str = "Commercial",
-    term: str = "P1Y", billing: str = "Monthly",
+    term: str = "P1Y", billing: str = "Monthly", catalog: PriceCatalog | None = None,
 ) -> models.MicrosoftSku | None:
     """The catalog row that prices a bundle/SKU reference, chosen deterministically
     for a quoting basis (segment × term × billing plan — callers pass the
@@ -316,15 +338,18 @@ def catalog_price_row(
     everything else at the same basis (an add-on can carry its parent family as
     its ProductTitle — 'Entra P2 Add On' under product 'Microsoft 365 E3'), and
     the shortest title wins remaining ties (the plain variant over '(no Teams)' /
-    'Unattended' superstrings). Returns None when nothing matches."""
+    'Unattended' superstrings). Returns None when nothing matches. Pass a
+    PriceCatalog when pricing many references in one request."""
     rows: list[models.MicrosoftSku] = []
     if bundle_id is not None:
-        rows = db.execute(
+        rows = catalog.by_bundle.get(bundle_id, []) if catalog else db.execute(
             select(models.MicrosoftSku).where(models.MicrosoftSku.bundle_id == bundle_id)
         ).scalars().all()
     if not rows:
         rows = _title_candidates(
-            db.execute(select(models.MicrosoftSku)).scalars().all(), sku_reference
+            catalog.titled if catalog
+            else _titled(db.execute(select(models.MicrosoftSku)).scalars().all()),
+            sku_reference,
         )
     if not rows:
         return None
@@ -348,7 +373,7 @@ def catalog_price_row(
 def catalog_annual_erp(
     db: Session, sku_reference: str, *,
     bundle_id: str | None = None, segment: str = "Commercial",
-    term: str = "P1Y", billing: str = "Monthly",
+    term: str = "P1Y", billing: str = "Monthly", catalog: PriceCatalog | None = None,
 ) -> Decimal:
     """Catalog price for a bundle: the annual ERP (the customer-facing retail
     baseline; sheet prices are annualized on import, so ÷12 is the monthly
@@ -359,5 +384,6 @@ def catalog_annual_erp(
     (routers/catalog) so all price identically."""
     row = catalog_price_row(
         db, sku_reference, bundle_id=bundle_id, segment=segment, term=term, billing=billing,
+        catalog=catalog,
     )
     return Decimal(str(row.annual_erp_price)) if row else Decimal("0")

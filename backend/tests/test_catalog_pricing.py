@@ -274,3 +274,35 @@ def test_sheet_repeating_a_key_imports_the_current_row(client, db, current_first
     assert len(skus) == 1
     assert str(skus[0].effective_end_date) == "9999-11-30"
     assert skus[0].annual_erp_price == Decimal("537.60")
+
+
+def test_price_catalog_picks_the_same_row_as_a_per_call_lookup(client, db):
+    """Recommend-a-path and the bundle list price many bundles from one
+    PriceCatalog read instead of re-reading the sheet per bundle. That must never
+    change which row prices a bundle: ratified rows, title tiers, and ranking all
+    resolve exactly as the per-call lookup does."""
+    from app import models
+    from app.services import bundles as svc
+
+    e3 = db.query(models.Bundle).filter_by(name="Microsoft 365 E3").first()
+    db.add_all([
+        _sku("Microsoft 365 E3", 432, bundle_id=e3.id if e3 else None),
+        _sku("Microsoft 365 E3 (no Teams)", 390),
+        _sku("Microsoft 365 E5", 684),
+        _sku("Microsoft 365 E5", 820, segment="Education"),
+        _sku("Microsoft 365 E5 Security", 144),
+        _sku("Power BI Pro", 168),
+        _sku("Defender for Office 365 P2 Add On", 60),
+        _sku("Microsoft 365 E5", 0, billing="None", sku_id="TRIAL"),
+    ])
+    db.commit()
+    catalog = svc.PriceCatalog(db)
+    refs = [(b.name, b.id) for b in db.query(models.Bundle).all()] + [
+        ("Microsoft 365 E5", None), ("Microsoft Power BI Pro", None),
+        ("Microsoft Defender for Office 365 P2", None), ("Nothing Like This", None),
+    ]
+    for segment in ("Commercial", "Education"):
+        for name, bid in refs:
+            one = svc.catalog_price_row(db, name, bundle_id=bid, segment=segment)
+            shared = svc.catalog_price_row(db, name, bundle_id=bid, segment=segment, catalog=catalog)
+            assert (one.id if one else None) == (shared.id if shared else None), (name, segment)
