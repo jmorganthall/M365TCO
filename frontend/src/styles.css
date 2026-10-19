@@ -29,7 +29,12 @@ a { color: var(--accent); }
   background: var(--panel); border-bottom: 1px solid var(--border);
 }
 .topbar-left { display: flex; align-items: center; gap: .6rem; min-width: 0; }
-.topbar-brand { font-weight: 700; letter-spacing: .01em; color: var(--ink); white-space: nowrap; }
+/* The practice's uploaded logo: on a light chip so dark logos read on the dark bar. */
+.topbar-logo { height: 32px; max-width: 160px; object-fit: contain; background: #fff;
+  padding: 3px 6px; border-radius: 5px; flex-shrink: 0; }
+.topbar-brand { font-weight: 700; letter-spacing: .01em; color: var(--ink); white-space: nowrap;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 600px) { .topbar-logo { height: 26px; max-width: 96px; padding: 2px 4px; } }
 .gear {
   background: transparent; border: 1px solid var(--border); color: var(--muted);
   border-radius: 8px; width: 34px; height: 34px; font-size: 1.1rem; line-height: 1;
