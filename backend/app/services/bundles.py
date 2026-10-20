@@ -10,6 +10,7 @@ from __future__ import annotations
 import functools
 import json
 import os
+import re
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -283,6 +284,16 @@ def _title_candidates(titled, reference: str):
     return [r for r, titles in titled if any(t.startswith(stripped) for t in titles)]
 
 
+_SEGMENT_QUALIFIER = re.compile(r"\([^)]*\bpricing\)", re.IGNORECASE)
+
+
+def _plain(title: str) -> str:
+    """A normalized title without the sheet's segment qualifier — 'Microsoft 365
+    E3 (Non-Profit Pricing)' reads as 'microsoft 365 e3' — so the segment
+    variants of one product compare as that product."""
+    return _norm(_SEGMENT_QUALIFIER.sub(" ", title or ""))
+
+
 def _titled(rows) -> list[tuple]:
     """Catalog rows paired with their normalized SKU and product titles."""
     return [
@@ -332,7 +343,11 @@ def catalog_price_row(
     Selection: rows RATIFIED onto the bundle (MicrosoftSku.bundle_id — the
     first-class SKU → Bundle mapping) when any exist; otherwise tolerant title
     matching (_title_candidates). The winner is then ranked: priced rows beat
-    $0/trial rows, the requested segment beats other segments (the sheet ships
+    $0/trial rows, the product itself (its title with the sheet's '(… Pricing)'
+    segment qualifier set aside equals the reference) beats longer titles that
+    merely contain it — so a segment with no variant of this product keeps the
+    product's own price instead of borrowing 'E5 Security's for 'E5' — then the
+    requested segment beats other segments (the sheet ships
     Commercial/Education/Charity variants of the same title; 'Nonprofit' matches
     the sheet's Charity rows — models.sheet_segment), the requested
     term and billing plan beat the fallback orders, an EXACT title match beats
@@ -342,10 +357,12 @@ def catalog_price_row(
     'Unattended' superstrings). Returns None when nothing matches. Pass a
     PriceCatalog when pricing many references in one request."""
     rows: list[models.MicrosoftSku] = []
+    ratified = False
     if bundle_id is not None:
         rows = catalog.by_bundle.get(bundle_id, []) if catalog else db.execute(
             select(models.MicrosoftSku).where(models.MicrosoftSku.bundle_id == bundle_id)
         ).scalars().all()
+    ratified = bool(rows)
     if not rows:
         rows = _title_candidates(
             catalog.titled if catalog
@@ -358,9 +375,18 @@ def catalog_price_row(
     ref = _norm(sku_reference)
     want = models.sheet_segment(segment)
 
+    def same_product(r: models.MicrosoftSku) -> bool:
+        # Ratified rows are the bundle by definition; a title match is the
+        # bundle's product only if its title, qualifier aside, IS the reference.
+        return ratified or any(
+            t == ref or f"microsoft {t}" == ref
+            for t in (_plain(r.sku_title), _plain(r.product_title)) if t
+        )
+
     def rank(r: models.MicrosoftSku):
         return (
             0 if Decimal(str(r.annual_erp_price or 0)) > 0 else 1,
+            0 if same_product(r) else 1,
             0 if models.sheet_segment(r.segment) == want else 1,
             _pref_rank(r.term_duration or "", term, _TERM_FALLBACK),
             _pref_rank(r.billing_plan or "", billing, _BILLING_FALLBACK),
