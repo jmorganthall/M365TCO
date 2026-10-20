@@ -333,7 +333,8 @@ def catalog_price_row(
     first-class SKU → Bundle mapping) when any exist; otherwise tolerant title
     matching (_title_candidates). The winner is then ranked: priced rows beat
     $0/trial rows, the requested segment beats other segments (the sheet ships
-    Commercial/Education/Charity variants of the same title), the requested
+    Commercial/Education/Charity variants of the same title; 'Nonprofit' matches
+    the sheet's Charity rows — models.sheet_segment), the requested
     term and billing plan beat the fallback orders, an EXACT title match beats
     everything else at the same basis (an add-on can carry its parent family as
     its ProductTitle — 'Entra P2 Add On' under product 'Microsoft 365 E3'), and
@@ -355,11 +356,12 @@ def catalog_price_row(
         return None
 
     ref = _norm(sku_reference)
+    want = models.sheet_segment(segment)
 
     def rank(r: models.MicrosoftSku):
         return (
             0 if Decimal(str(r.annual_erp_price or 0)) > 0 else 1,
-            0 if (r.segment or "") == segment else 1,
+            0 if models.sheet_segment(r.segment) == want else 1,
             _pref_rank(r.term_duration or "", term, _TERM_FALLBACK),
             _pref_rank(r.billing_plan or "", billing, _BILLING_FALLBACK),
             0 if _norm(r.sku_title or "") == ref else 1,

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { api } from '../api'
+import { sheetSegment } from './basis.jsx'
 
 // Shared searchable SKU picker. Type a few characters (e.g. "O365 E5") and the
 // list ranks by SIMILARITY — closest matches first — rather than requiring the
@@ -77,7 +78,7 @@ function applyBasis(skus, { segment, term, billing } = {}) {
     return next.length ? next : rows
   }
   let rows = skus
-  if (segment) rows = step(rows, (s) => s.segment === segment)
+  if (segment) rows = step(rows, (s) => sheetSegment(s.segment) === sheetSegment(segment))
   if (term) rows = step(rows, (s) => s.term_duration === term)
   if (billing) rows = step(rows, (s) => s.billing_plan === billing)
   return rows

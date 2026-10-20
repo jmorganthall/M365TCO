@@ -60,7 +60,19 @@ BILLING_PLANS = ("Monthly", "Annual", "Triennial")
 # is never silently dropped. `segment` columns therefore stay plain strings, not
 # a DB enum. "Commercial" is the ground-floor default of the inheritance chain
 # (GlobalDefaults -> Engagement -> line item).
-SEGMENTS = ("Commercial", "Education", "Government", "Nonprofit", "Charity")
+SEGMENTS = ("Commercial", "Education", "Government", "Charity")
+# Names people use for a segment that the sheet spells differently. Microsoft's
+# programme is "Nonprofit" but its price sheet labels those rows "Charity", so an
+# engagement or line set to "Nonprofit" must resolve to the Charity rows. Applied
+# at match time only — a stored "Nonprofit" is kept exactly as entered.
+SEGMENT_ALIASES = {"nonprofit": "charity", "non-profit": "charity"}
+
+
+def sheet_segment(segment: str | None) -> str:
+    """The price-sheet segment a stored/picked value matches, case-folded, for
+    comparing a basis segment to MicrosoftSku.segment ('Nonprofit' → 'charity')."""
+    s = (segment or "").strip().lower()
+    return SEGMENT_ALIASES.get(s, s)
 # How a pricing-catalog load reached us. The two load paths (manual CSV upload,
 # Partner Center price-sync) write a row on success; "Reconciled" is a row
 # synthesized from an already-loaded catalog that predates provenance recording,

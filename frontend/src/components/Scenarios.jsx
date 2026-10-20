@@ -3,7 +3,7 @@ import Help from './Help.jsx'
 import { api, usd, money, pct } from '../api'
 import BundleAnalysis from './BundleAnalysis.jsx'
 import SkuCombobox from './SkuCombobox.jsx'
-import { BasisSelect, effectiveBasis, termLabel, billingLabel } from './basis.jsx'
+import { BasisSelect, effectiveBasis, termLabel, billingLabel, segmentLabel } from './basis.jsx'
 
 // Target prices are stored annualized; the UI edits per-seat MONTHLY.
 const annualToMonthly = (a) => (a ? Math.round((Number(a) / 12) * 100) / 100 : 0)
@@ -197,7 +197,7 @@ function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove,
                 <small className="src">Billing plan; changing it requotes from the catalog.</small></div>
               <div><label>Quoting basis</label>
                 <div className="muted" style={{ paddingTop: '.35rem' }}>
-                  {effBasis.segment} · {termLabel(effBasis.term)} · {billingLabel(effBasis.billing)}</div>
+                  {segmentLabel(effBasis.segment)} · {termLabel(effBasis.term)} · {billingLabel(effBasis.billing)}</div>
                 <small className="src">Which priced catalog variant quotes this line.</small></div>
             </div>
             <div style={{ marginTop: '.3rem' }}>

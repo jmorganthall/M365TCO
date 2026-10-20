@@ -3,7 +3,7 @@ import Help from './Help.jsx'
 import DateInput from './DateInput.jsx'
 import { api, usd, pct } from '../api'
 import SkuCombobox, { loadSkus, matchSku } from './SkuCombobox.jsx'
-import { BasisSelect, billingLabel, effectiveBasis, termLabel } from './basis.jsx'
+import { BasisSelect, billingLabel, effectiveBasis, segmentLabel, termLabel } from './basis.jsx'
 
 // Prices are stored annualized (the engine works in annual USD); the UI edits
 // per-seat MONTHLY. Convert at the boundary only.
@@ -85,7 +85,7 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove, reading, 
   if (l.price_override) chips.push(
     <span key="ov" className="badge" title={`Custom price · list ${usd(listAnnual(l))}/seat/yr`}>
       override{off > 0 ? ` −${pct(off)}` : ''}</span>)
-  if (overridden) chips.push(<span key="basis" className="badge muted" title="Pricing basis overrides the engagement default">{basis.segment} · {basis.term}</span>)
+  if (overridden) chips.push(<span key="basis" className="badge muted" title="Pricing basis overrides the engagement default">{segmentLabel(basis.segment)} · {basis.term}</span>)
   // A tenant-wide line entitles EVERY user it applies to, regardless of the seat
   // count — the only kind of line that can make a whole persona redundant for a
   // duplicate tool. Say so on the row: it is load-bearing for quick wins.
@@ -399,7 +399,7 @@ export default function CurrentLicensing({ engagement, meta, onUpdate, onNavigat
       <p className="hint">Each Microsoft product the customer pays for: how many are bought, which
         personas get it (▸ details) and, if known, what they pay — otherwise the list price is used. Seats
         bought but not assigned are asked about in the details. Prices are quoted at{' '}
-        <b>{engBasis.segment} · {termLabel(engBasis.term)} · {billingLabel(engBasis.billing)}</b>{' '}
+        <b>{segmentLabel(engBasis.segment)} · {termLabel(engBasis.term)} · {billingLabel(engBasis.billing)}</b>{' '}
         (Customer step › Pricing basis; a line can override it).</p>
       {err && <div className="err">{err}</div>}
 

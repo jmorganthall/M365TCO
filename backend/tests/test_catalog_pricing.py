@@ -153,6 +153,36 @@ def test_recommend_a_path_prices_at_engagement_basis(client, db):
     client.delete(f"/api/engagements/{eid}")
 
 
+def test_nonprofit_segment_prices_at_the_sheets_charity_rows(client, db):
+    """Microsoft's price sheet labels nonprofit rows Segment = 'Charity'. An
+    engagement set to 'Nonprofit' (the name customers and the picker use) must
+    quote those rows in recommend-a-path, not silently fall back to the
+    Commercial price because no row is literally labelled 'Nonprofit'."""
+    from app.services import bundles as bsvc
+    db.add_all([
+        _sku("Microsoft 365 Business Premium", 277.2, billing="Monthly"),
+        _sku("Microsoft 365 Business Premium (Non-Profit Pricing)", 66,
+             billing="Monthly", segment="Charity"),
+    ])
+    db.commit()
+    assert bsvc.catalog_annual_erp(
+        db, "Microsoft 365 Business Premium", segment="Nonprofit") == Decimal("66")
+
+    eng = client.post("/api/engagements", json={"customer_name": "Nonprofit Co"}).json()
+    eid = eng["id"]
+    eng = client.patch(f"/api/engagements/{eid}", json={"default_segment": "Nonprofit"}).json()
+    assert eng["default_segment"] == "Nonprofit"  # stored as entered, never rewritten
+    kw = client.post(f"/api/engagements/{eid}/personas",
+                     json={"name": "KW", "headcount": 100}).json()
+    res = client.post(f"/api/engagements/{eid}/personas/{kw['id']}/bundle-analysis").json()
+    bp = next(b for b in res["bundles"] if b["sku_reference"] == "Microsoft 365 Business Premium")
+    assert bp["base_price_annual"] == 66.0
+    # The catalog search's segment filter honours the same equivalence.
+    rows = client.get("/api/catalog/skus", params={"segment": "Nonprofit"}).json()
+    assert rows and all(r["segment"] == "Charity" for r in rows)
+    client.delete(f"/api/engagements/{eid}")
+
+
 def test_global_defaults_inherited_by_new_engagements(client, db):
     """Level 1 → 2 of the hierarchy: changing the global default term/billing
     retargets NEW engagements only."""

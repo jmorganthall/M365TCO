@@ -20,6 +20,17 @@ export const termLabel = (v) => {
   return v
 }
 export const billingLabel = (v) => BILLING_LABELS[v] || v
+// Microsoft's price sheet labels nonprofit rows Segment = 'Charity'; people say
+// "Nonprofit". sheetSegment() is the sheet value a picked/stored segment matches
+// (mirrors models.sheet_segment), so a stored 'Nonprofit' shows as, and prices
+// at, the Charity option without the stored value ever being rewritten.
+const SEGMENT_ALIASES = { nonprofit: 'charity', 'non-profit': 'charity' }
+export const sheetSegment = (v) => {
+  const s = (v || '').trim().toLowerCase()
+  return SEGMENT_ALIASES[s] || s
+}
+export const SEGMENT_LABELS = { Charity: 'Nonprofit (Charity)' }
+export const segmentLabel = (v) => SEGMENT_LABELS[v] || v
 
 // The picker value lists come from the DATA — distinct values in the loaded
 // price sheet (∪ known defaults), via /api/catalog/basis-options. Module-level
@@ -60,15 +71,19 @@ export function BasisSelect({ kind, value, onChange, meta, inheritFrom, style })
   const fetched = kind === 'segment' ? data.segments
     : kind === 'term' ? data.terms : data.billing_plans
   let options = fetched.length ? fetched : fallback
+  // A segment alias ('Nonprofit') selects the sheet option it matches ('Charity').
+  const same = (a, b) => (kind === 'segment' ? sheetSegment(a) === sheetSegment(b) : a === b)
+  const shown = (value && options.find((o) => same(o, value))) || value
   // A stored value outside the list (e.g. from an older sheet) stays selectable.
-  if (value && !options.includes(value)) options = [...options, value]
-  const label = kind === 'term' ? termLabel : kind === 'billing' ? billingLabel : (s) => s
+  if (shown && !options.includes(shown)) options = [...options, shown]
+  const label = kind === 'term' ? termLabel : kind === 'billing' ? billingLabel : segmentLabel
   const inherit = inheritFrom !== undefined
+  const inheritShown = (inheritFrom && options.find((o) => same(o, inheritFrom))) || inheritFrom
   return (
-    <select style={style} value={value || ''}
+    <select style={style} value={shown || ''}
       onChange={(e) => onChange(inherit ? (e.target.value || null) : e.target.value)}>
-      {inherit && <option value="">Default ({label(inheritFrom)})</option>}
-      {options.filter((v) => !inherit || v !== inheritFrom)
+      {inherit && <option value="">Default ({label(inheritShown)})</option>}
+      {options.filter((v) => !inherit || !same(v, inheritFrom))
         .map((v) => <option key={v} value={v}>{label(v)}</option>)}
     </select>
   )

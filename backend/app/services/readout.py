@@ -48,6 +48,11 @@ ACTION = {"FullyEliminated": ("Retire", "retire"), "PartiallyReduced": ("Reduce 
 
 # ---- Formatting --------------------------------------------------------------
 
+def _segment_label(segment: str | None) -> str:
+    """Customer-facing segment name: the sheet's 'Charity' reads as 'Nonprofit'."""
+    return "Nonprofit" if models.sheet_segment(segment) == "charity" else (segment or "Commercial")
+
+
 def _f(v) -> float:
     return float(v or 0)
 
@@ -791,7 +796,7 @@ class _Context:
                          + "".join(lic_row(l) for l in eng.licenses_in_scope) + "</tbody></table>")
         notes = []
         term = {"P1Y": "1-year term", "P1M": "monthly term", "P3Y": "3-year term"}
-        notes.append(f"<b>Pricing basis for the recommended plans:</b> {E(eng.default_segment or 'Commercial')} · "
+        notes.append(f"<b>Pricing basis for the recommended plans:</b> {E(_segment_label(eng.default_segment))} · "
                      f"{E(term.get(eng.default_term_duration or 'P1Y', eng.default_term_duration or 'P1Y'))} · "
                      f"{E(eng.default_billing_plan or 'Monthly')} billing — the catalog price unless a "
                      "negotiated price is entered.")

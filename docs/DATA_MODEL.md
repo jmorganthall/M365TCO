@@ -193,7 +193,10 @@ FK, UUID PK, cascade-deleted with the engagement.
   (`services/bundles.catalog_price_row` — deterministic: ratified SKU→Bundle
   rows first, then tolerant title match, ranked segment → term → billing plan →
   plainest title, $0/trial rows last). A Nonprofit customer sets
-  `default_segment = Nonprofit` once; a `CurrentMicrosoftLicense` (§4.5) or a
+  `default_segment` to Nonprofit once — Microsoft's sheet labels those rows
+  `Segment = Charity`, so the picker offers them as "Nonprofit (Charity)" and a
+  stored `Nonprofit` matches the Charity rows at resolve time
+  (`models.sheet_segment`; the stored value is never rewritten); a `CurrentMicrosoftLicense` (§4.5) or a
   `PersonaScenario` (§4.8) can still override per line. Because the tuple `(segment, term,
   billing)` resolves to exactly one priced `MicrosoftSku` row, the list price
   seeded on a SKU pick is the correct variant's — no silent same-title collapse.
