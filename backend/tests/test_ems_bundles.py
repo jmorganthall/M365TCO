@@ -7,8 +7,9 @@ capability map, so a persona on "Office 365 E3 + EMS E3" no longer looks fully
 covered by Office 365 E3 alone. See seeds/bundles.json + seeds/coverage.json.
 """
 
+# Remote Help joined EMS E3 (and so Microsoft 365 E3) in the July 2026 Intune packaging.
 EMS_E3_OUTCOMES = {"identity-sso", "identity-mfa", "device-management",
-                   "information-protection"}
+                   "information-protection", "remote-support"}
 EMS_E5_EXTRA = {"identity-governance", "cloud-app-security"}
 
 

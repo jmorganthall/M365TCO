@@ -965,6 +965,17 @@ To `DATA_ARCHITECTURE.md` and `CLAUDE.md`:
     Protection, Exchange Online Archiving, Copilot) as add-ons. Keys and
     eligibility are set in the content PR.
   - **Aliases:** the names customer exports use for these.
+- *(walkthrough)* **Print Management and End-User Remote Support**, added to the seed
+  files ahead of the rebuild:
+  - **Outcomes** `print-management` ("Print Management (Cloud Print)", e.g. Universal
+    Print) and `remote-support` ("End-User Remote Support", e.g. Intune Remote Help).
+  - **Bundles:** Universal Print and Microsoft Intune Remote Help as stand-alone add-ons.
+  - **Coverage:** `print-management`, **verified** (Microsoft Learn, *Get access to
+    Universal Print*): Microsoft 365 E3, E5, F3, Business Premium. `remote-support`,
+    **verified** (Microsoft Learn, *Intune planning guide*, July 2026 packaging):
+    Microsoft 365 E3 (through EMS E3), E5, E7; Frontline and Business plans unchanged.
+    Microsoft 365 E7 (print) and EMS E5 (remote help) follow the plan they contain;
+    the "(no Teams)" suites follow their parent.
 
 ---
 

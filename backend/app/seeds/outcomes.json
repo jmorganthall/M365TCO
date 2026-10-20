@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-seed-v8-email-outcomes",
+  "version": "2026-10-seed-v9-print-and-remote-support",
   "note": "Default outcome library — the initial seed for the globally-editable DefaultOutcome table. Editing the global library (Settings > Outcomes) changes the template for NEW engagements only; existing engagements keep their own copy. outcome keys are stable identifiers referenced by coverage.json. Security outcomes are split to the granularity at which Microsoft SKUs and third-party tools actually differ: Endpoint = EPP vs EDR; Email = Hygiene vs Advanced Threat Protection; Identity is split three ways — SSO/IdP (directory + single sign-on, on any tenant) vs MFA & Conditional Access (Entra P1: dynamic/adaptive auth) vs Governance (Entra P2: PIM/access reviews); plus CASB and the two telephony layers (PBX vs PSTN). Collaboration is Team Chat & Meetings (Teams vs Slack/Zoom); desktop apps and cloud storage are their own outcomes.",
   "outcomes": [
     {
@@ -136,6 +136,16 @@
       "key": "mailbox-full",
       "name": "Full-Size Mailbox",
       "description": "A full-size mailbox (50 GB or more) with the Outlook desktop app's full feature set, rather than the 2 GB Frontline/Kiosk mailbox."
+    },
+    {
+      "key": "print-management",
+      "name": "Print Management (Cloud Print)",
+      "description": "Cloud-managed printing without on-premises print servers: printers registered and shared through the cloud directory, driverless printing, location-based printer discovery, and secure release (e.g. Universal Print). Displaces Windows print servers and print-management tools such as PrinterLogic or PaperCut's print-server role. Microsoft's included print volume is pooled per tenant and is not modelled here."
+    },
+    {
+      "key": "remote-support",
+      "name": "End-User Remote Support",
+      "description": "Help-desk remote assistance for end-user devices: view or take control of a user's screen, with role-based access, sessions tied to the user's and helper's cloud identity, and session reports (e.g. Intune Remote Help). Displaces remote-support tools such as TeamViewer, BeyondTrust Remote Support or LogMeIn Rescue."
     }
   ]
 }

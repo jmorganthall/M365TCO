@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-bundles-v4-standalones-no-teams",
+  "version": "2026-10-bundles-v5-print-remote-help",
   "bundles": [
     {"key": "exo-kiosk", "name": "Exchange Online Kiosk", "kind": "bundle", "base": null, "sort_order": 1, "aliases": ["Exchange Online (Kiosk)", "EXO Kiosk"]},
     {"key": "exo-p1", "name": "Exchange Online (Plan 1)", "kind": "bundle", "base": null, "sort_order": 2, "aliases": ["Exchange Online Plan 1", "Exchange Online P1", "EXO P1", "EXO Plan 1"]},
@@ -53,6 +53,8 @@
     {"key": "defender-office-p1", "name": "Microsoft Defender for Office 365 P1", "kind": "addon", "base": null, "sort_order": 74, "aliases": ["Defender for Office 365 P1", "Microsoft Defender for Office 365 (Plan 1)", "Defender for Office 365 Plan 1"]},
     {"key": "eop", "name": "Exchange Online Protection", "kind": "addon", "base": null, "sort_order": 76, "aliases": ["EOP"]},
     {"key": "exo-archiving", "name": "Exchange Online Archiving", "kind": "addon", "base": null, "sort_order": 77, "aliases": ["Exchange Online Archiving for Exchange Online", "Exchange Online Archiving for Exchange Server", "EOA"]},
-    {"key": "copilot", "name": "Microsoft 365 Copilot", "kind": "addon", "base": null, "sort_order": 78, "aliases": ["Copilot for Microsoft 365", "Microsoft Copilot for Microsoft 365", "M365 Copilot"]}
+    {"key": "copilot", "name": "Microsoft 365 Copilot", "kind": "addon", "base": null, "sort_order": 78, "aliases": ["Copilot for Microsoft 365", "Microsoft Copilot for Microsoft 365", "M365 Copilot"]},
+    {"key": "universal-print", "name": "Universal Print", "kind": "addon", "base": null, "sort_order": 79, "aliases": ["Universal Print (standalone)", "Microsoft Universal Print"]},
+    {"key": "remote-help", "name": "Microsoft Intune Remote Help", "kind": "addon", "base": null, "sort_order": 80, "aliases": ["Remote Help", "Intune Remote Help", "Remote Help for Microsoft Intune"]}
   ]
 }
