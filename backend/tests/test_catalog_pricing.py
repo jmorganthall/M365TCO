@@ -183,6 +183,51 @@ def test_nonprofit_segment_prices_at_the_sheets_charity_rows(client, db):
     client.delete(f"/api/engagements/{eid}")
 
 
+def test_segment_variant_never_borrows_another_products_price(db):
+    """The requested segment is preferred among variants of the SAME product
+    (its title once the sheet's '(… Pricing)' qualifier is set aside). A
+    nonprofit quote for a product the sheet sells no nonprofit variant of keeps
+    the product's own Commercial price — it must not borrow a longer-titled
+    nonprofit SKU's price ('E5 Security' answering for 'E5') — and a $0
+    donation row never prices a plan."""
+    from app.services import bundles as bsvc
+    db.add_all([
+        _sku("Microsoft 365 E5", 787.2, billing="Monthly"),
+        _sku("Microsoft 365 E5 Security (Non-Profit Pricing)", 36, billing="Monthly",
+             segment="Charity"),
+        _sku("Microsoft 365 Business Premium", 277.2, billing="Monthly"),
+        _sku("Microsoft 365 Business Premium (Nonprofit Staff Pricing)", 66,
+             billing="Monthly", segment="Charity"),
+        _sku("Microsoft 365 Business Premium (Nonprofit Staff Pricing) Donation", 0,
+             billing="Monthly", segment="Charity"),
+    ])
+    db.commit()
+    assert bsvc.catalog_annual_erp(db, "Microsoft 365 E5", segment="Nonprofit") == Decimal("787.2")
+    assert bsvc.catalog_annual_erp(
+        db, "Microsoft 365 Business Premium", segment="Nonprofit") == Decimal("66")
+    assert bsvc.catalog_annual_erp(db, "Microsoft 365 Business Premium") == Decimal("277.2")
+
+
+def test_bundle_list_quotes_at_a_scenario_term_override(client, db):
+    """The bundle list a scenario's add-on picker prices from honours the
+    scenario's own term/payment (passed as overrides), not only the engagement
+    default — so an add-on added to a 3-year scenario is quoted at 3 years."""
+    db.add_all([
+        _sku("Microsoft 365 E5 Security", 144, billing="Monthly"),
+        _sku("Microsoft 365 E5 Security", 411, term="P3Y", billing="Triennial"),
+    ])
+    db.commit()
+    eng = client.post("/api/engagements", json={"customer_name": "Override Co"}).json()
+
+    def price(**params):
+        rows = client.get("/api/catalog/bundles", params={"engagement_id": eng["id"], **params}).json()
+        return next(b for b in rows if b["name"] == "Microsoft 365 E5 Security")["list_price_annual"]
+
+    assert price() == 144.0
+    assert price(term="P3Y", billing="Triennial") == 411.0
+    client.delete(f"/api/engagements/{eng['id']}")
+
+
 def test_global_defaults_inherited_by_new_engagements(client, db):
     """Level 1 → 2 of the hierarchy: changing the global default term/billing
     retargets NEW engagements only."""

@@ -8,7 +8,7 @@ import { sheetSegment } from './basis.jsx'
 // shortcodes (F1/F3/E3/E5) and catalog titles both work.
 //
 // Basis-aware: when a `segment` / `term` / `billing` are supplied (from the
-// license line's effective pricing basis), the list narrows to that priced
+// license line's effective pricing basis), each product narrows to that priced
 // variant so the price shown — and the one seeded on select — is the right one.
 // Distinct-priced variants that share a title are NOT collapsed (that silent
 // collapse is what let a cheaper same-titled SKU mis-seed the price); each
@@ -38,6 +38,12 @@ const _expand = (s) => _norm(s)
   .replace(/\bo365\b/g, 'office 365')
   .replace(/\bems\b/g, 'enterprise mobility security')
 const _tokens = (s) => _expand(s).replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(Boolean)
+// The sheet names a segment variant with a "(… Pricing)" qualifier — 'Microsoft
+// Teams Premium (Non-Profit Pricing)', '… (Nonprofit Staff Pricing)', '…
+// (Education Faculty Pricing)'. Without it the variant reads as the product it
+// prices, so every segment of one product scores alike and shares one product
+// key ('… (Nonprofit Staff Pricing) Donation' stays its own product).
+const _plain = (s) => _norm((s || '').replace(/\([^)]*\bpricing\)/gi, ' '))
 
 // Similarity score of a SKU against a query. Higher = closer; 0 = no signal.
 // Tiered so stronger evidence dominates: exact title > substring > token
@@ -45,20 +51,25 @@ const _tokens = (s) => _expand(s).replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filt
 // "…E5" candidates above unrelated ones without ever hard-requiring every token.
 function scoreSku(sku, qNorm, qTokens) {
   if (!qNorm) return 0
-  const title = _norm(sku.sku_title)
-  const prod = _norm(sku.product_title)
+  const title = _plain(sku.sku_title)
+  const prod = _plain(sku.product_title)
   let score = 0
-  if (title === qNorm || prod === qNorm) score = Math.max(score, 1000)
+  // An exact SKU title beats an exact product title: the sheet files some
+  // add-ons under their parent family ('Entra P2 Add On' under product
+  // 'Microsoft 365 E3'), and those must not answer for the parent.
+  if (title === qNorm) score = Math.max(score, 1000)
+  if (prod === qNorm) score = Math.max(score, 900)
   if (title.includes(qNorm) || prod.includes(qNorm)) score = Math.max(score, 700 - title.length)
   if (qNorm.includes(title) && title) score = Math.max(score, 600 - (qNorm.length - title.length))
   if (qTokens.length) {
-    for (const cand of [sku.sku_title, sku.product_title]) {
+    for (const [cand, nudge] of [[title, 0], [prod, 1]]) {
       const ct = _tokens(cand)
       if (!ct.length) continue
       const hit = qTokens.filter((t) => ct.includes(t)).length
       if (!hit) continue
-      // Reward coverage of the query, penalize extra noise in the candidate.
-      const overlap = hit * 100 - (ct.length - hit) * 4 - (qTokens.length - hit) * 30
+      // Reward coverage of the query, penalize extra noise in the candidate; a
+      // product-title hit loses a tie to the same SKU-title hit (see above).
+      const overlap = hit * 100 - (ct.length - hit) * 4 - (qTokens.length - hit) * 30 - nudge
       score = Math.max(score, overlap)
     }
   }
@@ -68,10 +79,12 @@ function scoreSku(sku, qNorm, qTokens) {
   return score
 }
 
-// Narrow the catalog to the effective pricing basis when one is supplied. A
-// missing basis dimension is left unfiltered (so the picker still works before
-// a basis is chosen). Never returns an empty set purely because of basis: if a
-// filter would empty the list, it is relaxed so the user still sees candidates.
+// Narrow one product's variants to the effective pricing basis when one is
+// supplied. A missing basis dimension is left unfiltered (so the picker still
+// works before a basis is chosen). Never returns an empty set purely because of
+// basis: if a filter would empty the list, it is relaxed — the product's
+// closest variant still prices it (a product with no nonprofit row keeps its
+// Commercial price rather than vanishing).
 function applyBasis(skus, { segment, term, billing } = {}) {
   const step = (rows, pred) => {
     const next = rows.filter(pred)
@@ -85,15 +98,27 @@ function applyBasis(skus, { segment, term, billing } = {}) {
 }
 
 // Rank catalog SKUs by similarity to `text`, within the effective basis. Returns
-// scored, distinct-priced options sorted best-first.
+// scored, distinct-priced options sorted best-first. The basis narrows each
+// PRODUCT's variants, not the whole catalog: narrowing first let a nonprofit
+// line for a product with no nonprofit row match some other nonprofit SKU.
+// Among equal scores a priced row beats a $0 trial/donation row (as the
+// server's catalog_price_row does), then the cheaper.
 export function rankSkus(skus, text, basis = {}) {
-  const qNorm = _norm(text)
+  const qNorm = _expand(text)  // 'M365 E3' compares as 'microsoft 365 e3'
   const qTokens = _tokens(text)
-  const inBasis = applyBasis(skus || [], basis)
+  const byProduct = new Map()
+  for (const s of skus || []) {
+    const k = _plain(s.sku_title)
+    if (!byProduct.has(k)) byProduct.set(k, [])
+    byProduct.get(k).push(s)
+  }
+  const inBasis = [...byProduct.values()].flatMap((rows) => applyBasis(rows, basis))
+  const unpriced = (s) => (Number(s.annual_erp_price) > 0 ? 0 : 1)
   const scored = inBasis
     .map((s) => ({ sku: s, score: scoreSku(s, qNorm, qTokens) }))
     .filter((r) => (qNorm ? r.score > 0 : true))
-    .sort((a, b) => b.score - a.score || Number(a.sku.annual_erp_price) - Number(b.sku.annual_erp_price))
+    .sort((a, b) => b.score - a.score || unpriced(a.sku) - unpriced(b.sku)
+      || Number(a.sku.annual_erp_price) - Number(b.sku.annual_erp_price))
   return scored
 }
 

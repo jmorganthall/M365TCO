@@ -135,16 +135,23 @@ def _bundle_list_price(db: Session, bundle, basis: dict, catalog=None) -> float:
 
 
 @router.get("/bundles")
-def list_bundles(engagement_id: str | None = None, db: Session = Depends(get_db)):
+def list_bundles(engagement_id: str | None = None, term: str | None = None,
+                 billing: str | None = None, db: Session = Depends(get_db)):
     """The staple bundle library (the SKU → Bundle → Outcomes spine), with the
     catalog ERP so the UI can auto-fill target/add-on prices. Quoted at the
     engagement's pricing basis when `engagement_id` is given, else the global
-    defaults. Each add-on also carries its eligibility set — the base bundles it
-    may layer onto (empty `eligible_base_ids` + `alacarte=true` means any base)."""
+    defaults; `term` / `billing` override that basis (a scenario's own term or
+    payment, level 3 of the hierarchy). Each add-on also carries its eligibility
+    set — the base bundles it may layer onto (empty `eligible_base_ids` +
+    `alacarte=true` means any base)."""
     from ..services import defaults as defaults_service
 
     eng = db.get(models.Engagement, engagement_id) if engagement_id else None
     basis = bundles_service.engagement_price_basis(eng or defaults_service.get_defaults(db))
+    if term:
+        basis["term"] = term
+    if billing:
+        basis["billing"] = billing
     rows = bundles_service.list_bundles(db)
     by_id = {b.id: b for b in rows}
     elig_map = bundles_service.eligibility_map(db)

@@ -44,7 +44,7 @@ const pctOffList = (s) => {
 // base price, discount, term/payment model, and add-on bundles (composed) in
 // the expander. Term/billing default to the engagement's pricing basis; a
 // line-level selection requotes the composed target from the catalog.
-function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove, onAnalyze, onCarve, parentName }) {
+function ScenarioRow({ eid, p, s, r, bundles, basis, meta, moneyUnit, update, remove, onAnalyze, onCarve, parentName }) {
   const [open, setOpen] = useState(false)
   // The last SETTLED target pick (not the live typed text) — "changed SKU"
   // means a genuinely different product, which re-seeds the $/seat/mo.
@@ -67,8 +67,17 @@ function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove,
   const available = bundles.filter((b) => b.kind === 'addon'
     && !(s.addons || []).some((a) => a.bundle_id === b.id) && eligibleForBase(b))
 
-  const addAddon = (bid) => {
-    const b = bundles.find((x) => x.id === bid)
+  const addAddon = async (bid) => {
+    let b = bundles.find((x) => x.id === bid)
+    // `bundles` is priced at the engagement basis; a scenario with its own term
+    // or payment quotes the add-on at that basis instead (as its requote does).
+    if (s.term_duration || s.billing_plan) {
+      const qs = new URLSearchParams({ engagement_id: eid })
+      if (s.term_duration) qs.set('term', s.term_duration)
+      if (s.billing_plan) qs.set('billing', s.billing_plan)
+      const priced = await api.get(`/api/catalog/bundles?${qs}`).catch(() => null)
+      b = priced?.find((x) => x.id === bid) || b
+    }
     update(s.id, { addons: [...payload(), { bundle_id: bid, unit_price_annual: b?.list_price_annual || 0 }] })
   }
   const removeAddon = (bid) => update(s.id, { addons: payload().filter((a) => a.bundle_id !== bid) })
@@ -418,7 +427,7 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo', onChange
             )
             return (
               <React.Fragment key={p.id}>
-                <ScenarioRow p={p} s={s} r={resultFor(s.id)} bundles={bundles} basis={basis}
+                <ScenarioRow eid={eid} p={p} s={s} r={resultFor(s.id)} bundles={bundles} basis={basis}
                   meta={meta} moneyUnit={moneyUnit} update={update} remove={remove}
                   onAnalyze={() => setAnalyzePersona(p)}
                   onCarve={p.parent_persona_id ? null
