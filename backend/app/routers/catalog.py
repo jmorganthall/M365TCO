@@ -6,7 +6,7 @@ import os
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
@@ -49,7 +49,10 @@ def list_skus(
     if billing:
         stmt = stmt.where(models.MicrosoftSku.billing_plan == billing)
     if segment:
-        stmt = stmt.where(models.MicrosoftSku.segment == segment)
+        # Match the sheet's spelling ('Nonprofit' → its 'Charity' rows).
+        stmt = stmt.where(
+            func.lower(models.MicrosoftSku.segment) == models.sheet_segment(segment)
+        )
     if unmapped:  # not yet accepted onto a staple bundle (the mapper's work-list)
         stmt = stmt.where(models.MicrosoftSku.bundle_id.is_(None))
     if q:  # filter in SQL so search spans the whole catalog, not a fetched page
