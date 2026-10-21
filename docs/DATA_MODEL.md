@@ -181,6 +181,15 @@ FK, UUID PK, cascade-deleted with the engagement.
   never a hard-coded identity, so it honours the white-label rule. The engagement
   keeps only the customer's logo (`brand_logo_data_url`, labelled "Customer logo"
   on the Customer step); its old per-engagement colours are retired.
+- **Workshop delivered** (TARGET_SCHEMA §4.1, §7.2, D30): `delivered_at`,
+  `delivered_by` (a typed name until sign-in) and `delivered_snapshot_id` (a soft
+  reference to the "Workshop delivered" snapshot, §4.10). Set only by
+  `POST …/delivered` and cleared by `DELETE …/delivered` from the Review step's
+  checkmark, which shows who and when; never copied by `duplicate`. Read by
+  `GET /api/workshop-value` (`services/workshop_value.py`), the internal Workshop
+  value page (`#/value`, linked from Open engagement): every delivered workshop
+  rolled up as completed (the snapshot) and if completed today (a recompute that
+  persists nothing), with no customer name or id in the response.
 - **Pricing-basis inheritance:** `default_segment` / `default_term_duration`
   (P1Y) / `default_billing_plan` (Monthly — the typical customer case, a 1-year
   commit paid monthly; note the sheet prices this variant ~5% above the
@@ -855,6 +864,8 @@ operator-owned and engine-owned fields.
   a soft reference so the two tables don't depend on each other at create time).
   GUI: the Summary step's "Last created …" note and the snapshot list's
   `is_presented` / `is_baseline`.
+- **Workshop delivered:** marking a workshop delivered takes a snapshot labelled
+  "Workshop delivered" and points `Engagement.delivered_snapshot_id` at it.
 
 ### 4.10a-sexies Review and the customer PDF (derived, persist nothing else)
 - `GET …/review` (`services/review.py`) — every check that works without AI, each

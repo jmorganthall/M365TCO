@@ -421,3 +421,22 @@ button.badge.licence-flag { background: transparent; padding: .12rem .45rem; fon
 .richtext-body:empty::before { content: attr(data-placeholder); color: #8a93a3; }
 .richtext .hl { color: var(--hl); font-weight: 700; }
 .richtext-bar button { color: #1b2433; background: #f3f5f8; border-color: #cfd5df; min-width: 2rem; }
+
+/* ---- Workshop value (TARGET_SCHEMA §7.2): screenshot-ready headlines ---- */
+.value-hero { padding: 1.4rem 1.2rem; }
+.value-hero-line { font-size: 1.7rem; font-weight: 700; line-height: 1.25; margin-bottom: .4rem; }
+.value-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .6rem; margin-bottom: .8rem; }
+.value-tile { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: .8rem .9rem; }
+.value-tile-label { color: var(--muted); font-size: .78rem; }
+.value-tile-num { font-size: 1.5rem; font-weight: 700; margin: .15rem 0; }
+.value-tile-sub { color: var(--muted); font-size: .78rem; }
+.value-rank { display: grid; grid-template-columns: minmax(120px, 2fr) 3fr 3rem; align-items: center; gap: .6rem; padding: .25rem 0; }
+.value-rank-bar { height: 8px; background: var(--panel2); border-radius: 4px; overflow: hidden; }
+.value-rank-bar span { display: block; height: 100%; background: var(--accent); border-radius: 0 4px 4px 0; }
+.value-rank-num { text-align: right; font-variant-numeric: tabular-nums; }
+.value-spread { position: relative; height: 40px; margin: .4rem 0; }
+.value-spread-axis { position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid var(--border); }
+.value-spread-dot { position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%;
+  background: var(--accent); opacity: .8; border: 2px solid var(--panel); }
+.value-spread-dot:hover { opacity: 1; }
+.value-footnote { color: var(--muted); font-size: .7rem; line-height: 1.4; margin: .4rem 0 1.4rem; }

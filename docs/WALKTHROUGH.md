@@ -73,6 +73,9 @@ Today three things expose other customers:
 - Each engagement has its own address, so a reload returns to it instead of the list.
 - Inside an engagement, nothing lists or names other engagements. Settings, the Data
   inspector and the update and pricing banners are not on the presenting screen.
+- The Workshop value page (TARGET_SCHEMA §7.2) is reached from Open engagement, not
+  from inside an engagement. It rolls delivered workshops up into totals and never
+  shows a customer's name, so it is safe to screenshot.
 - The list endpoint stops returning notes and logos.
 
 **With the rebuild:** sign-in and engagement membership (TARGET_SCHEMA §9) stop one AE
@@ -229,6 +232,9 @@ are left out (§5) and the card, Coverage check and Review all say so.
 - Runs the checks in §6, plus the AI sanity check when AI is on.
 - For each finding, the AE asks the customer to clarify. Anything that can't be
   resolved is left out (§5), and the review lists exactly what is being left out.
+- Ends with a **Workshop delivered** checkmark: who ticked it and when, plus a frozen
+  copy of the results. Delivered workshops feed the internal Workshop value page
+  (TARGET_SCHEMA §7.2, D30), which shows totals only and never names a customer.
 
 ### Step 7 — Summary and PDF
 

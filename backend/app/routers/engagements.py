@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse, Response
@@ -548,6 +548,49 @@ def customer_report_pdf(engagement_id: str, db: Session = Depends(get_db)):
         headers={"Content-Disposition":
                  f'attachment; filename="{slug}-M365-TCO-{date.today().isoformat()}.pdf"'},
     )
+
+
+@router.post("/{engagement_id}/delivered", response_model=schemas.EngagementOut)
+def mark_delivered(
+    engagement_id: str, payload: schemas.DeliveredIn, db: Session = Depends(get_db)
+):
+    """Mark the workshop delivered (TARGET_SCHEMA §4.1, D30). A deliberate action:
+    it records who and when and freezes the results as a "Workshop delivered"
+    snapshot — the "as completed" numbers of the Workshop value page. Marking it
+    again re-freezes with a new snapshot."""
+    eng = _get_engagement(db, engagement_id)
+    who = payload.delivered_by.strip()
+    if not who:
+        raise HTTPException(422, "Say who is marking the workshop delivered.")
+    result = _computed_dict(db, engagement_id)
+    catalog_version = (
+        db.execute(select(models.MicrosoftSku.catalog_version).limit(1)).scalar() or ""
+    )
+    snap = models.EngagementSnapshot(
+        engagement_id=engagement_id, label="Workshop delivered",
+        catalog_version=catalog_version, payload_json=json.dumps(result),
+    )
+    db.add(snap)
+    db.flush()
+    eng.delivered_at = datetime.utcnow()
+    eng.delivered_by = who
+    eng.delivered_snapshot_id = snap.id
+    db.commit()
+    db.refresh(eng)
+    return eng
+
+
+@router.delete("/{engagement_id}/delivered", response_model=schemas.EngagementOut)
+def clear_delivered(engagement_id: str, db: Session = Depends(get_db)):
+    """Untick Workshop delivered: the engagement leaves the Workshop value page.
+    The frozen snapshot stays on record in the snapshot list."""
+    eng = _get_engagement(db, engagement_id)
+    eng.delivered_at = None
+    eng.delivered_by = None
+    eng.delivered_snapshot_id = None
+    db.commit()
+    db.refresh(eng)
+    return eng
 
 
 @router.post("/{engagement_id}/snapshots", status_code=201)

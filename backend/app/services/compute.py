@@ -855,6 +855,9 @@ def persona_coverage_gaps(db: Session, engagement_id: str) -> list[dict]:
     readings = licence_readings(db, eng, sku_outcomes)
     name_by_id = {o.id: o.name for o in eng.outcomes}
     desc_by_id = {o.id: o.description or "" for o in eng.outcomes}
+    # The library key travels with each outcome so a frozen snapshot can still be
+    # matched across engagements (the Workshop value ranking, TARGET_SCHEMA §7.2).
+    seed_key_by_id = {o.id: o.seed_key for o in eng.outcomes}
 
     # Outcomes each persona's proposed scenario (base target + add-ons) delivers,
     # plus the references it draws that coverage from. Keeping the references is
@@ -895,7 +898,8 @@ def persona_coverage_gaps(db: Session, engagement_id: str) -> list[dict]:
         out = []
         for oid in ids:
             d = {"id": oid, "name": name_by_id.get(oid, oid),
-                 "description": desc_by_id.get(oid, "")}
+                 "description": desc_by_id.get(oid, ""),
+                 "seed_key": seed_key_by_id.get(oid)}
             if pid is not None:
                 a = answers.get((pid, oid))
                 d["answer"] = a.answer if a else None
