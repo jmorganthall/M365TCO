@@ -187,7 +187,7 @@ FK, UUID PK, cascade-deleted with the engagement.
   `POST …/delivered` and cleared by `DELETE …/delivered` from the Review step's
   checkmark, which shows who and when; never copied by `duplicate`. Read by
   `GET /api/workshop-value` (`services/workshop_value.py`), the internal Workshop
-  value page (`#/value`, linked from Open engagement): every delivered workshop
+  value page (`#/value`; its headline and figures also on Open engagement): every delivered workshop
   rolled up as completed (the snapshot) and if completed today (a recompute that
   persists nothing), with no customer name or id in the response.
 - **Pricing-basis inheritance:** `default_segment` / `default_term_duration`

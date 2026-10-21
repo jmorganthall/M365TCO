@@ -73,9 +73,10 @@ Today three things expose other customers:
 - Each engagement has its own address, so a reload returns to it instead of the list.
 - Inside an engagement, nothing lists or names other engagements. Settings, the Data
   inspector and the update and pricing banners are not on the presenting screen.
-- The Workshop value page (TARGET_SCHEMA §7.2) is reached from Open engagement, not
-  from inside an engagement. It rolls delivered workshops up into totals and never
-  shows a customer's name, so it is safe to screenshot.
+- The Workshop value headline (TARGET_SCHEMA §7.2) sits on the Open engagement page,
+  with a link to the full page; neither is inside an engagement. It rolls delivered
+  workshops up into totals and never shows a customer's name, so it is safe to
+  screenshot.
 - The list endpoint stops returning notes and logos.
 
 **With the rebuild:** sign-in and engagement membership (TARGET_SCHEMA §9) stop one AE
