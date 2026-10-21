@@ -26,12 +26,6 @@ from .. import models
 from . import compute
 from .serialize import result_to_dict
 
-# Below this many delivered workshops the page shows no headline: a "typical
-# customer" drawn from two or three workshops is neither safe to publish nor
-# anonymous.
-MIN_WORKSHOPS = 5
-
-
 def workshop_figures(result: dict, seed_key_by_id: dict[str, str | None]) -> dict:
     """One workshop's figures from a computed result (a snapshot payload or a fresh
     recompute). Yearly, savings-positive (the headline's sign, ENGINE_SPEC 6.11)."""
@@ -167,8 +161,6 @@ def workshop_value(db: Session) -> dict:
     return {
         "as_of": date.today().isoformat(),
         "delivered": len(delivered),
-        "min_workshops": MIN_WORKSHOPS,
-        "enough": len(delivered) >= MIN_WORKSHOPS,
         "currency": currencies.most_common(1)[0][0] if currencies else None,
         "mixed_currencies": len(currencies) > 1,
         "lead": lead,

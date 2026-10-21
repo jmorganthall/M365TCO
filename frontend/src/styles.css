@@ -64,22 +64,8 @@ a { color: var(--accent); }
 }
 .settings-content { flex: 1; min-width: 0; }
 
-/* Open-engagement picker: rows appear only after the operator types. */
-.picker-list { margin-top: .6rem; display: flex; flex-direction: column; gap: 2px; }
-.picker-item { display: flex; align-items: center; gap: .6rem; border-radius: 7px; padding: 0 .2rem; }
-.picker-item:hover { background: var(--panel2); }
-.picker-name {
-  flex: 1; min-width: 0; background: transparent; border: none; color: var(--ink);
-  text-align: left; padding: .5rem .4rem; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; font-size: .92rem;
-}
-.picker-date { font-size: .76rem; white-space: nowrap; }
-.picker-actions { display: flex; gap: .1rem; }
-.picker-actions button {
-  background: transparent; border: none; color: var(--muted); padding: .2rem .4rem;
-  font-size: .95rem; line-height: 1; border-radius: 5px;
-}
-.picker-actions button:hover { color: var(--ink); background: var(--border); }
+/* Open-engagement picker: a closed drop-down; names show only when it is opened. */
+.landing select { width: 100%; }
 
 .welcome { padding: 1.4rem .2rem .4rem; }
 .welcome h1 { font-size: 1.5rem; margin: 0 0 .3rem; }

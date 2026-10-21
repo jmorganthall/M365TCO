@@ -38,7 +38,7 @@ const OLD_TABS = { baseline: 'customer', thirdparty: 'tools', coverage: 'tools',
 
 // Navigation lives in the URL hash, so a reload returns to the same engagement
 // and step instead of a page that lists every customer:
-//   #/                   Open engagement (search box + new engagement)
+//   #/                   Open engagement (customer drop-down, new engagement, workshop value)
 //   #/e/<id>/<step>      an engagement at a step
 //   #/settings           Settings
 //   #/value              Workshop value (delivered workshops rolled up, no names)
@@ -155,16 +155,13 @@ export default function App() {
               <UpdateBanner />
               <PricingBanner onOpenSettings={openSettings} />
               <div className="welcome">
-                <div className="flex-between">
-                  <h1>Model a Microsoft 365 total cost of ownership.</h1>
-                  <button className="ghost sm" onClick={() => go('/value')}
-                    title="Delivered workshops rolled up — no customer names">Workshop value ›</button>
-                </div>
-                <p className="muted">Open an engagement by typing the customer's name, or start
+                <h1>Model a Microsoft 365 total cost of ownership.</h1>
+                <p className="muted">Open an engagement by selecting the customer, or start
                   a new one. Inside an engagement, nothing about other customers is shown.</p>
               </div>
-              <OpenEngagement onOpen={open} onDuplicate={duplicate} onDelete={remove} />
+              <OpenEngagement onOpen={open} />
               <NewEngagement onCreated={open} />
+              <WorkshopValue compact onOpenFull={() => go('/value')} />
             </div>
           )}
 

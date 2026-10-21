@@ -82,7 +82,9 @@ function Ranking({ rows }) {
   )
 }
 
-export default function WorkshopValue() {
+// `compact` is the home page's version: the headline and its figures, linking to the
+// full page for the outcome ranking and the spread.
+export default function WorkshopValue({ compact = false, onOpenFull }) {
   const [data, setData] = useState(null)
   const [err, setErr] = useState('')
   const [basis, setBasis] = useState(null)
@@ -95,15 +97,13 @@ export default function WorkshopValue() {
   if (err) return <div className="card"><div className="err">{err}</div></div>
   if (!data) return <div className="card"><p className="muted">Adding up delivered workshops…</p></div>
 
-  if (!data.enough) {
+  if (data.delivered === 0) {
     return (
       <>
-        <div className="welcome"><h1>TCO workshop value</h1></div>
+        <div className="welcome"><h2 style={{ margin: 0 }}>TCO workshop value</h2></div>
         <div className="card">
-          <p style={{ margin: 0 }}>Headlines appear once at least {data.min_workshops} workshops are
-            marked delivered — {data.delivered} so far.</p>
-          <p className="hint" style={{ margin: '.4rem 0 0' }}>Mark a workshop delivered at the end of its
-            Review step.</p>
+          <p style={{ margin: 0 }}>No workshops are marked delivered yet. Mark one delivered at the end of
+            its Review step and its results are added up here, without names.</p>
         </div>
       </>
     )
@@ -120,11 +120,14 @@ export default function WorkshopValue() {
   return (
     <>
       <div className="flex-between welcome">
-        <h1>TCO workshop value</h1>
+        {compact ? <h2 style={{ margin: 0 }}>TCO workshop value</h2> : <h1>TCO workshop value</h1>}
+        <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center' }}>
         <div className="unit-toggle">
           {Object.entries(BASIS_LABEL).map(([k, label]) => (
             <button key={k} className={basis === k ? 'on' : ''} onClick={() => setBasis(k)}>{label}</button>
           ))}
+        </div>
+        {compact && onOpenFull && <button className="ghost sm" onClick={onOpenFull}>Full details ›</button>}
         </div>
       </div>
 
@@ -155,8 +158,8 @@ export default function WorkshopValue() {
         <Tile label="New outcomes lit up" value={count(t.new_outcomes)} />
       </div>
 
-      <Ranking rows={b.outcome_ranking} />
-      <Spread values={b.savings_per_user_spread} currency={cur} />
+      {!compact && <Ranking rows={b.outcome_ranking} />}
+      {!compact && <Spread values={b.savings_per_user_spread} currency={cur} />}
 
       <p className="value-footnote">
         {BASIS_LABEL[basis]}. Savings figures are based on the {b.saving_workshops} of {b.workshops} delivered
