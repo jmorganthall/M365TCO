@@ -17,6 +17,7 @@ import Review from './components/Review.jsx'
 import Readout from './components/Readout.jsx'
 import DataInspector from './components/DataInspector.jsx'
 import AdminPanel from './components/AdminPanel.jsx'
+import WorkshopValue from './components/WorkshopValue.jsx'
 import { StepIntro } from './components/Help.jsx'
 
 // The guided walkthrough (docs/WALKTHROUGH.md §3): seven steps an account
@@ -40,9 +41,11 @@ const OLD_TABS = { baseline: 'customer', thirdparty: 'tools', coverage: 'tools',
 //   #/                   Open engagement (search box + new engagement)
 //   #/e/<id>/<step>      an engagement at a step
 //   #/settings           Settings
+//   #/value              Workshop value (delivered workshops rolled up, no names)
 function parseHash() {
   const parts = (window.location.hash || '').replace(/^#\/?/, '').split('/').filter(Boolean)
   if (parts[0] === 'settings') return { view: 'settings' }
+  if (parts[0] === 'value') return { view: 'value' }
   if (parts[0] === 'e' && parts[1]) {
     const tab = TABS.has(parts[2]) ? parts[2] : (OLD_TABS[parts[2]] || 'customer')
     return { view: 'engagement', id: decodeURIComponent(parts[1]), tab }
@@ -145,12 +148,18 @@ export default function App() {
         <main className="main">
           {route.view === 'settings' && <AdminPanel onClose={closeSettings} />}
 
+          {route.view === 'value' && <div className="container"><WorkshopValue /></div>}
+
           {route.view === 'home' && (
             <div className="container">
               <UpdateBanner />
               <PricingBanner onOpenSettings={openSettings} />
               <div className="welcome">
-                <h1>Model a Microsoft 365 total cost of ownership.</h1>
+                <div className="flex-between">
+                  <h1>Model a Microsoft 365 total cost of ownership.</h1>
+                  <button className="ghost sm" onClick={() => go('/value')}
+                    title="Delivered workshops rolled up — no customer names">Workshop value ›</button>
+                </div>
                 <p className="muted">Open an engagement by typing the customer's name, or start
                   a new one. Inside an engagement, nothing about other customers is shown.</p>
               </div>
@@ -236,7 +245,7 @@ export default function App() {
                   </details>
                 </>
               )}
-              {tab === 'review' && <Review engagement={active} onNavigate={setTab} />}
+              {tab === 'review' && <Review engagement={active} onNavigate={setTab} onUpdate={setActive} />}
               {tab === 'summary' && (
                 <>
                   <SummaryCard engagement={active} onUpdate={setActive} />

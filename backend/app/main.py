@@ -17,7 +17,7 @@ from starlette.responses import FileResponse
 
 from .config import settings
 from .db import get_db, init_db
-from .routers import admin, catalog, engagements, entities, pricesync
+from .routers import admin, catalog, engagements, entities, pricesync, value
 from .services import seeds
 
 
@@ -298,6 +298,7 @@ app.include_router(entities.router)
 app.include_router(catalog.router)
 app.include_router(admin.router)
 app.include_router(pricesync.router)
+app.include_router(value.router)
 
 
 def _backfill_binary_coverage(db) -> None:

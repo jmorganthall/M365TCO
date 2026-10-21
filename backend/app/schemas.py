@@ -206,10 +206,19 @@ class EngagementOut(ORMModel):
     workshop_date: Optional[date] = None
     microsoft_renewal_date: Optional[date] = None
     presented_snapshot_id: Optional[str] = None
+    # Workshop delivered (read-only here; set by POST/DELETE …/delivered).
+    delivered_at: Optional[datetime] = None
+    delivered_by: Optional[str] = None
+    delivered_snapshot_id: Optional[str] = None
     industry: str = ""
     hq_location: str = ""
     website: str = ""
     employee_count: Optional[int] = None
+
+
+class DeliveredIn(BaseModel):
+    """Marking a workshop delivered: who is marking it (a typed name until sign-in)."""
+    delivered_by: str
 
 
 class EngagementSummary(ORMModel):
