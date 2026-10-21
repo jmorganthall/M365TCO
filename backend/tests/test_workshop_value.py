@@ -2,7 +2,7 @@
 
 import json
 
-from app.services.workshop_value import MIN_WORKSHOPS, _stronger, summarize, workshop_figures
+from app.services.workshop_value import _stronger, summarize, workshop_figures
 
 
 def _w(savings, current=1000.0, users=10, personas=2, outcomes=0, keys=(), dup=0.0, opt=None):
@@ -98,7 +98,7 @@ def test_workshop_value_names_no_customer_and_writes_nothing(client):
 
     before = client.get("/api/workshop-value").json()["delivered"]
     ids = []
-    for i in range(MIN_WORKSHOPS):
+    for i in range(2):
         eid = _engagement(client, f"Secret Customer {i}")
         client.post(f"/api/engagements/{eid}/delivered", json={"delivered_by": "Sam"})
         ids.append(eid)
@@ -116,7 +116,7 @@ def test_workshop_value_names_no_customer_and_writes_nothing(client):
     assert state() == snapshot_state  # viewing never writes (D18)
 
     data = res.json()
-    assert data["delivered"] == before + MIN_WORKSHOPS and data["enough"]
+    assert data["delivered"] == before + 2
     assert data["lead"] in ("as_completed", "today")
     assert data["bases"]["as_completed"]["workshops"] == data["delivered"]
     assert data["bases"]["today"]["workshops"] == data["delivered"]

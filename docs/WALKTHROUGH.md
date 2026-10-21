@@ -68,15 +68,16 @@ Today three things expose other customers:
 **Now** (front end and the list endpoint only, no data-model change):
 
 - The engagement list leaves the working screen. Engagements are opened from an
-  **Open engagement** page that shows a search box and no list until something is
-  typed.
+  **Open engagement** page whose picker is a closed drop-down reading "Select a
+  customer…": the list of names shows only when someone opens it.
 - Each engagement has its own address, so a reload returns to it instead of the list.
 - Inside an engagement, nothing lists or names other engagements. Settings, the Data
   inspector and the update and pricing banners are not on the presenting screen.
-- The Workshop value page (TARGET_SCHEMA §7.2) is reached from Open engagement, not
-  from inside an engagement. It rolls delivered workshops up into totals and never
-  shows a customer's name, so it is safe to screenshot.
-- The list endpoint stops returning notes and logos.
+- The Workshop value headline (TARGET_SCHEMA §7.2) sits on the Open engagement page,
+  with a link to the full page; neither is inside an engagement. It rolls delivered
+  workshops up into totals and never shows a customer's name, so it is safe to
+  screenshot.
+- The list endpoint stops returning notes and logos; it returns ids, names and last-updated only.
 
 **With the rebuild:** sign-in and engagement membership (TARGET_SCHEMA §9) stop one AE
 from reaching another AE's customers at all.

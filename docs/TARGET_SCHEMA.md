@@ -819,7 +819,10 @@ other basis's savings beside it as a secondary figure.
   added for itself have no library key and are not ranked; they still count in that
   workshop's new outcomes.
 - A spread of savings per user, one anonymous dot per saving workshop.
-- Headlines need at least **5** delivered workshops; below that the page says so.
+- Headlines report whatever has been delivered, from the first delivered workshop;
+  with none, the page says so.
+- **On the home page** (Open engagement): the headline and its figures, with a link
+  to the full page (ranking and spread). It names no customer, like the full page.
 - A footnote, in small print only: how many of how many workshops, as-of date,
   basis, the statistic behind each figure, and a warning when workshops use more
   than one currency (nothing is converted).

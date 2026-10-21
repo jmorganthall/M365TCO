@@ -62,7 +62,7 @@ def list_engagements(q: str = "", limit: int = 20, db: Session = Depends(get_db)
         literal = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         stmt = stmt.where(
             models.Engagement.customer_name.ilike(f"%{literal}%", escape="\\"))
-    limit = max(1, min(limit, 100))
+    limit = max(1, min(limit, 1000))
     return db.execute(
         stmt.order_by(models.Engagement.updated_at.desc()).limit(limit)
     ).scalars().all()
