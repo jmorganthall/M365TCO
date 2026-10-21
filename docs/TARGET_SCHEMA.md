@@ -23,6 +23,8 @@
 >   Decisions D27 (the Business seat cap split), D28 (a recommended plan keeps
   what the persona has today) and D29 (a carve-out family decides each tool
   together) may be built ahead the same way.
+  Decision D30 (workshop value) and the pieces marked *(value)* may be built on
+  today's schema ahead of the rebuild, in exactly the shape given here.
 
 ---
 
@@ -59,6 +61,7 @@
 | D27 | **The Business seat cap is met by splitting, never by a hidden swap.** The recommender always proposes the best plan for a persona's requirements. When that is a capped plan (the Business family, 300 seats tenant-wide) and the persona is larger than the seats left in the **future state**, the persona is offered a split: a carve-out of exactly the seats left on the capped plan, the rest on the recommender's best uncapped plan; the larger side is the parent. A person makes the split; until then Review flags the breach. No engagement setting turns the cap on or off. | §3.1, §4.3, §6.4 |
 | D28 | **A recommended plan keeps what the persona has today, the cheapest way.** *(Revised.)* A plan must deliver what the persona's Microsoft licences deliver today and what it declares it needs. An outcome a third-party tool delivers is kept either by that tool (it stays and keeps costing) or by Microsoft (the plan, with add-ons, covers everything the tool does, so the tool retires). An add-on is added to retire a tool only when that lowers the persona's total cost. The cheapest result wins, and the recommender says which tools each option keeps and which add-on retires which tool. The split's other side (D27) is chosen the same way. | §7 |
 | D29 | **A carve-out family decides each tool together.** A persona and its carve-outs are the same people (D11), so for each third-party tool they hold, either every member's plan retires it or none does. The family takes whichever costs the whole family less, summed over every member; on a tie, the tool retires (Microsoft). Each member then gets its cheapest plan within that decision, and that is its recommendation. A member's own cheapest plan is still shown beside it when it costs less and decides differently. Personas outside a family are unchanged (D28). Plans already chosen are never changed; a member whose chosen plan decides a tool differently from the rest of its family is flagged. | §7 |
+| D30 | **Workshop value is read from delivered workshops, never named.** A person marks a workshop delivered on Review; that records who and when and freezes the results as a snapshot. The Workshop value page rolls every delivered workshop up into totals and headlines — by workshop, never by persona — and never shows a customer's name or id. Each figure is shown two ways, as completed (the frozen snapshot) and if completed today (a read-only recompute), led by the stronger. It stores nothing. | §4.1, §7.2, §8 |
 
 ---
 
@@ -290,6 +293,13 @@ customer as they are and what they need.
   are retired: colours come from `practice_branding` (§3.5).
 - `presented_snapshot_id` (FK `engagement_snapshots`, nullable): the baseline for
   "changed since workshop" (§8).
+- *(value)* `delivered_at` (timestamp, nullable), `delivered_by` (text, nullable) and
+  `delivered_snapshot_id` (FK `engagement_snapshots`, nullable): the **Workshop
+  delivered** mark, set on Review by a person (who and when). Marking it takes a
+  snapshot (§8) and points `delivered_snapshot_id` at it; clearing it sets all three
+  to `NULL` and keeps the snapshot. Until sign-in (§9) `delivered_by` is the name the
+  person types; with sign-in it becomes the actor. Read by the Workshop value page
+  (§7.2).
 - `microsoft_renewal_date` (date, nullable) *(walkthrough)*: when the customer's
   Microsoft agreement renews. The default for every licence line (§4.4). `NULL` =
   not given: treated as month-to-month with no lock-in, so a Microsoft reduction
@@ -766,6 +776,54 @@ no parent plus its carve-outs; it applies only when there is at least one carve-
 - Rounding: amounts are kept to the cent per timing item; the sub-lines and the
   headline are sums of rounded items, so every displayed total reconciles.
 
+### 7.2 Workshop value, across delivered workshops *(value)*
+
+An internal page that answers "what does a TCO workshop typically find?" for
+sales collateral (D30). Derived on read; it **stores nothing** (D18) and is built
+for screenshots, so it **never shows a customer's name, id, logo or the practice's
+name**. Everything rolls up per workshop; nothing is broken down by persona.
+
+**Which workshops.** Every engagement with `delivered_at` set. Each is counted two
+ways, and every figure on the page is computed for both:
+
+- **As completed** — read from the snapshot at `delivered_snapshot_id`.
+- **If completed today** — the engagement recomputed now (current data, catalog and
+  rules) without persisting anything.
+
+The page leads with the basis whose savings headline is higher, and shows the
+other basis's savings beside it as a secondary figure.
+
+**Per workshop** (yearly, from the headline, §7.1):
+
+| Figure | Definition |
+| --- | --- |
+| savings | `run_rate_annual` |
+| current spend | `existing_microsoft_annual` + `existing_third_party_annual` + `residual_third_party_cost_annual` — what the customer spends today on the in-scope personas' Microsoft licences and on third-party tools |
+| optimized spend | current spend − savings |
+| savings % | savings ÷ current spend |
+| savings per user | savings ÷ `in_scope_persona_headcount` |
+| duplicate spend | `duplicate_spend_annual` |
+| optimizing into Microsoft | `consolidation_annual` + `overlicensing_annual` |
+| users, personas | `in_scope_persona_headcount`; the number of in-scope scenarios |
+| new outcomes | distinct outcomes confirmed as new (D21) across the in-scope personas |
+
+**Rolling up.**
+- Savings figures (savings, %, per user, the split) count only workshops whose
+  savings are > 0 on that basis; the page's footnote says how many of how many.
+- New outcomes, users and personas count every delivered workshop.
+- Each per-workshop figure is summarised by its mean ("average customer") or its
+  median ("typical customer"), whichever is higher, and the wording says which.
+- The split is shown as totals in money and as a share of total savings.
+- **Outcome ranking**: each library outcome (by `seed_key`, §1.6), with the share of
+  delivered workshops that lit it up, most frequent first. Outcomes an engagement
+  added for itself have no library key and are not ranked; they still count in that
+  workshop's new outcomes.
+- A spread of savings per user, one anonymous dot per saving workshop.
+- Headlines need at least **5** delivered workshops; below that the page says so.
+- A footnote, in small print only: how many of how many workshops, as-of date,
+  basis, the statistic behind each figure, and a warning when workshops use more
+  than one currency (nothing is converted).
+
 ---
 
 ## 8. Snapshots and "changed since workshop"
@@ -780,6 +838,9 @@ no parent plus its carve-outs; it applies only when there is at least one carve-
 - *(walkthrough)* Producing the customer PDF is a deliberate action, not a view: it
   takes a snapshot, marks it Presented and points `presented_snapshot_id` at it, so
   the numbers the customer was handed are always on record.
+- *(value)* Marking a workshop delivered on Review is also a deliberate action: it
+  takes a snapshot labelled "Workshop delivered" and points `delivered_snapshot_id`
+  at it — the "as completed" numbers of the Workshop value page (§7.2).
 
 **"Changed since workshop"** is derived on read by comparing the Presented
 snapshot with the current layers, and classifies every difference:
