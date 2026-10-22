@@ -184,7 +184,7 @@ FK, UUID PK, cascade-deleted with the engagement.
 - **Workshop delivered** (TARGET_SCHEMA §4.1, §7.2, D30): `delivered_at`,
   `delivered_by` (a typed name until sign-in) and `delivered_snapshot_id` (a soft
   reference to the "Workshop delivered" snapshot, §4.10). Set only by
-  `POST …/delivered` and cleared by `DELETE …/delivered` from the Review step's
+  `POST …/delivered` and cleared by `DELETE …/delivered` from the Summary & PDF step's
   checkmark, which shows who and when; never copied by `duplicate`. Read by
   `GET /api/workshop-value` (`services/workshop_value.py`), the internal Workshop
   value page (`#/value`; its headline and figures also on Open engagement): every delivered workshop
