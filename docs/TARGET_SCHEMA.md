@@ -802,7 +802,7 @@ Percentages and counts don't depend on it.
 | Figure | Definition |
 | --- | --- |
 | savings | `run_rate_annual` |
-| current spend | `existing_microsoft_annual` + `existing_third_party_annual` + `residual_third_party_cost_annual` — what the customer spends today on the in-scope personas' Microsoft licences and on third-party tools |
+| current spend | `existing_microsoft_annual` + Σ every tool's `effective_annual_cost` — what the customer spends today on the in-scope personas' Microsoft licences (org-wide lines included) and on every third-party tool (its tooling share when managed), whether or not its users were entered |
 | optimized spend | current spend − savings |
 | savings % | savings ÷ current spend |
 | savings per user | savings ÷ `in_scope_persona_headcount` |
