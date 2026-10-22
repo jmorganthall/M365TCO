@@ -233,9 +233,6 @@ are left out (§5) and the card, Coverage check and Review all say so.
 - Runs the checks in §6, plus the AI sanity check when AI is on.
 - For each finding, the AE asks the customer to clarify. Anything that can't be
   resolved is left out (§5), and the review lists exactly what is being left out.
-- Ends with a **Workshop delivered** checkmark: who ticked it and when, plus a frozen
-  copy of the results. Delivered workshops feed the internal Workshop value page
-  (TARGET_SCHEMA §7.2, D30), which shows totals only and never names a customer.
 
 ### Step 7 — Summary and PDF
 
@@ -245,6 +242,9 @@ are left out (§5) and the card, Coverage check and Review all say so.
 - **Expander:** branding colours; the partner funding (ECIF) note.
 - **Produce the PDF** (§7). Producing it saves a Presented snapshot (TARGET_SCHEMA §8),
   so later edits show as "changed since workshop".
+- Ends with a **Workshop delivered** checkmark: who ticked it and when, plus a frozen
+  copy of the results. Delivered workshops feed the internal Workshop value page
+  (TARGET_SCHEMA §7.2, D30), which shows totals only and never names a customer.
 
 ---
 

@@ -15,6 +15,7 @@ import FutureState from './components/FutureState.jsx'
 import CoverageCheck from './components/CoverageCheck.jsx'
 import Review from './components/Review.jsx'
 import Readout from './components/Readout.jsx'
+import DeliveredCard from './components/DeliveredCard.jsx'
 import DataInspector from './components/DataInspector.jsx'
 import AdminPanel from './components/AdminPanel.jsx'
 import WorkshopValue from './components/WorkshopValue.jsx'
@@ -242,11 +243,12 @@ export default function App() {
                   </details>
                 </>
               )}
-              {tab === 'review' && <Review engagement={active} onNavigate={setTab} onUpdate={setActive} />}
+              {tab === 'review' && <Review engagement={active} onNavigate={setTab} />}
               {tab === 'summary' && (
                 <>
                   <SummaryCard engagement={active} onUpdate={setActive} />
                   <Readout engagement={active} />
+                  <DeliveredCard engagement={active} onUpdate={setActive} />
                 </>
               )}
               {tab === 'data' && <DataInspector engagement={active} meta={meta} />}

@@ -61,7 +61,7 @@
 | D27 | **The Business seat cap is met by splitting, never by a hidden swap.** The recommender always proposes the best plan for a persona's requirements. When that is a capped plan (the Business family, 300 seats tenant-wide) and the persona is larger than the seats left in the **future state**, the persona is offered a split: a carve-out of exactly the seats left on the capped plan, the rest on the recommender's best uncapped plan; the larger side is the parent. A person makes the split; until then Review flags the breach. No engagement setting turns the cap on or off. | §3.1, §4.3, §6.4 |
 | D28 | **A recommended plan keeps what the persona has today, the cheapest way.** *(Revised.)* A plan must deliver what the persona's Microsoft licences deliver today and what it declares it needs. An outcome a third-party tool delivers is kept either by that tool (it stays and keeps costing) or by Microsoft (the plan, with add-ons, covers everything the tool does, so the tool retires). An add-on is added to retire a tool only when that lowers the persona's total cost. The cheapest result wins, and the recommender says which tools each option keeps and which add-on retires which tool. The split's other side (D27) is chosen the same way. | §7 |
 | D29 | **A carve-out family decides each tool together.** A persona and its carve-outs are the same people (D11), so for each third-party tool they hold, either every member's plan retires it or none does. The family takes whichever costs the whole family less, summed over every member; on a tie, the tool retires (Microsoft). Each member then gets its cheapest plan within that decision, and that is its recommendation. A member's own cheapest plan is still shown beside it when it costs less and decides differently. Personas outside a family are unchanged (D28). Plans already chosen are never changed; a member whose chosen plan decides a tool differently from the rest of its family is flagged. | §7 |
-| D30 | **Workshop value is read from delivered workshops, never named.** A person marks a workshop delivered on Review; that records who and when and freezes the results as a snapshot. The Workshop value page rolls every delivered workshop up into totals and headlines — by workshop, never by persona — and never shows a customer's name or id. Each figure is shown two ways, as completed (the frozen snapshot) and if completed today (a read-only recompute), led by the stronger. It stores nothing. | §4.1, §7.2, §8 |
+| D30 | **Workshop value is read from delivered workshops, never named.** A person marks a workshop delivered on Summary & PDF, the last step; that records who and when and freezes the results as a snapshot. The Workshop value page rolls every delivered workshop up into totals and headlines — by workshop, never by persona — and never shows a customer's name or id. Each figure is shown two ways, as completed (the frozen snapshot) and if completed today (a read-only recompute), led by the stronger. It stores nothing. | §4.1, §7.2, §8 |
 
 ---
 
@@ -295,7 +295,7 @@ customer as they are and what they need.
   "changed since workshop" (§8).
 - *(value)* `delivered_at` (timestamp, nullable), `delivered_by` (text, nullable) and
   `delivered_snapshot_id` (FK `engagement_snapshots`, nullable): the **Workshop
-  delivered** mark, set on Review by a person (who and when). Marking it takes a
+  delivered** mark, set on Summary & PDF by a person (who and when). Marking it takes a
   snapshot (§8) and points `delivered_snapshot_id` at it; clearing it sets all three
   to `NULL` and keeps the snapshot. Until sign-in (§9) `delivered_by` is the name the
   person types; with sign-in it becomes the actor. Read by the Workshop value page
@@ -841,7 +841,7 @@ other basis's savings beside it as a secondary figure.
 - *(walkthrough)* Producing the customer PDF is a deliberate action, not a view: it
   takes a snapshot, marks it Presented and points `presented_snapshot_id` at it, so
   the numbers the customer was handed are always on record.
-- *(value)* Marking a workshop delivered on Review is also a deliberate action: it
+- *(value)* Marking a workshop delivered on Summary & PDF is also a deliberate action: it
   takes a snapshot labelled "Workshop delivered" and points `delivered_snapshot_id`
   at it — the "as completed" numbers of the Workshop value page (§7.2).
 
