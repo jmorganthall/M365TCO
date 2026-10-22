@@ -103,7 +103,7 @@ export default function WorkshopValue({ compact = false, onOpenFull }) {
         <div className="welcome"><h2 style={{ margin: 0 }}>TCO workshop value</h2></div>
         <div className="card">
           <p style={{ margin: 0 }}>No workshops are marked delivered yet. Mark one delivered at the end of
-            its Review step and its results are added up here, without names.</p>
+            its Summary & PDF step and its results are added up here, without names.</p>
         </div>
       </>
     )

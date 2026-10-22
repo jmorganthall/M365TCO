@@ -121,7 +121,7 @@ class Engagement(Base):
     # a soft reference (engagement_snapshots.id) so the two tables don't depend on
     # each other at create time. Shown as the "Presented" baseline in Summary.
     presented_snapshot_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    # The "Workshop delivered" mark, set on Review by a person (TARGET_SCHEMA §4.1,
+    # The "Workshop delivered" mark, set on Summary & PDF by a person (TARGET_SCHEMA §4.1,
     # D30): when, who (a typed name until sign-in), and the snapshot frozen at that
     # moment — the "as completed" numbers of the Workshop value page. Clearing the
     # mark sets all three to NULL; the snapshot stays on record.
