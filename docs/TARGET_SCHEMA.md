@@ -793,19 +793,23 @@ ways, and every figure on the page is computed for both:
 The page leads with the basis whose savings headline is higher, and shows the
 other basis's savings beside it as a secondary figure.
 
-**Per workshop** (yearly, from the headline, §7.1):
+**Shown over 36 months.** Every money figure is the yearly run rate × 3, for every
+workshop, whatever its own modelling horizon, so workshops compare like for like.
+Percentages and counts don't depend on it.
+
+**Per workshop** (yearly, from the headline, §7.1, then shown over 36 months):
 
 | Figure | Definition |
 | --- | --- |
 | savings | `run_rate_annual` |
-| current spend | `existing_microsoft_annual` + `existing_third_party_annual` + `residual_third_party_cost_annual` — what the customer spends today on the in-scope personas' Microsoft licences and on third-party tools |
+| current spend | `existing_microsoft_annual` + Σ every tool's `effective_annual_cost` — what the customer spends today on the in-scope personas' Microsoft licences (org-wide lines included) and on every third-party tool (its tooling share when managed), whether or not its users were entered |
 | optimized spend | current spend − savings |
 | savings % | savings ÷ current spend |
 | savings per user | savings ÷ `in_scope_persona_headcount` |
 | duplicate spend | `duplicate_spend_annual` |
 | optimizing into Microsoft | `consolidation_annual` + `overlicensing_annual` |
 | users, personas | `in_scope_persona_headcount`; the number of in-scope scenarios |
-| new outcomes | distinct outcomes confirmed as new (D21) across the in-scope personas |
+| new outcomes | distinct outcomes confirmed as new (D21) across the in-scope personas, by library `seed_key` (§1.6), or by name for an outcome the engagement added itself |
 
 **Rolling up.**
 - Savings figures (savings, %, per user, the split) count only workshops whose
@@ -814,15 +818,17 @@ other basis's savings beside it as a secondary figure.
 - Each per-workshop figure is summarised by its mean ("average customer") or its
   median ("typical customer"), whichever is higher, and the wording says which.
 - The split is shown as totals in money and as a share of total savings.
-- **Outcome ranking**: each library outcome (by `seed_key`, §1.6), with the share of
-  delivered workshops that lit it up, most frequent first. Outcomes an engagement
-  added for itself have no library key and are not ranked; they still count in that
-  workshop's new outcomes.
+- **The loudest figures, first**: total savings identified, savings as a share of
+  current spend, and new outcomes lit up. Then the average or typical customer's
+  line, then the rest.
+- **Outcomes lit up**: each outcome lit up in at least one delivered workshop, with
+  how many times and its share of all new outcomes lit up (so the shares add up to
+  100%), most frequent first. Shown on the home page and the full page.
 - A spread of savings per user, one anonymous dot per saving workshop.
 - Headlines report whatever has been delivered, from the first delivered workshop;
   with none, the page says so.
 - **On the home page** (Open engagement): the headline and its figures, with a link
-  to the full page (ranking and spread). It names no customer, like the full page.
+  to the full page (the spread of savings per user). It names no customer, like the full page.
 - A footnote, in small print only: how many of how many workshops, as-of date,
   basis, the statistic behind each figure, and a warning when workshops use more
   than one currency (nothing is converted).

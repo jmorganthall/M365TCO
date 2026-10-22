@@ -5,11 +5,12 @@ import json
 from app.services.workshop_value import _stronger, summarize, workshop_figures
 
 
-def _w(savings, current=1000.0, users=10, personas=2, outcomes=0, keys=(), dup=0.0, opt=None):
+def _w(savings, current=1000.0, users=10, personas=2, keys=(), dup=0.0, opt=None):
+    outcomes = {k: k.upper() for k in keys}
     return {
         "savings": savings, "current_spend": current, "users": users, "personas": personas,
         "duplicate_spend": dup, "optimization": savings - dup if opt is None else opt,
-        "new_outcomes": outcomes, "library_outcome_keys": set(keys),
+        "new_outcomes": len(outcomes), "outcomes": outcomes,
     }
 
 
@@ -23,29 +24,48 @@ def test_stronger_picks_the_higher_of_mean_and_median():
 
 def test_savings_count_only_workshops_that_save_outcomes_count_all():
     ws = [
-        _w(100, current=1000, users=10, outcomes=2, keys={"edr"}, dup=40),
-        _w(300, current=1000, users=30, outcomes=4, keys={"edr", "dlp"}, dup=60),
-        _w(-500, current=2000, users=50, outcomes=6, keys={"dlp"}),  # adds cost
+        _w(100, current=1000, users=10, keys={"edr", "mfa"}, dup=40),
+        _w(300, current=1000, users=30, keys={"edr", "dlp", "mfa", "sso"}, dup=60),
+        _w(-500, current=2000, users=50, keys={"dlp", "mfa", "custom:kiosk"}),  # adds cost
     ]
-    out = summarize(ws, {"edr": "EDR", "dlp": "Data loss prevention"})
+    out = summarize(ws, {"edr": "EDR", "dlp": "Data loss prevention", "mfa": "MFA", "sso": "SSO"},
+                    years=3)
     assert out["workshops"] == 3 and out["saving_workshops"] == 2
     t = out["totals"]
-    assert t["savings"] == 400 and t["current_spend"] == 2000
-    assert t["optimized_spend"] == 1600 and t["savings_pct"] == 0.2
-    assert t["duplicate_spend"] == 100 and t["optimization"] == 300
+    # Money over 36 months: the yearly figures × 3.
+    assert t["savings"] == 1200 and t["savings_annual"] == 400 and t["current_spend"] == 6000
+    assert t["optimized_spend"] == 4800 and t["savings_pct"] == 0.2
+    assert t["duplicate_spend"] == 300 and t["optimization"] == 900
     assert t["duplicate_share"] == 0.25 and t["optimization_share"] == 0.75
-    assert t["users"] == 90 and t["personas"] == 6 and t["new_outcomes"] == 12
-    assert out["headline"]["savings_per_customer"]["value"] == 200
-    assert out["headline"]["savings_per_user"]["value"] == 10
-    assert out["headline"]["new_outcomes_per_customer"]["value"] == 4
-    assert out["savings_per_user_spread"] == [10, 10]
-    ranking = [(r["name"], r["workshops"], round(r["share"], 3)) for r in out["outcome_ranking"]]
-    assert ranking == [("Data loss prevention", 2, 0.667), ("EDR", 2, 0.667)]
+    assert t["users"] == 90 and t["personas"] == 6 and t["new_outcomes"] == 9
+    h = out["headline"]
+    assert h["savings_per_customer"]["value"] == 600
+    assert h["savings_per_user"]["value"] == 30
+    assert h["new_outcomes_per_customer"]["value"] == 3
+    # Per-customer shares are 10% and 30% (mean 20%), the same as the pooled 20%.
+    assert h["savings_pct"]["value"] == 0.2
+    assert out["savings_per_user_spread"] == [30, 30]
+    lit = [(r["name"], r["count"], round(r["share"], 3)) for r in out["outcomes_lit"]]
+    assert lit == [("MFA", 3, 0.333), ("Data loss prevention", 2, 0.222), ("EDR", 2, 0.222),
+                   ("CUSTOM:KIOSK", 1, 0.111), ("SSO", 1, 0.111)]
+    assert abs(sum(r["share"] for r in out["outcomes_lit"]) - 1) < 1e-9
+
+
+def test_loud_percent_takes_the_pooled_share_when_it_is_higher():
+    # One big customer saving a lot lifts the pooled share above both the
+    # per-customer mean (30%) and median (30%).
+    ws = [_w(10, current=100), _w(30, current=100), _w(5000, current=10000)]
+    pct = summarize(ws, {})["headline"]["savings_pct"]
+    assert pct["statistic"] == "overall" and round(pct["value"], 4) == round(5040 / 10200, 4)
 
 
 def test_workshop_figures_read_the_headline_and_count_outcomes_once():
     result = {
         "scenarios": [{"in_scope": True}, {"in_scope": False}, {"in_scope": True}],
+        # Every tool's cost counts, including one whose users weren't entered
+        # (credited 0, residual 0): 300 + 100 + 250.
+        "dispositions": [{"effective_annual_cost": 300}, {"effective_annual_cost": 100},
+                         {"effective_annual_cost": 250}],
         "rollup": {
             "existing_microsoft_annual": 600, "existing_third_party_annual": 300,
             "residual_third_party_cost_annual": 100,
@@ -58,12 +78,16 @@ def test_workshop_figures_read_the_headline_and_count_outcomes_once():
             {"outcomes": [{"id": "o1", "seed_key": "edr"}, {"id": "o3"}]},
         ],
     }
+    result["new_outcomes"][0]["outcomes"][1]["name"] = "Data loss prevention"
+    result["new_outcomes"][1]["outcomes"][1]["name"] = "Kiosk mode"
     f = workshop_figures(result, {"o2": "dlp", "o3": None})
-    assert f["savings"] == 250 and f["current_spend"] == 1000
+    assert f["savings"] == 250 and f["current_spend"] == 1250
     assert f["duplicate_spend"] == 50 and f["optimization"] == 200
     assert f["users"] == 40 and f["personas"] == 2
-    assert f["new_outcomes"] == 3                       # o1 counted once
-    assert f["library_outcome_keys"] == {"edr", "dlp"}  # o3 has no library key
+    assert f["new_outcomes"] == 3  # o1 counted once
+    # o3 has no library key, so it is matched by name.
+    assert f["outcomes"] == {"edr": "edr", "dlp": "Data loss prevention",
+                             "custom:kiosk mode": "Kiosk mode"}
 
 
 def _engagement(client, name):
