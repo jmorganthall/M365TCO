@@ -66,6 +66,30 @@ charts how the first-class objects connect and how the engine traverses them:
   `backend/tests/test_migrations.py` is the tripwire: it fails any column with
   no reference outside the model/schema definitions.
 
+## Layers: raw → interpreted → calculated (interim rules)
+
+`docs/TARGET_SCHEMA.md` §1 defines three layers. People write raw. One pure
+interpreter reads raw through the rules. The engine calculates. Screens display the
+result. Until the interpreter lands (`docs/LAYER_AUDIT.md` tracks the remaining
+work), these rules hold for all new work:
+
+- **One read path for results.** Every screen, export, snapshot and check reads
+  calculated numbers from `services/results.current_result` (`GET …/result`).
+  No endpoint assembles its own variant, and nothing derived is stored on a raw row.
+- **Reads never write.** A GET, an export or a view never changes stored data.
+  `tests/test_viewing_never_writes.py` calls every GET route and fails on any write.
+- **No private readings of raw data.** Don't add another place that decides what
+  a persona holds, whether a tool retires, how a cost is shared, or how seats
+  count. Reuse the existing single definition (e.g. `limits._future_seat_usage`
+  for seat caps; untagged lines are Org-wide, every persona, everywhere). If none
+  exists yet, add one and route the existing copies through it in the same change.
+- **The GUI does no arithmetic on money or seats** beyond formatting. A number
+  the GUI shows comes from the backend. The GUI never edits a value to display it
+  differently from what is stored and costed.
+- **No recompute step.** The GUI reads through `useResult` / `useDataVersion`
+  (`frontend/src/api.js`), which refetch after every write. Typed fields save
+  on Enter or blur, never per keystroke.
+
 ## Engine
 
 The calculation engine (`backend/tco_engine/`) is pure and I/O-free. It
