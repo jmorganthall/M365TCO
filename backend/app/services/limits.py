@@ -123,12 +123,60 @@ def set_limit_members(db: Session, limit_id: str, bundle_ids: list[str]) -> list
     return member_bundle_ids(db, limit_id)
 
 
+def _future_seat_usage(db: Session, eng: models.Engagement, mset: set[str], resolve) -> tuple[dict[str, float], float]:
+    """THE count of a seat cap's seats in the future state — the one definition the
+    Readout's licence-limit card, the recommender, the split offer and Review all
+    use (TARGET_SCHEMA D27, §6.4 `seat_cap_exceeded`).
+
+    Per persona:
+    - a persona with an in-scope scenario counts its headcount when the scenario's
+      base or any add-on is a member bundle (its current lines don't count: the
+      move replaces them);
+    - every other persona keeps its current licences, so it counts its share of the
+      assigned seats on member lines (a line shared by several personas splits by
+      headcount; an untagged line applies to every persona).
+
+    Returns (seats per persona id, unattributed seats). Unattributed = member lines
+    whose personas have no headcount to share them by; they count in full."""
+    headcount = {p.id: p.headcount or 0 for p in eng.personas}
+    moving = {s.persona_id: s for s in eng.scenarios if s.in_scope}
+    usage: dict[str, float] = {}
+    unattributed = 0.0
+    for pid, s in moving.items():
+        plan = {resolve(s.target_sku_reference)} | {a.bundle_id for a in s.addons}
+        if plan & mset:
+            usage[pid] = usage.get(pid, 0.0) + headcount.get(pid, 0)
+    for lic in eng.licenses_in_scope:
+        if resolve(lic.sku_reference) not in mset:
+            continue
+        applies = list(lic.persona_ids) or list(headcount)
+        total_hc = sum(headcount.get(pid, 0) for pid in applies)
+        if not total_hc:
+            unattributed += lic.quantity_assigned or 0
+            continue
+        for pid in applies:
+            if pid in moving or not headcount.get(pid, 0):
+                continue
+            usage[pid] = usage.get(pid, 0.0) + (lic.quantity_assigned or 0) * headcount[pid] / total_hc
+    return usage, unattributed
+
+
+def _resolver(db: Session):
+    cache: dict[str, str | None] = {}
+
+    def resolve(ref: str) -> str | None:
+        if ref not in cache:
+            cache[ref] = bundles_service.resolve_bundle(db, ref or "")
+        return cache[ref]
+    return resolve
+
+
 def evaluate(db: Session, engagement_id: str) -> list[dict]:
-    """Evaluate every license limit against this engagement's totality — current
-    state (current licenses) and future state (in-scope scenarios), summed
-    tenant-wide across all personas. Seats are counted once per line/scenario that
-    touches a member bundle (base OR add-on), so a scenario is never double-counted.
-    Returns a list of evaluation dicts (empty when no limits are defined)."""
+    """Every license limit against this engagement, tenant-wide: seats today (the
+    assigned seats on member licence lines) and seats in the future state — counted
+    by `_future_seat_usage`, the same definition the split offer and Review use, so
+    the Readout card can never disagree with them. Reads only. Empty when no limits
+    are defined."""
     eng = db.get(models.Engagement, engagement_id)
     if eng is None:
         return []
@@ -140,44 +188,18 @@ def evaluate(db: Session, engagement_id: str) -> list[dict]:
 
     members = _members_by_limit(db)
     bundle_name = {b.id: b.name for b in db.execute(select(models.Bundle)).scalars().all()}
-    headcount = {p.id: p.headcount for p in eng.personas}
-
-    # Resolve each current license's bundle once (cache by reference string).
-    ref_cache: dict[str, str | None] = {}
-
-    def _resolve(ref: str) -> str | None:
-        if ref not in ref_cache:
-            ref_cache[ref] = bundles_service.resolve_bundle(db, ref or "")
-        return ref_cache[ref]
-
-    def _scenario_bundle_ids(s: models.PersonaScenario) -> set[str]:
-        """The bundle ids a scenario's future state touches: its base + add-ons.
-
-        No swap substitution to account for — a carved-out persona targets Business
-        Premium on its own scenario, so its seats are counted here like any other."""
-        return {_resolve(s.target_sku_reference)} | {a.bundle_id for a in s.addons}
+    resolve = _resolver(db)
 
     out: list[dict] = []
     for lim in limits:
         mset = members.get(lim.id, set())
-
-        # Current state: seats on current-license lines whose bundle is a member.
-        # quantity_assigned is the modeled seat count the rest of the readout uses.
         current_seats = sum(
             lic.quantity_assigned
             for lic in eng.licenses_in_scope
-            if _resolve(lic.sku_reference) in mset
+            if resolve(lic.sku_reference) in mset
         )
-
-        # Future state: in-scope scenarios whose base OR any add-on is a member —
-        # the persona headcount counts once per qualifying scenario.
-        target_seats = 0
-        for s in eng.scenarios:
-            if not s.in_scope:
-                continue
-            if _scenario_bundle_ids(s) & mset:
-                target_seats += headcount.get(s.persona_id, 0)
-
+        usage, unattributed = _future_seat_usage(db, eng, mset, resolve)
+        target_seats = int(round(sum(usage.values()) + unattributed))
         cap = lim.max_quantity
         out.append({
             "id": lim.id, "key": lim.key, "name": lim.name,
@@ -200,20 +222,15 @@ def evaluate(db: Session, engagement_id: str) -> list[dict]:
 def seat_cap_context(
     db: Session, engagement_id: str, exclude_persona_id: str | None = None
 ) -> list[dict]:
-    """Seats left under each tenant seat cap (max_total_seats), measured in the
-    FUTURE state (TARGET_SCHEMA §3.1, D27), for one persona's decision.
+    """Seats left under each tenant seat cap (max_total_seats) in the FUTURE state,
+    for one persona's decision (TARGET_SCHEMA §3.1, D27): the future-state count
+    (`_future_seat_usage`, shared with the Readout card) less the excluded
+    persona's own seats — they are what is being decided.
 
-    Every OTHER persona counts what it will hold: a persona with an in-scope
-    scenario counts its headcount when the scenario's base or an add-on is a member
-    bundle; a persona without one keeps its current licences, so it counts its
-    share of the assigned seats on member lines (a line shared by several personas
-    splits by headcount; an untagged line applies to everyone). The current lines
-    of a persona that is moving never count — the move replaces them — and nor do
-    the excluded persona's own seats: they are what is being decided.
-
-    Returns one dict per cap: {name, cap, consumed, headroom, member_bundle_names,
-    member_references}; member_references are the member bundle NAMES (an optimizer
-    candidate's sku_reference). Empty when no such limit is defined."""
+    Returns one dict per cap: {key, limit_id, name, cap, consumed, headroom,
+    member_bundle_ids, member_bundle_names, member_references}; member_references
+    are the member bundle NAMES (an optimizer candidate's sku_reference). Empty when
+    no such limit is defined."""
     eng = db.get(models.Engagement, engagement_id)
     if eng is None:
         return []
@@ -228,47 +245,23 @@ def seat_cap_context(
 
     members = _members_by_limit(db)
     bundle_name = {b.id: b.name for b in db.execute(select(models.Bundle)).scalars().all()}
-    headcount = {p.id: p.headcount or 0 for p in eng.personas}
-    moving = {s.persona_id: s for s in eng.scenarios if s.in_scope}
-
-    ref_cache: dict[str, str | None] = {}
-
-    def _resolve(ref: str) -> str | None:
-        if ref not in ref_cache:
-            ref_cache[ref] = bundles_service.resolve_bundle(db, ref or "")
-        return ref_cache[ref]
-
-    def _scenario_bundle_ids(s: models.PersonaScenario) -> set[str]:
-        return {_resolve(s.target_sku_reference)} | {a.bundle_id for a in s.addons}
+    resolve = _resolver(db)
 
     out: list[dict] = []
     for lim in limits:
         mset = members.get(lim.id, set())
-        consumed = 0.0
-        # Personas that move: their future plan.
-        for pid, s in moving.items():
-            if pid != exclude_persona_id and _scenario_bundle_ids(s) & mset:
-                consumed += headcount.get(pid, 0)
-        # Personas that stay as they are: their current member lines, shared by
-        # headcount among the personas each line applies to.
-        for lic in eng.licenses_in_scope:
-            if _resolve(lic.sku_reference) not in mset:
-                continue
-            applies = list(lic.persona_ids) or list(headcount)
-            total_hc = sum(headcount.get(pid, 0) for pid in applies)
-            if not total_hc:
-                consumed += lic.quantity_assigned or 0      # no personas to share it
-                continue
-            staying = sum(headcount.get(pid, 0) for pid in applies
-                          if pid not in moving and pid != exclude_persona_id)
-            consumed += (lic.quantity_assigned or 0) * staying / total_hc
-        consumed = int(round(consumed))
+        usage, unattributed = _future_seat_usage(db, eng, mset, resolve)
+        consumed = int(round(
+            sum(v for pid, v in usage.items() if pid != exclude_persona_id) + unattributed))
         member_names = sorted(bundle_name[i] for i in mset if i in bundle_name)
         out.append({
+            "key": lim.key,
+            "limit_id": lim.id,
             "name": lim.name,
             "cap": lim.max_quantity,
             "consumed": consumed,
             "headroom": max(0, lim.max_quantity - consumed),
+            "member_bundle_ids": sorted(mset),
             "member_bundle_names": member_names,
             "member_references": member_names,
         })

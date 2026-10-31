@@ -503,17 +503,22 @@ linked to the first by `parent_persona_id`:
   is a real Microsoft constraint that spans a **family** of bundles and must be
   checked against the **totality** of current + future state — so it is neither a
   field on one bundle nor a per-line value.
-- **Evaluation (derived, persists nothing):** `services/limits.evaluate` computes a
-  **tenant-wide aggregate** at compute time — current-license seats plus in-scope
-  scenario headcount on member bundles (a scenario counts once whether its base or
-  an add-on is a member), compared to the cap. It is a **pure computation over
+- **One count of future seats:** `services/limits._future_seat_usage` is the single
+  definition of a cap's seats in the future state: a persona with an in-scope
+  scenario counts its headcount when the scenario's base or any add-on is a member;
+  every other persona counts its share of the assigned seats on member licence lines
+  (untagged lines apply to everyone). The Readout card, the recommender, the split
+  offer and Review all use it, so they can never disagree.
+- **Evaluation (derived, persists nothing):** `services/limits.evaluate` reports, per
+  limit, seats today (assigned seats on member lines) and seats in the future state
+  (the count above), each compared to the cap. It is a **pure computation over
   existing first-class objects** (the correct "don't create second-class data"
   outcome, like §4.10a); the result rides on the compute/readout response as
   `license_limits` and is shown on the Readout, so a violation is never hidden.
 - **Seats left and the split (TARGET_SCHEMA D27):** `services/limits.seat_cap_context`
-  gives one persona the seats left in the **future state** (other personas' in-scope
-  scenarios, or their current member lines when they have no scenario; a moving
-  persona's current lines never count). The best-bundle optimizer always uses it:
+  gives one persona the seats left in the **future state**: the same count, less
+  that persona's own seats. Caps are matched to a plan by member bundle id (base or
+  add-on), never by a display name. The best-bundle optimizer always uses it:
   with no seats left a capped plan isn't recommended; with too few, the plan stays
   recommended and `services/seat_cap.split_offer` offers a split — the seats left on
   the capped plan, the rest on the best uncapped plan, the larger side the parent —

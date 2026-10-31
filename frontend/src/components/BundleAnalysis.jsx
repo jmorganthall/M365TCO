@@ -69,12 +69,12 @@ export default function BundleAnalysis({ engagement, persona, onApply, onClose }
       )}
 
       {data?.seat_caps?.map((c) => (
-        <div key={c.name} className="popcheck" style={{ marginBottom: '.5rem', fontSize: '.8rem' }}>
+        <div key={c.key} className="popcheck" style={{ marginBottom: '.5rem', fontSize: '.8rem' }}>
           <b>{c.name}:</b> the rest of the future state uses {c.consumed} of {c.cap} seats ·{' '}
-          <b>{c.headroom}</b> left for {persona.name} ({persona.headcount}).
-          {c.headroom === 0 && <span className="neg"> No Business seats left, so Business plans aren't recommended.</span>}
-          {c.headroom > 0 && persona.headcount > c.headroom && (
-            <span> If a Business plan is used, its row offers to split the {persona.headcount - c.headroom} over
+          <b>{c.headroom}</b> left for {data.persona_name} ({data.headcount}).
+          {c.headroom === 0 && <span className="neg"> No seats left under this cap, so its plans aren't recommended.</span>}
+          {c.over_by > 0 && (
+            <span> If a plan under this cap is used, its row offers to split the {c.over_by} over
               the cap onto the best other plan.</span>
           )}
         </div>

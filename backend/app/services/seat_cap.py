@@ -50,14 +50,11 @@ def split_offer(db: Session, engagement_id: str, persona_id: str) -> dict | None
     if s is None or not s.in_scope or not s.target_sku_reference:
         return None
     plan_ids = {bundles.resolve_bundle(db, s.target_sku_reference)} | {a.bundle_id for a in s.addons}
-    members = limits._members_by_limit(db)
-    caps = {c["name"]: c for c in limits.seat_cap_context(db, engagement_id, exclude_persona_id=persona_id)}
-    limit_rows = {lim.name: lim for lim in db.execute(select(models.LicenseLimit)).scalars()}
-    # The tightest cap the plan falls under decides.
+    # The tightest cap the plan (base or any add-on) falls under decides. Caps are
+    # matched by their member bundle ids, never by a display name.
     hit = None
-    for name, ctx in caps.items():
-        lim = limit_rows.get(name)
-        if lim is not None and members.get(lim.id, set()) & plan_ids:
+    for ctx in limits.seat_cap_context(db, engagement_id, exclude_persona_id=persona_id):
+        if set(ctx["member_bundle_ids"]) & plan_ids:
             if hit is None or ctx["headroom"] < hit["headroom"]:
                 hit = ctx
     headcount = persona.headcount or 0

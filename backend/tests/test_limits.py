@@ -444,3 +444,37 @@ def test_chosen_plans_that_decide_a_tool_differently_are_flagged(client):
     assert (row["plan_keeps"], row["plan_retires"], row["missing_tools"]) == (["MDM"], [], [])
     s = next(s for s in client.get(f"/api/engagements/{eid}/scenarios").json() if s["persona_id"] == child["id"])
     assert s["target_sku_reference"] == "Office 365 E3"
+
+
+def test_the_readout_card_review_and_split_offer_count_seats_the_same_way(client):
+    """One definition of Business seats in the future state (D27). 280 people move
+    onto Business Premium and 40 others keep the Business Premium they hold today:
+    320 seats against a 300 cap. The Readout's licence-limit card, the split offer
+    and Review must all see the same 20-seat overage. (Before the counts were
+    unified, the card counted only the 280 moving and said "within cap" while
+    Review flagged the breach.)"""
+    client.post("/api/catalog/import-csv", files={"file": ("p.csv", _PRICED_CSV, "text/csv")})
+    eid = client.post("/api/engagements", json={"customer_name": "One Count Co"}).json()["id"]
+    movers = client.post(f"/api/engagements/{eid}/personas",
+                         json={"name": "Movers", "headcount": 280}).json()
+    keepers = client.post(f"/api/engagements/{eid}/personas",
+                          json={"name": "Keepers", "headcount": 40}).json()
+    client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "Office 365 E3", "quantity_assigned": 280,
+        "unit_price_paid_annual": 432, "persona_ids": [movers["id"]]})
+    client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "Microsoft 365 Business Premium", "quantity_assigned": 40,
+        "unit_price_paid_annual": 264, "persona_ids": [keepers["id"]]})
+    _plan(client, eid, movers["id"], "Microsoft 365 Business Premium", 264)
+
+    card = next(l for l in client.get(f"/api/engagements/{eid}/result").json()["license_limits"]
+                if l["key"] == "m365-business-seat-cap")
+    assert card["target_seats"] == 320 and card["target_over_by"] == 20 and card["violated"]
+
+    offer = next(o for o in client.get(f"/api/engagements/{eid}/seat-cap-splits").json()
+                 if o["persona_id"] == movers["id"])
+    assert offer["used_elsewhere"] == 40 and offer["seats_left"] == 260
+    assert offer["headcount"] - offer["seats_left"] == card["target_over_by"]
+
+    codes = [c["code"] for c in client.get(f"/api/engagements/{eid}/review").json()["checks"]]
+    assert "seat_cap_exceeded" in codes

@@ -496,7 +496,7 @@ def analyze_persona_bundles(
     # Seat cap (D27): tell the optimizer how many seats each capped family (e.g.
     # M365 Business ≤ 300) has left in the future state of everyone else. With none
     # left the family isn't recommended; with too few, the recommendation stands and
-    # the persona is offered a split (limits.seat_cap_split).
+    # the persona is offered a split (seat_cap.split_offer).
     cap_headroom_by_reference: dict[str, int] = {}
     seat_caps = limits.seat_cap_context(db, engagement_id, exclude_persona_id=persona_id)
     capped_refs: set[str] = set()
@@ -753,8 +753,11 @@ def analyze_persona_bundles(
         # uses and how many are left for this persona.
         "seat_caps": [
             {
-                "name": c["name"], "cap": c["cap"], "consumed": c["consumed"],
+                "key": c["key"], "name": c["name"], "cap": c["cap"], "consumed": c["consumed"],
                 "headroom": c["headroom"], "member_bundle_names": c["member_bundle_names"],
+                # The people beyond the seats left, if this persona took a plan under
+                # the cap — what a split would move (0 when it fits or none are left).
+                "over_by": max(0, n - c["headroom"]) if c["headroom"] > 0 else 0,
             }
             for c in seat_caps
         ],
@@ -1057,10 +1060,9 @@ def attach_target_labels(db: Session, engagement_id: str, result: dict) -> dict:
     add-ons ("Office 365 E3 + Enterprise Mobility + Security E3") — so every display
     shows the whole target, not just the base. The engine composes coverage and
     price from base + add-ons but carries only the base name (`target_sku_reference`);
-    the add-on names live on the DB scenario. A Business-Premium-swapped scenario is
-    substituted wholesale (its engine target differs from the DB base), so its own
-    add-ons don't apply — it's labelled by the swapped target alone. In place; also
-    returned for convenience."""
+    the add-on names live on the DB scenario. The engine costs exactly the scenario's
+    own target (there is no substitution), so the label is always the row's base plus
+    its add-ons. In place; also returned for convenience."""
     eng = db.get(models.Engagement, engagement_id)
     if eng is None:
         return result
@@ -1069,11 +1071,8 @@ def attach_target_labels(db: Session, engagement_id: str, result: dict) -> dict:
         s.persona_id: [bundle_name.get(a.bundle_id, a.bundle_id) for a in s.addons]
         for s in eng.scenarios
     }
-    base_by_persona = {s.persona_id: s.target_sku_reference for s in eng.scenarios}
     for sr in result.get("scenarios", []) or []:
-        pid = sr.get("persona_id")
-        swapped = pid in base_by_persona and sr.get("target_sku_reference") != base_by_persona[pid]
-        addons = [] if swapped else addons_by_persona.get(pid, [])
+        addons = addons_by_persona.get(sr.get("persona_id"), [])
         sr["target_addons"] = addons
         sr["target_label"] = (sr.get("target_sku_reference") or "") + "".join(f" + {a}" for a in addons)
     return result
