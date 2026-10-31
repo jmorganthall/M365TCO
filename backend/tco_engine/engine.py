@@ -520,13 +520,11 @@ def compute(engagement: Engagement) -> EngineResult:
             )
 
     # ----- Per-persona scenario math (Section 6.2 / 6.3) -----
-    # Personas that have a scenario (appear in the readout). An UNTAGGED current
-    # license — one the operator entered without attributing to a persona — is
-    # treated as an org-wide pool distributed across these, so it still counts as
-    # current spend and is retired when they move, instead of silently vanishing.
-    scenario_persona_ids = {
-        s.persona_id for s in engagement.scenarios if s.persona_id in personas
-    }
+    # An UNTAGGED current licence — entered without attributing it to a persona —
+    # is Org-wide (TARGET_SCHEMA D12): it applies to EVERY persona and its cost is
+    # shared by headcount across all of them, the same reading the quick-win
+    # coverage (6.10), the seat cap and Review use. A persona without a scenario
+    # keeps its share (it isn't moving), so a move retires only its own share.
 
     scenario_results: list[ScenarioResult] = []
     for scenario in engagement.scenarios:
@@ -547,10 +545,8 @@ def compute(engagement: Engagement) -> EngineResult:
                 if persona.id not in line.persona_ids:
                     continue
                 pool = [pid for pid in line.persona_ids if pid in personas]
-            else:  # untagged -> org-wide pool of scenario personas
-                if persona.id not in scenario_persona_ids:
-                    continue
-                pool = list(scenario_persona_ids)
+            else:  # untagged -> Org-wide: every persona
+                pool = list(personas)
             line_total = Decimal(line.quantity_assigned) * line.unit_price_paid_annual
             pool_hc = sum(personas[pid].headcount for pid in pool)
             if pool_hc > 0:

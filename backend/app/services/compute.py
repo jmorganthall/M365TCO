@@ -318,7 +318,10 @@ def analyze_persona_bundles(
     # tagged to several personas; its cost is split across their combined headcount
     # (mirrors the engine's §6.2 allocation).
     hc = {p.id: p.headcount for p in eng.personas}
-    persona_lines = [l for l in eng.licenses_in_scope if persona_id in l.persona_ids]
+    # The lines that apply to this persona: tagged to it, or untagged (Org-wide,
+    # every persona — TARGET_SCHEMA D12, the engine's reading).
+    persona_lines = [l for l in eng.licenses_in_scope
+                     if not l.persona_ids or persona_id in l.persona_ids]
     required: set[str] = set()
     sources: dict[str, list[str]] = {}  # outcome -> why it is required
     current_ms = Decimal("0")
@@ -327,7 +330,7 @@ def analyze_persona_bundles(
         for oid in readings[line.id].outcomes:
             sources.setdefault(oid, ["licence"])
         line_total = Decimal(line.quantity_assigned) * line.effective_unit_price_annual
-        tagged = [pid for pid in line.persona_ids if pid in hc]
+        tagged = [pid for pid in (line.persona_ids or hc) if pid in hc]
         tagged_hc = sum(hc[pid] for pid in tagged)
         share = (Decimal(hc.get(persona_id, 0)) / Decimal(tagged_hc)) if tagged_hc > 0 \
             else Decimal(1) / Decimal(len(tagged) or 1)
@@ -637,7 +640,7 @@ def analyze_persona_bundles(
             if m.id == persona.id:
                 ctx[m.id] = (n, required, held_eng, cap_headroom_by_reference)
                 continue
-            lines = [l for l in eng.licenses_in_scope if m.id in l.persona_ids]
+            lines = [l for l in eng.licenses_in_scope if not l.persona_ids or m.id in l.persona_ids]
             req = set().union(*[readings[l.id].outcomes for l in lines])
             req |= {oid for oid in m.required_outcome_ids if oid in outcome_names}
             held = [t for t in third_party

@@ -478,3 +478,21 @@ def test_the_readout_card_review_and_split_offer_count_seats_the_same_way(client
 
     codes = [c["code"] for c in client.get(f"/api/engagements/{eid}/review").json()["checks"]]
     assert "seat_cap_exceeded" in codes
+
+
+def test_the_recommender_reads_untagged_licences_as_org_wide(client):
+    """An untagged licence line applies to every persona (D12), so the recommender
+    must keep what it delivers and count its share of the cost — it used to ignore
+    untagged lines, recommending against an empty "today"."""
+    client.post("/api/catalog/import-csv", files={"file": ("p.csv", _PRICED_CSV, "text/csv")})
+    eid = client.post("/api/engagements", json={"customer_name": "Untagged Co"}).json()["id"]
+    a = client.post(f"/api/engagements/{eid}/personas", json={"name": "A", "headcount": 100}).json()
+    client.post(f"/api/engagements/{eid}/personas", json={"name": "B", "headcount": 300})
+    client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "Office 365 E3", "quantity_assigned": 400,
+        "unit_price_paid_annual": 300, "persona_ids": []})
+    res = client.post(f"/api/engagements/{eid}/personas/{a['id']}/bundle-analysis").json()
+    # A's share: 400 × 300 × 100/400 = 30,000.
+    assert res["current_microsoft_annual"] == 30000.0
+    assert res["required_outcomes"], "the untagged line's outcomes must be kept"
+    assert all("licence" in o["sources"] for o in res["required_outcomes"])

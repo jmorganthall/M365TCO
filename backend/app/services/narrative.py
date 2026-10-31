@@ -42,7 +42,7 @@ def build_narrative_payload(eng, result: dict) -> list[dict]:
         ref = (lic.sku_reference or "").strip()
         if not ref:
             continue
-        for pid in (lic.persona_ids or []):
+        for pid in (lic.persona_ids or [p.id for p in eng.personas]):  # untagged = Org-wide
             skus_by_persona.setdefault(pid, []).append(ref)
 
     # Add-on bundle names per scenario (base is target_sku_reference in result).

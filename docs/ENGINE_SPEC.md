@@ -148,11 +148,13 @@ it.
 # and a shared line is never double-counted across personas. (If the pool has zero
 # total headcount, the line is split evenly by count so cost is not lost.)
 #
-# UNTAGGED lines (empty persona_ids) are treated as an ORG-WIDE pool: the pool is
-# every persona that has a scenario, distributed by headcount. This means a
-# current license the operator entered without attributing it to a persona (e.g.
-# "255 Business Premium") still counts as current spend and is retired when those
-# personas move to a target — rather than silently vanishing from the TCO.
+# UNTAGGED lines (empty persona_ids) are ORG-WIDE (TARGET_SCHEMA D12): the pool is
+# EVERY persona, distributed by headcount — the same reading the quick-win
+# coverage (6.10), the seat cap (6.13), the recommender and Review use. A persona
+# with a scenario carries its share as current spend and retires it when it moves;
+# a persona without one keeps its share (it isn't moving), so that share is in no
+# scenario and in no delta. (The pool used to be only personas with a scenario,
+# which credited the movers with retiring seats held by people who stay.)
 current_microsoft = Σ over lines whose pool includes this persona of
       line_total * (persona.headcount / Σ headcount of the line's pool)
     where line_total = line.quantity_assigned * line.effective_unit_price_annual
@@ -426,8 +428,8 @@ does not exist, so the error is always toward **under**-crediting.
 > persona that holds nothing because a different line has spare seats.
 
 > `coverage_scope` governs **seat counts**, not which personas can see a
-> capability. The capability views (persona coverage gaps, the Business Premium
-> §6.2's org-wide cost pool) still treat an untagged
+> capability. The capability views (persona coverage gaps) and
+> §6.2's org-wide cost pool still treat an untagged
 > line as org-wide — those guards are deliberately conservative: over-counting
 > there withholds a move, while over-counting seats here would assert savings the
 > customer cannot realize.
@@ -491,7 +493,7 @@ for r in in-scope scenarios:
                              for o in r.offsets if o.move_unlocked_annual > 0) or 0)
     if ms_change < 0:    # a REDUCTION waits for every line it touches to renew
         lines = the licence lines that apply to r's persona (6.2's rule: tagged to it,
-                or untagged = the org-wide pool of personas with a scenario)
+                or untagged = Org-wide, every persona)
         item(−ms_change, max(start(L.renewal_date or microsoft_renewal_date) for L in lines))
 
 # 3. Over-licensing — unused seats the customer confirmed are not needed.

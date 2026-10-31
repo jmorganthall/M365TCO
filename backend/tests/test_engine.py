@@ -85,6 +85,35 @@ def test_untagged_current_license_counts_orgwide_and_is_retired():
     assert r.net_tco_delta_annual == D("126144.00")
 
 
+def test_untagged_licence_is_shared_by_every_persona_not_only_the_movers():
+    """Org-wide means every persona (TARGET_SCHEMA D12, ENGINE_SPEC 6.2). 255 untagged
+    seats, one persona of 100 moving and one of 155 with no plan: the mover's share
+    is 100/255 of the line, so its move retires only that share. The other 155/255
+    stays with the people who aren't moving, on both sides, and is in no delta.
+    (The pool used to be only personas with a scenario, so the 100 movers were
+    credited with retiring all 255 seats.)"""
+    movers = Persona(id="m", name="Movers", headcount=100)
+    stay = Persona(id="s", name="Staying", headcount=155)
+    bp = CurrentLicenseLine(
+        quantity_assigned=255, unit_price_paid_annual=D("264"), persona_ids=()
+    )
+    scenario = PersonaScenario(
+        id="sc", persona_id="m", target_sku_reference="E3",
+        target_unit_price_annual=D("432"),
+    )
+    eng = Engagement(
+        id="e", personas=[movers, stay], third_party_products=[], scenarios=[scenario],
+        current_licenses=[bp],
+    )
+    res = compute(eng)
+    sc = res.scenarios[0]
+    # 255 × 264 = 67,320 for the line; the movers' share is 100/255 = 26,400.
+    assert sc.current_microsoft_annual == D("26400.00")
+    assert sc.target_spend_annual == D("43200.00")          # 100 × 432
+    assert sc.delta_annual == D("16800.00")                 # 43,200 − 26,400
+    assert res.rollup.existing_microsoft_annual == D("26400.00")
+
+
 def test_quick_wins_flags_duplicates_current_licensing_already_covers():
     """A third-party product whose outcomes the CURRENT licensing already delivers
     is a quick win — droppable today, with no scenario move. Save-$X-today."""
