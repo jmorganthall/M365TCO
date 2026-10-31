@@ -45,6 +45,55 @@ the data layer on input, never inside the engine.
 > looks up that bundle's covered outcomes, so a target and its coverage always
 > speak the same language (fixes "target names a SKU the coverage map doesn't").
 
+## Interpretation — raw data read through the rules (6.0)
+
+The engine's inputs above are built by one pure function, `interpret(raw) →
+interpreted` (`tco_engine/interpret.py`, TARGET_SCHEMA §6), then adapted by
+`to_engine`. The data layer only loads what people entered (`services/raw.py`)
+plus two catalog facts the interpreter can't look up itself: which plan a typed
+name resolves to, and the engagement's ratified coverage. Every rule below is
+defined once, here, and every consumer reads its result (`GET …/interpreted`).
+
+```
+# Licence line (D23) — how it is read, first match wins:
+read_state = out_of_scope   if line.out_of_scope                  (delivers nothing, in no number)
+           | linked / unread if line.linked_bundle_id             (its plan's coverage; unread if none)
+           | mapped          if a person ticked outcomes          (those outcomes)
+           | named           if coverage exists for the exact typed name (legacy)
+           | resolved        if the typed name resolves to a plan with coverage
+           | unread          otherwise                           (cost counts; outcomes unknown)
+effective_price = overridden_price  if price_override and overridden_price is set   (source "override")
+                | list_price                                                         (source "list")
+applies_to      = persona_ids, or EVERY persona when untagged (assumed = true, D12)
+annual_cost     = quantity_assigned × effective_price
+share(line, p)  = annual_cost × headcount(p) / Σ headcount(applies_to)
+                  (even split when that total is 0; out-of-scope lines have no shares)
+
+# Tool
+annual_cost     = raw_cost × 12 if cost_period = Monthly, else raw_cost
+tooling_pct     = the tool's own value, else the engagement default          (source)
+effective_cost  = 6.5 below;  cost_per_person = 6.3 below on people_covered
+people_covered  = covered_count_override if set (source "override"),
+                  else Σ headcount of its tagged personas (source "personas")
+applies_to      = persona_ids, or every persona when untagged (assumed)
+share(tool, p)  = cost_per_person × headcount(p) for p in applies_to
+                  (a covers override above the personas' headcount leaves a
+                  remainder that is nobody's share)
+
+# Scenario
+covered         = coverage(resolved base plan, else the typed name) ∪ coverage(each add-on)
+composed_list   = base list + Σ add-on list
+net             = overridden_price if price_override and set (source "override")
+                | composed_list × (1 − discount_pct)              (source "list")
+complete        = has a target name and (an override or net > 0)
+```
+
+The engine's `CurrentLicenseLine.unit_price_paid_annual` is the line's effective
+price; its `ThirdPartyProduct.annual_cost` / `covered_count` / `tooling_pct` are the
+interpreted values above (no longer the values stored on the tool row);
+`target_unit_price_annual` is the scenario's `net`. The 6.5 and 6.3 formulas are one
+function each (`tco_engine/money.py`), used by both the interpreter and the engine.
+
 ## Derived per-product cost (6.5 managed split)
 
 ```

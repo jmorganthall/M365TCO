@@ -16,10 +16,27 @@ It is a work tracker, not a contract. `TARGET_SCHEMA.md` stays the contract.
 | Untagged licence lines: the engine split them over personas with a scenario, the recommender ignored them, everything else read them as everyone | Org-wide = every persona, everywhere (D12) |
 | Reading the practice branding created its row | Reading returns an unsaved blank record |
 
-## Phase 1 — `interpret()` on today's schema (next)
+## Phase 1 — `interpret()` on today's schema (in progress)
 
 A pure `backend/tco_engine/interpret.py` that returns, in memory, the shapes in
-§6.1–6.4. It folds today's copies of each rule into one definition:
+§6.1–6.4. It folds today's copies of each rule into one definition.
+
+**1a (done):**
+- `services/raw.py` loads what people entered.
+- `interpret()` reads it into: licence lines (read state, effective price and
+  source, applies-to, assumed); licence and tool cost shares; tools (cost,
+  tooling %, covers, cost per person, each with its source); scenarios
+  (composition, net, coverage, complete).
+- `to_engine()` builds the engine's input from those values. `compute.hydrate`
+  is now just that.
+- The engine no longer reads the tool-cost columns stored on the raw row.
+- The 6.3/6.5 formulas are one function each (`tco_engine/money.py`).
+- `GET …/interpreted` shows the layer.
+- `tests/test_zz_interpret_parity.py` checks that the engine input is identical
+  to the old hydrator's for every engagement the suite builds.
+
+**1b (next):** the persona × outcome tables, tool retirement, seat caps and
+findings. In the table below, the first two rows are done in 1a.
 
 | Interpreted output | Folded from |
 | --- | --- |
@@ -32,7 +49,7 @@ A pure `backend/tco_engine/interpret.py` that returns, in memory, the shapes in
 | findings | `services/review.py` |
 
 Gate: the engine's output from `interpret()` equals today's output on every test
-fixture and on a `tools/baseline.py` export.
+fixture (done for 1a) and on a `tools/baseline.py` export of a live instance.
 
 ## Phase 2 — every consumer reads interpret/engine output
 

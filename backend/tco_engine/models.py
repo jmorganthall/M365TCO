@@ -16,6 +16,8 @@ from decimal import Decimal
 from enum import Enum
 from typing import Optional
 
+from .money import cost_per_person, managed_effective_cost
+
 
 class Coverage(str, Enum):
     FULL = "Full"
@@ -134,18 +136,12 @@ class ThirdPartyProduct:
     @property
     def effective_annual_cost(self) -> Decimal:
         """Section 6.5 managed split. The only cost basis used in the math."""
-        if self.is_managed:
-            return (self.annual_cost * self.tooling_pct).quantize(Decimal("0.01"))
-        return self.annual_cost
+        return managed_effective_cost(self.annual_cost, self.is_managed, self.tooling_pct)
 
     @property
     def per_unit_annual_cost(self) -> Decimal:
         """Section 6.3 linear-by-user unit cost on the effective basis."""
-        if self.covered_count <= 0:
-            return Decimal("0")
-        return (self.effective_annual_cost / Decimal(self.covered_count)).quantize(
-            Decimal("0.000001")
-        )
+        return cost_per_person(self.effective_annual_cost, self.covered_count)
 
 
 @dataclass

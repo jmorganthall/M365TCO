@@ -18,6 +18,7 @@ from ..services import (
     ai, ai_prompts, branding, compute, defaults, exporter, limits, narrative,
     readout, results, review, sanity, seeds,
 )
+from ..services import raw as raw_layer
 
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
@@ -340,6 +341,15 @@ def engagement_result(engagement_id: str, db: Session = Depends(get_db)):
     recompute step."""
     _get_engagement(db, engagement_id)
     return results.current_result(db, engagement_id)
+
+
+@router.get("/{engagement_id}/interpreted")
+def engagement_interpreted(engagement_id: str, db: Session = Depends(get_db)):
+    """The interpreted layer (tco_engine.interpret): the engagement's raw data read
+    through the rules — licence lines, cost shares, tools, scenarios — exactly as
+    the engine reads it. Derived and read-only."""
+    _get_engagement(db, engagement_id)
+    return raw_layer.interpreted_view(db, engagement_id)
 
 
 @router.post("/{engagement_id}/compute", deprecated=True)

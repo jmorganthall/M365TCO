@@ -16,22 +16,15 @@ from sqlalchemy.orm import Session
 
 from tco_engine import (
     CandidateBundle,
-    CoverageScope,
-    CurrentLicenseLine,
     Engagement as EngEngagement,
-    Override,
-    Persona as EngPersona,
-    PersonaScenario as EngScenario,
-    ResidualIntent,
     ThirdPartyProduct as EngThirdParty,
-    UnusedSeatsAnswer,
     analyze_bundles,
-    compute as engine_compute,
 )
 from tco_engine.engine import EngineResult
+from tco_engine.interpret import to_engine
 
 from .. import models
-from . import bundles, limits, seeds
+from . import bundles, limits, raw, seeds
 from . import personas as persona_order
 
 
@@ -128,120 +121,9 @@ def _ratified_thirdparty_outcomes(db: Session, engagement_id: str) -> dict[str, 
 
 
 def hydrate(db: Session, engagement_id: str) -> EngEngagement:
-    eng = db.get(models.Engagement, engagement_id)
-    if eng is None:
-        raise ValueError(f"Engagement {engagement_id} not found")
-
-    sku_outcomes = _ratified_sku_outcomes(db, engagement_id)
-    tp_outcomes = _ratified_thirdparty_outcomes(db, engagement_id)
-    readings = licence_readings(db, eng, sku_outcomes)
-
-    # Operator choices persisted on disposition rows.
-    disp_rows = {
-        d.third_party_product_id: d
-        for d in db.execute(
-            select(models.ProductDisposition).where(
-                models.ProductDisposition.engagement_id == engagement_id
-            )
-        ).scalars()
-    }
-
-    personas = [
-        EngPersona(id=p.id, name=p.name, headcount=p.headcount)
-        for p in persona_order.ordered(eng.personas)
-    ]
-
-    current_lines = [
-        CurrentLicenseLine(
-            quantity_assigned=lic.quantity_assigned,
-            # Effective price = the override when the line overrides list, else the
-            # catalog list baseline — so an override actually lowers current spend.
-            unit_price_paid_annual=lic.effective_unit_price_annual,
-            sku_reference=lic.sku_reference,
-            persona_ids=tuple(lic.persona_ids),
-            # How many seats this line entitles — per-seat purchase vs tenant-wide
-            # entitlement. Drives how many seats a duplicate tool can be credited
-            # as redundant today (ENGINE_SPEC 6.10).
-            coverage_scope=CoverageScope(lic.coverage_scope or "PerUser"),
-            # What this existing license already delivers (how the line is read:
-            # its linked plan, its own mapped outcomes, or its name's plan), for
-            # quick-win duplicate detection. An unread line delivers nothing known.
-            covered_outcome_ids=readings[lic.id].outcomes,
-            # Over-licensing and timing (ENGINE_SPEC 6.11).
-            id=lic.id,
-            quantity_purchased=lic.quantity_purchased or 0,
-            renewal_date=lic.renewal_date,
-            unused_seats_answer=(
-                UnusedSeatsAnswer(lic.unused_seats_answer) if lic.unused_seats_answer else None
-            ),
-        )
-        # Out-of-scope lines are not engine inputs (ENGINE_SPEC 6.2): they are in
-        # no number, today or after the move.
-        for lic in eng.licenses_in_scope
-    ]
-
-    third_party = []
-    for tp in eng.third_party_products:
-        disp = disp_rows.get(tp.id)
-        third_party.append(
-            EngThirdParty(
-                id=tp.id,
-                name=tp.name,
-                annual_cost=_dec(tp.annual_cost),
-                covered_count=tp.covered_count,
-                is_managed=tp.is_managed,
-                tooling_pct=_dec(tp.tooling_pct),
-                renewal_date=tp.renewal_date.isoformat() if tp.renewal_date else None,
-                delivered_outcome_ids=frozenset(tp_outcomes.get(tp.id, set())),
-                persona_ids=frozenset(tp.persona_ids),
-                override=Override(disp.override) if disp else Override.NONE,
-                override_reason=disp.override_reason if disp else "",
-                residual_intent=(
-                    ResidualIntent(disp.residual_intent) if disp else ResidualIntent.NONE
-                ),
-            )
-        )
-
-    # Compose each scenario's future state = base bundle + add-on bundles: union
-    # the covered outcomes, sum the list prices, then apply the discount to yield
-    # the net per-seat price the engine consumes. There is no target substitution
-    # here any more: a persona that should move to a different plan says so on its
-    # own scenario, and a persona only PART of which should move is carved into a
-    # child persona with its own scenario (Persona.parent_persona_id). What the
-    # engine costs is therefore always what the operator can see on the row.
-    scenarios = []
-    for s in eng.scenarios:
-        covered = set(sku_outcomes.get(_cover_key(db, s.target_sku_reference), set()))
-        for addon in s.addons:
-            covered |= sku_outcomes.get(addon.bundle_id, set())
-        # Net = the override when the scenario overrides list, else
-        # (base + add-ons) × (1 − discount).
-        net_price = s.effective_net_annual
-        target_ref = s.target_sku_reference
-        scenarios.append(EngScenario(
-            id=s.id,
-            persona_id=s.persona_id,
-            target_sku_reference=target_ref,
-            target_unit_price_annual=net_price,
-            in_scope=s.in_scope,
-            target_covered_outcome_ids=frozenset(covered),
-        ))
-
-    return EngEngagement(
-        id=eng.id,
-        personas=personas,
-        third_party_products=third_party,
-        scenarios=scenarios,
-        current_licenses=current_lines,
-        ecif_roi_conservative=_dec(eng.ecif_roi_conservative),
-        ecif_roi_generous=_dec(eng.ecif_roi_generous),
-        # Month 0 of the timed headline. An engagement created before the workshop
-        # date existed falls back to the day it was created — a fixed date, so the
-        # numbers never drift with the calendar.
-        workshop_date=eng.workshop_date or (eng.created_at.date() if eng.created_at else None),
-        microsoft_renewal_date=eng.microsoft_renewal_date,
-        horizon_years=int(eng.modeling_horizon_years or 3),
-    )
+    """The engine's input for an engagement: its raw data loaded (services/raw) and
+    read through the rules (tco_engine.interpret). Reads only."""
+    return to_engine(raw.interpreted(db, engagement_id))
 
 
 def _catalog_annual_erp(db: Session, bundle, basis: dict, catalog=None) -> Decimal:
