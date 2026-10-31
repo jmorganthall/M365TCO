@@ -20,4 +20,8 @@ def client():
     from app.main import app
 
     init_db()
-    return TestClient(app)
+    tc = TestClient(app)
+    # Run the app's startup (seeding) as production does, so no read path has to
+    # seed on first use — viewing never writes (TARGET_SCHEMA §1.2).
+    tc.__enter__()
+    return tc

@@ -132,7 +132,6 @@ def evaluate(db: Session, engagement_id: str) -> list[dict]:
     eng = db.get(models.Engagement, engagement_id)
     if eng is None:
         return []
-    seed_license_limits(db)  # populate-if-empty, so the cap is evaluated on first compute
     limits = db.execute(
         select(models.LicenseLimit).order_by(models.LicenseLimit.sort_order)
     ).scalars().all()
@@ -218,7 +217,6 @@ def seat_cap_context(
     eng = db.get(models.Engagement, engagement_id)
     if eng is None:
         return []
-    seed_license_limits(db)
     limits = [
         lim for lim in db.execute(
             select(models.LicenseLimit).order_by(models.LicenseLimit.sort_order)

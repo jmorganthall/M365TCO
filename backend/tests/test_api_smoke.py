@@ -499,9 +499,11 @@ def test_third_party_persona_tags_roundtrip(client):
 
 
 def test_stale_classification_cleared_when_naturally_fully_eliminated(client):
-    """A residual classification answers for a residual; when displacement grows
-    to cover the whole product, compute auto-clears the stale classification —
-    in the persisted row AND the same compute's response."""
+    """A residual classification answers for a residual. When displacement grows
+    to cover the whole product the classification has nothing to answer: the
+    result shows no decision and flags it not applicable, but the operator's
+    stored decision is kept as entered (TARGET_SCHEMA §1.2.3) and applies again
+    when a residual returns."""
     eng = client.post("/api/engagements", json={"customer_name": "AutoClear Co"}).json()
     eid = eng["id"]
     outcomes = client.get(f"/api/engagements/{eid}/outcomes").json()
@@ -530,9 +532,16 @@ def test_stale_classification_cleared_when_naturally_fully_eliminated(client):
     assert d["disposition"] == "FullyEliminated"
     assert d["residual_intent"] == "None"
     assert d["override"] == "None"
-    # And it stays cleared on the next compute (persisted, not just reported).
-    d = client.post(f"/api/engagements/{eid}/compute").json()["dispositions"][0]
-    assert d["residual_intent"] == "None"
+    assert d["decision_not_applicable"] is True
+
+    # The stored decision was never erased: shrink back below covers and the
+    # residual is answered by it again, without asking the operator twice.
+    client.patch(f"/api/engagements/{eid}/personas/{kw['id']}", json={"headcount": 450})
+    d = client.get(f"/api/engagements/{eid}/result").json()["dispositions"][0]
+    assert d["disposition"] == "PartiallyReduced"
+    assert d["residual_intent"] == "IntendedOutOfScope"
+    assert d["decision_not_applicable"] is False
+    assert d["requires_residual_classification"] is False
 
 
 def test_endpoint_privilege_management_seeded_and_covered(client):

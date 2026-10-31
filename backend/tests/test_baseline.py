@@ -146,12 +146,12 @@ def test_export_is_complete_and_deterministic(engagement, tmp_path):
 
 def test_export_leaves_the_database_untouched(engagement, tmp_path, monkeypatch):
     # The tool must never reach the helpers that write while reading.
-    from app.services import bundles, compute, limits
+    from app.services import bundles, limits
 
     def _forbidden(*args, **kwargs):
         raise AssertionError("the baseline export called a writing helper")
 
-    for module, name in ((compute, "compute_and_persist"), (bundles, "list_bundles"),
+    for module, name in ((bundles, "list_bundles"),
                          (bundles, "seed_bundles"), (limits, "evaluate"),
                          (limits, "seed_license_limits")):
         monkeypatch.setattr(module, name, _forbidden)

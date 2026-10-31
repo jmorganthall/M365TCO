@@ -71,6 +71,7 @@ def result_to_dict(result: EngineResult) -> dict:
                     for p in d.population
                 ],
                 "unassigned_count": d.unassigned_count,
+                "decision_not_applicable": d.decision_not_applicable,
             }
             for d in result.dispositions
         ],

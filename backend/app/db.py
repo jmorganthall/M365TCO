@@ -143,6 +143,17 @@ _RETIRED_COLUMNS: tuple[tuple[str, str], ...] = (
     # Users / Devices / Units on a third-party tool: never read by any calculation
     # (everything is per person, TARGET_SCHEMA D13) — removed with the walkthrough.
     ("third_party_products", "unit_basis"),
+    # Engine outputs that were cached onto raw rows on every compute — including
+    # GET readout views — so viewing wrote to the database. Results are now
+    # calculated on read (services/results); nothing derived is stored on a raw
+    # row, so nothing derived can go stale (TARGET_SCHEMA §1.2).
+    ("persona_scenarios", "current_spend_annual"),
+    ("persona_scenarios", "target_spend_annual"),
+    ("persona_scenarios", "delta_annual"),
+    ("product_dispositions", "displaced_users"),
+    ("product_dispositions", "disposition"),
+    ("product_dispositions", "residual_count"),
+    ("product_dispositions", "residual_annual_cost"),
     # Per-engagement readout colours: the practice brands the readout once, in
     # practice_branding (TARGET_SCHEMA D25); the engagement keeps only the
     # customer's logo.

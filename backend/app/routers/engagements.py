@@ -16,25 +16,9 @@ from ..config import settings
 from ..db import get_db
 from ..services import (
     ai, ai_prompts, branding, compute, defaults, exporter, limits, narrative,
-    readout, review, sanity, seeds,
+    readout, results, review, sanity, seeds,
 )
-from ..services.serialize import result_to_dict
 
-
-def _computed_dict(db, engagement_id: str) -> dict:
-    """The serialized engine result plus the tenant-wide license-limit evaluation
-    (§ services/limits) and the per-persona new-outcomes story (§ services/compute)
-    — so every readout consumer (compute, HTML/xlsx export, snapshot) carries the
-    guardrail check and the value story, and none is hidden."""
-    result = result_to_dict(compute.compute_and_persist(db, engagement_id))
-    result["license_limits"] = limits.evaluate(db, engagement_id)
-    result["new_outcomes"] = compute.new_outcomes(db, engagement_id, result)
-    result["dropped_capability"] = compute.dropped_capability(db, engagement_id, result)
-    compute.attach_target_labels(db, engagement_id, result)
-    # The stored per-persona business narratives (operator-edited or AI-drafted),
-    # so the HTML/xlsx readouts and snapshots carry the business case too.
-    result["narratives"] = _narratives_response(_get_engagement(db, engagement_id))["narratives"]
-    return result
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
 
@@ -349,10 +333,20 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
     return dst
 
 
-@router.post("/{engagement_id}/compute")
-def compute_engagement(engagement_id: str, db: Session = Depends(get_db)):
+@router.get("/{engagement_id}/result")
+def engagement_result(engagement_id: str, db: Session = Depends(get_db)):
+    """The calculated result for the engagement's current data (services/results).
+    Reads only: every read reflects every edit so far, so there is no separate
+    recompute step."""
     _get_engagement(db, engagement_id)
-    return _computed_dict(db, engagement_id)
+    return results.current_result(db, engagement_id)
+
+
+@router.post("/{engagement_id}/compute", deprecated=True)
+def compute_engagement(engagement_id: str, db: Session = Depends(get_db)):
+    """Deprecated alias of `GET /result`, kept for one release. Writes nothing."""
+    _get_engagement(db, engagement_id)
+    return results.current_result(db, engagement_id)
 
 
 @router.post("/{engagement_id}/sanity-check")
@@ -364,7 +358,7 @@ def sanity_check(engagement_id: str, db: Session = Depends(get_db)):
     eng = _get_engagement(db, engagement_id)
     if not ai.is_enabled():
         raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
-    result = result_to_dict(compute.compute_and_persist(db, engagement_id))
+    result = results.current_result(db, engagement_id)
     summary = sanity.build_sanity_payload(eng, result)
     row = defaults.get_defaults(db)
     model = row.sanity_check_model or settings.sanity_check_model
@@ -380,17 +374,7 @@ def sanity_check(engagement_id: str, db: Session = Depends(get_db)):
     return {"model": model, "findings": findings}
 
 
-def _narratives_response(eng: models.Engagement) -> dict:
-    rows = sorted(eng.narratives, key=lambda n: n.persona_name)
-    return {
-        "narratives": [
-            {"id": n.id, "persona": n.persona_name, "today": n.today,
-             "whats_new": n.whats_new, "value": n.value,
-             "source_tag": n.source_tag}
-            for n in rows
-        ],
-        "generated_at": rows[0].generated_at.isoformat() if rows else None,
-    }
+_narratives_response = results.narratives_view
 
 
 @router.get("/{engagement_id}/narrative")
@@ -411,9 +395,7 @@ def scenario_narrative(engagement_id: str, db: Session = Depends(get_db)):
     eng = _get_engagement(db, engagement_id)
     if not ai.is_enabled():
         raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
-    result = result_to_dict(compute.compute_and_persist(db, engagement_id))
-    result["new_outcomes"] = compute.new_outcomes(db, engagement_id, result)
-    result["dropped_capability"] = compute.dropped_capability(db, engagement_id, result)
+    result = results.current_result(db, engagement_id)
     scenarios = narrative.build_narrative_payload(eng, result)
     if not scenarios:
         return {"narratives": [], "generated_at": None}  # nothing in scope to narrate
@@ -493,7 +475,7 @@ def coverage_gaps(engagement_id: str, db: Session = Depends(get_db)):
 @router.get("/{engagement_id}/readout.html", response_class=HTMLResponse)
 def readout_html(engagement_id: str, db: Session = Depends(get_db)):
     eng = _get_engagement(db, engagement_id)
-    result = _computed_dict(db, engagement_id)
+    result = results.current_result(db, engagement_id)
     return HTMLResponse(readout.build_html(
         eng, result, compute.persona_coverage_gaps(db, engagement_id),
         branding.resolved(branding.get(db))))
@@ -502,7 +484,7 @@ def readout_html(engagement_id: str, db: Session = Depends(get_db)):
 @router.get("/{engagement_id}/readout.xlsx")
 def readout_xlsx(engagement_id: str, db: Session = Depends(get_db)):
     eng = _get_engagement(db, engagement_id)
-    result = _computed_dict(db, engagement_id)
+    result = results.current_result(db, engagement_id)
     data = exporter.build_xlsx(eng, result)
     return Response(
         content=data,
@@ -527,7 +509,7 @@ def customer_report_pdf(engagement_id: str, db: Session = Depends(get_db)):
     view: it records the numbers handed to the customer as a Presented snapshot
     and points the engagement's presented_snapshot_id at it (TARGET_SCHEMA §8)."""
     eng = _get_engagement(db, engagement_id)
-    result = _computed_dict(db, engagement_id)
+    result = results.current_result(db, engagement_id)
     catalog_version = (
         db.execute(select(models.MicrosoftSku.catalog_version).limit(1)).scalar() or ""
     )
@@ -562,7 +544,7 @@ def mark_delivered(
     who = payload.delivered_by.strip()
     if not who:
         raise HTTPException(422, "Say who is marking the workshop delivered.")
-    result = _computed_dict(db, engagement_id)
+    result = results.current_result(db, engagement_id)
     catalog_version = (
         db.execute(select(models.MicrosoftSku.catalog_version).limit(1)).scalar() or ""
     )
@@ -597,7 +579,7 @@ def clear_delivered(engagement_id: str, db: Session = Depends(get_db)):
 def create_snapshot(engagement_id: str, label: str = "", db: Session = Depends(get_db)):
     """Reproducible saved readout (PRD 12) — survives later catalog updates."""
     _get_engagement(db, engagement_id)
-    result = _computed_dict(db, engagement_id)
+    result = results.current_result(db, engagement_id)
     catalog_version = (
         db.execute(select(models.MicrosoftSku.catalog_version).limit(1)).scalar() or ""
     )

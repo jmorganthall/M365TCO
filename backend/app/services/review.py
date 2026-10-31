@@ -11,10 +11,9 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from tco_engine import compute as engine_compute
 
 from .. import models
-from . import bundles, compute, library_updates, seat_cap
+from . import bundles, compute, library_updates, results, seat_cap
 
 STEP_ORDER = ["customer", "groups", "tools", "future", "gaps", "review", "summary"]
 
@@ -93,7 +92,7 @@ def review(db: Session, engagement_id: str) -> dict:
                   f"counts from today.", "info")
 
     # ---- Future state (engine, not persisted) ------------------------------
-    result = engine_compute(compute.hydrate(db, engagement_id))
+    result = results.engine_result(db, engagement_id)
     with_scenario = {s.persona_id for s in eng.scenarios}
     for p in eng.personas:
         if p.id not in with_scenario:

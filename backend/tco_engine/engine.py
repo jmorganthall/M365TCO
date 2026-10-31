@@ -114,6 +114,10 @@ class ProductDispositionResult:
     # fewer). Σ non-Replaced headcount + unassigned_count = covered − displaced.
     population: list[PopulationShare] = field(default_factory=list)
     unassigned_count: int = 0
+    # Set by the reader, not the engine: the operator's stored decision currently
+    # has no effect because the move alone fully retires the tool (TARGET_SCHEMA
+    # §1.2.3). The decision is shown as none and kept as entered.
+    decision_not_applicable: bool = False
 
 
 @dataclass

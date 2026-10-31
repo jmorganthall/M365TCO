@@ -149,13 +149,11 @@ def plain_text(value: str | None) -> str:
 # ---- The record ----------------------------------------------------------------
 
 def get(db: Session) -> models.PracticeBranding:
+    """The install's branding record. Before anyone has saved one, an unsaved blank
+    record (every field NULL = the built-in default) — reading never creates it;
+    the first `update` does."""
     row = db.get(models.PracticeBranding, "singleton")
-    if row is None:
-        row = models.PracticeBranding(id="singleton")
-        db.add(row)
-        db.commit()
-        db.refresh(row)
-    return row
+    return row if row is not None else models.PracticeBranding(id="singleton")
 
 
 def update(db: Session, row: models.PracticeBranding, changes: dict) -> models.PracticeBranding:
@@ -182,6 +180,7 @@ def update(db: Session, row: models.PracticeBranding, changes: dict) -> models.P
         else:
             raise ValueError(f"{key}: not a branding field")
     row.updated_at = datetime.utcnow()
+    db.add(row)  # the first save creates the record
     db.commit()
     db.refresh(row)
     return row

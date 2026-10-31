@@ -540,9 +540,6 @@ class ScenarioOut(ORMModel):
     term_duration: Optional[str]
     billing_plan: Optional[str]
     addons: list[ScenarioAddonOut]
-    current_spend_annual: Decimal
-    target_spend_annual: Decimal
-    delta_annual: Decimal
 
 
 # ---- Disposition override ----

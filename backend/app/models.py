@@ -34,7 +34,6 @@ PRODUCT_KINDS = ("MicrosoftSku", "ThirdParty")
 # Coverage is binary: a CoverageMapEntry existing means the outcome IS covered.
 # ("Full" is the single stored marker — there is no partial coverage.)
 COVERAGE = ("Full",)
-DISPOSITIONS = ("FullyEliminated", "PartiallyReduced", "Unchanged")
 OVERRIDES = ("None", "ForceFullElimination")
 RESIDUAL_INTENTS = ("None", "IntendedOutOfScope")
 # How many seats a current-licensing line entitles (ENGINE_SPEC 6.10). "PerUser"
@@ -742,10 +741,6 @@ class PersonaScenario(Base):
     # the catalog at the new basis (prices stay hand-editable afterward).
     term_duration: Mapped[str | None] = mapped_column(String, nullable=True)
     billing_plan: Mapped[str | None] = mapped_column(String, nullable=True)
-    # Derived fields cached for snapshotting; recomputed by the engine on demand.
-    current_spend_annual: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
-    target_spend_annual: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
-    delta_annual: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
 
     engagement: Mapped[Engagement] = relationship(back_populates="scenarios")
     addons: Mapped[list["ScenarioAddon"]] = relationship(
@@ -851,8 +846,10 @@ class ScenarioAddon(Base):
 
 
 class ProductDisposition(Base):
-    """Persisted engine output per third-party product (PRD 5.9). Holds the
-    operator's override/intent choices so reasons survive a recompute."""
+    """The operator's decision on a third-party product: a forced retirement (with
+    its reason) or an intended residual. Raw data only — the engine's disposition
+    of the product (displaced, residual, cost) is calculated on read
+    (services/results) and never stored here."""
 
     __tablename__ = "product_dispositions"
 
@@ -861,12 +858,6 @@ class ProductDisposition(Base):
     third_party_product_id: Mapped[str] = mapped_column(
         ForeignKey("third_party_products.id")
     )
-    displaced_users: Mapped[int] = mapped_column(Integer, default=0)
-    disposition: Mapped[str] = mapped_column(
-        SAEnum(*DISPOSITIONS, name="disposition"), default="Unchanged"
-    )
-    residual_count: Mapped[int] = mapped_column(Integer, default=0)
-    residual_annual_cost: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
     override: Mapped[str] = mapped_column(
         SAEnum(*OVERRIDES, name="override"), default="None"
     )

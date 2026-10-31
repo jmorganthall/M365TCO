@@ -25,8 +25,6 @@ _PROVENANCE = {"source_tag", "ai_suggested", "ratified", "seed_key", "catalog_ve
 _DERIVED = {
     "annual_cost", "effective_annual_cost", "per_unit_annual_cost",
     "covered_count",  # persona-headcount sum unless covered_count_override is set
-    "current_spend_annual", "target_spend_annual", "delta_annual",
-    "displaced_users", "disposition", "residual_count", "residual_annual_cost",
 }
 _SYSTEM = {"created_at", "updated_at", "generated_at"}
 
@@ -113,12 +111,14 @@ def _registry():
          "desc": "Product ↔ outcome matrix. Only ratified entries reach the engine.",
          "primary": ["outcome_id", "coverage", "ratified"], "extra": []},
         {"cls": models.PersonaScenario, "type": "PersonaScenario", "label": "Scenarios",
-         "desc": "One target-state plan per persona. Delta is engine-derived.",
-         "primary": ["persona_id", "target_sku_reference", "delta_annual"], "extra": []},
+         "desc": "One target-state plan per persona. Its spend and delta are calculated "
+                 "on read, never stored.",
+         "primary": ["persona_id", "target_sku_reference", "in_scope"], "extra": []},
         {"cls": models.ProductDisposition, "type": "ProductDisposition",
-         "label": "Product dispositions",
-         "desc": "Per-product outcome of the reconciliation (mostly engine-derived).",
-         "primary": ["third_party_product_id", "disposition", "residual_annual_cost"],
+         "label": "Tool decisions",
+         "desc": "The operator's force-retire or intended-residual decision per tool. "
+                 "The tool's disposition itself is calculated on read, never stored.",
+         "primary": ["third_party_product_id", "override", "residual_intent"],
          "extra": []},
         {"cls": models.CoverageGapAnswer, "type": "CoverageGapAnswer",
          "label": "Coverage gap answers",

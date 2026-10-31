@@ -780,8 +780,8 @@ every other step while items wait, and the review's `library_update_pending` not
   via `target_sku_reference`; **add-on bundles** via `ScenarioAddon` (§4.8a).
 - **Field ownership:** user-entered (`target_sku_reference` + `target_unit_price_annual`
   = the base bundle & its list price, `target_discount_pct`, the price-override pair
-  below, `in_scope`, `term_duration`/`billing_plan`); **engine-output
-  cache** (`current_spend_annual`, `target_spend_annual`, `delta_annual`).
+  below, `in_scope`, `term_duration`/`billing_plan`). Its spend and delta are
+  **calculated on read** (`services/results`), never stored on the row.
 - **Price override (first-class):** `price_override` (bool) + `overridden_price_annual`
   — the same mechanism as the current line (§4.5), applied to the composed **net**
   target. The base SKU + add-ons are unchanged, but the customer pays a negotiated
@@ -833,23 +833,19 @@ retired via `_RETIRED_COLUMNS` and physically dropped; `services/swap.py` and th
 a carve-out's seats like any other scenario — no swap-specific branch in
 `services/limits`.
 
-### 4.9 ProductDisposition — split ownership, by design
-This is the canonical example of the field-ownership rule, because one row mixes
-operator-owned and engine-owned fields.
-- **Identity:** `uuid`. **Scope:** engagement-scoped. One per third-party product.
-- **Operator-owned (survive recompute):** `override`, `override_reason`,
-  `residual_intent`. One deliberate exception: when natural displacement alone
-  fully eliminates the product (no residual left to classify), compute clears a
-  stored classification automatically — an override with nothing to override is
-  stale; if a residual later reappears, the classification gate asks again.
-- **Engine-output (overwritten every compute):** `displaced_users`,
+### 4.9 ProductDisposition — the operator's decision on a tool
+Holds only what a person decides; the engine's disposition of the tool is
+calculated on read and never stored here.
+- **Identity:** `uuid`. **Scope:** engagement-scoped. At most one per third-party product.
+- **Operator-owned:** `override`, `override_reason`, `residual_intent`. Code never
+  rewrites them. When the move alone fully retires the tool, the decision has no
+  residual to answer: the result shows the tool with no decision and flags it
+  `decision_not_applicable` (TARGET_SCHEMA §1.2.3). The stored decision is kept and
+  applies again if a residual returns.
+- **Calculated (in the result, not on this row):** `displaced_users`,
   `disposition`, `residual_count`, `residual_annual_cost`.
-- **Module rule:** `services/compute.py` reads the operator-owned fields **into**
-  the engine and writes only the engine-output fields **back** — it never clobbers
-  an operator's choice. The override endpoint writes only operator fields.
-- **CRUD:** upserted by `compute`; operator fields set via
-  `PUT …/dispositions/{tp_id}/override` (which enforces "reason required for
-  ForceFullElimination").
+- **CRUD:** created and set only by `PUT …/dispositions/{tp_id}/override` (which
+  enforces "reason required for ForceFullElimination").
 
 ### 4.10 EngagementSnapshot — reproducible readout
 - **Identity:** `uuid`. **Scope:** engagement-scoped (now cascades with the
@@ -1124,15 +1120,18 @@ Rule of thumb: **same-engagement → hard FK; reference to global/versioned cata
 The global library is never mutated by workshop edits — this is the
 "scoped copy, not shared mutable state" pattern.
 
-### 6.2 Compute (hydrate → engine → persist)
-`compute.compute_and_persist()`:
+### 6.2 Compute (hydrate → engine, on read — nothing persisted)
+`results.current_result()` is the one read path every screen, export, snapshot,
+Review and Workshop value uses (`GET …/result`; `POST …/compute` is a deprecated
+alias). It writes nothing:
 1. **Hydrate** ORM rows into pure engine dataclasses, applying the **ratify gate**
    (only `ratified` coverage becomes outcome sets) and reading operator-owned
    disposition fields.
 2. Run the pure engine (`tco_engine.compute`).
-3. **Persist back** only engine-output fields (scenario spend cache + disposition
-   outputs), preserving operator-owned fields.
-4. The readout routes then append the **license-limit evaluation**
+3. Order the result for display and flag operator decisions that currently have
+   no effect (`decision_not_applicable`). Nothing is written back: every read
+   reflects every edit, so there is no separate recompute step.
+4. It then appends the **license-limit evaluation**
    (`services/limits.evaluate`, §4.4e) as `license_limits` and
    the per-persona **new-outcomes story** (`services/compute.new_outcomes` —
    the Coverage Check computation reused: outcomes the in-scope target lights
@@ -1172,7 +1171,8 @@ Conventions that make it repeatable, not snowflaked:
 - Create/update for any data set with derived fields routes through that set's
   single write-normalization function (e.g. `_normalize_third_party`).
 - **Domain actions are explicit verbs**, not magic fields: `…/ratify`,
-  `…/dispositions/{id}/override`, `…/duplicate`, `…/compute`.
+  `…/dispositions/{id}/override`, `…/duplicate`. Reading the result is a GET
+  (`…/result`) and never writes.
 
 **Adding a new first-class data set:** define the §2 contract, add the ORM model
 (UUID PK, `engagement_id` FK, cascade relationship on Engagement), add Pydantic
