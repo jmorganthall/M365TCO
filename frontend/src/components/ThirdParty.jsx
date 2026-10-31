@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { api, money, pct } from '../api'
 import Help from './Help.jsx'
 import DateInput from './DateInput.jsx'
+import { TextInput } from './CommitInput.jsx'
 
 // A number input for an inline (auto-saving) line-item field. Holds local text
 // state so you can clear it and TYPE a new number freely; it commits on blur or
@@ -57,7 +58,7 @@ function ProductRow({ t, meta, personas, moneyUnit, update, remove }) {
     <>
       <tr>
         <td><button className="ghost sm" title="Details" onClick={() => setOpen(!open)}>{open ? '▾' : '▸'}</button></td>
-        <td data-label="Tool"><input value={t.name} style={{ minWidth: 120 }} onChange={(e) => update(t.id, { name: e.target.value })} />
+        <td data-label="Tool"><TextInput value={t.name} style={{ minWidth: 120 }} onCommit={(v) => update(t.id, { name: v })} />
           {leftOut && <div><span className="badge warn" title="A tool with no cost or no users is left out of the numbers">
             left out — {!(Number(t.raw_cost) > 0) ? 'no cost' : 'no users'}</span></div>}</td>
         <td className="num" data-label="Cost"><NumInput value={t.raw_cost} style={{ width: 90 }}
@@ -88,7 +89,7 @@ function ProductRow({ t, meta, personas, moneyUnit, update, remove }) {
           <td colSpan={8} style={{ background: 'var(--panel2)' }}>
             <div className="grid c4" style={{ padding: '.4rem 0' }}>
               <div><label>Vendor <Help k="tools.vendor" /></label>
-                <input value={t.vendor || ''} onChange={(e) => update(t.id, { vendor: e.target.value })} /></div>
+                <TextInput value={t.vendor || ''} onCommit={(v) => update(t.id, { vendor: v })} /></div>
               <div><label>Software share of a managed service <Help k="tools.tooling_pct" /></label>
                 <NumInput value={t.tooling_pct} step="0.05" disabled={!t.is_managed}
                   onCommit={(n) => update(t.id, { tooling_pct: n })} />

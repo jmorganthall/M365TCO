@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react'
-import { api } from '../api'
+import { api, currentDataVersion, useDataVersion } from '../api'
 import Help, { useHelpText } from './Help.jsx'
 
 // The AI sanity check's last result per engagement, kept across step changes
-// without a data field (it is advisory and never stored).
+// without a data field (it is advisory and never stored). Each entry records the
+// data version it was run at, so a check made before later edits says so instead
+// of passing as current.
 const _sanityCache = {}
 
 function timeAgo(ms) {
@@ -21,6 +23,7 @@ function timeAgo(ms) {
 export default function Review({ engagement, onNavigate }) {
   const eid = engagement.id
   const help = useHelpText()
+  const version = useDataVersion()
   const [data, setData] = useState(null)
   const [err, setErr] = useState('')
   const [aiEnabled, setAiEnabled] = useState(false)
@@ -29,16 +32,19 @@ export default function Review({ engagement, onNavigate }) {
 
   useEffect(() => {
     setData(null); setErr('')
-    api.get(`/api/engagements/${eid}/review`).then(setData).catch((e) => setErr(e.message))
     api.get('/api/admin/ai/status').then((s) => setAiEnabled(s.enabled)).catch(() => {})
     setSanity(_sanityCache[eid] || null)
   }, [eid])
+  // The checks are re-read after every edit, so they always match the data.
+  useEffect(() => {
+    api.get(`/api/engagements/${eid}/review`).then(setData).catch((e) => setErr(e.message))
+  }, [eid, version])
 
   async function runSanity() {
     setChecking(true); setErr('')
     try {
       const res = await api.post(`/api/engagements/${eid}/sanity-check`)
-      const entry = { ...res, at: Date.now() }
+      const entry = { ...res, at: Date.now(), version: currentDataVersion() }
       _sanityCache[eid] = entry
       setSanity(entry)
     } catch (e) { setErr(e.message) } finally { setChecking(false) }
@@ -99,7 +105,8 @@ export default function Review({ engagement, onNavigate }) {
           <summary style={{ cursor: 'pointer', listStyle: 'revert' }}>
             <b>AI sanity check</b> <Help k="review.sanity" />{' '}
             {sanity
-              ? <small className="muted">— last run {timeAgo(sanity.at)} · {sanity.findings.length === 0 ? 'no issues' : `${sanity.findings.length} finding(s)`}</small>
+              ? <small className="muted">— last run {timeAgo(sanity.at)} · {sanity.findings.length === 0 ? 'no issues' : `${sanity.findings.length} finding(s)`}
+                  {sanity.version !== version && <> · <b>made before your latest edits — re-run</b></>}</small>
               : <small className="muted">— optional, not run yet</small>}
           </summary>
           <div style={{ marginTop: '.6rem' }}>

@@ -4,6 +4,7 @@ import DateInput from './DateInput.jsx'
 import { api, usd, pct } from '../api'
 import SkuCombobox, { loadSkus, matchSku } from './SkuCombobox.jsx'
 import { BasisSelect, billingLabel, effectiveBasis, segmentLabel, termLabel } from './basis.jsx'
+import { TextInput } from './CommitInput.jsx'
 
 // Prices are stored annualized (the engine works in annual USD); the UI edits
 // per-seat MONTHLY. Convert at the boundary only.
@@ -34,7 +35,8 @@ function MonthlyPriceInput({ annual, onCommit, style }) {
   return (
     <input type="number" style={style} value={val}
       onChange={(e) => setVal(e.target.value)}
-      onBlur={() => onCommit(monthlyToAnnual(val))} />
+      onBlur={() => onCommit(monthlyToAnnual(val))}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }} />
   )
 }
 
@@ -179,8 +181,8 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove, reading, 
               update(l.id, patch)
             }
           }} /></td>
-        <td className="num" data-label="Qty"><input type="number" style={{ width: 80 }} value={l.quantity_purchased}
-          onChange={(e) => setQty(e.target.value)} /></td>
+        <td className="num" data-label="Qty"><TextInput type="number" style={{ width: 80 }} value={l.quantity_purchased}
+          onCommit={setQty} /></td>
         <td className="num" data-label="Monthly $/seat"><MonthlyPriceInput annual={effectiveAnnual(l)} style={{ width: 100 }}
           onCommit={(annual) => update(l.id, l.price_override
             ? { overridden_price_annual: annual }
@@ -196,8 +198,8 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove, reading, 
           <td colSpan={5} style={{ background: 'var(--panel2)' }}>
             <div className="grid c4" style={{ padding: '.4rem 0' }}>
               <div><label>Assigned to people <Help k="licences.assigned" /></label>
-                <input type="number" value={l.quantity_assigned}
-                  onChange={(e) => update(l.id, { quantity_assigned: Number(e.target.value) })} />
+                <TextInput type="number" value={l.quantity_assigned}
+                  onCommit={(v) => update(l.id, { quantity_assigned: Number(v) })} />
                 <small className="src">Below purchased = shelfware.</small></div>
               <div><label>What you pay <Help k="licences.price" /></label>
                 <label className="src" style={{ display: 'flex', alignItems: 'center', gap: '.4rem' }}>

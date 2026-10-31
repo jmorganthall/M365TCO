@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api, usd } from '../api'
+import { api, usd, useDataVersion, useResult } from '../api'
 
 // Compact unsigned money for headline altitude ($246,560) — direction is said
 // in words ("saved" / "adds"), never as a sign next to the word savings.
@@ -9,9 +9,11 @@ import { PricingBadge } from './PricingBanner.jsx'
 
 export default function Readout({ engagement }) {
   const eid = engagement.id
-  const [result, setResult] = useState(null)
+  const { result, err: resultErr } = useResult(eid)
+  const version = useDataVersion()
   const [snapshots, setSnapshots] = useState([])
-  const [err, setErr] = useState('')
+  const [actionErr, setErr] = useState('')
+  const err = actionErr || resultErr
   const [aiEnabled, setAiEnabled] = useState(false)
   const [narrating, setNarrating] = useState(false)
   const [narratives, setNarratives] = useState(null)
@@ -19,13 +21,11 @@ export default function Readout({ engagement }) {
   const [outcomes, setOutcomes] = useState([])
   const outcomeName = (id) => outcomes.find((o) => o.id === id)?.name || id
 
-  function compute() {
-    setErr('')
-    api.post(`/api/engagements/${eid}/compute`).then(setResult).catch((e) => setErr(e.message))
-    api.get(`/api/engagements/${eid}/snapshots`).then(setSnapshots).catch(() => {})
-  }
   useEffect(() => {
-    compute()
+    api.get(`/api/engagements/${eid}/snapshots`).then(setSnapshots).catch(() => {})
+  }, [eid, version])
+  useEffect(() => {
+    setErr('')
     // Narratives are ENGAGEMENT-LEVEL data — load the stored set (survives
     // navigation); the Business narratives button regenerates and replaces it.
     setNarratives(null); setNarrativesAt(null)
@@ -47,13 +47,12 @@ export default function Readout({ engagement }) {
   async function setOverride(tpId, payload) {
     try {
       await api.put(`/api/engagements/${eid}/dispositions/${tpId}/override`, payload)
-      compute()
     } catch (e) { setErr(e.message) }
   }
   async function snapshot() {
     const label = prompt('Snapshot label?', new Date().toISOString().slice(0, 10))
     if (label === null) return
-    try { await api.post(`/api/engagements/${eid}/snapshots?label=${encodeURIComponent(label)}`); compute() }
+    try { await api.post(`/api/engagements/${eid}/snapshots?label=${encodeURIComponent(label)}`) }
     catch (e) { setErr(e.message) }
   }
 

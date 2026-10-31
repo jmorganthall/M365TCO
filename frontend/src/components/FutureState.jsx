@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api } from '../api'
+import { api, useDataVersion } from '../api'
 import Help from './Help.jsx'
 import Scenarios from './Scenarios.jsx'
 import PartlyReplaced from './PartlyReplaced.jsx'
@@ -9,17 +9,15 @@ import CarveOutDrift from './CarveOutDrift.jsx'
 // recommended plan for every persona without one, adjust plans, and answer the
 // keep-or-retire question for tools only partly replaced.
 export default function FutureState({ engagement, meta, moneyUnit }) {
-  const [plansKey, setPlansKey] = useState(0)     // remount the plans after a fill-in
-  const [changed, setChanged] = useState(0)       // refresh the keep-or-retire card
+  // Every card refreshes after any write (api.js data version) — no card has to
+  // tell another that something changed.
+  const changed = useDataVersion()
   return (
     <>
-      <CarveOutDrift engagement={engagement} refreshKey={changed}
-        onMatched={() => { setPlansKey((k) => k + 1); setChanged((k) => k + 1) }} />
-      <RecommendPlans engagement={engagement} changed={changed}
-        onDone={() => { setPlansKey((k) => k + 1); setChanged((k) => k + 1) }} />
-      <Scenarios key={plansKey} engagement={engagement} meta={meta} moneyUnit={moneyUnit}
-        onChanged={() => setChanged((k) => k + 1)} />
-      <PartlyReplaced engagement={engagement} refreshKey={changed} />
+      <CarveOutDrift engagement={engagement} refreshKey={changed} />
+      <RecommendPlans engagement={engagement} changed={changed} />
+      <Scenarios engagement={engagement} meta={meta} moneyUnit={moneyUnit} />
+      <PartlyReplaced engagement={engagement} />
     </>
   )
 }

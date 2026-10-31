@@ -1,5 +1,47 @@
 // Thin REST client for the FastAPI backend.
+import { useEffect, useState } from 'react'
+
 const BASE = ''
+
+// ---- One source of calculated numbers, always current ----------------------
+// Every successful write through this client bumps the data version. Anything
+// that shows calculated numbers reads them through `useResult` (or refetches on
+// `useDataVersion`), so an edit on any screen shows on every screen with no
+// "Recompute" step to forget. The result is calculated on read by the backend
+// (GET …/result) and writing nothing, so refetching is always safe.
+let dataVersion = 0
+const listeners = new Set()
+export function notifyDataChanged() {
+  dataVersion += 1
+  listeners.forEach((fn) => fn(dataVersion))
+}
+export const currentDataVersion = () => dataVersion
+export function useDataVersion() {
+  const [v, setV] = useState(dataVersion)
+  useEffect(() => {
+    listeners.add(setV)
+    return () => { listeners.delete(setV) }
+  }, [])
+  return v
+}
+// POSTs that only read (they take a body, but change nothing).
+const READ_ONLY_POSTS = [/\/bundle-analysis$/, /\/compute$/, /\/sanity-check$/]
+
+// The engagement's calculated result, refetched after every write.
+export function useResult(eid) {
+  const version = useDataVersion()
+  const [state, setState] = useState({ eid: null, result: null, err: '' })
+  useEffect(() => {
+    if (!eid) return undefined
+    let live = true
+    api.get(`/api/engagements/${eid}/result`)
+      .then((result) => { if (live) setState({ eid, result, err: '' }) })
+      .catch((e) => { if (live) setState((s) => ({ ...s, eid, err: e.message })) })
+    return () => { live = false }
+  }, [eid, version])
+  // Never show another engagement's numbers while this one loads.
+  return state.eid === eid ? state : { result: null, err: '' }
+}
 
 async function req(method, path, body) {
   const opts = { method, headers: {} }
@@ -12,6 +54,9 @@ async function req(method, path, body) {
     let detail = res.statusText
     try { detail = (await res.json()).detail || detail } catch (e) {}
     throw new Error(detail)
+  }
+  if (method !== 'GET' && !READ_ONLY_POSTS.some((re) => re.test(path.split('?')[0]))) {
+    notifyDataChanged()
   }
   if (res.status === 204) return null
   const ct = res.headers.get('content-type') || ''
@@ -35,6 +80,7 @@ export const api = {
       try { detail = (await res.json()).detail || detail } catch (e) {}
       throw new Error(detail)
     }
+    notifyDataChanged()
     return res.json()
   },
 }

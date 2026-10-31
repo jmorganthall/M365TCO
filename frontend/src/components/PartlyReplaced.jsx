@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api, usd } from '../api'
+import { api, usd, useResult } from '../api'
 import Help from './Help.jsx'
 
 // Step 4's keep-or-retire question (docs/WALKTHROUGH.md §3): a tool the
@@ -7,17 +7,14 @@ import Help from './Help.jsx'
 // intended residual; "Retire" forces full elimination and needs a reason, printed
 // on the report. Unanswered, the tool is assumed kept (its remaining cost stays).
 // The same decision the Summary's dispositions table edits — one stored answer.
-export default function PartlyReplaced({ engagement, refreshKey }) {
+export default function PartlyReplaced({ engagement }) {
   const eid = engagement.id
-  const [rows, setRows] = useState(null)
+  const { result, err: resultErr } = useResult(eid)
   const [outcomeName, setOutcomeName] = useState({})
   const [err, setErr] = useState('')
-  const load = () => api.post(`/api/engagements/${eid}/compute`)
-    .then((r) => setRows(r.dispositions.filter((d) =>
-      d.disposition === 'PartiallyReduced' || d.requires_residual_classification
-      || d.override === 'ForceFullElimination')))
-    .catch((e) => setErr(e.message))
-  useEffect(() => { load() }, [eid, refreshKey])
+  const rows = result && result.dispositions.filter((d) =>
+    d.disposition === 'PartiallyReduced' || d.requires_residual_classification
+    || d.override === 'ForceFullElimination')
   useEffect(() => {
     api.get(`/api/engagements/${eid}/outcomes`)
       .then((os) => setOutcomeName(Object.fromEntries(os.map((o) => [o.id, o.name])))).catch(() => {})
@@ -25,7 +22,7 @@ export default function PartlyReplaced({ engagement, refreshKey }) {
 
   async function decide(d, payload) {
     setErr('')
-    try { await api.put(`/api/engagements/${eid}/dispositions/${d.third_party_product_id}/override`, payload); load() }
+    try { await api.put(`/api/engagements/${eid}/dispositions/${d.third_party_product_id}/override`, payload) }
     catch (e) { setErr(e.message) }
   }
 
@@ -34,7 +31,7 @@ export default function PartlyReplaced({ engagement, refreshKey }) {
     <div className="card">
       <h2 style={{ marginTop: 0 }}>Partly replaced tools <Help k="future.keep_or_retire" /></h2>
       <p className="hint">The recommended plans replace these tools for some of their users only.</p>
-      {err && <div className="err">{err}</div>}
+      {(err || resultErr) && <div className="err">{err || resultErr}</div>}
       {rows.map((d) => <Decision key={d.third_party_product_id} d={d} onDecide={decide} outcomeName={outcomeName} />)}
     </div>
   )

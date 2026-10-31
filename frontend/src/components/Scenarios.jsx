@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react'
 import Help from './Help.jsx'
-import { api, usd, money, pct } from '../api'
+import { api, usd, money, pct, useDataVersion, useResult } from '../api'
 import BundleAnalysis from './BundleAnalysis.jsx'
 import SkuCombobox from './SkuCombobox.jsx'
 import { BasisSelect, effectiveBasis, termLabel, billingLabel, segmentLabel } from './basis.jsx'
+import { TextInput } from './CommitInput.jsx'
 
 // Target prices are stored annualized; the UI edits per-seat MONTHLY.
 const annualToMonthly = (a) => (a ? Math.round((Number(a) / 12) * 100) / 100 : 0)
@@ -15,7 +16,8 @@ function MonthlyInput({ annual, onCommit, style }) {
   return (
     <input type="number" style={style} value={val}
       onChange={(e) => setVal(e.target.value)}
-      onBlur={() => onCommit(monthlyToAnnual(val))} />
+      onBlur={() => onCommit(monthlyToAnnual(val))}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }} />
   )
 }
 
@@ -163,9 +165,9 @@ function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove,
                   onCommit={(annual) => update(s.id, { target_unit_price_annual: annual })} />
                 <small className="src">Auto-filled from the catalog ERP · {usd(s.target_unit_price_annual)}/yr.</small></div>
               <div><label>Discount</label>
-                <input type="number" step="0.05" value={s.target_discount_pct ?? ''} placeholder="e.g. 0.15"
+                <TextInput type="number" step="0.05" value={s.target_discount_pct ?? ''} placeholder="e.g. 0.15"
                   disabled={s.price_override}
-                  onChange={(e) => update(s.id, { target_discount_pct: e.target.value === '' ? null : Number(e.target.value) })} />
+                  onCommit={(v) => update(s.id, { target_discount_pct: v === '' ? null : Number(v) })} />
                 <small className="src">{s.price_override
                   ? 'Superseded by the custom net price below.'
                   : 'Fraction off the composed list (0.15 = 15%).'}</small></div>
@@ -317,26 +319,28 @@ function CarvePanel({ eid, persona, bundles, onDone, onCancel }) {
   )
 }
 
-export default function Scenarios({ engagement, meta, moneyUnit = 'mo', onChanged }) {
+export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
   const eid = engagement.id
   const [personas, setPersonas] = useState([])
   const [scenarios, setScenarios] = useState([])
   const [bundles, setBundles] = useState([])
-  const [result, setResult] = useState(null)
+  const { result, err: resultErr } = useResult(eid)
+  const version = useDataVersion()
   const [err, setErr] = useState('')
   const [analyzePersona, setAnalyzePersona] = useState(null)
   const [carvePersona, setCarvePersona] = useState(null)
   const [splits, setSplits] = useState([])        // seat-cap split offers (D27)
   const [dismissed, setDismissed] = useState({})   // "Not now", this visit only
 
+  // Raw rows and the split offers, reloaded after every write anywhere; the
+  // calculated columns come from the shared result (useResult), so nothing here
+  // needs a "recompute".
   function load() {
     api.get(`/api/engagements/${eid}/personas`).then(setPersonas)
     api.get(`/api/engagements/${eid}/scenarios`).then(setScenarios)
+    api.get(`/api/engagements/${eid}/seat-cap-splits`).then(setSplits).catch(() => setSplits([]))
   }
-  useEffect(() => {
-    load()
-    compute()
-  }, [eid])
+  useEffect(() => { load() }, [eid, version])
   // Quote autofill prices at THIS engagement's pricing basis — refetched when
   // the basis changes (edited on Customer Info) so add-on autofill never quotes
   // at a stale basis.
@@ -352,20 +356,15 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo', onChange
   const basis = effectiveBasis(null, engagement)
 
   async function createScenario(pid) {
-    try { await api.post(`/api/engagements/${eid}/scenarios`, { persona_id: pid, target_sku_reference: '', target_unit_price_annual: 0 }); load() }
+    try { await api.post(`/api/engagements/${eid}/scenarios`, { persona_id: pid, target_sku_reference: '', target_unit_price_annual: 0 }) }
     catch (e) { setErr(e.message) }
   }
   async function update(id, patch) {
-    try { await api.patch(`/api/engagements/${eid}/scenarios/${id}`, patch); await load(); compute() }
+    try { await api.patch(`/api/engagements/${eid}/scenarios/${id}`, patch) }
     catch (e) { setErr(e.message) }
   }
   async function remove(id) {
-    try { await api.del(`/api/engagements/${eid}/scenarios/${id}`); load() } catch (e) { setErr(e.message) }
-  }
-  async function compute() {
-    setErr('')
-    try { setResult(await api.post(`/api/engagements/${eid}/compute`)); onChanged?.() } catch (e) { setErr(e.message) }
-    api.get(`/api/engagements/${eid}/seat-cap-splits`).then(setSplits).catch(() => setSplits([]))
+    try { await api.del(`/api/engagements/${eid}/scenarios/${id}`) } catch (e) { setErr(e.message) }
   }
 
   async function applyBundle(persona, { sku_reference, price, addons }) {
@@ -381,22 +380,17 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo', onChange
       if (existing) await api.patch(`/api/engagements/${eid}/scenarios/${existing.id}`, body)
       else await api.post(`/api/engagements/${eid}/scenarios`, { persona_id: persona.id, ...body })
       setAnalyzePersona(null)
-      await load()
-      compute()
     } catch (e) { setErr(e.message) }
   }
 
   return (
     <div className="card">
-      <div className="flex-between">
-        <h2 style={{ marginTop: 0 }}>Future state per persona <Help k="future.plan" /></h2>
-        <button onClick={compute}>Recompute</button>
-      </div>
+      <h2 style={{ marginTop: 0 }}>Future state per persona <Help k="future.plan" /></h2>
       <p className="hint">A plan is a base bundle plus any add-ons; their capabilities combine and
         their prices add up. ⚡ shows the options for a persona; ▸ holds add-ons, agreed prices and
         splitting a persona <Help k="future.carve" />. Prices are per seat per month.</p>
 
-      {err && <div className="err">{err}</div>}
+      {(err || resultErr) && <div className="err">{err || resultErr}</div>}
 
       <table className="resp-table">
         <thead><tr>
@@ -432,7 +426,7 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo', onChange
                       <td colSpan={9} style={{ background: 'var(--panel2)' }}>
                         <SplitOffer eid={eid} offer={o}
                           onLater={() => setDismissed({ ...dismissed, [p.id]: true })}
-                          onDone={() => { load(); compute() }} />
+                          />
                       </td>
                     </tr>
                   )
@@ -443,7 +437,7 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo', onChange
                     <td colSpan={9} style={{ background: 'var(--panel2)' }}>
                       <CarvePanel eid={eid} persona={p} bundles={bundles}
                         onCancel={() => setCarvePersona(null)}
-                        onDone={() => { setCarvePersona(null); load(); compute() }} />
+                        onDone={() => setCarvePersona(null)} />
                     </td>
                   </tr>
                 )}
