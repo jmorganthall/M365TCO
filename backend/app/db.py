@@ -173,12 +173,14 @@ _RETIRED_COLUMNS: tuple[tuple[str, str], ...] = (
 
 
 def _preserve_manual_covers(target_engine=None) -> None:
-    """Before the stored `third_party_products.covered_count` is dropped: on a
-    database from before covers became derived, a non-zero value that differs from
-    the tagged personas' headcount was typed by a person. Keep it as the explicit
-    `covered_count_override`, so dropping the column changes no number. Rows that
-    already have an override, or whose value is the personas' sum, are untouched.
-    A no-op once the column is gone."""
+    """Before the stored `third_party_products.covered_count` is dropped: a non-zero
+    value that differs from the tagged personas' headcount, on a row with no
+    override, becomes the explicit `covered_count_override`. This is exactly what
+    the old startup backfill did on every start (for databases from before covers
+    became derived, where such a value was typed), so dropping the column changes
+    no number versus the version being upgraded from. Rows that already have an
+    override, or whose value is the personas' sum, are untouched. A no-op once the
+    column is gone."""
     from sqlalchemy import inspect, text
 
     eng = target_engine or engine

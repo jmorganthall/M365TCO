@@ -535,6 +535,16 @@ def normalize_name(text: str) -> str:
     return " ".join((text or "").lower().split())
 
 
+def plans_by_persona(scenarios) -> dict:
+    """Each persona's plan: its first scenario. One scenario per persona is the rule
+    (TARGET_SCHEMA §5.2, refused on create); a persona that still has more is flagged
+    (`plan_duplicated`), and every reading here uses this same one."""
+    out: dict = {}
+    for s in scenarios:
+        out.setdefault(s.persona_id, s)
+    return out
+
+
 def _plan_bundles(s: IScenario) -> set:
     return {s.base_bundle_id} | set(s.addon_bundle_ids)
 
@@ -546,12 +556,17 @@ def _seat_caps(raw: RawEngagement, lines: list[ILicenseLine],
     Review — reads it. Licence lines count by the plan their typed name resolves to."""
     headcount = {p.id: p.headcount for p in raw.personas}
     raw_lines = {l.id: l for l in raw.licence_lines}
-    moving = {s.persona_id: s for s in scenarios if s.in_scope}
+    # A persona moves when its in-scope plan names a plan; a blank plan leaves it on
+    # the licences it has today.
+    moving = {pid: s for pid, s in plans_by_persona(scenarios).items()
+              if s.in_scope and ((s.target_sku_reference or "").strip() or s.base_bundle_id)}
     out = []
     for lim in raw.licence_limits:
         members = lim.member_bundle_ids
+        # A line counts under its linked plan when a person linked it, else under the
+        # plan its typed name resolves to.
         member_lines = [l for l in lines if l.in_scope
-                        and raw_lines[l.id].resolved_bundle_id in members]
+                        and (raw_lines[l.id].linked_bundle_id or raw_lines[l.id].resolved_bundle_id) in members]
         current = sum(raw_lines[l.id].quantity_assigned for l in member_lines)
         usage: dict[str, float] = {}
         unattributed = 0.0
@@ -639,9 +654,14 @@ def _findings(raw, lines, tools, scenarios, tables, seat_caps) -> tuple[IFinding
         if p.id not in planned:
             f.append(IFinding("group_without_plan", "future", persona_id=p.id,
                               facts={"name": p.name}))
-    first_plan: dict[str, IScenario] = {}
+    first_plan = plans_by_persona(scenarios)
+    counts: dict[str, int] = {}
     for s in scenarios:
-        first_plan.setdefault(s.persona_id, s)
+        counts[s.persona_id] = counts.get(s.persona_id, 0) + 1
+    for p in raw.personas:
+        if counts.get(p.id, 0) > 1:
+            f.append(IFinding("plan_duplicated", "future", persona_id=p.id,
+                              facts={"name": p.name, "count": counts[p.id]}))
     caps = [c for c in seat_caps if c.limit_type == "max_total_seats"]
     for p in raw.personas:
         s = first_plan.get(p.id)
@@ -685,10 +705,8 @@ def _findings(raw, lines, tools, scenarios, tables, seat_caps) -> tuple[IFinding
 
     proposed = tables["proposed"]
     today = tables["today"]
-    # The outcome tables read a persona's last scenario (one per persona in practice).
-    last_plan = {s.persona_id: s for s in scenarios}
     for p in raw.personas:
-        plan = last_plan.get(p.id)
+        plan = first_plan.get(p.id)
         if p.id in unread_by_persona:
             if plan is not None:
                 f.append(IFinding("capability_changes_unknown", "tools", "left_out",
@@ -722,7 +740,7 @@ def _outcome_tables(raw: RawEngagement, lines: list[ILicenseLine], tools: list[I
                     scenarios: list[IScenario]) -> dict:
     """The persona × outcome tables (TARGET_SCHEMA §6.3): the single model of what
     each persona has today and after its move, and which tools each move retires."""
-    plan_of = {s.persona_id: s for s in scenarios}
+    plan_of = plans_by_persona(scenarios)
     forced = {t.id for t in raw.tools if t.override == "ForceFullElimination"}
     today: list[IToday] = []
     today_src: list[ISource] = []

@@ -17,7 +17,9 @@ function MonthlyInput({ annual, onCommit, style }) {
   return (
     <input type="number" style={style} value={val}
       onChange={(e) => setVal(e.target.value)}
-      onBlur={() => onCommit(monthlyToAnnual(val))}
+      // Save only a real change: re-saving the shown (rounded) monthly figure would
+      // rewrite the stored annual price, e.g. 100.00/yr → 99.96/yr.
+      onBlur={() => { if (Number(val) !== annualToMonthly(annual)) onCommit(monthlyToAnnual(val)) }}
       onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }} />
   )
 }
@@ -96,8 +98,9 @@ function ScenarioRow({ p, s, r, iv, onTrace, bundles, basis, meta, moneyUnit, up
           <SkuCombobox value={s.target_sku_reference} style={{ minWidth: 130 }}
             segment={effBasis.segment} term={effBasis.term} billing={effBasis.billing}
             onChange={(v) => update(s.id, { target_sku_reference: v })}
-            onSelectSku={(sku) => {
-              if (!sku) return  // seeded shortcode / free text: leave the price alone
+            onSelectSku={(sku, title) => {
+              // A seeded shortcode: save the name only and leave the price alone.
+              if (!sku) { if (title !== s.target_sku_reference) update(s.id, { target_sku_reference: title }); return }
               // Switching to a DIFFERENT SKU re-seeds the base $/seat/mo from the
               // catalog ERP; re-picking the same one keeps a hand-tuned price.
               const changed = sku.sku_title !== settledSku.current
@@ -333,10 +336,15 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
   // Raw rows and the split offers, reloaded after every write anywhere; the
   // calculated columns come from the shared result (useResult), so nothing here
   // needs a "recompute".
+  // Only the latest load's replies are applied, so a slow reply to an earlier
+  // load can't overwrite a newer one.
+  const loadSeq = useRef(0)
   function load() {
-    api.get(`/api/engagements/${eid}/personas`).then(setPersonas)
-    api.get(`/api/engagements/${eid}/scenarios`).then(setScenarios)
-    api.get(`/api/engagements/${eid}/seat-cap-splits`).then(setSplits).catch(() => setSplits([]))
+    const n = ++loadSeq.current
+    const latest = (set) => (v) => { if (n === loadSeq.current) set(v) }
+    api.get(`/api/engagements/${eid}/personas`).then(latest(setPersonas))
+    api.get(`/api/engagements/${eid}/scenarios`).then(latest(setScenarios))
+    api.get(`/api/engagements/${eid}/seat-cap-splits`).then(latest(setSplits)).catch(latest(() => setSplits([])))
   }
   useEffect(() => { load() }, [eid, version])
   // Quote autofill prices at THIS engagement's pricing basis — refetched when

@@ -63,7 +63,9 @@ export function useResult(eid) {
     let live = true
     api.get(`/api/engagements/${eid}/result`)
       .then((result) => { if (live) setState({ eid, result, err: '' }) })
-      .catch((e) => { if (live) setState((s) => ({ ...s, eid, err: e.message })) })
+      // A failed refetch keeps this engagement's last numbers beside the error, but
+      // never another engagement's.
+      .catch((e) => { if (live) setState((s) => (s.eid === eid ? { ...s, err: e.message } : { eid, result: null, err: e.message })) })
     return () => { live = false }
   }, [eid, version])
   // Never show another engagement's numbers while this one loads.
