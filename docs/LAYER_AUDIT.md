@@ -159,3 +159,21 @@ Found on the way: reading the install settings created their row (a write on
 read). `GlobalDefaults.unsaved()` now returns the defaults without storing them;
 the first save creates the row. Engagement settings resolve through the same
 helper, so the built-in defaults are written once.
+
+## Review of the layer work (done)
+
+An independent review of Phases 0–4 found these; each is fixed unless noted.
+
+| Finding | Outcome |
+| --- | --- |
+| A persona could get a second plan; the screens read the first, the seat cap and outcome tables the last, and the engine costed both | A persona has one plan: creating a second returns 409. One rule (`plans_by_persona`, the first plan) everywhere, and existing duplicates are a `plan_duplicated` finding on Review |
+| A licence line linked to a capped plan (rather than named like it) didn't count toward the cap | It counts: linked or resolved, the same as a plan |
+| A plan row with nothing picked counted its persona as moving, so its seats left the cap count | A blank plan moves no one |
+| Picking a SKU sent two saves; the second could clear the picked plan | One save per pick, with the name, plan and price together |
+| A slow reply to an earlier load could overwrite a newer one (Future state, Licences, Tools) | Only the latest load's replies are applied |
+| Leaving a price field untouched re-saved the rounded monthly figure (e.g. 100.00/yr → 99.96/yr) | Price and number fields save only a real change |
+| A failed result refetch could show another engagement's numbers | The error keeps only this engagement's last numbers |
+
+**Open, for a decision:** an untagged tool with no covers number covers nobody and is
+left out (the Tools screen says so). Reading it as Org-wide, like an untagged licence
+line, would change numbers, so it stays as is until decided.

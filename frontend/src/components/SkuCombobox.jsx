@@ -112,9 +112,10 @@ const _money = (n) => {
   return v ? `$${(Math.round((v / 12) * 100) / 100).toLocaleString()}/mo` : '—'
 }
 
-// onSelectSku(sku|null) fires when an option is picked: the catalog row for a
-// catalog title (basis-resolved, so its price is correct), or null for a
-// free-typed / seeded-shortcode choice.
+// A pick sends ONE save: onSelectSku(sku|null, title) when given — the catalog row
+// for a catalog title (basis-resolved, so its price is correct), or null for a
+// seeded shortcode — else onChange(title). Two callbacks per pick would send two
+// saves, and the second could undo the first. Typed text commits through onChange.
 export default function SkuCombobox({
   value, onChange, onSelectSku, placeholder = 'type to filter SKUs…', style,
   segment, term, billing,
@@ -178,7 +179,11 @@ export default function SkuCombobox({
             <div
               key={`${o.title}-${i}`}
               className={`combo-item ${o.title === text ? 'sel' : ''}`}
-              onMouseDown={() => { setText(o.title); commit(o.title); onSelectSku && onSelectSku(o.sku); setOpen(false) }}
+              onMouseDown={() => {
+                setText(o.title); setOpen(false)
+                if (onSelectSku) { committed.current = o.title; onSelectSku(o.sku, o.title) }
+                else commit(o.title)
+              }}
             >
               <span className="combo-id">{o.title}</span>
               {o.sub && o.sub !== o.title && <span className="combo-name">{o.sub}</span>}

@@ -91,6 +91,10 @@ def review(db: Session, engagement_id: str) -> dict:
             check(f.code, f.step,
                   f"{x['name']}: no renewal date, so it is treated as month-to-month and its saving "
                   f"counts from today.", "info")
+        elif f.code == "plan_duplicated":
+            check(f.code, f.step,
+                  f"{x['name']} has {x['count']} future plans; each is costed, so the totals count "
+                  f"these people more than once. Remove the extra plans on Future state.")
         elif f.code == "group_without_plan":
             check(f.code, f.step, f"{x['name']} has no future plan yet, so it isn't in the totals.")
         elif f.code == "seat_cap_exceeded":

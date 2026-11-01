@@ -72,3 +72,14 @@ def test_the_recommender_offers_the_plan_to_pick(client):
     b = _bundles(client)
     by_id = {x["id"]: x for x in b.values()}
     assert rows and all(by_id[r["base_bundle_id"]]["name"] == r["sku_reference"] for r in rows)
+
+
+def test_a_persona_has_one_plan(client):
+    eid, p = _setup(client, "One Plan Co")
+    r = client.post(f"/api/engagements/{eid}/scenarios", json={
+        "persona_id": p["id"], "target_sku_reference": "Microsoft 365 E3"})
+    assert r.status_code in (200, 201)
+    r2 = client.post(f"/api/engagements/{eid}/scenarios", json={
+        "persona_id": p["id"], "target_sku_reference": "Microsoft 365 E5"})
+    assert r2.status_code == 409
+    assert len(client.get(f"/api/engagements/{eid}/scenarios").json()) == 1

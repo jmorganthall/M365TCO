@@ -931,6 +931,11 @@ def create_scenario(engagement_id: str, payload: schemas.ScenarioIn, db: Session
     data = payload.model_dump()
     addons = data.pop("addons", [])
     _check_bundle(db, data.get("bundle_id"))
+    # One plan per persona (TARGET_SCHEMA §5.2): a second would be costed too.
+    if db.execute(select(models.PersonaScenario.id).where(
+            models.PersonaScenario.engagement_id == engagement_id,
+            models.PersonaScenario.persona_id == data["persona_id"])).first():
+        raise HTTPException(409, "This persona already has a plan; change that one.")
     row = models.PersonaScenario(engagement_id=engagement_id, **data)
     _set_scenario_addons(db, row, addons, _scenario_base(db, row.bundle_id, row.target_sku_reference))
     db.add(row)

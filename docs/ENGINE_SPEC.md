@@ -141,6 +141,9 @@ price; its `ThirdPartyProduct.annual_cost` / `covered_count` / `tooling_pct` are
 interpreted values above (no longer the values stored on the tool row);
 `target_unit_price_annual` is the scenario's `net`. The 6.5 and 6.3 formulas are one
 function each (`tco_engine/money.py`), used by both the interpreter and the engine.
+The 6.2 headcount split and the "applies to" rule are likewise one function each
+(`tco_engine/rules.py`: `headcount_shares`, `applies_to`), used by the interpreter,
+the engine's per-scenario math and the headline timing.
 
 ## Derived per-product cost (6.5 managed split)
 

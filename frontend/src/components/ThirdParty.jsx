@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { api, money, pct, useInterpreted } from '../api'
 import Help from './Help.jsx'
 import DateInput from './DateInput.jsx'
@@ -11,10 +11,12 @@ import { TextInput } from './CommitInput.jsx'
 function NumInput({ value, onCommit, style, step, disabled, placeholder, allowEmpty }) {
   const [v, setV] = useState(value ?? '')
   useEffect(() => { setV(value ?? '') }, [value])
+  // Save only a real change, so leaving a field untouched never writes.
   function commit() {
-    if (allowEmpty && String(v).trim() === '') { onCommit(null); return }
-    const n = Number(v)
-    onCommit(Number.isFinite(n) ? n : 0)
+    if (allowEmpty && String(v).trim() === '') { if (value != null && value !== '') onCommit(null); return }
+    const n = Number.isFinite(Number(v)) ? Number(v) : 0
+    if (value != null && value !== '' && n === Number(value)) return
+    onCommit(n)
   }
   return (
     <input type="number" style={style} step={step} disabled={disabled} placeholder={placeholder}
@@ -132,7 +134,12 @@ export default function ThirdParty({ engagement, meta, moneyUnit = 'mo' }) {
   const [parsing, setParsing] = useState(false)
   const [parsed, setParsed] = useState(null)
 
-  const load = () => api.get(base).then(setItems).catch((e) => setErr(e.message))
+  // Only the latest load's reply is applied (a slow earlier reply can't win).
+  const loadSeq = useRef(0)
+  const load = () => {
+    const n = ++loadSeq.current
+    return api.get(base).then((v) => { if (n === loadSeq.current) setItems(v) }).catch((e) => setErr(e.message))
+  }
   useEffect(() => {
     load()
     api.get('/api/admin/ai/status').then((s) => setAiEnabled(s.enabled)).catch(() => {})

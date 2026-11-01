@@ -275,6 +275,8 @@ def test_readout_branding_applied_and_sanitized(client):
     eid = eng["id"]
     png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAEklEQVR4nGMUiTrBAANMDEgAAByqATrMLakTAAAAAElFTkSuQmCC"
     client.patch(f"/api/engagements/{eid}", json={"brand_logo_data_url": png})
+    # Start from no accent colour, whatever earlier tests left (branding is install-wide).
+    client.put("/api/admin/branding", json={"accent_color": ""})
     r = client.put("/api/admin/branding", json={"accent_color": "red; } body { display:none"})
     assert r.status_code == 422                                   # injection refused
     out = client.put("/api/admin/branding", json={"primary_color": "#0a7d34"}).json()

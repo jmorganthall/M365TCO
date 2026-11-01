@@ -362,3 +362,33 @@ def test_display_figures_come_from_the_interpreter():
     sc = i.scenarios[0]
     assert sc.discounted_net_annual == D("324.00") and sc.pct_off_list == D("0.25")
     assert {p.id: p.carved_out_seats for p in i.personas} == {"a": 30, "c": 0}
+
+
+def test_a_line_linked_to_a_capped_plan_counts_toward_the_cap():
+    # The line's name doesn't resolve, but a person linked it to the capped plan.
+    i = interpret(_raw(
+        licence_limits=(_CAP,),
+        licence_lines=(_line(id="bp-line", sku_reference="Biz (reseller name)", persona_ids=("b",),
+                             quantity_assigned=40, linked_bundle_id="bp"),)))
+    [c] = i.seat_caps
+    assert c.current_seats == 40
+
+
+def test_a_blank_plan_does_not_move_anyone():
+    # A has a plan row with nothing picked: A keeps its Business seats, it doesn't move.
+    i = interpret(_raw(
+        licence_limits=(_CAP,),
+        licence_lines=(_line(id="bp-line", persona_ids=("a",), quantity_assigned=100,
+                             resolved_bundle_id="bp"),),
+        scenarios=(_plan(target_sku_reference="", resolved_bundle_id=None),)))
+    [c] = i.seat_caps
+    assert c.future_seats == 100      # A's 100 Business seats stay, counted once
+
+
+def test_two_plans_for_one_persona_is_a_finding_and_the_first_one_reads():
+    i = interpret(_raw(scenarios=(_plan(id="s1"), _plan(id="s2", cover_key="nothing",
+                                                         resolved_bundle_id="nothing"))))
+    [f] = [f for f in i.findings if f.code == "plan_duplicated"]
+    assert f.persona_id == "a" and f.facts["count"] == 2
+    # The persona's outcomes follow its first plan (E3 covers o1, o2), not the last.
+    assert set(_status(i)) == {"o1", "o2"}

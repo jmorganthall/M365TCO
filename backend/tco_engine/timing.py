@@ -40,6 +40,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 
 from .models import Engagement, UnusedSeatsAnswer
+from .rules import applies_to
 
 CENTS = Decimal("0.01")
 
@@ -217,10 +218,7 @@ def timed_headline(engagement: Engagement, scenario_results, quick_wins) -> Head
     def persona_lines(pid):
         """The licence lines that apply to this persona (tagged to it, or untagged
         = Org-wide, every persona), as in Section 6.2."""
-        return [
-            line for line in engagement.current_licenses
-            if not line.persona_ids or pid in line.persona_ids
-        ]
+        return [line for line in engagement.current_licenses if applies_to(line.persona_ids, pid)]
 
     def line_renewal(line):
         return line.renewal_date or engagement.microsoft_renewal_date

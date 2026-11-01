@@ -9,6 +9,58 @@ and the single rule the engine (`backend/tco_engine/engine.py`) uses to read
 them. It is the schema, not an idealization; keep it in sync when the model
 changes.
 
+## How data flows: entered → derived → calculated → shown
+
+Every number on a screen or in an export travels one path. Each layer is computed
+from the one before it, on read; nothing derived is stored, so nothing derived
+can go stale (TARGET_SCHEMA §1.1).
+
+```mermaid
+flowchart LR
+  subgraph RAW["Entered (raw) — people write it"]
+    R1["Personas · licence lines · tools<br/>scenarios · gap answers · decisions"]
+    R2["Catalog & library<br/>plans · coverage · limits · install settings"]
+  end
+  subgraph INT["Derived (interpreted) — read-only"]
+    I1["tco_engine/interpret.py<br/>prices & sources · cost shares · tool costs<br/>persona × outcome tables · retirements<br/>seat caps · findings"]
+  end
+  subgraph CALC["Calculated — read-only"]
+    C1["tco_engine/engine.py<br/>spend · offsets · dispositions · headline"]
+    C2["services/results.views<br/>totals every readout shows"]
+  end
+  subgraph SHOW["Shown"]
+    S1["GUI (useInterpreted, useResult)"]
+    S2["HTML / PDF / Excel readouts"]
+    S3["Review (findings, worded)"]
+    S4["Trace panel 🔎"]
+  end
+  R1 --> L["services/raw.py<br/>load as entered"] --> I1
+  R2 --> L
+  I1 --> C1 --> C2
+  I1 --> S1
+  I1 --> S3
+  C1 --> S1
+  C2 --> S1
+  C2 --> S2
+  I1 --> S4
+  C1 --> S4
+```
+
+- **Entered:** only people write it, through the CRUD routes. A default is
+  stored as NULL ("inherit"), never as the resolved value. Engagement settings
+  resolve through `Engagement.effective_settings`; a tool's tooling % resolves in
+  the interpreter.
+- **Derived:** `GET …/interpreted`. Each rule is defined once: `interpret.py`,
+  plus `rules.py` (applies-to, covers-tool, headcount shares) and `money.py`
+  (managed split, cost per person), which the engine shares.
+- **Calculated:** `GET …/result` is the engine's output plus `views` (bridge
+  groups, consolidation per persona, quick-win holders, the new-outcome count).
+  Exports and snapshots read the same result.
+- **Shown:** screens format; they don't calculate. Every write refetches, so
+  every screen reflects every edit. `GET …/trace/personas/{id}` walks one
+  persona's figures back through the derived values to the entries, with the
+  rule at each step.
+
 ## The objects
 
 | Object | Role | Identity |

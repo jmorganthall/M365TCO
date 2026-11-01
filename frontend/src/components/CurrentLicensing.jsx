@@ -20,7 +20,9 @@ function MonthlyPriceInput({ annual, onCommit, style }) {
   return (
     <input type="number" style={style} value={val}
       onChange={(e) => setVal(e.target.value)}
-      onBlur={() => onCommit(monthlyToAnnual(val))}
+      // Save only a real change: re-saving the shown (rounded) monthly figure would
+      // rewrite the stored annual price, e.g. 100.00/yr → 99.96/yr.
+      onBlur={() => { if (Number(val) !== annualToMonthly(annual)) onCommit(monthlyToAnnual(val)) }}
       onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }} />
   )
 }
@@ -151,8 +153,9 @@ function LicenseRow({ l, il, eng, meta, personas, catalog, update, remove, readi
         <td data-label="SKU"><SkuCombobox value={l.sku_reference}
           segment={basis.segment} term={basis.term} billing={basis.billing}
           onChange={(v) => update(l.id, { sku_reference: v })}
-          onSelectSku={(sku) => {
-            if (!sku) return  // seeded shortcode / free text: leave the price alone
+          onSelectSku={(sku, title) => {
+            // A seeded shortcode: save the name only and leave the price alone.
+            if (!sku) { if (title !== l.sku_reference) update(l.id, { sku_reference: title }); return }
             // Re-seed the $/seat when the pick is a DIFFERENT SKU than the line
             // held (switching products means the old price no longer applies),
             // or when the line has no price yet. Re-picking the SAME SKU never
@@ -166,9 +169,11 @@ function LicenseRow({ l, il, eng, meta, personas, catalog, update, remove, readi
               // net (~ERP × 0.80) and must never seed what a CUSTOMER pays. A
               // genuine SKU change also clears any price override — the override
               // was a negotiated rate for the OLD SKU.
-              const patch = { unit_price_paid_annual: sku.annual_erp_price, source_tag: 'ListPrice' }
+              const patch = { sku_reference: title, unit_price_paid_annual: sku.annual_erp_price, source_tag: 'ListPrice' }
               if (changed) { patch.price_override = false; patch.overridden_price_annual = null }
               update(l.id, patch)
+            } else if (title !== l.sku_reference) {
+              update(l.id, { sku_reference: title })
             }
           }} /></td>
         <td className="num" data-label="Qty"><TextInput type="number" style={{ width: 80 }} value={l.quantity_purchased}
@@ -307,14 +312,18 @@ export default function CurrentLicensing({ engagement, meta, onUpdate, onNavigat
   const [readings, setReadings] = useState({})  // line id -> its licence name's reading
   const interp = useInterpreted(engagement.id)
 
+  // Only the latest load's replies are applied (a slow earlier reply can't win).
+  const loadSeq = useRef(0)
   const load = () => {
-    api.get(base).then(setItems).catch((e) => setErr(e.message))
-    api.get(`/api/engagements/${engagement.id}/licence-names`).then((names) => {
+    const n = ++loadSeq.current
+    const latest = (set) => (v) => { if (n === loadSeq.current) set(v) }
+    api.get(base).then(latest(setItems)).catch((e) => setErr(e.message))
+    api.get(`/api/engagements/${engagement.id}/licence-names`).then(latest((names) => {
       const byLine = {}
       names.forEach((n) => n.line_ids.forEach((id) => { byLine[id] = n }))
       setReadings(byLine)
-    }).catch(() => {})
-    api.get(`/api/engagements/${engagement.id}/personas`).then(setPersonas)
+    })).catch(() => {})
+    api.get(`/api/engagements/${engagement.id}/personas`).then(latest(setPersonas))
   }
   useEffect(() => {
     load()
@@ -498,12 +507,12 @@ export default function CurrentLicensing({ engagement, meta, onUpdate, onNavigat
           <SkuCombobox value={form.sku_reference} placeholder="Microsoft 365 E3"
             segment={engBasis.segment} term={engBasis.term} billing={engBasis.billing}
             onChange={(v) => setForm((f) => ({ ...f, sku_reference: v }))}
-            onSelectSku={(sku) => sku && setForm((f) => (
+            onSelectSku={(sku, title) => setForm((f) => (
               // Keep a price the user already entered; only seed list when
               // empty — and list = ERP, the customer-facing price.
-              Number(f.unit_price_paid_annual)
-                ? f
-                : { ...f, unit_price_paid_annual: sku.annual_erp_price, source_tag: 'ListPrice' }
+              !sku || Number(f.unit_price_paid_annual)
+                ? { ...f, sku_reference: title }
+                : { ...f, sku_reference: title, unit_price_paid_annual: sku.annual_erp_price, source_tag: 'ListPrice' }
             ))} /></div>
         <div><label>Quantity</label>
           <input type="number" value={form.quantity}
