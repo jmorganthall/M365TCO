@@ -101,14 +101,25 @@ function ScenarioRow({ p, s, r, iv, bundles, basis, meta, moneyUnit, update, rem
               // catalog ERP; re-picking the same one keeps a hand-tuned price.
               const changed = sku.sku_title !== settledSku.current
               settledSku.current = sku.sku_title
+              // A pick records the library plan the SKU is (TARGET_SCHEMA §5.2), with
+              // the name it was picked under, so the plan never depends on name matching.
+              const patch = { target_sku_reference: sku.sku_title, bundle_id: sku.bundle_id || null }
               if (changed || !Number(s.target_unit_price_annual)) {
-                const patch = { target_unit_price_annual: sku.annual_erp_price }
+                patch.target_unit_price_annual = sku.annual_erp_price
                 // A genuine base-SKU change clears any net-price override (it was a
                 // negotiated rate for the OLD target).
                 if (changed) { patch.price_override = false; patch.overridden_price_annual = null }
-                update(s.id, patch)
               }
+              update(s.id, patch)
             }} />
+          {s.target_sku_reference && iv && (
+            <div className="src" style={{ fontSize: '.72rem' }}
+              title="Which library plan this is: one you picked, or the plan its name matched (the interpreter's reading)">
+              {iv.plan_source === 'picked' ? <>library plan: {bundleName(iv.base_bundle_id)} (picked)</>
+                : iv.plan_source === 'name' ? <>matched by name: {bundleName(iv.base_bundle_id)}</>
+                  : <span className="warn">not a library plan — pick one to compare capabilities</span>}
+            </div>
+          )}
           {(s.addons || []).length > 0 && (
             <div className="pill-list" style={{ marginTop: 3 }}>
               {s.addons.map((a) => <span key={a.bundle_id} className="badge muted">+ {bundleName(a.bundle_id)}</span>)}
@@ -352,13 +363,13 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
     try { await api.del(`/api/engagements/${eid}/scenarios/${id}`) } catch (e) { setErr(e.message) }
   }
 
-  async function applyBundle(persona, { sku_reference, price, addons }) {
+  async function applyBundle(persona, { sku_reference, bundle_id, price, addons }) {
     setErr('')
     try {
       const existing = scenarioFor(persona.id)
       const body = {
-        target_sku_reference: sku_reference, target_unit_price_annual: price,
-        in_scope: true, addons: addons || [],
+        target_sku_reference: sku_reference, bundle_id: bundle_id || null,
+        target_unit_price_annual: price, in_scope: true, addons: addons || [],
         // A freshly-applied recommendation quotes at list — clear any prior override.
         price_override: false, overridden_price_annual: null,
       }

@@ -513,6 +513,7 @@ class ScenarioAddonOut(ORMModel):
 class ScenarioIn(BaseModel):
     persona_id: str
     target_sku_reference: str = ""
+    bundle_id: Optional[str] = None  # the picked library plan; None = typed name only
     target_unit_price_annual: Decimal = Decimal("0")
     target_discount_pct: Optional[Decimal] = None
     # Explicit override of the composed net target price (supersedes discount).
@@ -527,6 +528,7 @@ class ScenarioIn(BaseModel):
 
 class ScenarioUpdate(BaseModel):
     target_sku_reference: Optional[str] = None
+    bundle_id: Optional[str] = None
     target_unit_price_annual: Optional[Decimal] = None
     target_discount_pct: Optional[Decimal] = None
     price_override: Optional[bool] = None
@@ -542,6 +544,7 @@ class ScenarioOut(ORMModel):
     id: str
     persona_id: str
     target_sku_reference: str
+    bundle_id: Optional[str] = None
     target_unit_price_annual: Decimal
     target_discount_pct: Optional[Decimal]
     price_override: bool = False

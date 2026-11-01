@@ -276,7 +276,7 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
     for s in src.scenarios:
         ns = models.PersonaScenario(
             engagement_id=dst.id, persona_id=persona_map.get(s.persona_id, s.persona_id),
-            target_sku_reference=s.target_sku_reference,
+            target_sku_reference=s.target_sku_reference, bundle_id=s.bundle_id,
             target_unit_price_annual=s.target_unit_price_annual,
             target_discount_pct=s.target_discount_pct,
             price_override=s.price_override,

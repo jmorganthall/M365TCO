@@ -138,6 +138,7 @@ def load_raw(db: Session, engagement_id: str) -> RawEngagement:
             addons=tuple(RawAddon(bundle_id=a.bundle_id, list_price_annual=_dec(a.unit_price_annual))
                          for a in s.addons),
             resolved_bundle_id=resolve(s.target_sku_reference),
+            linked_bundle_id=s.bundle_id,
         )
         for s in eng.scenarios
     )

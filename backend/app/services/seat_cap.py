@@ -82,6 +82,7 @@ def split_offer(db: Session, engagement_id: str, persona_id: str, interpreted=No
         return {**offer, "kind": "no_alternative"}
     offer.update(
         other_plan=best["sku_reference"],
+        other_bundle_id=best.get("base_bundle_id"),
         other_addons=[{"bundle_id": a["bundle_id"], "name": a.get("name", ""),
                        "unit_price_annual": a["unit_price_annual"]} for a in best["addons"]],
         other_price_annual=best["base_price_annual"],

@@ -266,6 +266,9 @@ def _carve(db: Session, engagement_id: str, parent: models.Persona, seats: int,
         child_scenario = models.PersonaScenario(
             engagement_id=engagement_id, persona_id=child.id,
             target_sku_reference=target_ref,
+            # The same plan as the parent keeps the parent's picked plan.
+            bundle_id=(parent_scenario.bundle_id
+                       if target_ref == parent_scenario.target_sku_reference else None),
             target_unit_price_annual=price,
             target_discount_pct=parent_scenario.target_discount_pct,
             term_duration=parent_scenario.term_duration,
@@ -326,10 +329,13 @@ def list_seat_cap_splits(engagement_id: str, db: Session = Depends(get_db)):
     return seat_cap.split_offers(db, engagement_id)
 
 
-def _set_plan(db: Session, s: models.PersonaScenario, ref: str, price, addons: list[dict]):
-    """Put a scenario on a plan the recommender composed: base, its price, and the
-    add-ons that close its gaps (replacing the old plan's add-ons)."""
+def _set_plan(db: Session, s: models.PersonaScenario, ref: str, price, addons: list[dict],
+              bundle_id: str | None = None):
+    """Put a scenario on a plan the recommender composed: base (with its library
+    plan), its price, and the add-ons that close its gaps (replacing the old plan's
+    add-ons)."""
     s.target_sku_reference = ref
+    s.bundle_id = bundle_id
     if price is not None:
         s.target_unit_price_annual = price
     for a in list(s.addons):
@@ -364,10 +370,12 @@ def split_for_seat_cap(engagement_id: str, persona_id: str,
     parent = db.get(models.Persona, persona_id)
     s = seat_cap._scenario(db, persona_id)
     name = (payload.name or "").strip() or offer["carve_out_name"]
-    capped = {"ref": s.target_sku_reference, "price": s.target_unit_price_annual,
+    capped = {"ref": s.target_sku_reference, "bundle_id": s.bundle_id,
+              "price": s.target_unit_price_annual,
               "addons": [{"bundle_id": a.bundle_id, "unit_price_annual": a.unit_price_annual}
                          for a in s.addons]}
-    other = {"ref": offer["other_plan"], "price": offer["other_price_annual"],
+    other = {"ref": offer["other_plan"], "bundle_id": offer.get("other_bundle_id"),
+             "price": offer["other_price_annual"],
              "addons": offer["other_addons"]}
     if offer["parent_side"] == "capped":
         # The parent keeps its plan; the people over the cap are carved onto the other.
@@ -378,12 +386,13 @@ def split_for_seat_cap(engagement_id: str, persona_id: str,
         # plan (its negotiated price was for the capped plan, so it no longer
         # applies), and the seats left are carved onto the capped plan.
         s.price_override = False
-        _set_plan(db, s, other["ref"], other["price"], other["addons"])
+        _set_plan(db, s, other["ref"], other["price"], other["addons"], other["bundle_id"])
         child = _carve(db, engagement_id, parent, offer["capped_seats"], name, capped["ref"], capped["price"])
         child_plan = capped
     cs = seat_cap._scenario(db, child.id)
     if cs is not None:
-        _set_plan(db, cs, child_plan["ref"], child_plan["price"], child_plan["addons"])
+        _set_plan(db, cs, child_plan["ref"], child_plan["price"], child_plan["addons"],
+                  child_plan["bundle_id"])
     db.commit()
     db.refresh(child)
     return child
@@ -843,11 +852,22 @@ def list_scenarios(engagement_id: str, db: Session = Depends(get_db)):
     ).scalars().all()
 
 
-def _validate_addon_eligibility(db: Session, base_ref: str, addon_bundle_ids: list[str]):
+def _scenario_base(db: Session, bundle_id: str | None, ref: str | None) -> str | None:
+    """The library plan a scenario's base is: the plan a person picked, else the
+    plan its typed name resolves to (TARGET_SCHEMA §5.2). The one place this is
+    decided for writes; the interpreter's loader applies the same rule."""
+    return bundle_id or bundles.resolve_bundle(db, ref or "")
+
+
+def _check_bundle(db: Session, bundle_id: str | None) -> None:
+    if bundle_id is not None and db.get(models.Bundle, bundle_id) is None:
+        raise HTTPException(422, "That plan isn't in the library.")
+
+
+def _validate_addon_eligibility(db: Session, base_id: str | None, addon_bundle_ids: list[str]):
     """Enforce the composition "logic layer": each add-on must be eligible for the
     scenario's base bundle (à-la-carte add-ons layer onto anything). Skips when the
-    base can't be resolved yet (no target set) — there's nothing to check against."""
-    base_id = bundles.resolve_bundle(db, base_ref or "")
+    base isn't known yet (no target set) — there's nothing to check against."""
     if base_id is None:
         return
     elig_map = bundles.eligibility_map(db)
@@ -858,15 +878,15 @@ def _validate_addon_eligibility(db: Session, base_ref: str, addon_bundle_ids: li
             raise HTTPException(
                 422,
                 f"'{addon.name if addon else bid}' cannot be added to "
-                f"'{base.name if base else base_ref}': it is not eligible for that base.",
+                f"'{base.name if base else base_id}': it is not eligible for that base.",
             )
 
 
-def _set_scenario_addons(db: Session, row: models.PersonaScenario, addons: list, base_ref: str):
+def _set_scenario_addons(db: Session, row: models.PersonaScenario, addons: list, base_id: str | None):
     """Reconcile a scenario's add-on bundles to the given set (by bundle_id), after
-    validating each is eligible for the scenario's base bundle."""
+    validating each is eligible for the scenario's base plan."""
     want = {a["bundle_id"]: a for a in addons}
-    _validate_addon_eligibility(db, base_ref, list(want))
+    _validate_addon_eligibility(db, base_id, list(want))
     have = {ad.bundle_id: ad for ad in row.addons}
     for bid, ad in list(have.items()):
         if bid not in want:
@@ -891,8 +911,8 @@ def _requote_scenario(db: Session, eng: models.Engagement, s: models.PersonaScen
         basis["term"] = s.term_duration
     if s.billing_plan:
         basis["billing"] = s.billing_plan
-    if s.target_sku_reference:
-        base_id = bundles.resolve_bundle(db, s.target_sku_reference)
+    if s.target_sku_reference or s.bundle_id:
+        base_id = _scenario_base(db, s.bundle_id, s.target_sku_reference)
         price = bundles.catalog_annual_erp(db, s.target_sku_reference, bundle_id=base_id, **basis)
         if price > 0:
             s.target_unit_price_annual = price
@@ -910,8 +930,9 @@ def create_scenario(engagement_id: str, payload: schemas.ScenarioIn, db: Session
     _require_engagement(db, engagement_id)
     data = payload.model_dump()
     addons = data.pop("addons", [])
+    _check_bundle(db, data.get("bundle_id"))
     row = models.PersonaScenario(engagement_id=engagement_id, **data)
-    _set_scenario_addons(db, row, addons, row.target_sku_reference)
+    _set_scenario_addons(db, row, addons, _scenario_base(db, row.bundle_id, row.target_sku_reference))
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -925,11 +946,19 @@ def update_scenario(engagement_id: str, scenario_id: str, payload: schemas.Scena
     if row is None or row.engagement_id != engagement_id:
         raise HTTPException(404, "Scenario not found")
     data = payload.model_dump(exclude_unset=True)
+    _check_bundle(db, data.get("bundle_id"))
+    # A renamed target keeps its picked plan only while the new name still reads as
+    # that plan; typing a different plan's name drops the link (the name is then
+    # resolved, as for any typed target).
+    if ("target_sku_reference" in data and "bundle_id" not in data and row.bundle_id
+            and bundles.resolve_bundle(db, data["target_sku_reference"] or "") != row.bundle_id):
+        data["bundle_id"] = None
     if "addons" in data:
         # Validate against the base being set in this same PATCH if present, else
         # the scenario's existing base.
-        base_ref = data.get("target_sku_reference", row.target_sku_reference)
-        _set_scenario_addons(db, row, data.pop("addons") or [], base_ref)
+        base_id = _scenario_base(db, data.get("bundle_id", row.bundle_id),
+                                 data.get("target_sku_reference", row.target_sku_reference))
+        _set_scenario_addons(db, row, data.pop("addons") or [], base_id)
     basis_changed = any(
         k in data and data[k] != getattr(row, k) for k in ("term_duration", "billing_plan")
     )

@@ -456,6 +456,7 @@ def analyze_persona_bundles(
         comp = composition.get(b.sku_reference, {}) if comp is None else comp
         return {
             "sku_reference": b.sku_reference,
+            "base_bundle_id": comp.get("base_bundle_id"),  # the library plan, for "Use"
             "base_price_annual": comp.get("base_price_annual", 0.0),
             "addons": comp.get("addons", []),
             "addon_total_annual": comp.get("addon_total_annual", 0.0),

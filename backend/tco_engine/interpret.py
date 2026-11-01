@@ -135,6 +135,8 @@ class RawScenario:
     addons: tuple[RawAddon, ...] = ()
     # Catalog fact from the loader: the plan the target name resolves to, or None.
     resolved_bundle_id: Optional[str] = None
+    # The plan a person picked (TARGET_SCHEMA §5.2); wins over the name.
+    linked_bundle_id: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -254,6 +256,7 @@ class IScenario:
     complete: bool                      # has a target and a price (or override)
     discounted_net_annual: Decimal = ZERO   # composed list × (1 − discount), before any override
     pct_off_list: Decimal = ZERO            # how far below the composed list the net is (≥ 0)
+    plan_source: Optional[str] = None       # "picked" | "name" | None (no plan)
 
 
 @dataclass(frozen=True)
@@ -490,7 +493,8 @@ def interpret(raw: RawEngagement) -> Interpreted:
     # ---- Scenarios ----------------------------------------------------------
     scenarios: list[IScenario] = []
     for s in raw.scenarios:
-        key = s.resolved_bundle_id or (s.target_sku_reference or "")
+        base = s.linked_bundle_id or s.resolved_bundle_id
+        key = base or (s.target_sku_reference or "")
         covered = set(raw.microsoft_coverage.get(key, frozenset()))
         for a in s.addons:
             covered |= raw.microsoft_coverage.get(a.bundle_id, frozenset())
@@ -500,13 +504,14 @@ def interpret(raw: RawEngagement) -> Interpreted:
         net = s.overridden_price_annual if overridden else discounted
         scenarios.append(IScenario(
             id=s.id, persona_id=s.persona_id, target_sku_reference=s.target_sku_reference,
-            base_bundle_id=s.resolved_bundle_id,
+            base_bundle_id=base,
             addon_bundle_ids=tuple(a.bundle_id for a in s.addons),
             composed_list_annual=composed, net_annual=net,
             price_source="override" if overridden else "list",
             covered_outcome_ids=frozenset(covered), in_scope=s.in_scope,
             complete=bool((s.target_sku_reference or "").strip()) and (overridden or net > 0),
             discounted_net_annual=discounted, pct_off_list=_pct_off(composed, net),
+            plan_source="picked" if s.linked_bundle_id else "name" if s.resolved_bundle_id else None,
         ))
 
     personas = tuple(
