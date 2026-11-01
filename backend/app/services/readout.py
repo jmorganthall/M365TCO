@@ -27,6 +27,8 @@ import html
 from datetime import date
 from decimal import Decimal
 
+from tco_engine.interpret import RawEngagement, interpret
+
 from .. import models
 from . import branding as branding_svc
 from . import help_text
@@ -167,12 +169,17 @@ def _image(data_url: str | None) -> str:
 # ---- The document ------------------------------------------------------------
 
 def build_html(eng: models.Engagement, result: dict, gaps: list[dict],
-               brand: dict, *, prepared: date | None = None) -> str:
-    """`result` is the readout result (_computed_dict); `gaps` the capability
-    comparison per persona (compute.persona_coverage_gaps); `brand` the resolved
-    practice branding (services/branding.resolved)."""
+               brand: dict, *, prepared: date | None = None, interpreted=None) -> str:
+    """`result` is the readout result (services/results.current_result); `gaps` the
+    capability comparison per persona (compute.persona_coverage_gaps); `brand` the
+    resolved practice branding (services/branding.resolved); `interpreted` the
+    engagement read through the rules (services/raw.interpreted) — what each persona
+    holds, each tool's uses, each licence's price."""
     prepared = prepared or date.today()
-    ctx = _Context(eng, result, gaps, brand, prepared)
+    if interpreted is None:   # a document with no engagement data behind it
+        interpreted = interpret(RawEngagement(id=getattr(eng, "id", "") or "", personas=(),
+                                              licence_lines=(), tools=(), scenarios=()))
+    ctx = _Context(eng, result, gaps, brand, prepared, interpreted)
     body = "".join([
         ctx.footer("running-footer"), ctx.cover(), ctx.opportunity(), ctx.quick_wins(),
         ctx.persona_pages(), ctx.bridge(), ctx.third_party(), ctx.assumptions(),
@@ -186,16 +193,17 @@ def build_html(eng: models.Engagement, result: dict, gaps: list[dict],
 
 
 def build_pdf(eng: models.Engagement, result: dict, gaps: list[dict], brand: dict,
-              *, prepared: date | None = None) -> bytes:
+              *, prepared: date | None = None, interpreted=None) -> bytes:
     from weasyprint import HTML  # imported here: only the PDF needs it
 
-    doc = build_html(eng, result, gaps, brand, prepared=prepared)
+    doc = build_html(eng, result, gaps, brand, prepared=prepared, interpreted=interpreted)
     return HTML(string=doc).write_pdf()
 
 
 class _Context:
-    def __init__(self, eng, result, gaps, brand, prepared):
+    def __init__(self, eng, result, gaps, brand, prepared, interpreted):
         self.eng, self.result, self.brand, self.prepared = eng, result, brand, prepared
+        self.interp = interpreted
         self.logo = _image(brand.get("logo_data_url"))
         self.rollup = result.get("rollup") or {}
         self.h = self.rollup.get("headline") or {}
@@ -213,13 +221,14 @@ class _Context:
         self.outcome_name = {o.id: o.name for o in eng.outcomes}
         self.dispositions = [d for d in result.get("dispositions") or []
                              if _f(d.get("effective_annual_cost")) or _f(d.get("residual_annual_cost"))]
-        # Ratified uses per tool, for "Used for" (a tool with none is left out, §5).
-        self.tool_uses: dict[str, list[str]] = {}
-        for ce in eng.coverage_entries:
-            if ce.product_kind == "ThirdParty" and ce.ratified and ce.third_party_product_id:
-                name = self.outcome_name.get(ce.outcome_id)
-                if name:
-                    self.tool_uses.setdefault(ce.third_party_product_id, []).append(name)
+        # Each tool's ratified uses, for "Used for" — as the interpreter reads them.
+        self.tool_uses: dict[str, list[str]] = {
+            t.id: names for t in self.interp.tools
+            if (names := sorted(self.outcome_name[o] for o in t.delivered_outcome_ids
+                                if o in self.outcome_name))}
+        # A tool missing its cost, users or uses is left out of the document (§5) —
+        # the interpreter's `tool_incomplete` finding, the same one Review shows.
+        self.left_out_tools = {f.tool_id for f in self.interp.findings if f.code == "tool_incomplete"}
         self.run_rate_by_pid: dict[str, float] = {}
         self.timed_by_pid: dict[str, float] = {}
         # Each duplicate tool's share of its year counted within the horizon (its
@@ -475,13 +484,8 @@ class _Context:
             + (f" · {E(desc)}" if desc else "") + "</div></div>")
 
         # Today
-        lines = [l for l in self.eng.licenses_in_scope
-                 if (pid in l.persona_ids if l.persona_ids else True)]
-        tools = [t for t in self.eng.third_party_products
-                 if _f(t.raw_cost) > 0 and (t.covered_count or 0) > 0 and self.tool_uses.get(t.id)
-                 and (not t.persona_ids or pid in t.persona_ids)]
-        lic_chips = "".join(f"<span class='chip plain'>{E(r)}</span>"
-                            for r in sorted({l.sku_reference for l in lines if l.sku_reference}))
+        refs, tools = self.today_of(pid)
+        lic_chips = "".join(f"<span class='chip plain'>{E(r)}</span>" for r in sorted(refs))
         today = "<div class='col'><h3>Today</h3>"
         today += (f"<div class='label'>Microsoft licences</div><div class='chips'>{lic_chips}</div>"
                   if lic_chips else "<p class='muted'>No Microsoft licences recorded.</p>")
@@ -775,12 +779,28 @@ class _Context:
             f"{retired_html}</section>"
         )
 
+    # ---- What each persona holds, as the interpreter reads it ---------------------
+    def today_of(self, pid: str):
+        """A persona's Microsoft licence names and the tools it holds today (tagged
+        to it, or Org-wide), leaving out tools with no cost, users or uses."""
+        raw_lines = {l.id: l for l in self.interp.raw.licence_lines}
+        refs = {raw_lines[l.id].sku_reference for l in self.interp.lines_for(pid)
+                if raw_lines[l.id].sku_reference}
+        tools = [self.products[t.id] for t in self.interp.tools_for(pid)
+                 if t.id not in self.left_out_tools and t.id in self.products]
+        return refs, tools
+
+    def licence_prices(self, licence_id: str) -> tuple[float, float]:
+        """(effective, list) price per seat per year — the interpreter's."""
+        il = self.interp.licence(licence_id)
+        return _f(il.effective_price_annual), _f(il.list_price_annual)
+
     # ---- 7. Assumptions, timing, method ------------------------------------------
     def assumptions(self) -> str:
         eng, parts = self.eng, []
         if eng.licenses_in_scope:
             def lic_row(lic):
-                eff, base = _f(lic.effective_unit_price_annual), _f(lic.list_unit_price_annual)
+                eff, base = self.licence_prices(lic.id)
                 note = ""
                 if lic.price_override:
                     note = (" <span class='muted'>(negotiated price"

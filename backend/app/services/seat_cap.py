@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models
-from . import bundles, compute, limits
+from . import compute, raw
 
 
 def capped_name(persona_name: str, cap: int) -> str:
@@ -37,8 +37,12 @@ def _scenario(db: Session, persona_id: str) -> models.PersonaScenario | None:
     ).scalars().first()
 
 
-def split_offer(db: Session, engagement_id: str, persona_id: str) -> dict | None:
+def split_offer(db: Session, engagement_id: str, persona_id: str, interpreted=None) -> dict | None:
     """The split offer for one persona, or None when its plan fits (or isn't capped).
+
+    Whether a persona is over a cap — and by how much — is the interpreter's
+    `seat_cap_exceeded` finding (tco_engine.interpret, the one definition Review
+    reads too). This adds the offer: the best plan for the people over the cap.
 
     `kind` is "split" (ready to confirm), "no_seats" (nothing left to split: choose
     an uncapped plan), "nested" (a carve-out can't be split again) or
@@ -46,37 +50,28 @@ def split_offer(db: Session, engagement_id: str, persona_id: str) -> dict | None
     persona = db.get(models.Persona, persona_id)
     if persona is None or persona.engagement_id != engagement_id:
         return None
-    s = _scenario(db, persona_id)
-    if s is None or not s.in_scope or not s.target_sku_reference:
+    i = interpreted if interpreted is not None else raw.interpreted(db, engagement_id)
+    f = next((f for f in i.findings
+              if f.code == "seat_cap_exceeded" and f.persona_id == persona_id), None)
+    if f is None:
         return None
-    plan_ids = {bundles.resolve_bundle(db, s.target_sku_reference)} | {a.bundle_id for a in s.addons}
-    # The tightest cap the plan (base or any add-on) falls under decides. Caps are
-    # matched by their member bundle ids, never by a display name.
-    hit = None
-    for ctx in limits.seat_cap_context(db, engagement_id, exclude_persona_id=persona_id):
-        if set(ctx["member_bundle_ids"]) & plan_ids:
-            if hit is None or ctx["headroom"] < hit["headroom"]:
-                hit = ctx
-    headcount = persona.headcount or 0
-    if hit is None or headcount <= hit["headroom"]:
-        return None
-
-    seats_left = hit["headroom"]
+    x = f.facts
+    cap_name = next(c.name for c in i.seat_caps if c.key == x["cap_key"])
+    headcount = x["headcount"]
+    seats_left = x["seats_left"]
     other_seats = headcount - seats_left
     offer = {
         "persona_id": persona.id, "persona_name": persona.name, "headcount": headcount,
-        "plan": s.target_sku_reference, "cap_name": hit["name"], "cap": hit["cap"],
-        "used_elsewhere": hit["consumed"], "seats_left": seats_left,
+        "plan": x["plan"], "cap_name": cap_name, "cap": x["cap"],
+        "used_elsewhere": x["used_elsewhere"], "seats_left": seats_left,
         "capped_seats": seats_left, "other_seats": other_seats,
         "other_plan": None, "other_addons": [], "other_price_annual": None,
         "parent_side": "capped" if seats_left >= other_seats else "other",
-        "capped_name": capped_name(persona.name, hit["cap"]),
+        "capped_name": capped_name(persona.name, x["cap"]),
         "over_name": over_name(persona.name),
     }
-    if seats_left <= 0:
-        return {**offer, "kind": "no_seats"}
-    if persona.parent_persona_id is not None:
-        return {**offer, "kind": "nested"}
+    if x["kind"] in ("no_seats", "nested"):
+        return {**offer, "kind": x["kind"]}
     # The best plan for the people over the cap, with every capped plan removed,
     # deciding each tool the way the capped side's plan does (D29).
     rest = compute.analyze_persona_bundles(
@@ -104,9 +99,10 @@ def split_offers(db: Session, engagement_id: str) -> list[dict]:
     eng = db.get(models.Engagement, engagement_id)
     if eng is None:
         return []
+    i = raw.interpreted(db, engagement_id)
     out = []
     for p in persona_order.ordered(eng.personas):
-        o = split_offer(db, engagement_id, p.id)
+        o = split_offer(db, engagement_id, p.id, interpreted=i)
         if o is not None:
             out.append(o)
     return out

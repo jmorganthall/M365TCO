@@ -25,7 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models
-from . import bundles, compute, licence_names
+from . import bundles, licence_names, raw
 
 KINDS = ("outcome_added", "coverage_added", "coverage_removed", "licence_in_library")
 
@@ -126,11 +126,12 @@ def pending(db: Session, eng: models.Engagement) -> list[dict]:
             "outcome_keys": sorted({outcome_by_id[r.outcome_id].seed_key for r in gone}),
         })
 
-    sku_outcomes = compute._ratified_sku_outcomes(db, eng.id)
-    readings = compute.licence_readings(db, eng, sku_outcomes)
+    # How each line is read, and the engagement's coverage, are the interpreter's.
+    interp = raw.interpreted(db, eng.id)
+    sku_outcomes = interp.raw.microsoft_coverage
     names: dict[str, list[models.CurrentMicrosoftLicense]] = {}
     for lic in eng.current_licenses:
-        if readings[lic.id].state == "mapped" and \
+        if interp.licence(lic.id).read_state == "mapped" and \
                 ("licence_in_library", None, None, lic.id) not in declined:
             names.setdefault(licence_names.name_key(lic.sku_reference), []).append(lic)
     for key, lines in names.items():
@@ -139,7 +140,7 @@ def pending(db: Session, eng: models.Engagement) -> list[dict]:
         if bid is None or bid not in plan_by_id:
             continue
         plan = plan_by_id[bid]
-        mine = set().union(*(readings[lic.id].outcomes for lic in lines))
+        mine = set().union(*(interp.licence(lic.id).outcomes for lic in lines))
         theirs = sku_outcomes.get(bid) or {
             by_seed[ok].id for bk, ok in pairs if bk == plan.key and ok in by_seed}
         items.append({

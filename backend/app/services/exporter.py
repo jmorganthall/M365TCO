@@ -22,7 +22,9 @@ def _fmt_ratio(value) -> str:
     return format(d, "f")
 
 
-def build_xlsx(engagement: models.Engagement, result: dict) -> bytes:
+def build_xlsx(engagement: models.Engagement, result: dict, interpreted) -> bytes:
+    """`interpreted` is the engagement read through the rules (services/raw) — the
+    licence prices come from it, as everything the engine costs does."""
     wb = Workbook()
 
     ws = wb.active
@@ -47,8 +49,9 @@ def build_xlsx(engagement: models.Engagement, result: dict) -> bytes:
          "Price override", "% off list", "Annual", "Out of scope (in no number)"]
     )
     for lic in engagement.current_licenses:
-        list_base = float(lic.list_unit_price_annual)
-        effective = float(lic.effective_unit_price_annual)
+        il = interpreted.licence(lic.id)
+        list_base = float(il.list_price_annual)
+        effective = float(il.effective_price_annual)
         off = (list_base - effective) / list_base if (lic.price_override and list_base) else 0
         wc.append([
             lic.sku_reference, lic.quantity_assigned, list_base, effective,

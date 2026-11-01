@@ -406,7 +406,7 @@ def scenario_narrative(engagement_id: str, db: Session = Depends(get_db)):
     if not ai.is_enabled():
         raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
     result = results.current_result(db, engagement_id)
-    scenarios = narrative.build_narrative_payload(eng, result)
+    scenarios = narrative.build_narrative_payload(eng, result, raw_layer.interpreted(db, engagement_id))
     if not scenarios:
         return {"narratives": [], "generated_at": None}  # nothing in scope to narrate
     row = defaults.get_defaults(db)
@@ -488,14 +488,15 @@ def readout_html(engagement_id: str, db: Session = Depends(get_db)):
     result = results.current_result(db, engagement_id)
     return HTMLResponse(readout.build_html(
         eng, result, compute.persona_coverage_gaps(db, engagement_id),
-        branding.resolved(branding.get(db))))
+        branding.resolved(branding.get(db)),
+        interpreted=raw_layer.interpreted(db, engagement_id)))
 
 
 @router.get("/{engagement_id}/readout.xlsx")
 def readout_xlsx(engagement_id: str, db: Session = Depends(get_db)):
     eng = _get_engagement(db, engagement_id)
     result = results.current_result(db, engagement_id)
-    data = exporter.build_xlsx(eng, result)
+    data = exporter.build_xlsx(eng, result, raw_layer.interpreted(db, engagement_id))
     return Response(
         content=data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -533,7 +534,8 @@ def customer_report_pdf(engagement_id: str, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(eng)
     pdf = readout.build_pdf(eng, result, compute.persona_coverage_gaps(db, engagement_id),
-                            branding.resolved(branding.get(db)))
+                            branding.resolved(branding.get(db)),
+                            interpreted=raw_layer.interpreted(db, engagement_id))
     slug = re.sub(r"[^A-Za-z0-9]+", "-", eng.customer_name or "customer").strip("-") or "customer"
     return Response(
         content=pdf, media_type="application/pdf",
