@@ -383,7 +383,9 @@ def analyze_persona_bundles(
     # left the family isn't recommended; with too few, the recommendation stands and
     # the persona is offered a split (seat_cap.split_offer).
     cap_headroom_by_reference: dict[str, int] = {}
-    seat_caps = limits.seat_cap_context(db, engagement_id, exclude_persona_id=persona_id)
+    interp = raw.interpreted(db, engagement_id)
+    seat_caps = limits.seat_cap_context(db, engagement_id, exclude_persona_id=persona_id,
+                                        interpreted=interp)
     capped_refs: set[str] = set()
     if exclude_capped:
         capped_refs = {ref for cap in seat_caps for ref in cap["member_references"]}
@@ -528,7 +530,8 @@ def analyze_persona_bundles(
             held = [t for t in third_party
                     if (not t.persona_ids or m.id in t.persona_ids) and t.delivered_outcome_ids]
             caps: dict[str, int] = {}
-            for cap in limits.seat_cap_context(db, engagement_id, exclude_persona_id=m.id):
+            for cap in limits.seat_cap_context(db, engagement_id, exclude_persona_id=m.id,
+                                               interpreted=interp):
                 for ref in cap["member_references"]:
                     caps[ref] = min(cap["headroom"], caps.get(ref, cap["headroom"]))
             ctx[m.id] = (m.headcount, req, held, caps)

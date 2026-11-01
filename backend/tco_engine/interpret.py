@@ -138,6 +138,18 @@ class RawScenario:
 
 
 @dataclass(frozen=True)
+class RawLimit:
+    """A licensing limit from the catalog (e.g. the Business family's 300-seat
+    tenant cap): its key, the plans it counts, and the ceiling."""
+
+    key: str
+    name: str
+    limit_type: str                     # "max_total_seats", …
+    max_quantity: int
+    member_bundle_ids: frozenset[str]
+
+
+@dataclass(frozen=True)
 class RawEngagement:
     id: str
     personas: tuple[RawPersona, ...]                 # in display order
@@ -158,6 +170,8 @@ class RawEngagement:
     # The customer's answers about coverage gaps (TARGET_SCHEMA §4.8):
     # (persona id, outcome id) -> "NotDeliveredToday" | "CoveredOutsideInventory".
     gap_answers: dict[tuple[str, str], str] = field(default_factory=dict)
+    employee_count: Optional[int] = None
+    licence_limits: tuple[RawLimit, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -304,6 +318,53 @@ class IToolRetirement:
 
 
 @dataclass(frozen=True)
+class ISeatCap:
+    """A licensing limit counted for this engagement (TARGET_SCHEMA `c_limit_results`,
+    D27): seats today on member licence lines, and seats in the future state."""
+
+    key: str
+    name: str
+    limit_type: str
+    max_quantity: int
+    member_bundle_ids: frozenset[str]
+    current_seats: int
+    # Future state, per persona: a persona whose in-scope plan (base or any add-on)
+    # is a member counts its headcount; every other persona its share of the member
+    # lines it keeps. Unattributed: member lines with no headcount to share them by.
+    usage: dict[str, float]
+    unattributed: float
+
+    @property
+    def future_seats(self) -> int:
+        return int(round(sum(self.usage.values()) + self.unattributed))
+
+    def used_by_others(self, persona_id: str) -> int:
+        """Future-state seats used by everyone but this persona — what's left for
+        this persona's own decision is the cap less this."""
+        return int(round(sum(v for pid, v in self.usage.items() if pid != persona_id)
+                         + self.unattributed))
+
+    def seats_left_for(self, persona_id: str) -> int:
+        return max(0, self.max_quantity - self.used_by_others(persona_id))
+
+
+@dataclass(frozen=True)
+class IFinding:
+    """Something to answer or know before the readout (TARGET_SCHEMA §6.4
+    `i_findings`): a code, the walkthrough step it is fixed on, its subject, and the
+    facts a screen needs to word it. Wording is the screen's job (services/review)."""
+
+    code: str
+    step: str
+    severity: str = "warn"              # "warn" | "info" | "left_out"
+    persona_id: Optional[str] = None
+    licence_id: Optional[str] = None
+    tool_id: Optional[str] = None
+    outcome_ids: tuple[str, ...] = ()
+    facts: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class Interpreted:
     raw: RawEngagement
     personas: tuple[IPersona, ...]
@@ -319,6 +380,8 @@ class Interpreted:
     proposed: tuple[IProposed, ...] = ()
     proposed_sources: tuple[ISource, ...] = ()
     tool_retirements: tuple[IToolRetirement, ...] = ()
+    seat_caps: tuple[ISeatCap, ...] = ()
+    findings: tuple[IFinding, ...] = ()
 
     def licence(self, licence_id: str) -> ILicenseLine:
         return next(l for l in self.licence_lines if l.id == licence_id)
@@ -441,11 +504,202 @@ def interpret(raw: RawEngagement) -> Interpreted:
         for p in raw.personas)
 
     tables = _outcome_tables(raw, lines, tools, scenarios)
+    seat_caps = _seat_caps(raw, lines, scenarios)
+    findings = _findings(raw, lines, tools, scenarios, tables, seat_caps)
     return Interpreted(
         raw=raw, personas=personas, licence_lines=tuple(lines),
         licence_shares=licence_shares, tools=tuple(tools), tool_shares=tool_shares,
-        scenarios=tuple(scenarios), **tables,
+        scenarios=tuple(scenarios), seat_caps=seat_caps, findings=findings, **tables,
     )
+
+
+def normalize_name(text: str) -> str:
+    """How a licence name is compared: lower case, single spaces. The one
+    definition — name resolution and alias storage use it too."""
+    return " ".join((text or "").lower().split())
+
+
+def _plan_bundles(s: IScenario) -> set:
+    return {s.base_bundle_id} | set(s.addon_bundle_ids)
+
+
+def _seat_caps(raw: RawEngagement, lines: list[ILicenseLine],
+               scenarios: list[IScenario]) -> tuple[ISeatCap, ...]:
+    """THE count of each licensing limit's seats (TARGET_SCHEMA D27). Every
+    screen — the Readout's licence-limit card, the recommender, the split offer and
+    Review — reads it. Licence lines count by the plan their typed name resolves to."""
+    headcount = {p.id: p.headcount for p in raw.personas}
+    raw_lines = {l.id: l for l in raw.licence_lines}
+    moving = {s.persona_id: s for s in scenarios if s.in_scope}
+    out = []
+    for lim in raw.licence_limits:
+        members = lim.member_bundle_ids
+        member_lines = [l for l in lines if l.in_scope
+                        and raw_lines[l.id].resolved_bundle_id in members]
+        current = sum(raw_lines[l.id].quantity_assigned for l in member_lines)
+        usage: dict[str, float] = {}
+        unattributed = 0.0
+        for pid, s in moving.items():
+            if _plan_bundles(s) & members:
+                usage[pid] = usage.get(pid, 0.0) + headcount.get(pid, 0)
+        for l in member_lines:
+            assigned = raw_lines[l.id].quantity_assigned
+            total = sum(headcount.get(pid, 0) for pid in l.applies_to)
+            if not total:
+                unattributed += assigned
+                continue
+            for pid in l.applies_to:
+                if pid in moving or not headcount.get(pid, 0):
+                    continue
+                usage[pid] = usage.get(pid, 0.0) + assigned * headcount[pid] / total
+        out.append(ISeatCap(
+            key=lim.key, name=lim.name, limit_type=lim.limit_type,
+            max_quantity=lim.max_quantity, member_bundle_ids=members,
+            current_seats=current, usage=usage, unattributed=unattributed))
+    return tuple(out)
+
+
+def _findings(raw, lines, tools, scenarios, tables, seat_caps) -> tuple[IFinding, ...]:
+    """Every check that works without AI (TARGET_SCHEMA §6.4, WALKTHROUGH §6), in
+    walkthrough order. Two more come from outside the interpreter and are added by
+    the Review step: a partly replaced tool with no keep-or-retire answer (an engine
+    result) and pending library updates (the shared library)."""
+    f: list[IFinding] = []
+    raw_lines = {l.id: l for l in raw.licence_lines}
+    raw_tools = {t.id: t for t in raw.tools}
+    headcount = {p.id: p.headcount for p in raw.personas}
+    names = {p.id: p.name for p in raw.personas}
+    total_hc = sum(headcount.values())
+
+    # ---- Personas & licences ----
+    if not raw.personas:
+        f.append(IFinding("no_groups", "groups"))
+    if raw.employee_count and total_hc and total_hc != raw.employee_count:
+        f.append(IFinding("headcount_vs_employees", "groups", "info",
+                          facts={"total": total_hc, "employees": raw.employee_count}))
+    in_scope = [l for l in lines if l.in_scope]
+    for l in in_scope:
+        rl = raw_lines[l.id]
+        name = rl.sku_reference or "A licence line"
+        if l.assumed:
+            f.append(IFinding("licence_untagged", "groups", licence_id=l.id, facts={"name": name}))
+        elif rl.coverage_scope != "TenantWide":
+            hc = sum(headcount[pid] for pid in l.applies_to)
+            if rl.quantity_assigned != hc:
+                f.append(IFinding("seats_vs_headcount", "groups", "info", licence_id=l.id,
+                                  facts={"name": name, "assigned": rl.quantity_assigned,
+                                         "headcount": hc}))
+        unused = max((rl.quantity_purchased or 0) - (rl.quantity_assigned or 0), 0)
+        if unused and not rl.unused_seats_answer:
+            f.append(IFinding("unused_seats_unanswered", "groups", licence_id=l.id,
+                              facts={"name": name, "unused": unused}))
+    if in_scope and not raw.microsoft_renewal_date and any(
+            not raw_lines[l.id].renewal_date for l in in_scope):
+        f.append(IFinding("renewal_date_missing", "groups", "info", facts={"subject": "agreement"}))
+    set_aside = [raw_lines[l.id].sku_reference or "A licence line" for l in lines if not l.in_scope]
+    if set_aside:
+        f.append(IFinding("license_out_of_scope", "groups", "info", facts={"names": set_aside}))
+
+    # ---- Other tools ----
+    for t in tools:
+        rt = raw_tools[t.id]
+        missing = []
+        if not rt.raw_cost or rt.raw_cost <= 0:
+            missing.append("no cost")
+        if not t.people_covered:
+            missing.append("no users")
+        if not t.delivered_outcome_ids:
+            missing.append("no uses ticked")
+        if missing:
+            f.append(IFinding("tool_incomplete", "tools", tool_id=t.id,
+                              facts={"name": t.name or "A tool", "missing": missing}))
+        elif not rt.renewal_date:
+            f.append(IFinding("renewal_date_missing", "tools", "info", tool_id=t.id,
+                              facts={"subject": "tool", "name": t.name}))
+
+    # ---- Future state ----
+    planned = {s.persona_id for s in scenarios}
+    for p in raw.personas:
+        if p.id not in planned:
+            f.append(IFinding("group_without_plan", "future", persona_id=p.id,
+                              facts={"name": p.name}))
+    first_plan: dict[str, IScenario] = {}
+    for s in scenarios:
+        first_plan.setdefault(s.persona_id, s)
+    caps = [c for c in seat_caps if c.limit_type == "max_total_seats"]
+    for p in raw.personas:
+        s = first_plan.get(p.id)
+        if s is None or not s.in_scope or not s.target_sku_reference:
+            continue
+        hit = None
+        for c in caps:
+            if c.member_bundle_ids & _plan_bundles(s):
+                left = c.seats_left_for(p.id)
+                if hit is None or left < hit[1]:
+                    hit = (c, left)
+        if hit is None or p.headcount <= hit[1]:
+            continue
+        c, left = hit
+        kind = "no_seats" if left <= 0 else "nested" if p.parent_persona_id else "split"
+        f.append(IFinding("seat_cap_exceeded", "future", persona_id=p.id, facts={
+            "kind": kind, "persona_name": p.name, "headcount": p.headcount,
+            "plan": s.target_sku_reference, "cap_key": c.key, "cap": c.max_quantity,
+            "used_elsewhere": c.used_by_others(p.id), "seats_left": left}))
+
+    # ---- Capability comparison ----
+    # A licence nobody can read (D23): one question per licence name.
+    unread_by_persona: dict[str, list[str]] = {}
+    for p in raw.personas:
+        seen: set[str] = set()
+        for l in in_scope:
+            if l.read_state != "unread" or p.id not in l.applies_to:
+                continue
+            ref = raw_lines[l.id].sku_reference or ""
+            if normalize_name(ref) in seen:
+                continue
+            seen.add(normalize_name(ref))
+            unread_by_persona.setdefault(p.id, []).append(ref or "A licence line")
+    grouped: dict[str, tuple[str, list[str]]] = {}
+    for p in raw.personas:
+        for ref in unread_by_persona.get(p.id, []):
+            grouped.setdefault(normalize_name(ref), (ref, []))[1].append(p.id)
+    for ref, pids in grouped.values():
+        f.append(IFinding("license_unread", "tools", facts={
+            "name": ref, "persona_ids": pids, "personas": [names[p] for p in pids]}))
+
+    proposed = tables["proposed"]
+    today = tables["today"]
+    # The outcome tables read a persona's last scenario (one per persona in practice).
+    last_plan = {s.persona_id: s for s in scenarios}
+    for p in raw.personas:
+        plan = last_plan.get(p.id)
+        if p.id in unread_by_persona:
+            if plan is not None:
+                f.append(IFinding("capability_changes_unknown", "tools", "left_out",
+                                  persona_id=p.id, facts={
+                                      "persona_name": p.name, "names": unread_by_persona[p.id]}))
+            continue
+        if plan is None:
+            continue
+        rows = [r for r in proposed if r.persona_id == p.id]
+        target_unmapped = not plan.covered_outcome_ids
+        if target_unmapped:
+            f.append(IFinding("target_unmapped", "future", persona_id=p.id,
+                              facts={"persona_name": p.name}))
+        else:
+            target = plan.covered_outcome_ids
+            dropped = sorted(t.outcome_id for t in today
+                             if t.persona_id == p.id and t.by_microsoft and t.outcome_id not in target)
+            if dropped:
+                f.append(IFinding("capability_dropped", "future", "info", persona_id=p.id,
+                                  outcome_ids=tuple(dropped), facts={"persona_name": p.name}))
+        unanswered = sorted(r.outcome_id for r in rows if r.by_target and not r.delivered_today
+                            and (p.id, r.outcome_id) not in raw.gap_answers)
+        if unanswered:
+            f.append(IFinding("gap_unanswered", "gaps", persona_id=p.id,
+                              outcome_ids=tuple(unanswered),
+                              facts={"persona_name": p.name, "count": len(unanswered)}))
+    return tuple(f)
 
 
 def _outcome_tables(raw: RawEngagement, lines: list[ILicenseLine], tools: list[ITool],

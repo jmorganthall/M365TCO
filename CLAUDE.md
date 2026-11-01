@@ -80,8 +80,9 @@ work), these rules hold for all new work:
   `tests/test_viewing_never_writes.py` calls every GET route and fails on any write.
 - **No private readings of raw data.** Don't add another place that decides what
   a persona holds, whether a tool retires, how a cost is shared, or how seats
-  count. Reuse the existing single definition (e.g. `limits._future_seat_usage`
-  for seat caps; untagged lines are Org-wide, every persona, everywhere). If none
+  count. Reuse the existing single definition — `tco_engine/interpret.py` (seat
+  caps, findings, the persona × outcome tables, cost shares) and
+  `tco_engine/rules.py`. Untagged lines are Org-wide: every persona, everywhere. If none
   exists yet, add one and route the existing copies through it in the same change.
 - **The GUI does no arithmetic on money or seats** beyond formatting. A number
   the GUI shows comes from the backend. The GUI never edits a value to display it

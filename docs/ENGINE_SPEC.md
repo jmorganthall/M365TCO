@@ -111,6 +111,26 @@ status(o)          = Pending          if p's plan is incomplete
 outcomes_unknown(p) = an unread line applies to p (D23)
 ```
 
+```
+# Seat caps (D27) — per licensing limit L, over its member plans
+current_seats(L)  = Σ assigned seats on in-scope lines whose typed name resolves to a member
+usage(L, p)       = headcount(p)                 if p's in-scope plan (base or any add-on) is a member
+                  | Σ over member lines applying to p of assigned × headcount(p) / Σ headcount(line's personas)
+                                                 if p has no in-scope plan
+unattributed(L)   = assigned seats on member lines whose personas have no headcount
+future_seats(L)   = round(Σ usage + unattributed);  seats_left(L, p) = cap − round(Σ usage of others + unattributed)
+seat_cap_exceeded(p) when p's in-scope plan is under a cap and headcount(p) > seats_left
+                  (the tightest cap decides; kind no_seats | nested | split)
+
+# Findings (TARGET_SCHEMA §6.4) — code, step, subject, facts; worded by Review
+no_groups, headcount_vs_employees, licence_untagged, seats_vs_headcount,
+unused_seats_unanswered, renewal_date_missing, license_out_of_scope, tool_incomplete,
+group_without_plan, seat_cap_exceeded, license_unread (one per normalized name),
+capability_changes_unknown, target_unmapped, capability_dropped, gap_unanswered.
+(residual_unanswered and library_update_pending are added by Review: they need
+the engine result and the shared library.)
+```
+
 Retirement here is the engine's displacement rule exactly: the parity test checks
 every persona's retired tools against the engine's credited offsets. (TARGET_SCHEMA
 definition 4 narrows it to the outcomes the persona *needs*; adopting that is a

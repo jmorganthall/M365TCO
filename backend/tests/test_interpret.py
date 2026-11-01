@@ -267,3 +267,84 @@ def test_an_unread_line_marks_its_personas_outcomes_unknown():
     i = interpret(_raw(licence_lines=(_line(sku_reference="Mystery", persona_ids=("b",)),)))
     unknown = {p.id: p.outcomes_unknown for p in i.personas}
     assert unknown == {"a": False, "b": True}
+
+
+# ---------------------------------------------------------------------------
+# Seat caps and findings (TARGET_SCHEMA D27, §6.4)
+# ---------------------------------------------------------------------------
+
+from tco_engine.interpret import RawLimit  # noqa: E402
+
+_CAP = RawLimit(key="biz", name="Business", limit_type="max_total_seats", max_quantity=300,
+                member_bundle_ids=frozenset({"bp"}))
+
+
+def test_seat_cap_counts_movers_and_stayers_once():
+    # A (100) moves onto Business; B (300) keeps 40 Business seats it holds today.
+    i = interpret(_raw(
+        licence_limits=(_CAP,),
+        licence_lines=(_line(id="bp-line", persona_ids=("b",), quantity_assigned=40,
+                             resolved_bundle_id="bp"),),
+        scenarios=(_plan(cover_key="bp", resolved_bundle_id="bp"),)))
+    [c] = i.seat_caps
+    assert c.current_seats == 40 and c.future_seats == 140
+    assert c.used_by_others("a") == 40 and c.seats_left_for("a") == 260
+    assert not any(f.code == "seat_cap_exceeded" for f in i.findings)
+
+
+def test_over_the_cap_is_a_finding_with_its_facts():
+    i = interpret(_raw(
+        personas=(RawPersona("a", "A", 280), RawPersona("b", "B", 40)),
+        licence_limits=(_CAP,),
+        licence_lines=(_line(id="bp-line", persona_ids=("b",), quantity_assigned=40,
+                             resolved_bundle_id="bp"),),
+        scenarios=(_plan(cover_key="bp", resolved_bundle_id="bp"),)))
+    [f] = [f for f in i.findings if f.code == "seat_cap_exceeded"]
+    assert f.persona_id == "a" and f.facts["kind"] == "split"
+    assert f.facts["used_elsewhere"] == 40 and f.facts["seats_left"] == 260
+
+
+def _codes(i):
+    return [f.code for f in i.findings]
+
+
+def test_findings_for_licences_and_tools():
+    i = interpret(_raw(
+        licence_lines=(_line(quantity_purchased=450),                       # untagged, 50 unused
+                       _line(id="m", sku_reference="Mystery", persona_ids=("b",),
+                             quantity_assigned=10, quantity_purchased=10),  # unread, seats ≠ 300
+                       _line(id="x", out_of_scope=True)),
+        tools=(_tool(raw_cost=D("0")),)))
+    codes = _codes(i)
+    for code in ("licence_untagged", "unused_seats_unanswered", "seats_vs_headcount",
+                 "renewal_date_missing", "license_out_of_scope", "tool_incomplete",
+                 "group_without_plan", "license_unread"):
+        assert code in codes, code
+    tool = next(f for f in i.findings if f.code == "tool_incomplete")
+    assert tool.facts["missing"] == ["no cost"]          # the fixture ticks one use
+    unread = next(f for f in i.findings if f.code == "license_unread" and f.facts["name"] == "Mystery")
+    assert unread.facts["persona_ids"] == ["b"]
+
+
+def test_findings_for_the_move():
+    i = interpret(_raw(
+        personas=(RawPersona("a", "A", 100),),
+        microsoft_coverage={"today": frozenset({"o1", "o4"}), "m365-e3": frozenset({"o1", "o2"})},
+        licence_lines=(_line(persona_ids=("a",), quantity_assigned=100, quantity_purchased=100,
+                             linked_bundle_id="today", renewal_date=__import__("datetime").date(2027, 1, 1)),),
+        scenarios=(_plan(),)))
+    dropped = next(f for f in i.findings if f.code == "capability_dropped")
+    assert dropped.outcome_ids == ("o4",)
+    gap = next(f for f in i.findings if f.code == "gap_unanswered")
+    assert gap.outcome_ids == ("o2",) and gap.facts["count"] == 1
+    # A target with no coverage can't be compared at all.
+    j = interpret(_raw(personas=(RawPersona("a", "A", 100),),
+                       scenarios=(_plan(cover_key="nothing", resolved_bundle_id="nothing"),)))
+    assert "target_unmapped" in _codes(j)
+
+
+def test_headcount_against_employees():
+    i = interpret(_raw(employee_count=500))                      # personas add up to 400
+    [f] = [f for f in i.findings if f.code == "headcount_vs_employees"]
+    assert f.severity == "info" and f.facts == {"total": 400, "employees": 500}
+    assert "headcount_vs_employees" not in _codes(interpret(_raw(employee_count=400)))

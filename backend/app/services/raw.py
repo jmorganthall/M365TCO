@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from tco_engine.interpret import (
     RawAddon,
     RawEngagement,
+    RawLimit,
     RawLicenseLine,
     RawPersona,
     RawScenario,
@@ -155,6 +156,20 @@ def load_raw(db: Session, engagement_id: str) -> RawEngagement:
         microsoft_renewal_date=eng.microsoft_renewal_date,
         horizon_years=int(eng.modeling_horizon_years or 3),
         gap_answers={(a.persona_id, a.outcome_id): a.answer for a in eng.gap_answers},
+        employee_count=eng.employee_count,
+        licence_limits=_limits(db),
+    )
+
+
+def _limits(db: Session) -> tuple[RawLimit, ...]:
+    members: dict[str, set[str]] = {}
+    for m in db.execute(select(models.LicenseLimitMember)).scalars():
+        members.setdefault(m.license_limit_id, set()).add(m.bundle_id)
+    return tuple(
+        RawLimit(key=lim.key, name=lim.name, limit_type=lim.limit_type,
+                 max_quantity=lim.max_quantity, member_bundle_ids=frozenset(members.get(lim.id, ())))
+        for lim in db.execute(
+            select(models.LicenseLimit).order_by(models.LicenseLimit.sort_order)).scalars()
     )
 
 
@@ -201,4 +216,13 @@ def interpreted_view(db: Session, engagement_id: str) -> dict:
         "proposed": rows(i.proposed),
         "proposed_sources": rows(i.proposed_sources),
         "tool_retirements": rows(i.tool_retirements),
+        # The licensing limits counted (TARGET_SCHEMA D27) and every finding (§6.4).
+        "seat_caps": [{**{k: _plain(v) for k, v in r.items() if k != "usage"},
+                       "future_seats": c.future_seats,
+                       "usage": [{"persona_id": p, "seats": u} for p, u in c.usage.items()]}
+                      for c, r in ((c, {f.name: getattr(c, f.name) for f in fields(c)})
+                                   for c in i.seat_caps)],
+        "findings": [{**{f.name: _plain(getattr(x, f.name)) for f in fields(x) if f.name != "facts"},
+                      "facts": {k: _plain(v) for k, v in x.facts.items()}}
+                     for x in i.findings],
     }

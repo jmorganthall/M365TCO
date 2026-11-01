@@ -45,9 +45,20 @@ A pure `backend/tco_engine/interpret.py` that returns, in memory, the shapes in
 - The parity test checks the tables against the Coverage check and the
   engine's credited tools for every engagement the suite builds.
 
-**1c (next):** findings (`services/review.py`) and seat caps move into the
-interpreter. Then Phase 2 moves each consumer onto these tables and deletes its
-private copy.
+**1c (done):**
+- The seat-cap count moved into the interpreter (`seat_caps`).
+  `limits.evaluate` and `seat_cap_context` only read it.
+- Review's checks are the interpreter's `findings`, structured (code, step,
+  subject, facts); `services/review.py` only words them. Two checks come from
+  outside the interpreter: a partly replaced tool with no keep-or-retire answer
+  (an engine result) and pending library updates.
+- Licence-name normalization is one function.
+- Parity: frozen copies of the old Review and seat-cap count must match for
+  every engagement the suite builds.
+
+Phase 1 is complete: every rule in the table below is now defined in the
+interpreter. Phase 2 moves each remaining consumer onto it and deletes its
+private copy, then deletes the frozen copies in `tests/test_zz_interpret_parity.py`.
 
 | Interpreted output | Folded from |
 | --- | --- |
@@ -56,7 +67,7 @@ private copy.
 | tools: annual cost, effective tooling %, people covered, cost per person | `routers/entities._normalize_third_party` (writes these onto the raw row today) |
 | scenarios: base + add-ons by bundle id, composed list, net, complete/incomplete | `compute.hydrate`, `compute._scenario_cover`, `lineage.py`, `limits` |
 | persona × outcome today/after, tool retired, quick win | `persona_coverage_gaps`, `new_outcomes`, `dropped_capability`, and the five "tool retired" checks (`engine._scenario_displaces_product`, `compute._retired`, `compute._plan_fitting`, `lineage._plan_retires`, the readout's kept-tools filter) |
-| seat caps | `limits._future_seat_usage` |
+| seat caps | `limits._future_seat_usage` (done in 1c) |
 | findings | `services/review.py` |
 
 Gate: the engine's output from `interpret()` equals today's output on every test

@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from . import bundles as bundles_service
+from . import raw
 
 SEED_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "seeds")
 
@@ -123,145 +124,71 @@ def set_limit_members(db: Session, limit_id: str, bundle_ids: list[str]) -> list
     return member_bundle_ids(db, limit_id)
 
 
-def _future_seat_usage(db: Session, eng: models.Engagement, mset: set[str], resolve) -> tuple[dict[str, float], float]:
-    """THE count of a seat cap's seats in the future state — the one definition the
-    Readout's licence-limit card, the recommender, the split offer and Review all
-    use (TARGET_SCHEMA D27, §6.4 `seat_cap_exceeded`).
-
-    Per persona:
-    - a persona with an in-scope scenario counts its headcount when the scenario's
-      base or any add-on is a member bundle (its current lines don't count: the
-      move replaces them);
-    - every other persona keeps its current licences, so it counts its share of the
-      assigned seats on member lines (a line shared by several personas splits by
-      headcount; an untagged line applies to every persona).
-
-    Returns (seats per persona id, unattributed seats). Unattributed = member lines
-    whose personas have no headcount to share them by; they count in full."""
-    headcount = {p.id: p.headcount or 0 for p in eng.personas}
-    moving = {s.persona_id: s for s in eng.scenarios if s.in_scope}
-    usage: dict[str, float] = {}
-    unattributed = 0.0
-    for pid, s in moving.items():
-        plan = {resolve(s.target_sku_reference)} | {a.bundle_id for a in s.addons}
-        if plan & mset:
-            usage[pid] = usage.get(pid, 0.0) + headcount.get(pid, 0)
-    for lic in eng.licenses_in_scope:
-        if resolve(lic.sku_reference) not in mset:
-            continue
-        applies = list(lic.persona_ids) or list(headcount)
-        total_hc = sum(headcount.get(pid, 0) for pid in applies)
-        if not total_hc:
-            unattributed += lic.quantity_assigned or 0
-            continue
-        for pid in applies:
-            if pid in moving or not headcount.get(pid, 0):
-                continue
-            usage[pid] = usage.get(pid, 0.0) + (lic.quantity_assigned or 0) * headcount[pid] / total_hc
-    return usage, unattributed
-
-
-def _resolver(db: Session):
-    cache: dict[str, str | None] = {}
-
-    def resolve(ref: str) -> str | None:
-        if ref not in cache:
-            cache[ref] = bundles_service.resolve_bundle(db, ref or "")
-        return cache[ref]
-    return resolve
-
-
 def evaluate(db: Session, engagement_id: str) -> list[dict]:
-    """Every license limit against this engagement, tenant-wide: seats today (the
-    assigned seats on member licence lines) and seats in the future state — counted
-    by `_future_seat_usage`, the same definition the split offer and Review use, so
-    the Readout card can never disagree with them. Reads only. Empty when no limits
-    are defined."""
-    eng = db.get(models.Engagement, engagement_id)
-    if eng is None:
+    """Every license limit against this engagement, tenant-wide: seats today on
+    member licence lines and seats in the future state. Counted once, by the
+    interpreter (tco_engine.interpret `seat_caps`, TARGET_SCHEMA D27) — the same
+    count the recommender, the split offer and Review read. Reads only."""
+    if db.get(models.Engagement, engagement_id) is None:
         return []
-    limits = db.execute(
-        select(models.LicenseLimit).order_by(models.LicenseLimit.sort_order)
-    ).scalars().all()
-    if not limits:
-        return []
-
-    members = _members_by_limit(db)
+    caps = {c.key: c for c in raw.interpreted(db, engagement_id).seat_caps}
     bundle_name = {b.id: b.name for b in db.execute(select(models.Bundle)).scalars().all()}
-    resolve = _resolver(db)
-
     out: list[dict] = []
-    for lim in limits:
-        mset = members.get(lim.id, set())
-        current_seats = sum(
-            lic.quantity_assigned
-            for lic in eng.licenses_in_scope
-            if resolve(lic.sku_reference) in mset
-        )
-        usage, unattributed = _future_seat_usage(db, eng, mset, resolve)
-        target_seats = int(round(sum(usage.values()) + unattributed))
-        cap = lim.max_quantity
+    for lim in db.execute(
+            select(models.LicenseLimit).order_by(models.LicenseLimit.sort_order)).scalars():
+        c = caps[lim.key]
+        cap = c.max_quantity
         out.append({
             "id": lim.id, "key": lim.key, "name": lim.name,
             "limit_type": lim.limit_type, "max_quantity": cap,
             "unit_basis": lim.unit_basis, "scope": lim.scope,
             "member_bundle_names": sorted(
-                bundle_name[i] for i in mset if i in bundle_name
-            ),
-            "current_seats": current_seats,
-            "target_seats": target_seats,
-            "current_over_by": max(0, current_seats - cap),
-            "target_over_by": max(0, target_seats - cap),
+                bundle_name[i] for i in c.member_bundle_ids if i in bundle_name),
+            "current_seats": c.current_seats,
+            "target_seats": c.future_seats,
+            "current_over_by": max(0, c.current_seats - cap),
+            "target_over_by": max(0, c.future_seats - cap),
             # The actionable signal: the plan (future state) or the existing tenant
             # already exceeds the ceiling.
-            "violated": current_seats > cap or target_seats > cap,
+            "violated": c.current_seats > cap or c.future_seats > cap,
         })
     return out
 
 
 def seat_cap_context(
-    db: Session, engagement_id: str, exclude_persona_id: str | None = None
+    db: Session, engagement_id: str, exclude_persona_id: str | None = None,
+    interpreted=None,
 ) -> list[dict]:
     """Seats left under each tenant seat cap (max_total_seats) in the FUTURE state,
-    for one persona's decision (TARGET_SCHEMA §3.1, D27): the future-state count
-    (`_future_seat_usage`, shared with the Readout card) less the excluded
-    persona's own seats — they are what is being decided.
+    for one persona's decision (TARGET_SCHEMA §3.1, D27): the interpreter's count
+    less that persona's own seats — they are what is being decided.
 
     Returns one dict per cap: {key, limit_id, name, cap, consumed, headroom,
     member_bundle_ids, member_bundle_names, member_references}; member_references
     are the member bundle NAMES (an optimizer candidate's sku_reference). Empty when
-    no such limit is defined."""
-    eng = db.get(models.Engagement, engagement_id)
-    if eng is None:
+    no such limit is defined. Pass `interpreted` to reuse an interpretation the
+    caller already holds."""
+    if db.get(models.Engagement, engagement_id) is None:
         return []
-    limits = [
-        lim for lim in db.execute(
-            select(models.LicenseLimit).order_by(models.LicenseLimit.sort_order)
-        ).scalars().all()
-        if lim.limit_type == "max_total_seats"
-    ]
-    if not limits:
-        return []
-
-    members = _members_by_limit(db)
+    i = interpreted if interpreted is not None else raw.interpreted(db, engagement_id)
+    caps = {c.key: c for c in i.seat_caps}
     bundle_name = {b.id: b.name for b in db.execute(select(models.Bundle)).scalars().all()}
-    resolve = _resolver(db)
-
     out: list[dict] = []
-    for lim in limits:
-        mset = members.get(lim.id, set())
-        usage, unattributed = _future_seat_usage(db, eng, mset, resolve)
-        consumed = int(round(
-            sum(v for pid, v in usage.items() if pid != exclude_persona_id) + unattributed))
-        member_names = sorted(bundle_name[i] for i in mset if i in bundle_name)
+    for lim in db.execute(
+            select(models.LicenseLimit).order_by(models.LicenseLimit.sort_order)).scalars():
+        if lim.limit_type != "max_total_seats":
+            continue
+        c = caps[lim.key]
+        consumed = c.used_by_others(exclude_persona_id)
+        member_names = sorted(bundle_name[i] for i in c.member_bundle_ids if i in bundle_name)
         out.append({
             "key": lim.key,
             "limit_id": lim.id,
             "name": lim.name,
-            "cap": lim.max_quantity,
+            "cap": c.max_quantity,
             "consumed": consumed,
-            "headroom": max(0, lim.max_quantity - consumed),
-            "member_bundle_ids": sorted(mset),
+            "headroom": max(0, c.max_quantity - consumed),
+            "member_bundle_ids": sorted(c.member_bundle_ids),
             "member_bundle_names": member_names,
             "member_references": member_names,
         })

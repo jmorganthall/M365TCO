@@ -503,7 +503,7 @@ linked to the first by `parent_persona_id`:
   is a real Microsoft constraint that spans a **family** of bundles and must be
   checked against the **totality** of current + future state — so it is neither a
   field on one bundle nor a per-line value.
-- **One count of future seats:** `services/limits._future_seat_usage` is the single
+- **One count of future seats:** the interpreter's `seat_caps` (`tco_engine/interpret.py`) is the single
   definition of a cap's seats in the future state: a persona with an in-scope
   scenario counts its headcount when the scenario's base or any add-on is a member;
   every other persona counts its share of the assigned seats on member licence lines
