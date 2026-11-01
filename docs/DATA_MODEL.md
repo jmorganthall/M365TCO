@@ -155,20 +155,28 @@ FK, UUID PK, cascade-deleted with the engagement.
   `ecif_roi_generous` are the ROI ratios N:1 the engine divides the annual
   Microsoft-spend uplift by to size the **one-time** ECIF fund Microsoft may
   co-invest (~1/N of the annual uplift, per standard Microsoft investment ROI —
-  used for pre-/post-sales acceleration, not a recurring figure). They are
-  **seeded from `GlobalDefaults`** on creation
-  (`default_ecif_roi_conservative` 10 / `default_ecif_roi_generous` 5, §4.11),
-  then owned per engagement. Advisory — actual ECIF is scoped with the Microsoft
+  used for pre-/post-sales acceleration, not a recurring figure). They
+  **inherit `GlobalDefaults`** while NULL
+  (`default_ecif_roi_conservative` 10 / `default_ecif_roi_generous` 5, §4.11);
+  a value set on the engagement is its own. Advisory — actual ECIF is scoped with the Microsoft
   account team. All three are editable on the Customer Info tab and copied by
   `duplicate`.
 - **CRUD:** `GET/POST/PATCH/DELETE /api/engagements`, plus `duplicate`, `compute`,
   `readout.html`, `readout.xlsx`, `snapshots`.
 - **Lifecycle:** on create, seeds outcomes + Microsoft coverage from the seed
-  library (§6), and copies `default_segment`, the pricing-basis defaults, and the
-  ECIF ROI ratios from `GlobalDefaults`. `duplicate` deep-copies every child (and
-  the basis defaults) with id remapping.
-- **Note:** `global_tooling_pct` is the engagement default for the managed split;
-  individual third-party rows may override it.
+  library (§6). The inheritable settings the creator didn't choose stay NULL.
+  `duplicate` deep-copies every child (and the settings as entered) with id
+  remapping.
+- **Inheritable settings (TARGET_SCHEMA §4.1):** `global_tooling_pct`,
+  `default_segment`, `default_term_duration`, `default_billing_plan`,
+  `ecif_roi_conservative`, `ecif_roi_generous`. NULL = inherit `GlobalDefaults`.
+  Every reader resolves them through `Engagement.effective_settings` (the one
+  place). The API returns them as entered, plus `effective_settings`,
+  `inherited_settings` and `install_settings` (what inheriting gives), read-only.
+  The GUI shows "Default (…)" for an inherited setting, and choosing it stores NULL
+  again. Values stored before this rule keep their meaning as explicit values
+  (TARGET_SCHEMA §12). The tooling % is the managed-split default for the
+  engagement's tools, which may set their own.
 - **Readout branding** (TARGET_SCHEMA §3.5, D25): the practice brands the
   readout once, in the single-row `practice_branding` (`logo_data_url`,
   `primary_color` / `accent_color` / `highlight_color`, and the rich-text blocks
@@ -196,8 +204,8 @@ FK, UUID PK, cascade-deleted with the engagement.
   published list, NCE's real pay-monthly premium — the familiar published
   number is the P1Y/Annual ERP ÷ 12) are the middle tier of a three-level chain —
   **GlobalDefaults → Engagement → line item** — that selects which priced
-  catalog variant a picked SKU or quoted bundle resolves to. All three are
-  copied from GlobalDefaults on creation and editable on the Customer Info tab.
+  catalog variant a picked SKU or quoted bundle resolves to. All three inherit
+  GlobalDefaults while NULL and are editable on the Customer Info tab.
   The same basis drives recommend-a-path and price autofill
   (`services/bundles.catalog_price_row` — deterministic: ratified SKU→Bundle
   rows first, then tolerant title match, ranked segment → term → billing plan →

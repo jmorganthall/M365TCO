@@ -37,7 +37,7 @@ def build_sanity_payload(eng, result: dict, interpreted) -> dict:
             "qty_purchased": l.quantity_purchased,
             "qty_assigned": l.quantity_assigned,
             "unit_price_annual": float(l.unit_price_paid_annual or 0),
-            "segment": l.segment or eng.default_segment,
+            "segment": l.segment or eng.effective_settings["default_segment"],
         }
         for l in eng.licenses_in_scope
     ]
@@ -53,7 +53,7 @@ def build_sanity_payload(eng, result: dict, interpreted) -> dict:
         "customer": eng.customer_name,
         "market": eng.market,
         "currency": eng.currency,
-        "default_segment": eng.default_segment,
+        "default_segment": eng.effective_settings["default_segment"],
         "personas": [
             {"name": p.name, "headcount": p.headcount} for p in eng.personas
         ],

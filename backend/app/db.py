@@ -220,6 +220,14 @@ def _drop_retired_columns(target_engine=None) -> None:
 # keeping every stored value exactly (a shape change, not a meaning change).
 _RELAXED_NOT_NULL: tuple[tuple[str, str], ...] = (
     ("third_party_products", "tooling_pct"),
+    # The engagement's inheritable settings (TARGET_SCHEMA §4.1): NULL = inherit the
+    # install settings. Values stored before keep their meaning as explicit (§12).
+    ("engagements", "global_tooling_pct"),
+    ("engagements", "default_segment"),
+    ("engagements", "default_term_duration"),
+    ("engagements", "default_billing_plan"),
+    ("engagements", "ecif_roi_conservative"),
+    ("engagements", "ecif_roi_generous"),
 )
 
 

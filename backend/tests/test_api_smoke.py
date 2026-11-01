@@ -105,9 +105,13 @@ def test_global_default_tooling_pct_flows_to_new_engagement(client):
     meta = client.get("/api/meta").json()
     assert meta["default_tooling_pct"] == 0.25
     eng = client.post("/api/engagements", json={"customer_name": "Defaults Co"}).json()
-    assert float(eng["global_tooling_pct"]) == 0.25
-    # Reset so other tests are unaffected.
+    # Inherited, not copied (TARGET_SCHEMA §4.1): stored NULL, effective 0.25 …
+    assert eng["global_tooling_pct"] is None and "global_tooling_pct" in eng["inherited_settings"]
+    assert float(eng["effective_settings"]["global_tooling_pct"]) == 0.25
+    # … and it follows the install setting when that changes.
     client.put("/api/admin/defaults", json={"default_tooling_pct": 0.30})
+    eng = client.get(f"/api/engagements/{eng['id']}").json()
+    assert float(eng["effective_settings"]["global_tooling_pct"]) == 0.30
 
 
 def test_price_sheet_csv_import(client):
@@ -314,14 +318,16 @@ def test_segment_inheritance_and_line_overrides(client):
     # A new engagement inherits the global default segment ("seed, then own").
     eng = client.post("/api/engagements", json={"customer_name": "Nonprofit Co"}).json()
     eid = eng["id"]
-    assert eng["default_segment"] == "Commercial"
-    assert eng["default_term_duration"] == "P1Y"
+    st = eng["effective_settings"]
+    assert eng["default_segment"] is None and st["default_segment"] == "Commercial"
+    assert st["default_term_duration"] == "P1Y"
     # The out-of-box quoting basis is the typical customer case: pay monthly.
-    assert eng["default_billing_plan"] == "Monthly"
+    assert st["default_billing_plan"] == "Monthly"
 
     # The customer sets its own segment default (a Nonprofit) without touching global.
     eng = client.patch(f"/api/engagements/{eid}", json={"default_segment": "Nonprofit"}).json()
-    assert eng["default_segment"] == "Nonprofit"
+    assert eng["default_segment"] == "Nonprofit" and eng["effective_settings"]["default_segment"] == "Nonprofit"
+    assert "default_segment" not in eng["inherited_settings"]
     assert client.get("/api/admin/defaults").json()["default_segment"] == "Commercial"
 
     # A line inherits by default (None), and can override per-line.
@@ -342,19 +348,21 @@ def test_ecif_ratio_inheritance_from_global_defaults(client):
     assert float(gd["default_ecif_roi_conservative"]) == 10
     assert float(gd["default_ecif_roi_generous"]) == 5
 
-    # Operator retargets the global ECIF defaults (affects only NEW engagements).
+    # Operator retargets the install ECIF defaults.
     client.put("/api/admin/defaults",
                json={"default_ecif_roi_conservative": 8, "default_ecif_roi_generous": 4})
 
-    # A new engagement seeds its own copy from the (new) global defaults.
+    # A new engagement inherits them (stored NULL, TARGET_SCHEMA §4.1).
     eng = client.post("/api/engagements", json={"customer_name": "Managed Co"}).json()
     eid = eng["id"]
-    assert float(eng["ecif_roi_conservative"]) == 8
-    assert float(eng["ecif_roi_generous"]) == 4
+    assert eng["ecif_roi_conservative"] is None
+    assert float(eng["effective_settings"]["ecif_roi_conservative"]) == 8
+    assert float(eng["effective_settings"]["ecif_roi_generous"]) == 4
 
-    # The engagement owns its copy: editing it does not alter the global default.
+    # Setting its own value doesn't alter the install default.
     eng = client.patch(f"/api/engagements/{eid}", json={"ecif_roi_conservative": 12}).json()
     assert float(eng["ecif_roi_conservative"]) == 12
+    assert float(eng["effective_settings"]["ecif_roi_conservative"]) == 12
     assert float(client.get("/api/admin/defaults").json()["default_ecif_roi_conservative"]) == 8
 
     # Restore out-of-box globals so later tests see a clean baseline.

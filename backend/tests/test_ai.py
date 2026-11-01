@@ -132,6 +132,7 @@ def test_build_sanity_payload_shape():
     class Eng:
         customer_name = "Acme"; market = "US"; currency = "USD"
         default_segment = "Commercial"
+        effective_settings = {"default_segment": "Commercial"}
         personas = []; current_licenses = [L()]; third_party_products = []
         licenses_in_scope = current_licenses
 

@@ -113,9 +113,17 @@ and the ORM price properties are now deleted.
   tools.
 - The tool API returns the interpreter's figures read-only.
 
+**3b (done):**
+- The engagement's six inheritable settings are nullable (TARGET_SCHEMA §4.1):
+  tooling %, segment, term, billing and the two ECIF ratios.
+- A new engagement no longer copies the install settings in; NULL means inherit.
+- Every reader resolves the settings through `Engagement.effective_settings`.
+  The GUI shows "Default (…)" and can return a setting to inheriting.
+- Existing values are kept as explicit values.
+- This also removes a snowflake: the engagement's built-in billing default
+  ("Annual") differed from the install's ("Monthly").
+
 **Still to do:**
-- Store "use the default" as NULL for the engagement defaults copied from the
-  install settings at creation.
 - A carve-out keeps the parent's entered headcount; the effective headcount is interpreted.
 - Scenario and licence targets carry a `bundle_id` set by the picker. Name and substring resolution (`bundles.resolve_bundle`, which ends in `ILIKE %ref%`) is only for unlinked rows, which are flagged unread.
 - List prices follow the live catalog; a typed price is an explicit override (D9).

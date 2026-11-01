@@ -101,21 +101,8 @@ def create_engagement(payload: schemas.EngagementCreate, db: Session = Depends(g
         data["market"] if "market" in provided else None,
         data["currency"] if "currency" in provided else None,
     )
-    # Inherit engagement-level defaults from the global defaults when omitted
-    # (the New-engagement form no longer asks for the tooling split).
-    gd = defaults.get_defaults(db)
-    if data.get("global_tooling_pct") is None:
-        data["global_tooling_pct"] = gd.default_tooling_pct
-    if data.get("default_segment") is None:
-        data["default_segment"] = gd.default_segment
-    if data.get("default_term_duration") is None:
-        data["default_term_duration"] = gd.default_term_duration
-    if data.get("default_billing_plan") is None:
-        data["default_billing_plan"] = gd.default_billing_plan
-    if data.get("ecif_roi_conservative") is None:
-        data["ecif_roi_conservative"] = gd.default_ecif_roi_conservative
-    if data.get("ecif_roi_generous") is None:
-        data["ecif_roi_generous"] = gd.default_ecif_roi_generous
+    # Settings the creator didn't choose stay NULL and inherit the install settings
+    # (TARGET_SCHEMA §4.1) — they are never copied in as values.
     if data.get("workshop_date") is None:
         data["workshop_date"] = date.today()  # default the Customer Info workshop date to today
     eng = models.Engagement(**data)

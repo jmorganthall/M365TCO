@@ -311,15 +311,17 @@ class PriceCatalog:
 
 
 def engagement_price_basis(eng) -> dict:
-    """The engagement's effective quoting basis — kwargs for catalog_annual_erp /
-    catalog_price_row. Level 2 of the global → engagement → line hierarchy (an
-    engagement copies the global defaults on creation; a scenario line may
-    override term/billing on top of this)."""
-    return {
-        "segment": eng.default_segment or "Commercial",
-        "term": eng.default_term_duration or "P1Y",
-        "billing": eng.default_billing_plan or "Monthly",
-    }
+    """The effective quoting basis — kwargs for catalog_annual_erp /
+    catalog_price_row. For an engagement: its own setting, else the install's
+    (`Engagement.effective_settings`; a line may override on top). Given the
+    install settings row itself (no engagement), its values."""
+    st = getattr(eng, "effective_settings", None)
+    if st is None:
+        return {"segment": eng.default_segment or "Commercial",
+                "term": eng.default_term_duration or "P1Y",
+                "billing": eng.default_billing_plan or "Monthly"}
+    return {"segment": st["default_segment"], "term": st["default_term_duration"],
+            "billing": st["default_billing_plan"]}
 
 
 def catalog_price_row(

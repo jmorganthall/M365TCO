@@ -19,8 +19,9 @@ function useEngagementFields(engagement, onUpdate) {
     let value = raw
     if (field === 'employee_count') value = raw === '' || raw == null ? null : Number(raw)
     else if (field === 'modeling_horizon_years') value = Math.min(10, Math.max(1, Number(raw) || 3))
-    else if (field === 'ecif_roi_conservative') value = raw === '' || raw == null ? 10 : Math.max(1, Number(raw) || 10)
-    else if (field === 'ecif_roi_generous') value = raw === '' || raw == null ? 5 : Math.max(1, Number(raw) || 5)
+    // Blank = inherit the install setting (stored NULL, TARGET_SCHEMA §4.1).
+    else if (field === 'ecif_roi_conservative' || field === 'ecif_roi_generous')
+      value = raw === '' || raw == null ? null : Math.max(1, Number(raw) || 1)
     else if (field === 'workshop_date' || field === 'microsoft_renewal_date') value = raw || null
     if ((engagement[field] ?? '') === (value ?? '')) return
     setErr('')
@@ -47,8 +48,9 @@ function fromEngagement(e) {
     notes: e.notes || '',
     modeling_horizon_years: e.modeling_horizon_years ?? 3,
     managed_ms_account: !!e.managed_ms_account,
-    ecif_roi_conservative: Number(e.ecif_roi_conservative ?? 10),
-    ecif_roi_generous: Number(e.ecif_roi_generous ?? 5),
+    // As entered: blank when inherited (the placeholder shows the inherited value).
+    ecif_roi_conservative: e.ecif_roi_conservative == null ? '' : Number(e.ecif_roi_conservative),
+    ecif_roi_generous: e.ecif_roi_generous == null ? '' : Number(e.ecif_roi_generous),
   }
 }
 
@@ -245,9 +247,11 @@ export function SummaryCard({ engagement, onUpdate, onPdfCreated }) {
           <div className="grid c2" style={{ marginTop: '.4rem' }}>
             <div><label>Co-funding ratio — conservative (N:1)</label>
               <input type="number" min="1" step="0.5" value={f.ecif_roi_conservative} onChange={set('ecif_roi_conservative')}
+                placeholder={`${Number(engagement.install_settings.ecif_roi_conservative)} (default)`}
                 onBlur={(e) => commit('ecif_roi_conservative', e.target.value)} /></div>
             <div><label>Co-funding ratio — generous (N:1)</label>
               <input type="number" min="1" step="0.5" value={f.ecif_roi_generous} onChange={set('ecif_roi_generous')}
+                placeholder={`${Number(engagement.install_settings.ecif_roi_generous)} (default)`}
                 onBlur={(e) => commit('ecif_roi_generous', e.target.value)} /></div>
           </div>
         )}
