@@ -30,6 +30,7 @@ from decimal import Decimal
 from typing import Optional
 
 from .money import cost_per_person, managed_effective_cost
+from .rules import covers_tool
 from .models import (
     CoverageScope,
     CurrentLicenseLine,
@@ -73,6 +74,8 @@ class RawPersona:
     name: str
     headcount: int
     parent_persona_id: Optional[str] = None
+    # The outcomes this persona is declared to need (Personas step).
+    required_outcome_ids: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -152,6 +155,9 @@ class RawEngagement:
     workshop_date: Optional[date] = None
     microsoft_renewal_date: Optional[date] = None
     horizon_years: int = 3
+    # The customer's answers about coverage gaps (TARGET_SCHEMA §4.8):
+    # (persona id, outcome id) -> "NotDeliveredToday" | "CoveredOutsideInventory".
+    gap_answers: dict[tuple[str, str], str] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +170,9 @@ class IPersona:
     name: str
     headcount: int
     parent_persona_id: Optional[str]
+    # A licence line that applies to it is unread (D23): its outcome changes are
+    # left out of every readout. Its money is unaffected.
+    outcomes_unknown: bool = False
 
 
 @dataclass(frozen=True)
@@ -227,6 +236,74 @@ class IScenario:
 
 
 @dataclass(frozen=True)
+class IToday:
+    """One outcome a persona needs or gets today (TARGET_SCHEMA §6.3 `i_today`)."""
+
+    persona_id: str
+    outcome_id: str
+    needed: bool
+    needed_source: Optional[str]        # "required" | "default_today" | None
+    delivered_today: bool
+    by_microsoft: bool
+    by_tool: bool
+    by_outside: bool                    # answered "covered outside this inventory"
+    gap_answer: Optional[str]
+
+
+@dataclass(frozen=True)
+class ISource:
+    """What delivers a persona's outcome: exactly one of a licence line, a tool or a
+    plan (`i_today_sources` / `i_proposed_sources`)."""
+
+    persona_id: str
+    outcome_id: str
+    licence_id: Optional[str] = None
+    tool_id: Optional[str] = None
+    bundle_id: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class IProposed:
+    """One outcome a persona needs, gets today, or gets after its move (`i_proposed`).
+
+    `status`:
+      Kept              delivered today and after, and not a move from tools to Microsoft
+      MovedToMicrosoft  delivered today only by tools; after, by the Microsoft plan
+      Gained            delivered by nothing today, confirmed as a gap, delivered after
+      Unconfirmed       delivered by nothing today, delivered after, gap not answered
+      Lost              delivered today, not after
+      Gap               needed, delivered neither today nor after
+      Pending           the persona's plan is incomplete
+    A persona with no plan keeps what it has today."""
+
+    persona_id: str
+    outcome_id: str
+    needed: bool
+    delivered_today: bool
+    delivered_after: bool
+    by_target: bool
+    by_kept_tool: bool
+    in_scope: bool
+    has_plan: bool
+    status: str
+
+
+@dataclass(frozen=True)
+class IToolRetirement:
+    """A tool that applies to a persona, and whether that persona's move retires it
+    (`i_tool_retirements`). `retired`: the persona's plan covers every outcome the
+    tool delivers (the engine's displacement rule, ENGINE_SPEC 6.6) or the operator
+    forced it. `quick_win`: the persona's current Microsoft licences already deliver
+    every outcome the tool delivers."""
+
+    persona_id: str
+    tool_id: str
+    retired: bool
+    forced: bool
+    quick_win: bool
+
+
+@dataclass(frozen=True)
 class Interpreted:
     raw: RawEngagement
     personas: tuple[IPersona, ...]
@@ -237,6 +314,11 @@ class Interpreted:
     # (tool id, persona id) -> this persona's annual cost of the tool
     tool_shares: dict[tuple[str, str], Decimal]
     scenarios: tuple[IScenario, ...]
+    today: tuple[IToday, ...] = ()
+    today_sources: tuple[ISource, ...] = ()
+    proposed: tuple[IProposed, ...] = ()
+    proposed_sources: tuple[ISource, ...] = ()
+    tool_retirements: tuple[IToolRetirement, ...] = ()
 
     def licence(self, licence_id: str) -> ILicenseLine:
         return next(l for l in self.licence_lines if l.id == licence_id)
@@ -275,8 +357,6 @@ def _read_line(line: RawLicenseLine, coverage: dict[str, frozenset[str]]):
 
 
 def interpret(raw: RawEngagement) -> Interpreted:
-    personas = tuple(IPersona(p.id, p.name, p.headcount, p.parent_persona_id)
-                     for p in raw.personas)
     everyone = tuple(p.id for p in raw.personas)
     known = set(everyone)
     headcount = {p.id: p.headcount for p in raw.personas}
@@ -354,11 +434,121 @@ def interpret(raw: RawEngagement) -> Interpreted:
             complete=bool((s.target_sku_reference or "").strip()) and (overridden or net > 0),
         ))
 
+    personas = tuple(
+        IPersona(p.id, p.name, p.headcount, p.parent_persona_id,
+                 outcomes_unknown=any(l.read_state == "unread" and p.id in l.applies_to
+                                      for l in lines))
+        for p in raw.personas)
+
+    tables = _outcome_tables(raw, lines, tools, scenarios)
     return Interpreted(
         raw=raw, personas=personas, licence_lines=tuple(lines),
         licence_shares=licence_shares, tools=tuple(tools), tool_shares=tool_shares,
-        scenarios=tuple(scenarios),
+        scenarios=tuple(scenarios), **tables,
     )
+
+
+def _outcome_tables(raw: RawEngagement, lines: list[ILicenseLine], tools: list[ITool],
+                    scenarios: list[IScenario]) -> dict:
+    """The persona × outcome tables (TARGET_SCHEMA §6.3): the single model of what
+    each persona has today and after its move, and which tools each move retires."""
+    plan_of = {s.persona_id: s for s in scenarios}
+    forced = {t.id for t in raw.tools if t.override == "ForceFullElimination"}
+    today: list[IToday] = []
+    today_src: list[ISource] = []
+    proposed: list[IProposed] = []
+    proposed_src: list[ISource] = []
+    retirements: list[IToolRetirement] = []
+
+    for p in raw.personas:
+        my_lines = [l for l in lines if l.in_scope and p.id in l.applies_to]
+        my_tools = [t for t in tools if p.id in t.applies_to]
+        by_ms: dict[str, list[str]] = {}
+        for l in my_lines:
+            for o in l.outcomes:
+                by_ms.setdefault(o, []).append(l.id)
+        by_tool: dict[str, list[str]] = {}
+        for t in my_tools:
+            for o in t.delivered_outcome_ids:
+                by_tool.setdefault(o, []).append(t.id)
+        answers = {o: a for (pid, o), a in raw.gap_answers.items() if pid == p.id}
+        outside = {o for o, a in answers.items() if a == "CoveredOutsideInventory"}
+        delivered = set(by_ms) | set(by_tool) | outside
+        # Definition 1: needed = declared requirements, else everything delivered today.
+        if p.required_outcome_ids:
+            needed, needed_source = set(p.required_outcome_ids), "required"
+        else:
+            needed, needed_source = set(delivered), "default_today"
+
+        for o in sorted(needed | delivered):
+            today.append(IToday(
+                persona_id=p.id, outcome_id=o, needed=o in needed,
+                needed_source=needed_source if o in needed else None,
+                delivered_today=o in delivered, by_microsoft=o in by_ms,
+                by_tool=o in by_tool, by_outside=o in outside, gap_answer=answers.get(o)))
+            today_src += [ISource(p.id, o, licence_id=lid) for lid in by_ms.get(o, [])]
+            today_src += [ISource(p.id, o, tool_id=tid) for tid in by_tool.get(o, [])]
+
+        # ---- After the move -------------------------------------------------
+        plan = plan_of.get(p.id)
+        ms_today = set(by_ms)
+        retired: set[str] = set()
+        for t in my_tools:
+            covers = plan is not None and covers_tool(t.delivered_outcome_ids, plan.covered_outcome_ids)
+            is_forced = plan is not None and t.id in forced
+            if covers or is_forced:
+                retired.add(t.id)
+            retirements.append(IToolRetirement(
+                persona_id=p.id, tool_id=t.id, retired=covers or is_forced,
+                forced=is_forced and not covers,
+                quick_win=covers_tool(t.delivered_outcome_ids, ms_today)))
+        if plan is None:
+            # No plan: the persona keeps what it has today.
+            for o in sorted(needed | delivered):
+                proposed.append(IProposed(
+                    persona_id=p.id, outcome_id=o, needed=o in needed,
+                    delivered_today=o in delivered, delivered_after=o in delivered,
+                    by_target=False, by_kept_tool=o in by_tool, in_scope=False,
+                    has_plan=False,
+                    status="Kept" if o in delivered else "Gap"))
+            continue
+
+        target = set(plan.covered_outcome_ids)
+        kept_by_tool: dict[str, list[str]] = {}
+        for t in my_tools:
+            if t.id not in retired:
+                for o in t.delivered_outcome_ids:
+                    kept_by_tool.setdefault(o, []).append(t.id)
+        after = target | set(kept_by_tool) | outside
+        for o in sorted(needed | delivered | after):
+            d_today, d_after = o in delivered, o in after
+            if not plan.complete:
+                status = "Pending"
+            elif d_today and d_after:
+                only_tools = o in by_tool and o not in by_ms and o not in outside
+                status = "MovedToMicrosoft" if only_tools and o in target else "Kept"
+            elif d_after:
+                status = "Gained" if answers.get(o) == "NotDeliveredToday" else "Unconfirmed"
+            elif d_today:
+                status = "Lost"
+            else:
+                status = "Gap"
+            proposed.append(IProposed(
+                persona_id=p.id, outcome_id=o, needed=o in needed,
+                delivered_today=d_today, delivered_after=d_after,
+                by_target=o in target, by_kept_tool=o in kept_by_tool,
+                in_scope=plan.in_scope, has_plan=True, status=status))
+            if o in target:
+                for bid in ([plan.base_bundle_id] if plan.base_bundle_id else []) + list(plan.addon_bundle_ids):
+                    if o in raw.microsoft_coverage.get(bid, frozenset()):
+                        proposed_src.append(ISource(p.id, o, bundle_id=bid))
+            proposed_src += [ISource(p.id, o, tool_id=tid) for tid in kept_by_tool.get(o, [])]
+
+    return {
+        "today": tuple(today), "today_sources": tuple(today_src),
+        "proposed": tuple(proposed), "proposed_sources": tuple(proposed_src),
+        "tool_retirements": tuple(retirements),
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -35,8 +35,19 @@ A pure `backend/tco_engine/interpret.py` that returns, in memory, the shapes in
 - `tests/test_zz_interpret_parity.py` checks that the engine input is identical
   to the old hydrator's for every engagement the suite builds.
 
-**1b (next):** the persona × outcome tables, tool retirement, seat caps and
-findings. In the table below, the first two rows are done in 1a.
+**1b (done):**
+- The persona × outcome tables: today, after the move, each status, and what
+  delivers each outcome.
+- Each tool's retirement and quick win per persona.
+- Which personas' outcome changes are unknown (an unread line).
+- The 6.3a/6.6 rules are one function each (`tco_engine/rules.py`), shared with
+  the engine.
+- The parity test checks the tables against the Coverage check and the
+  engine's credited tools for every engagement the suite builds.
+
+**1c (next):** findings (`services/review.py`) and seat caps move into the
+interpreter. Then Phase 2 moves each consumer onto these tables and deletes its
+private copy.
 
 | Interpreted output | Folded from |
 | --- | --- |

@@ -88,6 +88,34 @@ net             = overridden_price if price_override and set (source "override")
 complete        = has a target name and (an override or net > 0)
 ```
 
+```
+# Persona × outcome tables (TARGET_SCHEMA §6.3) — per persona p
+delivered_today(o) = an in-scope line applying to p delivers o (by_microsoft)
+                   or a tool applying to p delivers o            (by_tool)
+                   or p's gap answer for o is CoveredOutsideInventory (by_outside)
+needed(o)          = o ∈ p's declared requirements, or — with none declared —
+                     delivered_today(o)                      (needed_source)
+retired(tool, p)   = p has a plan and (the plan covers every outcome the tool
+                     delivers [6.6, tco_engine/rules.covers_tool] or the operator
+                     forced it); the tool applies to p [6.3a, rules.applies_to]
+quick_win(tool, p) = p's current Microsoft lines deliver every outcome the tool does
+delivered_after(o) = with no plan: delivered_today(o); else the plan covers o, or
+                     a tool p keeps delivers o, or o is covered outside the inventory
+status(o)          = Pending          if p's plan is incomplete
+                   | MovedToMicrosoft if today only by tools and the plan covers o
+                   | Kept             if delivered today and after
+                   | Gained           if new after and p's answer is NotDeliveredToday
+                   | Unconfirmed      if new after and unanswered (never claimed, D21)
+                   | Lost             if delivered today, not after
+                   | Gap              if needed and delivered neither
+outcomes_unknown(p) = an unread line applies to p (D23)
+```
+
+Retirement here is the engine's displacement rule exactly: the parity test checks
+every persona's retired tools against the engine's credited offsets. (TARGET_SCHEMA
+definition 4 narrows it to the outcomes the persona *needs*; adopting that is a
+number change, left for its own decision.)
+
 The engine's `CurrentLicenseLine.unit_price_paid_annual` is the line's effective
 price; its `ThirdPartyProduct.annual_cost` / `covered_count` / `tooling_pct` are the
 interpreted values above (no longer the values stored on the tool row);

@@ -168,3 +168,49 @@ def test_engine_input_is_identical_through_the_interpreter(client):
     with SessionLocal() as db:
         for eid in ids:
             assert to_engine(raw.interpreted(db, eid)) == _legacy_hydrate(db, eid), eid
+
+
+def test_outcome_tables_agree_with_the_coverage_check_and_the_engine(client):
+    """The persona × outcome tables (§6.3) answer the same questions the Coverage
+    check (compute.persona_coverage_gaps) and the engine's displacement answer
+    today, for every engagement the suite built: what each move would add, which
+    of that is confirmed new or unconfirmed, what Microsoft capability it drops,
+    and which tools each move retires."""
+    from tco_engine import compute as engine_compute
+
+    from app.db import SessionLocal
+    from app.services import compute, raw
+
+    checked = 0
+    with SessionLocal() as db:
+        for eid in _all_engagement_ids():
+            i = raw.interpreted(db, eid)
+            plans = {s.persona_id: s for s in i.scenarios}
+            for g in compute.persona_coverage_gaps(db, eid):
+                pid = g["persona_id"]
+                rows = [r for r in i.proposed if r.persona_id == pid]
+                today = {r.outcome_id: r for r in i.today if r.persona_id == pid}
+                if not g["has_scenario"]:
+                    assert all(not r.has_plan for r in rows)
+                    continue
+                ids = lambda key: {o["id"] for o in g[key]}  # noqa: E731
+                added = {r.outcome_id for r in rows if r.by_target and not r.delivered_today}
+                assert ids("uncovered_outcomes") == added, (eid, pid)
+                if plans[pid].complete:
+                    assert ids("confirmed_new_outcomes") == {
+                        r.outcome_id for r in rows if r.status == "Gained"}, (eid, pid)
+                    assert ids("unconfirmed_outcomes") == {
+                        r.outcome_id for r in rows if r.status == "Unconfirmed"}, (eid, pid)
+                if not g["target_unmapped"]:
+                    assert ids("dropped_outcomes") == {
+                        o for o, t in today.items() if t.by_microsoft
+                        and not any(r.outcome_id == o and r.by_target for r in rows)}, (eid, pid)
+                checked += 1
+
+            result = engine_compute(to_engine(i))
+            for sr in result.scenarios:
+                credited = {o.third_party_product_id for o in sr.offsets}
+                retired = {r.tool_id for r in i.tool_retirements
+                           if r.persona_id == sr.persona_id and r.retired and not r.forced}
+                assert credited == retired, (eid, sr.persona_id)
+    assert checked > 0

@@ -164,3 +164,106 @@ def test_the_interpreted_layer_is_readable_over_the_api(client):
     tool = v["tools"][0]
     assert tool["annual_cost"] == 12000.0 and tool["people_covered"] == 100
     assert tool["covered_source"] == "personas"
+    assert {r["outcome_id"] for r in v["today"]} and all("status" in r for r in v["proposed"])
+    assert [r["tool_id"] for r in v["tool_retirements"]] == [tool["id"]]
+
+
+# ---------------------------------------------------------------------------
+# Persona × outcome tables (TARGET_SCHEMA §6.3)
+# ---------------------------------------------------------------------------
+
+def _plan(cover_key="m365-e3", **kw):
+    base = dict(id="s", persona_id="a", target_sku_reference="Microsoft 365 E3",
+                list_price_annual=D("432"), discount_pct=None, price_override=False,
+                overridden_price_annual=None, in_scope=True, resolved_bundle_id=cover_key)
+    base.update(kw)
+    return RawScenario(**base)
+
+
+def _status(i, pid="a"):
+    return {r.outcome_id: r.status for r in i.proposed if r.persona_id == pid}
+
+
+def test_each_status():
+    # Today: o1 by Microsoft (line), o3 only by a tool, o4 by Microsoft but not in
+    # the plan. The plan (m365-e3 here) delivers o1, o2, o3. o5 is required by
+    # nobody... until persona A declares it.
+    i = interpret(_raw(
+        personas=(RawPersona("a", "A", 100, required_outcome_ids=frozenset({"o1", "o5"})),),
+        microsoft_coverage={"today": frozenset({"o1", "o4"}),
+                            "m365-e3": frozenset({"o1", "o2", "o3"})},
+        licence_lines=(_line(persona_ids=("a",), linked_bundle_id="today"),),
+        tools=(_tool(),), tool_coverage={"t": frozenset({"o3"})},
+        scenarios=(_plan(),)))
+    st = _status(i)
+    assert st["o1"] == "Kept"
+    assert st["o3"] == "MovedToMicrosoft"       # only a tool today; the plan takes it on
+    assert st["o2"] == "Unconfirmed"            # new, but nobody confirmed the gap
+    assert st["o4"] == "Lost"
+    assert st["o5"] == "Gap"                    # needed, delivered neither today nor after
+    needed = {t.outcome_id: t.needed_source for t in i.today if t.needed}
+    assert needed == {"o1": "required", "o5": "required"}
+    # The move retires the tool; nothing keeps it.
+    [r] = i.tool_retirements
+    assert r.retired and not r.forced and not r.quick_win
+
+    # Confirm the gap: o2 is Gained.
+    g = interpret(_raw(
+        personas=(RawPersona("a", "A", 100),),
+        microsoft_coverage={"m365-e3": frozenset({"o2"})},
+        scenarios=(_plan(),), gap_answers={("a", "o2"): "NotDeliveredToday"}))
+    assert _status(g) == {"o2": "Gained"}
+
+
+def test_covered_outside_the_inventory_is_delivered_today_and_never_new():
+    i = interpret(_raw(
+        personas=(RawPersona("a", "A", 100),),
+        microsoft_coverage={"m365-e3": frozenset({"o2"})},
+        scenarios=(_plan(),), gap_answers={("a", "o2"): "CoveredOutsideInventory"}))
+    [t] = i.today
+    assert t.delivered_today and t.by_outside
+    assert _status(i) == {"o2": "Kept"}
+
+
+def test_a_tool_the_plan_does_not_cover_is_kept_and_keeps_its_outcomes():
+    i = interpret(_raw(
+        personas=(RawPersona("a", "A", 100),),
+        microsoft_coverage={"m365-e3": frozenset({"o1"})},
+        tools=(_tool(),), tool_coverage={"t": frozenset({"o1", "o9"})},
+        scenarios=(_plan(),)))
+    [r] = i.tool_retirements
+    assert not r.retired
+    rows = {p.outcome_id: p for p in i.proposed}
+    assert rows["o9"].by_kept_tool and rows["o9"].status == "Kept"
+    assert {s.tool_id for s in i.proposed_sources if s.outcome_id == "o9"} == {"t"}
+
+
+def test_forced_retirement_and_quick_win():
+    i = interpret(_raw(
+        personas=(RawPersona("a", "A", 100),),
+        microsoft_coverage={"m365-e3": frozenset({"o1"}), "today": frozenset({"o1", "o9"})},
+        licence_lines=(_line(linked_bundle_id="today"),),
+        tools=(_tool(override="ForceFullElimination"),), tool_coverage={"t": frozenset({"o9"})},
+        scenarios=(_plan(),)))
+    [r] = i.tool_retirements
+    assert r.retired and r.forced          # the plan doesn't cover o9; the operator forced it
+    assert r.quick_win                     # today's licence already delivers o9
+
+
+def test_no_plan_keeps_today_and_an_incomplete_plan_is_pending():
+    i = interpret(_raw(personas=(RawPersona("a", "A", 100),),
+                       microsoft_coverage={"today": frozenset({"o1"})},
+                       licence_lines=(_line(linked_bundle_id="today"),)))
+    [row] = i.proposed
+    assert not row.has_plan and row.status == "Kept" and row.delivered_after
+    p = interpret(_raw(personas=(RawPersona("a", "A", 100),),
+                       microsoft_coverage={"today": frozenset({"o1"})},
+                       licence_lines=(_line(linked_bundle_id="today"),),
+                       scenarios=(_plan(target_sku_reference="", list_price_annual=D("0")),)))
+    assert {r.status for r in p.proposed} == {"Pending"}
+
+
+def test_an_unread_line_marks_its_personas_outcomes_unknown():
+    i = interpret(_raw(licence_lines=(_line(sku_reference="Mystery", persona_ids=("b",)),)))
+    unknown = {p.id: p.outcomes_unknown for p in i.personas}
+    assert unknown == {"a": False, "b": True}

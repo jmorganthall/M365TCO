@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Optional
 
+from .rules import applies_to, covers_tool
 from .models import (
     Coverage,
     CoverageScope,
@@ -250,9 +251,7 @@ def _scenario_displaces_product(
     hydrated sets). A product that delivers no outcomes is treated as NOT
     displaceable — there is nothing the SKU can be shown to cover.
     """
-    if not product.delivered_outcome_ids:
-        return False
-    return product.delivered_outcome_ids.issubset(scenario.target_covered_outcome_ids)
+    return covers_tool(product.delivered_outcome_ids, scenario.target_covered_outcome_ids)
 
 
 def _product_applies_to_persona(product: ThirdPartyProduct, persona_id: str) -> bool:
@@ -262,7 +261,7 @@ def _product_applies_to_persona(product: ThirdPartyProduct, persona_id: str) -> 
     pre-tag headcount spread. Without this, displacement credit leaks to any
     persona whose target happens to cover the tool's outcomes — even one that
     was never assigned the tool."""
-    return not product.persona_ids or persona_id in product.persona_ids
+    return applies_to(product.persona_ids, persona_id)
 
 
 def _quick_win_seats(

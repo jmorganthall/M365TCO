@@ -82,7 +82,8 @@ def load_raw(db: Session, engagement_id: str) -> RawEngagement:
 
     personas = tuple(
         RawPersona(id=p.id, name=p.name, headcount=p.headcount or 0,
-                   parent_persona_id=p.parent_persona_id)
+                   parent_persona_id=p.parent_persona_id,
+                   required_outcome_ids=frozenset(p.required_outcome_ids))
         for p in persona_order.ordered(eng.personas)
     )
 
@@ -153,6 +154,7 @@ def load_raw(db: Session, engagement_id: str) -> RawEngagement:
         workshop_date=eng.workshop_date or (eng.created_at.date() if eng.created_at else None),
         microsoft_renewal_date=eng.microsoft_renewal_date,
         horizon_years=int(eng.modeling_horizon_years or 3),
+        gap_answers={(a.persona_id, a.outcome_id): a.answer for a in eng.gap_answers},
     )
 
 
@@ -193,4 +195,10 @@ def interpreted_view(db: Session, engagement_id: str) -> dict:
         "tool_shares": [{"tool_id": t, "persona_id": p, "annual": float(v)}
                         for (t, p), v in i.tool_shares.items()],
         "scenarios": rows(i.scenarios),
+        # The persona × outcome tables (TARGET_SCHEMA §6.3).
+        "today": rows(i.today),
+        "today_sources": rows(i.today_sources),
+        "proposed": rows(i.proposed),
+        "proposed_sources": rows(i.proposed_sources),
+        "tool_retirements": rows(i.tool_retirements),
     }
