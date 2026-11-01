@@ -811,12 +811,12 @@ class _Context:
                      "negotiated price is entered.")
         persona_name = {p.id: p.name for p in eng.personas}
         tlabels = {s["persona_id"]: self._tlabel(s) for s in self.scenarios}
+        # The plans' net and list prices are the interpreter's (what the engine costs).
         negotiated = [
             f"{E(persona_name.get(sc.persona_id, 'Persona'))} → {E(tlabels.get(sc.persona_id, sc.target_sku_reference))}: "
-            f"${_f(sc.effective_net_annual):,.2f} per seat per year"
-            + (f" ({_pct((_f(sc.composed_list_annual) - _f(sc.effective_net_annual)) / _f(sc.composed_list_annual))} below list)"
-               if _f(sc.composed_list_annual) else "")
-            for sc in eng.scenarios if sc.price_override]
+            f"${_f(sc.net_annual):,.2f} per seat per year"
+            + (f" ({_pct(_f(sc.pct_off_list))} below list)" if _f(sc.composed_list_annual) else "")
+            for sc in self.interp.scenarios if sc.price_source == "override"]
         if negotiated:
             notes.append("<b>Negotiated prices on the recommended plans:</b> " + "; ".join(negotiated) + ".")
         managed = [d for d in self.dispositions if d["is_managed"]]

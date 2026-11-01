@@ -474,7 +474,8 @@ class CurrentMicrosoftLicense(Base):
     # Explicit price override: the SKU/outcome is unchanged, but the customer pays
     # a negotiated rate that differs from list. `price_override` flags it on;
     # `overridden_price_annual` holds the manual $/seat/yr. When on, this is the
-    # load-bearing price the engine consumes (see effective_unit_price_annual) and
+    # load-bearing price the engine consumes (the interpreter's effective price,
+    # tco_engine/interpret.py) and
     # the readout badges "−X% vs list"; "revert to list" clears the flag and the
     # price falls back to the catalog at the line's basis. Supersedes the old
     # annotation-only `discount_pct` (retired) — the override actually drives spend.
@@ -542,21 +543,6 @@ class CurrentMicrosoftLicense(Base):
     def persona_ids(self) -> list[str]:
         """The personas this license applies to (many-to-many tags)."""
         return [pl.persona_id for pl in self.persona_links]
-
-    @property
-    def list_unit_price_annual(self) -> Decimal:
-        """The catalog list baseline (`unit_price_paid_annual`) as a Decimal — the
-        reference the override's "% off list" is measured against."""
-        return Decimal(str(self.unit_price_paid_annual or 0))
-
-    @property
-    def effective_unit_price_annual(self) -> Decimal:
-        """What the customer actually pays per seat/yr: the manual override when
-        `price_override` is on, else the list baseline. The load-bearing price the
-        engine consumes for current spend."""
-        if self.price_override and self.overridden_price_annual is not None:
-            return Decimal(str(self.overridden_price_annual))
-        return self.list_unit_price_annual
 
 
 class CurrentLicensePersona(Base):
@@ -746,32 +732,6 @@ class PersonaScenario(Base):
     addons: Mapped[list["ScenarioAddon"]] = relationship(
         cascade="all, delete-orphan", back_populates="scenario"
     )
-
-    @property
-    def composed_list_annual(self) -> Decimal:
-        """Catalog list for the composed target (base + add-ons), before discount
-        and before any override — the baseline the "% off list" is measured
-        against."""
-        total = Decimal(str(self.target_unit_price_annual or 0))
-        for a in self.addons:
-            total += Decimal(str(a.unit_price_annual or 0))
-        return total
-
-    @property
-    def discounted_net_annual(self) -> Decimal:
-        """(base + add-ons) × (1 − discount) — the composed net target price when no
-        override is set."""
-        return self.composed_list_annual * (
-            Decimal("1") - Decimal(str(self.target_discount_pct or 0))
-        )
-
-    @property
-    def effective_net_annual(self) -> Decimal:
-        """The net target price per seat/yr the engine consumes: the manual override
-        when `price_override` is on, else the discounted composed net."""
-        if self.price_override and self.overridden_price_annual is not None:
-            return Decimal(str(self.overridden_price_annual))
-        return self.discounted_net_annual
 
 
 class CoverageGapAnswer(Base):

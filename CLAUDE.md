@@ -70,8 +70,8 @@ charts how the first-class objects connect and how the engine traverses them:
 
 `docs/TARGET_SCHEMA.md` §1 defines three layers. People write raw. One pure
 interpreter reads raw through the rules. The engine calculates. Screens display the
-result. Until the interpreter lands (`docs/LAYER_AUDIT.md` tracks the remaining
-work), these rules hold for all new work:
+result. The interpreter has landed (`tco_engine/interpret.py`); `docs/LAYER_AUDIT.md`
+tracks the remaining work. These rules hold for all new work:
 
 - **One read path for results.** Every screen, export, snapshot and check reads
   calculated numbers from `services/results.current_result` (`GET …/result`).
@@ -85,7 +85,8 @@ work), these rules hold for all new work:
   `tco_engine/rules.py`. Untagged lines are Org-wide: every persona, everywhere. If none
   exists yet, add one and route the existing copies through it in the same change.
 - **The GUI does no arithmetic on money or seats** beyond formatting. A number
-  the GUI shows comes from the backend. The GUI never edits a value to display it
+  the GUI shows comes from the backend: `useInterpreted` (derived inputs and
+  findings), `useResult` (engine output and `views`). The GUI never edits a value to display it
   differently from what is stored and costed.
 - **No recompute step.** The GUI reads through `useResult` / `useDataVersion`
   (`frontend/src/api.js`), which refetch after every write. Typed fields save

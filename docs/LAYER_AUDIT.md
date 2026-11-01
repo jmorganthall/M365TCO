@@ -16,7 +16,7 @@ It is a work tracker, not a contract. `TARGET_SCHEMA.md` stays the contract.
 | Untagged licence lines: the engine split them over personas with a scenario, the recommender ignored them, everything else read them as everyone | Org-wide = every persona, everywhere (D12) |
 | Reading the practice branding created its row | Reading returns an unsaved blank record |
 
-## Phase 1 — `interpret()` on today's schema (in progress)
+## Phase 1 — `interpret()` on today's schema (done)
 
 A pure `backend/tco_engine/interpret.py` that returns, in memory, the shapes in
 §6.1–6.4. It folds today's copies of each rule into one definition.
@@ -32,8 +32,8 @@ A pure `backend/tco_engine/interpret.py` that returns, in memory, the shapes in
 - The engine no longer reads the tool-cost columns stored on the raw row.
 - The 6.3/6.5 formulas are one function each (`tco_engine/money.py`).
 - `GET …/interpreted` shows the layer.
-- `tests/test_zz_interpret_parity.py` checks that the engine input is identical
-  to the old hydrator's for every engagement the suite builds.
+- A parity test (removed with Phase 2's cleanup) checked that the engine input
+  was identical to the old hydrator's for every engagement the suite built.
 
 **1b (done):**
 - The persona × outcome tables: today, after the move, each status, and what
@@ -58,7 +58,7 @@ A pure `backend/tco_engine/interpret.py` that returns, in memory, the shapes in
 
 Phase 1 is complete: every rule in the table below is now defined in the
 interpreter. Phase 2 moves each remaining consumer onto it and deletes its
-private copy, then deletes the frozen copies in `tests/test_zz_interpret_parity.py`.
+private copy, then deletes the frozen copies.
 
 | Interpreted output | Folded from |
 | --- | --- |
@@ -73,22 +73,34 @@ private copy, then deletes the frozen copies in `tests/test_zz_interpret_parity.
 Gate: the engine's output from `interpret()` equals today's output on every test
 fixture (done for 1a) and on a `tools/baseline.py` export of a live instance.
 
-## Phase 2 — every consumer reads interpret/engine output
+## Phase 2 — every consumer reads interpret/engine output (done)
 
-One change per consumer; each deletes its private copy:
+Each consumer dropped its private reading of raw data and was checked against a
+frozen copy of its old code for every engagement the suite builds. The frozen
+copies, the old helpers (`compute.licence_readings`, `_ratified_*`, `_cover_key`)
+and the ORM price properties are now deleted.
 
-1. The recommender (`compute.analyze_persona_bundles`), keyed by bundle id, not name.
-2. Coverage and Review: `persona_coverage_gaps`, `new_outcomes`, `dropped_capability`, `review.py`, `lineage.py`, `seat_cap.py`.
-3. Readout and exports: `readout.py`, `exporter.py`, `narrative.py`. Narratives join on `persona_id`, not name.
-4. The GUI's own arithmetic moves to the backend:
-   - net/effective prices and % off list (`Scenarios.jsx`, `CurrentLicensing.jsx`);
-   - unused-seat cost;
-   - the Readout bridge group totals and per-persona sums;
-   - Partly replaced residual seats and dollars;
-   - the tool "left out" badge (`ThirdParty.jsx` vs `review.py`);
-   - carve-out seat sums.
+- **Backend:** the Coverage check, the recommender (including the split's "people
+  over the cap"), the split offer, carve-out drift, the unknown-licence card,
+  library updates, the Readout/PDF/Excel and the AI narrative input.
+- **GUI:**
+  - prices, % off list and unused seats come from `useInterpreted`;
+  - the tool "left out" badge, unread licences and personas without a plan are
+    findings;
+  - carved-out seats come from the interpreter;
+  - Partly replaced uses the engine's population summary (6.4a);
+  - the Summary's sums come from `services/results.views`, which the HTML
+    readout shares.
 
-   Licence lines are requoted on the server, as scenarios already are. Unsaved price edits in the best-bundle panel are saved or removed.
+**Still open:**
+- The engine splits licence cost over personas itself. That repeats the
+  interpreter's `licence_shares`, and they agree by construction. Making the
+  engine read the shares is part of storing the calculated layer.
+- Picking a SKU still looks its catalog price up in the browser
+  (`matchSku`, CurrentLicensing and Scenarios). This goes away with live list
+  prices in Phase 3: no list price is stored, so there is nothing to requote.
+- The best-bundle panel's price edits are what-if inputs sent to the
+  recommender, not derived figures. They stay.
 
 ## Phase 3 — no derived value written onto a raw row; references by key
 

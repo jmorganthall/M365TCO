@@ -549,7 +549,7 @@ linked to the first by `parent_persona_id`:
 - **Price override (first-class):** `price_override` (bool) + `overridden_price_annual`.
   The SKU (hence the outcome/coverage) is unchanged, but the customer pays a
   negotiated rate that differs from list. The **effective** price the engine
-  consumes is `effective_unit_price_annual` = the override when `price_override`
+  consumes is the interpreter's effective price = the override when `price_override`
   is on, else the list baseline — so an override actually lowers current spend
   (`unit_price_paid_annual` stays the list reference the "% off list" badge is
   measured against). "Revert to list" clears the flag and re-seeds the baseline
@@ -601,11 +601,11 @@ linked to the first by `parent_persona_id`:
   TARGET_SCHEMA §4.4 `bundle_key`, D23) — a person's explicit link, answered on the
   unknown-licence card. The customer's `sku_reference` is kept for display; the
   line reads as the linked plan. Written only by `PUT …/licence-names/answer`
-  (read-only on the line's API). Readers: `compute.licence_readings` (the
+  (read-only on the line's API). Readers: the interpreter's licence read state (`tco_engine/interpret.py`) (the
   hydrator, the recommender, the coverage comparison), the Settings licence-name
   list. GUI surface: the card, a "same as …" row chip and the Data Inspector. A
   plan a line is linked to can't be deleted (409).
-- **How a line is read** (`compute.licence_readings`, TARGET_SCHEMA "Reading a
+- **How a line is read** (the interpreter's licence read state (`tco_engine/interpret.py`), TARGET_SCHEMA "Reading a
   line", D23), first match wins: **out of scope** (delivers nothing, in no number) →
   **linked** (`bundle_id`: its plan's ratified coverage) → **mapped** (its confirmed
   `CurrentLicenseOutcome` rows, §4.5b) → **named** (legacy coverage entered on the
@@ -649,7 +649,7 @@ linked to the first by `parent_persona_id`:
   once per licence name onto every line of that name; cleared by any other answer.
   Read only while the line has no `bundle_id`. Deleting an outcome deletes its
   rows; Duplicate copies them with the outcome ids remapped.
-- **Readers:** `compute.licence_readings` (state `mapped`), the card, the Settings
+- **Readers:** the interpreter's licence read state (`tco_engine/interpret.py`) (state `mapped`), the card, the Settings
   licence-name list. GUI surface: the card's chips and the Data Inspector's
   "Delivers (answered on Other tools)" column (`CurrentMicrosoftLicense.outcome_ids`).
 
@@ -790,7 +790,7 @@ every other step while items wait, and the review's `library_update_pending` not
 - **Price override (first-class):** `price_override` (bool) + `overridden_price_annual`
   — the same mechanism as the current line (§4.5), applied to the composed **net**
   target. The base SKU + add-ons are unchanged, but the customer pays a negotiated
-  net $/seat/yr. `effective_net_annual` = the override when on, else
+  net $/seat/yr. The interpreter's scenario `net_annual` = the override when on, else
   `(base + add-ons) × (1 − discount)`; the override **supersedes** the discount
   (which stays available when the override is off) and is what the engine consumes.
   The "% off list" badge is measured against `composed_list_annual` (base + add-ons,

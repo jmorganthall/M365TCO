@@ -263,9 +263,9 @@ it.
 # which credited the movers with retiring seats held by people who stay.)
 current_microsoft = Σ over lines whose pool includes this persona of
       line_total * (persona.headcount / Σ headcount of the line's pool)
-    where line_total = line.quantity_assigned * line.effective_unit_price_annual
+    where line_total = line.quantity_assigned * effective price (Interpretation, 6.0)
       and pool = line.persona_ids if set, else all personas with a scenario
-# effective_unit_price_annual = the line's explicit price override when set
+# effective price = the line's explicit price override when set
 # (price_override + overridden_price_annual), else the catalog list baseline
 # (unit_price_paid_annual). An override is a negotiated rate on the SAME SKU, so it
 # lowers current spend without changing coverage.

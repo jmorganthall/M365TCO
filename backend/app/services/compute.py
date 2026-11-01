@@ -7,118 +7,20 @@ hydrated coverage sets, so they can never feed the math.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from decimal import Decimal
-from typing import Optional
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from tco_engine import (
     CandidateBundle,
     Engagement as EngEngagement,
-    ThirdPartyProduct as EngThirdParty,
     analyze_bundles,
 )
-from tco_engine.engine import EngineResult
 from tco_engine.interpret import to_engine
 from tco_engine.rules import applies_to, covers_tool
 
 from .. import models
-from . import bundles, limits, raw, seeds
-from . import personas as persona_order
-
-
-def _dec(value) -> Decimal:
-    return Decimal(str(value or 0))
-
-
-def _ratified_sku_outcomes(db: Session, engagement_id: str) -> dict[str, set[str]]:
-    """coverage key -> set of outcome_ids it covers (ratified, Full|Partial). The
-    key is the Bundle id when set (the canonical SKU → Bundle → Outcomes spine),
-    else the free-text microsoft_sku_reference (custom/unmapped entries)."""
-    rows = db.execute(
-        select(models.CoverageMapEntry).where(
-            models.CoverageMapEntry.engagement_id == engagement_id,
-            models.CoverageMapEntry.product_kind == "MicrosoftSku",
-            models.CoverageMapEntry.ratified.is_(True),
-        )
-    ).scalars()
-    out: dict[str, set[str]] = {}
-    for r in rows:
-        out.setdefault(r.bundle_id or r.microsoft_sku_reference or "", set()).add(r.outcome_id)
-    return out
-
-
-def _cover_key(db: Session, ref: str) -> str:
-    """Resolve a SKU/bundle reference string to its coverage key: the Bundle id if
-    it maps to a bundle, else the raw string. This is what bridges a scenario's
-    target or a license's sku_reference to the bundle-keyed coverage map."""
-    return bundles.resolve_bundle(db, ref) or (ref or "")
-
-
-@dataclass(frozen=True)
-class LicenceReading:
-    """How a current licence line is read (TARGET_SCHEMA §4.4 "Reading a line",
-    D23): what it delivers and why. `state` is one of
-      out_of_scope  set aside — in no number, delivers nothing
-      linked        a person said "it's the same as" a library plan (bundle_id)
-      mapped        a person ticked what it delivers (CurrentLicenseOutcome)
-      named         legacy: coverage entered by hand against this exact name
-      resolved      its name resolves to a plan this engagement has coverage for
-      unread        none of those: its cost counts, but what it delivers is unknown
-    An explicit answer always wins over resolving the name, so a mapping a person
-    made keeps counting after the library later learns that name. For `unread`,
-    `bundle_id` is the plan the name or link points at when there is one (the
-    engagement just has no coverage for it yet), else None."""
-
-    state: str
-    outcomes: frozenset[str]
-    bundle_id: Optional[str] = None
-
-
-def licence_readings(db: Session, eng: models.Engagement,
-                     sku_outcomes: dict[str, set[str]] | None = None) -> dict[str, LicenceReading]:
-    """license id -> LicenceReading for every line of the engagement (out of scope
-    included). Pure read."""
-    if sku_outcomes is None:
-        sku_outcomes = _ratified_sku_outcomes(db, eng.id)
-    out: dict[str, LicenceReading] = {}
-    for lic in eng.current_licenses:
-        ref = (lic.sku_reference or "").strip()
-        own = frozenset(l.outcome_id for l in lic.outcome_links if l.ratified)
-        named = frozenset(sku_outcomes.get(ref, set())) if ref else frozenset()
-        if lic.out_of_scope:
-            reading = LicenceReading("out_of_scope", frozenset())
-        elif lic.bundle_id:
-            outs = frozenset(sku_outcomes.get(lic.bundle_id, set()))
-            reading = LicenceReading("linked" if outs else "unread", outs, lic.bundle_id)
-        elif own:
-            reading = LicenceReading("mapped", own)
-        elif named:
-            reading = LicenceReading("named", named)
-        else:
-            resolved = bundles.resolve_bundle(db, ref) if ref else None
-            outs = frozenset(sku_outcomes.get(resolved, set())) if resolved else frozenset()
-            reading = LicenceReading("resolved" if outs else "unread", outs, resolved)
-        out[lic.id] = reading
-    return out
-
-
-def _ratified_thirdparty_outcomes(db: Session, engagement_id: str) -> dict[str, set[str]]:
-    """third_party_product_id -> set of outcome_ids it delivers (ratified)."""
-    rows = db.execute(
-        select(models.CoverageMapEntry).where(
-            models.CoverageMapEntry.engagement_id == engagement_id,
-            models.CoverageMapEntry.product_kind == "ThirdParty",
-            models.CoverageMapEntry.ratified.is_(True),
-        )
-    ).scalars()
-    out: dict[str, set[str]] = {}
-    for r in rows:
-        if r.third_party_product_id:
-            out.setdefault(r.third_party_product_id, set()).add(r.outcome_id)
-    return out
+from . import bundles, limits, raw
 
 
 def hydrate(db: Session, engagement_id: str) -> EngEngagement:

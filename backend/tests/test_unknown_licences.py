@@ -51,9 +51,14 @@ def _tick(client, eid, outcome_id, action="add", sku=UNKNOWN):
 
 
 def _readings(eid):
+    """How each line is read — the interpreter's (tco_engine.interpret, D23)."""
+    from types import SimpleNamespace
+
+    from app.services import raw
+
     with SessionLocal() as db:
-        eng = db.get(models.Engagement, eid)
-        return {lid: r for lid, r in compute.licence_readings(db, eng).items()}
+        return {l.id: SimpleNamespace(state=l.read_state, outcomes=l.outcomes, bundle_id=l.bundle_id)
+                for l in raw.interpreted(db, eid).licence_lines}
 
 
 # ---- Unread: money counts, capability changes are left out, loudly ----------
