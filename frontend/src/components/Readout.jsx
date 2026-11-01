@@ -10,7 +10,7 @@ import TracePanel from './TracePanel.jsx'
 
 export default function Readout({ engagement }) {
   const eid = engagement.id
-  const { result, err: resultErr } = useResult(eid)
+  const { result, err: resultErr, asOf } = useResult(eid)
   const version = useDataVersion()
   const [snapshots, setSnapshots] = useState([])
   const [actionErr, setErr] = useState('')
@@ -89,6 +89,11 @@ export default function Readout({ engagement }) {
           <a href={`/api/engagements/${eid}/readout.xlsx`}>
             <button className="ghost sm">Export .xlsx</button></a>
           <button className="ghost sm" onClick={snapshot}>Snapshot</button>
+          {asOf && (
+            <span className="muted" style={{ fontSize: '.75rem', marginLeft: 'auto' }}
+              title="The numbers are worked out from the entries each time they are shown; there is nothing to recompute.">
+              Includes every edit as of {asOf.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          )}
         </div>
         <div className="hero-block">
           <div>

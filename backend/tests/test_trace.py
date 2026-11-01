@@ -67,3 +67,15 @@ def test_a_persona_without_a_plan_traces_what_it_holds(client):
     # Its share of the untagged line: 400 × 120 × 100/400.
     assert t["figures"][0]["value"] == pytest.approx(12000)
     assert client.get(f"/api/engagements/{eid}/trace/personas/nope").status_code == 404
+
+
+def test_the_trace_lists_the_open_questions_that_touch_the_persona(client):
+    eid, kw, fl = _engagement(client)
+    t = client.get(f"/api/engagements/{eid}/trace/personas/{fl['id']}").json()
+    codes = {q["code"] for q in t["questions"]}
+    # FL has no plan, and holds the untagged E1 line.
+    assert "group_without_plan" in codes and "licence_untagged" in codes
+    # A question about KW alone isn't FL's.
+    k = client.get(f"/api/engagements/{eid}/trace/personas/{kw['id']}").json()
+    assert "group_without_plan" not in {q["code"] for q in k["questions"]}
+    assert all(q["message"] and q["step"] for q in t["questions"] + k["questions"])

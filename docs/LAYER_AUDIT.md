@@ -155,6 +155,14 @@ retires, its recommended plan, and the change. Each figure has:
 Every figure's parts add up to it, and a test holds that. The GUI opens it with 🔎
 on each Future state row and on each persona column of the Summary bridge.
 
+The trace also lists the open questions that touch the persona's numbers — Review's
+wording of each finding about the persona, or about a licence or tool it holds —
+each linked to the step that answers it. The Summary says the numbers include every
+edit as of the time they were read, since nothing needs recomputing.
+
+Seat-cap messages (Review, the split offer, the best-bundle badges) name the limit
+from its `LicenseLimit.name` instead of a hard-coded "Business".
+
 Found on the way: reading the install settings created their row (a write on
 read). `GlobalDefaults.unsaved()` now returns the defaults without storing them;
 the first save creates the row. Engagement settings resolve through the same

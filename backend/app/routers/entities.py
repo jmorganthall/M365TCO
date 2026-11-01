@@ -323,7 +323,7 @@ def match_parent(engagement_id: str, persona_id: str, db: Session = Depends(get_
 # ---- The Business seat cap split (TARGET_SCHEMA D27) -------------------------
 @router.get("/seat-cap-splits")
 def list_seat_cap_splits(engagement_id: str, db: Session = Depends(get_db)):
-    """Every persona whose plan is over the future-state Business seats left, with
+    """Every persona whose plan is over a seat cap's seats left in the future state, with
     its split offer (services/seat_cap). A pure read."""
     _require_engagement(db, engagement_id)
     return seat_cap.split_offers(db, engagement_id)
@@ -358,13 +358,13 @@ def split_for_seat_cap(engagement_id: str, persona_id: str,
     _require_engagement(db, engagement_id)
     offer = seat_cap.split_offer(db, engagement_id, persona_id)
     if offer is None:
-        raise HTTPException(409, "This persona now fits the Business seats left; nothing to split.")
+        raise HTTPException(409, "This persona now fits the capped seats left; nothing to split.")
     if offer["kind"] != "split":
         raise HTTPException(422, {
-            "no_seats": "No Business seats are left, so there is nothing to split: choose "
-                        "another plan for this persona.",
+            "no_seats": f"{offer['cap_name']} has no seats left, so there is nothing to split: "
+                        "choose another plan for this persona.",
             "nested": "This is a carve-out; split its parent instead.",
-            "no_alternative": "No priced plan outside the Business family covers what these "
+            "no_alternative": f"No priced plan outside {offer['cap_name']} covers what these "
                               "people need, so the rest can't be placed.",
         }[offer["kind"]])
     parent = db.get(models.Persona, persona_id)
