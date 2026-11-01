@@ -139,7 +139,9 @@ def test_build_sanity_payload_shape():
                          "population_check": {"in_scope_persona_headcount": 10,
                                               "third_party_covered_population": 0}},
               "scenarios": []}
-    payload = sanity.build_sanity_payload(Eng(), result)
+    from tco_engine.interpret import RawEngagement, interpret
+    empty = interpret(RawEngagement(id="e", personas=(), licence_lines=(), tools=(), scenarios=()))
+    payload = sanity.build_sanity_payload(Eng(), result, empty)
     assert payload["current_licenses"][0]["segment"] == "Commercial"  # inherited
     assert payload["current_licenses"][0]["unit_price_annual"] == 684.0
     assert payload["rollup"]["net_tco_delta_annual"] == 1000

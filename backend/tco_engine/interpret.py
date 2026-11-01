@@ -236,6 +236,7 @@ class ITool:
     applies_to: tuple[str, ...]         # persona ids, Org-wide expanded
     assumed: bool                       # untagged, read as Org-wide
     delivered_outcome_ids: frozenset[str]
+    personas_headcount: int = 0         # the tagged personas' headcount (what "covers" defaults to)
 
 
 @dataclass(frozen=True)
@@ -478,6 +479,7 @@ def interpret(raw: RawEngagement) -> Interpreted:
             people_covered=covered, covered_source=covered_source,
             cost_per_person=per_person, applies_to=applies, assumed=assumed,
             delivered_outcome_ids=raw.tool_coverage.get(t.id, frozenset()),
+            personas_headcount=sum(headcount[p] for p in tagged),
         ))
         # Definition 7: a persona's share is cost per person × its headcount. When
         # the tool covers more people than its personas, the remainder is spend no

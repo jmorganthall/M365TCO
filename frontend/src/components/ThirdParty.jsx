@@ -78,7 +78,9 @@ function ProductRow({ t, it, missing, meta, personas, moneyUnit, update, remove 
         <td data-label="Managed"><input type="checkbox" style={{ width: 'auto' }} checked={t.is_managed}
           title="Bought as part of a managed service"
           onChange={(e) => update(t.id, { is_managed: e.target.checked })} />
-          {t.is_managed && <span className="muted" style={{ fontSize: '.75rem', marginLeft: 4 }}>{pct(t.tooling_pct)}</span>}</td>
+          {t.is_managed && <span className="muted" style={{ fontSize: '.75rem', marginLeft: 4 }}
+            title={t.tooling_source === 'engagement' ? "The engagement's default software share" : 'Set for this tool'}>
+            {pct(t.effective_tooling_pct)}{t.tooling_source === 'engagement' ? ' (default)' : ''}</span>}</td>
         <td className="num" data-label="Counted">{money(t.effective_annual_cost, moneyUnit)}</td>
         <td className="num"><button className="danger sm" onClick={() => remove(t.id)}>Remove</button></td>
       </tr>
@@ -90,9 +92,13 @@ function ProductRow({ t, it, missing, meta, personas, moneyUnit, update, remove 
               <div><label>Vendor <Help k="tools.vendor" /></label>
                 <TextInput value={t.vendor || ''} onCommit={(v) => update(t.id, { vendor: v })} /></div>
               <div><label>Software share of a managed service <Help k="tools.tooling_pct" /></label>
-                <NumInput value={t.tooling_pct} step="0.05" disabled={!t.is_managed}
+                <NumInput value={t.tooling_pct} step="0.05" disabled={!t.is_managed} allowEmpty
+                  placeholder={String(Number(t.effective_tooling_pct))}
                   onCommit={(n) => update(t.id, { tooling_pct: n })} />
-                <small className="src">{t.is_managed ? 'A fraction: 0.30 = 30%.' : 'Only when bought as a managed service.'}</small></div>
+                <small className="src">{!t.is_managed ? 'Only when bought as a managed service.'
+                  : t.tooling_pct == null
+                    ? <>Blank = the engagement's default ({pct(t.effective_tooling_pct)}). A fraction: 0.30 = 30%.</>
+                    : 'A fraction: 0.30 = 30%. Clear it to use the engagement default.'}</small></div>
               <div><label>People covered <Help k="tools.covers" /></label>
                 <NumInput value={t.covered_count_override} allowEmpty
                   placeholder={String(t.persona_covered_count ?? 0)}

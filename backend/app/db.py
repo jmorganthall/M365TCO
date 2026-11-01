@@ -154,6 +154,13 @@ _RETIRED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("product_dispositions", "disposition"),
     ("product_dispositions", "residual_count"),
     ("product_dispositions", "residual_annual_cost"),
+    # A tool's derived figures, stored on the raw row and refreshed by a normalizer
+    # that could miss a change (an engagement default edit never reached existing
+    # tools). They are interpreted from what was entered (TARGET_SCHEMA §4.5).
+    ("third_party_products", "annual_cost"),
+    ("third_party_products", "covered_count"),
+    ("third_party_products", "per_unit_annual_cost"),
+    ("third_party_products", "effective_annual_cost"),
     # Per-engagement readout colours: the practice brands the readout once, in
     # practice_branding (TARGET_SCHEMA D25); the engagement keeps only the
     # customer's logo.
@@ -163,6 +170,30 @@ _RETIRED_COLUMNS: tuple[tuple[str, str], ...] = (
     # future state, and is met by a split a person confirms (TARGET_SCHEMA D27).
     ("engagements", "business_cap_enabled"),
 )
+
+
+def _preserve_manual_covers(target_engine=None) -> None:
+    """Before the stored `third_party_products.covered_count` is dropped: on a
+    database from before covers became derived, a non-zero value that differs from
+    the tagged personas' headcount was typed by a person. Keep it as the explicit
+    `covered_count_override`, so dropping the column changes no number. Rows that
+    already have an override, or whose value is the personas' sum, are untouched.
+    A no-op once the column is gone."""
+    from sqlalchemy import inspect, text
+
+    eng = target_engine or engine
+    inspector = inspect(eng)
+    if not inspector.has_table("third_party_products"):
+        return
+    if "covered_count" not in {c["name"] for c in inspector.get_columns("third_party_products")}:
+        return
+    with eng.begin() as conn:
+        conn.execute(text(
+            "UPDATE third_party_products SET covered_count_override = covered_count "
+            "WHERE covered_count_override IS NULL AND covered_count > 0 AND covered_count <> ("
+            "  SELECT COALESCE(SUM(p.headcount), 0) FROM third_party_personas tp"
+            "  JOIN personas p ON p.id = tp.persona_id"
+            "  WHERE tp.third_party_product_id = third_party_products.id)"))
 
 
 def _drop_retired_columns(target_engine=None) -> None:
@@ -184,10 +215,45 @@ def _drop_retired_columns(target_engine=None) -> None:
             conn.execute(text(f'ALTER TABLE "{table_name}" DROP COLUMN "{column_name}"'))
 
 
+# Columns that became nullable: NULL now means "use the default" (TARGET_SCHEMA
+# §1.2.2). A column created NOT NULL by an earlier version is rebuilt nullable,
+# keeping every stored value exactly (a shape change, not a meaning change).
+_RELAXED_NOT_NULL: tuple[tuple[str, str], ...] = (
+    ("third_party_products", "tooling_pct"),
+)
+
+
+def _relax_not_null(target_engine=None) -> None:
+    from sqlalchemy import inspect, text
+
+    eng = target_engine or engine
+    inspector = inspect(eng)
+    with eng.begin() as conn:
+        for table_name, column_name in _RELAXED_NOT_NULL:
+            if not inspector.has_table(table_name):
+                continue
+            col = next((c for c in inspector.get_columns(table_name) if c["name"] == column_name), None)
+            if col is None or col["nullable"]:
+                continue
+            if eng.dialect.name == "sqlite":
+                # SQLite can't drop NOT NULL in place: copy into a nullable column of
+                # the same type, then swap it in under the original name.
+                col_type = col["type"].compile(dialect=eng.dialect)
+                tmp = f"{column_name}__relaxed"
+                conn.execute(text(f'ALTER TABLE "{table_name}" ADD COLUMN "{tmp}" {col_type}'))
+                conn.execute(text(f'UPDATE "{table_name}" SET "{tmp}" = "{column_name}"'))
+                conn.execute(text(f'ALTER TABLE "{table_name}" DROP COLUMN "{column_name}"'))
+                conn.execute(text(f'ALTER TABLE "{table_name}" RENAME COLUMN "{tmp}" TO "{column_name}"'))
+            else:
+                conn.execute(text(f'ALTER TABLE "{table_name}" ALTER COLUMN "{column_name}" DROP NOT NULL'))
+
+
 def init_db() -> None:
     # Import models so they register on Base.metadata, then create tables.
     from . import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     _auto_add_missing_columns()
+    _preserve_manual_covers()
     _drop_retired_columns()
+    _relax_not_null()
