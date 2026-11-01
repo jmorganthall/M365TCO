@@ -259,16 +259,16 @@ function LicenseRow({ l, il, eng, meta, personas, catalog, update, remove, readi
             </div>
             <div className="grid c4" style={{ padding: '.4rem 0' }}>
               <div><label>Segment</label>
-                <BasisSelect kind="segment" value={l.segment} inheritFrom={eng.default_segment}
+                <BasisSelect kind="segment" value={l.segment} inheritFrom={eng.effective_settings.default_segment}
                   onChange={(v) => update(l.id, rebasedPatch({ segment: v }))} />
                 <small className="src">Overrides the engagement segment for this line only.</small></div>
               <div><label>Term</label>
                 <BasisSelect kind="term" value={l.term_duration} meta={meta}
-                  inheritFrom={eng.default_term_duration}
+                  inheritFrom={eng.effective_settings.default_term_duration}
                   onChange={(v) => update(l.id, rebasedPatch({ term_duration: v }))} /></div>
               <div><label>Payment</label>
                 <BasisSelect kind="billing" value={l.billing_plan} meta={meta}
-                  inheritFrom={eng.default_billing_plan}
+                  inheritFrom={eng.effective_settings.default_billing_plan}
                   onChange={(v) => update(l.id, rebasedPatch({ billing_plan: v }))} />
                 <small className="src">Changing the basis re-seeds this line's $/seat from the matching catalog variant.</small></div>
               <div><label>List price</label>

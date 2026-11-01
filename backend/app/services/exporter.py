@@ -115,8 +115,8 @@ def build_xlsx(engagement: models.Engagement, result: dict, interpreted) -> byte
     fm = h.get("full_run_rate_month")
     wr.append(["Full run rate from month", "—" if fm is None else fm])
     if engagement.managed_ms_account:
-        cons = _fmt_ratio(engagement.ecif_roi_conservative)
-        gen = _fmt_ratio(engagement.ecif_roi_generous)
+        cons = _fmt_ratio(engagement.effective_settings["ecif_roi_conservative"])
+        gen = _fmt_ratio(engagement.effective_settings["ecif_roi_generous"])
         wr.append(["Net annual uplift in Microsoft spend (target − current)",
                    rollup.get("msft_uplift_annual", 0)])
         wr.append([f"Projected ECIF funding — {cons}:1 (one-time)",

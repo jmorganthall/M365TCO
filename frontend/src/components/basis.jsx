@@ -48,12 +48,13 @@ export function useBasisOptions() {
   return options
 }
 
-// The effective basis for a line-level object (license line / scenario):
-// its own override, else the engagement default.
+// The effective basis for a line-level object (license line / scenario): its own
+// override, else the engagement's effective setting (its own, else the install's —
+// resolved by the backend, Engagement.effective_settings).
 export const effectiveBasis = (line, eng) => ({
-  segment: line?.segment || eng.default_segment,
-  term: line?.term_duration || eng.default_term_duration,
-  billing: line?.billing_plan || eng.default_billing_plan,
+  segment: line?.segment || eng.effective_settings.default_segment,
+  term: line?.term_duration || eng.effective_settings.default_term_duration,
+  billing: line?.billing_plan || eng.effective_settings.default_billing_plan,
 })
 
 // One select for one basis dimension. kind: 'segment' | 'term' | 'billing'.
@@ -104,12 +105,15 @@ export function EngagementBasisEditor({ engagement, meta, onUpdate, onError }) {
     <div className="grid c3">
       <div><label>Segment</label>
         <BasisSelect kind="segment" value={engagement.default_segment}
+          inheritFrom={engagement.install_settings.default_segment}
           onChange={(v) => commit('default_segment', v)} /></div>
       <div><label>Term</label>
         <BasisSelect kind="term" value={engagement.default_term_duration} meta={meta}
+          inheritFrom={engagement.install_settings.default_term_duration}
           onChange={(v) => commit('default_term_duration', v)} /></div>
       <div><label>Payment</label>
         <BasisSelect kind="billing" value={engagement.default_billing_plan} meta={meta}
+          inheritFrom={engagement.install_settings.default_billing_plan}
           onChange={(v) => commit('default_billing_plan', v)} /></div>
     </div>
   )

@@ -339,7 +339,7 @@ export default function Readout({ engagement }) {
             <b>{usd(r.msft_uplift_annual)}</b>/yr. Per standard Microsoft investment ROI, that uplift is
             estimated to unlock a <b>one-time</b> ECIF fund of roughly{' '}
             {usd0(r.ecif_funding_low)}–{usd0(r.ecif_funding_high)}
-            {' '}(≈ 1/{Number(engagement.ecif_roi_conservative)}–1/{Number(engagement.ecif_roi_generous)} of the annual uplift) —
+            {' '}(≈ 1/{Number(engagement.effective_settings.ecif_roi_conservative)}–1/{Number(engagement.effective_settings.ecif_roi_generous)} of the annual uplift) —
             used to accelerate or de-friction pre-sales (assessment, discovery, design) and post-sales
             (implementation, migration) work. Advisory — scope with the Microsoft account team.
           </p>

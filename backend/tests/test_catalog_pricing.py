@@ -137,7 +137,8 @@ def test_recommend_a_path_prices_at_engagement_basis(client, db):
 
     eng = client.post("/api/engagements", json={"customer_name": "Pricing Co"}).json()
     eid = eng["id"]
-    assert (eng["default_term_duration"], eng["default_billing_plan"]) == ("P1Y", "Monthly")
+    st = eng["effective_settings"]
+    assert (st["default_term_duration"], st["default_billing_plan"]) == ("P1Y", "Monthly")
     kw = client.post(f"/api/engagements/{eid}/personas",
                      json={"name": "KW", "headcount": 100}).json()
     res = client.post(f"/api/engagements/{eid}/personas/{kw['id']}/bundle-analysis").json()
@@ -184,14 +185,16 @@ def test_nonprofit_segment_prices_at_the_sheets_charity_rows(client, db):
 
 
 def test_global_defaults_inherited_by_new_engagements(client, db):
-    """Level 1 → 2 of the hierarchy: changing the global default term/billing
-    retargets NEW engagements only."""
+    """Level 1 → 2 of the hierarchy: an engagement that doesn't set its own term or
+    billing inherits the install default (TARGET_SCHEMA §4.1)."""
     orig = client.get("/api/admin/defaults").json()
     try:
         client.put("/api/admin/defaults",
                    json={"default_term_duration": "P3Y", "default_billing_plan": "Triennial"})
         eng = client.post("/api/engagements", json={"customer_name": "Inherit Co"}).json()
-        assert (eng["default_term_duration"], eng["default_billing_plan"]) == ("P3Y", "Triennial")
+        st = eng["effective_settings"]
+        assert (eng["default_term_duration"], eng["default_billing_plan"]) == (None, None)
+        assert (st["default_term_duration"], st["default_billing_plan"]) == ("P3Y", "Triennial")
         client.delete(f"/api/engagements/{eng['id']}")
     finally:
         client.put("/api/admin/defaults", json={

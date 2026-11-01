@@ -87,6 +87,17 @@ def _source_tag_col(default="CustomerStated"):
     return mapped_column(SAEnum(*SOURCE_TAGS, name="source_tag"), default=default)
 
 
+# Engagement field -> (install settings field, built-in default when neither is set).
+_INHERITABLE = {
+    "global_tooling_pct": ("default_tooling_pct", Decimal("0.30")),
+    "default_segment": ("default_segment", "Commercial"),
+    "default_term_duration": ("default_term_duration", "P1Y"),
+    "default_billing_plan": ("default_billing_plan", "Monthly"),
+    "ecif_roi_conservative": ("default_ecif_roi_conservative", Decimal("10")),
+    "ecif_roi_generous": ("default_ecif_roi_generous", Decimal("5")),
+}
+
+
 class Engagement(Base):
     __tablename__ = "engagements"
 
@@ -102,7 +113,9 @@ class Engagement(Base):
     # savings") on the Readout tab and both exports. The engine itself stays
     # annualized; this is a presentation horizon. Editable on Customer Info.
     modeling_horizon_years: Mapped[int] = mapped_column(Integer, default=3)
-    global_tooling_pct: Mapped[float] = mapped_column(Numeric(6, 4), default=0.30)
+    # Inheritable settings (TARGET_SCHEMA §4.1): NULL = inherit the install settings
+    # (GlobalDefaults). Read them through `effective_settings`, never directly.
+    global_tooling_pct: Mapped[float | None] = mapped_column(Numeric(6, 4), nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     # Customer-info metadata (Customer Info tab). User-entered context about the
     # customer — used for display and, later, as grounding for the AI business
@@ -131,15 +144,13 @@ class Engagement(Base):
     hq_location: Mapped[str] = mapped_column(String, default="")
     website: Mapped[str] = mapped_column(String, default="")
     employee_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # Pricing basis defaults for this engagement (seeded from GlobalDefaults on
-    # creation — "seed, then own"). Each is the middle tier of an inheritance
-    # chain: a customer sets these once (e.g. a Nonprofit customer overrides the
-    # global Commercial default), and an individual license line can still
-    # override them. They select which priced catalog variant a picked SKU
-    # resolves to, so the seeded list price is the right one.
-    default_segment: Mapped[str] = mapped_column(String, default="Commercial")
-    default_term_duration: Mapped[str] = mapped_column(String, default="P1Y")
-    default_billing_plan: Mapped[str] = mapped_column(String, default="Annual")
+    # Pricing basis defaults for this engagement: the middle tier of the install →
+    # engagement → line chain. NULL = inherit the install settings (a customer sets
+    # one only when it differs, e.g. a Nonprofit customer); a licence line or
+    # scenario can still override them. Read through `effective_settings`.
+    default_segment: Mapped[str | None] = mapped_column(String, nullable=True)
+    default_term_duration: Mapped[str | None] = mapped_column(String, nullable=True)
+    default_billing_plan: Mapped[str | None] = mapped_column(String, nullable=True)
     # The customer's own logo (TARGET_SCHEMA §4.1 `customer_logo`): optional, a
     # base64 image data URL shown on the readout cover beside the practice logo.
     # User-entered runtime data — never a hard-coded identity. The practice's own
@@ -153,11 +164,39 @@ class Engagement(Base):
     # ECIF funding is quoted as an ROI ratio N:1 — Microsoft may fund ~1/N of the
     # annual Microsoft-spend uplift. The projected funding is presented as a range
     # between a conservative end (typically 10:1 → ~1/10 of the uplift) and a more
-    # generous end for certain motions (5:1 → ~1/5). Seeded from GlobalDefaults on
-    # creation ("seed, then own"), then editable per engagement; the engine reads
-    # them to compute the ECIF range in the rollup.
-    ecif_roi_conservative: Mapped[float] = mapped_column(Numeric(6, 2), default=10)
-    ecif_roi_generous: Mapped[float] = mapped_column(Numeric(6, 2), default=5)
+    # generous end for certain motions (5:1 → ~1/5). NULL = inherit the install
+    # settings; the engine reads the effective ratios for the ECIF range.
+    ecif_roi_conservative: Mapped[float | None] = mapped_column(Numeric(6, 2), nullable=True)
+    ecif_roi_generous: Mapped[float | None] = mapped_column(Numeric(6, 2), nullable=True)
+
+    # ---- Inheritable settings, resolved (the one place) ------------------------
+    @property
+    def install_settings(self) -> dict:
+        """What each inheritable setting would be if this engagement inherits it:
+        the install settings (GlobalDefaults), else the built-in defaults. Reads
+        only — a missing install row is never created here."""
+        from sqlalchemy.orm import object_session
+
+        session = object_session(self)
+        row = session.get(GlobalDefaults, "singleton") if session is not None else None
+        out = {}
+        for field, (install_field, built_in) in _INHERITABLE.items():
+            v = getattr(row, install_field, None) if row is not None else None
+            out[field] = v if v is not None else built_in
+        return out
+
+    @property
+    def effective_settings(self) -> dict:
+        """Each inheritable setting's effective value: this engagement's own when
+        set, else the install's (TARGET_SCHEMA §4.1)."""
+        install = self.install_settings
+        return {f: (getattr(self, f) if getattr(self, f) is not None else install[f])
+                for f in _INHERITABLE}
+
+    @property
+    def inherited_settings(self) -> list[str]:
+        """The inheritable settings this engagement doesn't set itself."""
+        return [f for f in _INHERITABLE if getattr(self, f) is None]
 
     personas: Mapped[list["Persona"]] = relationship(
         back_populates="engagement", cascade="all, delete-orphan"

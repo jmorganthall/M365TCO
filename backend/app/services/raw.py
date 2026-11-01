@@ -63,6 +63,7 @@ def load_raw(db: Session, engagement_id: str) -> RawEngagement:
     if eng is None:
         raise ValueError(f"Engagement {engagement_id} not found")
 
+    settings = eng.effective_settings  # inheritable settings, resolved once
     cache: dict[str, str | None] = {}
 
     def resolve(ref: str | None) -> str | None:
@@ -146,9 +147,9 @@ def load_raw(db: Session, engagement_id: str) -> RawEngagement:
         scenarios=scenarios,
         microsoft_coverage=_coverage(db, engagement_id, "MicrosoftSku"),
         tool_coverage=_coverage(db, engagement_id, "ThirdParty"),
-        default_tooling_pct=_dec(eng.global_tooling_pct if eng.global_tooling_pct is not None else "0.30"),
-        ecif_roi_conservative=_dec(eng.ecif_roi_conservative),
-        ecif_roi_generous=_dec(eng.ecif_roi_generous),
+        default_tooling_pct=_dec(settings["global_tooling_pct"]),
+        ecif_roi_conservative=_dec(settings["ecif_roi_conservative"]),
+        ecif_roi_generous=_dec(settings["ecif_roi_generous"]),
         # Month 0 of the timed headline. An engagement created before the workshop
         # date existed falls back to the day it was created — a fixed date, so the
         # numbers never drift with the calendar.

@@ -330,7 +330,8 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
   // at a stale basis.
   useEffect(() => {
     api.get(`/api/catalog/bundles?engagement_id=${eid}`).then(setBundles).catch(() => {})
-  }, [eid, engagement.default_segment, engagement.default_term_duration, engagement.default_billing_plan])
+  }, [eid, engagement.effective_settings.default_segment, engagement.effective_settings.default_term_duration,
+      engagement.effective_settings.default_billing_plan])
 
   const scenarioFor = (pid) => scenarios.find((s) => s.persona_id === pid)
   const resultFor = (sid) => result?.scenarios.find((r) => r.scenario_id === sid)

@@ -805,9 +805,10 @@ class _Context:
                          + "".join(lic_row(l) for l in eng.licenses_in_scope) + "</tbody></table>")
         notes = []
         term = {"P1Y": "1-year term", "P1M": "monthly term", "P3Y": "3-year term"}
-        notes.append(f"<b>Pricing basis for the recommended plans:</b> {E(_segment_label(eng.default_segment))} · "
-                     f"{E(term.get(eng.default_term_duration or 'P1Y', eng.default_term_duration or 'P1Y'))} · "
-                     f"{E(eng.default_billing_plan or 'Monthly')} billing — the catalog price unless a "
+        st = eng.effective_settings
+        notes.append(f"<b>Pricing basis for the recommended plans:</b> {E(_segment_label(st['default_segment']))} · "
+                     f"{E(term.get(st['default_term_duration'], st['default_term_duration']))} · "
+                     f"{E(st['default_billing_plan'])} billing — the catalog price unless a "
                      "negotiated price is entered.")
         persona_name = {p.id: p.name for p in eng.personas}
         tlabels = {s["persona_id"]: self._tlabel(s) for s in self.scenarios}
@@ -908,7 +909,7 @@ class _Context:
                 f"spend by {_usd0(r['msft_uplift_annual'])}. At Microsoft's usual investment ratios, "
                 f"that uplift may unlock a one-time co-investment (ECIF) of roughly "
                 f"<b>{_usd0(r.get('ecif_funding_low'))}–{_usd0(r.get('ecif_funding_high'))}</b> "
-                f"(≈ 1/{_ratio(eng.ecif_roi_conservative)}–1/{_ratio(eng.ecif_roi_generous)} of the "
+                f"(≈ 1/{_ratio(eng.effective_settings['ecif_roi_conservative'])}–1/{_ratio(eng.effective_settings['ecif_roi_generous'])} of the "
                 "annual uplift) toward assessment, design, implementation and migration work. "
                 "Indicative only, to be scoped with the Microsoft account team.</li>")
         steps = (

@@ -194,15 +194,21 @@ class EngagementOut(ORMModel):
     market: str
     currency: str
     modeling_horizon_years: int = 3
-    global_tooling_pct: Decimal
-    default_segment: str
-    default_term_duration: str
-    default_billing_plan: str
+    # Inheritable settings as entered: NULL = inherit the install settings.
+    global_tooling_pct: Optional[Decimal] = None
+    default_segment: Optional[str] = None
+    default_term_duration: Optional[str] = None
+    default_billing_plan: Optional[str] = None
     brand_logo_data_url: str
     notes: str
     managed_ms_account: bool = False
-    ecif_roi_conservative: Decimal = Decimal("10")
-    ecif_roi_generous: Decimal = Decimal("5")
+    ecif_roi_conservative: Optional[Decimal] = None
+    ecif_roi_generous: Optional[Decimal] = None
+    # Derived, read-only: each setting's effective value, which ones are inherited,
+    # and what inheriting gives (the install settings).
+    effective_settings: dict
+    inherited_settings: list[str]
+    install_settings: dict
     workshop_date: Optional[date] = None
     microsoft_renewal_date: Optional[date] = None
     presented_snapshot_id: Optional[str] = None

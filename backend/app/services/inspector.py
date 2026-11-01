@@ -232,7 +232,7 @@ def inspect_engagement(db: Session, eng: models.Engagement) -> dict:
         "engagement": {
             "id": eng.id, "customer_name": eng.customer_name,
             "market": eng.market, "currency": eng.currency,
-            "global_tooling_pct": float(eng.global_tooling_pct),
+            "global_tooling_pct": float(eng.effective_settings["global_tooling_pct"]),
         },
         "objects": objects,
         "flow": flow,
