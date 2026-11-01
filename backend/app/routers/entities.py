@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
-from ..services import bundles, compute, inspector, library_updates, licence_names, lineage, seat_cap
+from ..services import bundles, compute, inspector, library_updates, licence_names, lineage, raw, seat_cap
 from ..services import personas as persona_order
 
 router = APIRouter(prefix="/api/engagements/{engagement_id}", tags=["entities"])
@@ -46,45 +46,6 @@ def _derived_covers(db: Session, tp: models.ThirdPartyProduct) -> int:
             select(models.Persona).where(models.Persona.id.in_(persona_ids))
         ).scalars()
     )
-
-
-def _normalize_third_party(db: Session, eng: models.Engagement, tp: models.ThirdPartyProduct) -> None:
-    """Derive annual_cost, covers, per-unit, effective cost on input (PRD 5.6)."""
-    raw = Decimal(str(tp.raw_cost or 0))
-    annual = raw * 12 if tp.cost_period == "Monthly" else raw
-    tp.annual_cost = annual
-    # tooling_pct defaults to the engagement split; only applied when managed.
-    tooling = Decimal(str(tp.tooling_pct if tp.tooling_pct is not None else eng.global_tooling_pct))
-    tp.tooling_pct = tooling
-    tp.effective_annual_cost = (annual * tooling) if tp.is_managed else annual
-    # Covers is derived from the tagged personas' combined headcount; an explicit
-    # operator override always wins (e.g. it covers more users than the tags).
-    tp.covered_count = (
-        tp.covered_count_override
-        if tp.covered_count_override is not None
-        else _derived_covers(db, tp)
-    )
-    if tp.covered_count and tp.covered_count > 0:
-        tp.per_unit_annual_cost = Decimal(str(tp.effective_annual_cost)) / Decimal(tp.covered_count)
-    else:
-        tp.per_unit_annual_cost = Decimal("0")
-
-
-def _renormalize_third_party_covers(db: Session, engagement_id: str) -> None:
-    """Re-derive covers (and the per-unit cost that hangs off it) for every
-    third-party product in the engagement — called when a persona's headcount
-    changes or a persona is deleted, so derived covers never go stale."""
-    db.flush()  # session runs autoflush=False; make the pending persona change visible
-    eng = db.get(models.Engagement, engagement_id)
-    if eng is None:
-        return
-    rows = db.execute(
-        select(models.ThirdPartyProduct).where(
-            models.ThirdPartyProduct.engagement_id == engagement_id
-        )
-    ).scalars().all()
-    for tp in rows:
-        _normalize_third_party(db, eng, tp)
 
 
 # ---------- Personas ----------
@@ -141,12 +102,8 @@ def update_persona(engagement_id: str, persona_id: str, payload: schemas.Persona
     data = payload.model_dump(exclude_unset=True)
     if "required_outcome_ids" in data:
         _set_persona_requirements(db, row, data.pop("required_outcome_ids") or [])
-    headcount_changed = "headcount" in data and data["headcount"] != row.headcount
     for k, v in data.items():
         setattr(row, k, v)
-    if headcount_changed:
-        # Third-party covers derive from persona headcounts — keep them in sync.
-        _renormalize_third_party_covers(db, engagement_id)
     db.commit()
     db.refresh(row)
     return row
@@ -332,10 +289,6 @@ def _carve(db: Session, engagement_id: str, parent: models.Persona, seats: int,
         # different one — carrying it over would quote a discount nobody agreed.
 
     db.flush()
-    # Third-party covers derive from tagged personas' headcounts. Parent + child now
-    # sum to what the parent alone was, so covers are unchanged — recompute so that
-    # stays true rather than merely likely.
-    _renormalize_third_party_covers(db, engagement_id)
     return child
 
 
@@ -359,8 +312,6 @@ def match_parent(engagement_id: str, persona_id: str, db: Session = Depends(get_
     if child.parent_persona_id is None:
         raise HTTPException(422, "Only a carve-out has a parent to match.")
     lineage.match_parent(db, child)
-    # Tool covers derive from tagged headcount, so they move with the tags.
-    _renormalize_third_party_covers(db, engagement_id)
     db.commit()
     db.refresh(child)
     return child
@@ -457,8 +408,6 @@ def delete_persona(engagement_id: str, persona_id: str, db: Session = Depends(ge
     ).scalars().all():
         child.parent_persona_id = None
     db.delete(row)
-    # Derived third-party covers no longer count this persona's headcount.
-    _renormalize_third_party_covers(db, engagement_id)
     db.commit()
 
 
@@ -642,14 +591,34 @@ def set_licence_name_outcome(engagement_id: str, payload: schemas.LicenceNameOut
 
 
 # ---------- Third-party products ----------
+def _tool_out(row: models.ThirdPartyProduct, interp) -> dict:
+    """A tool as entered, plus its derived figures from the interpreter (read-only,
+    never stored on the row)."""
+    it = interp.tool(row.id)
+    return {
+        "id": row.id, "name": row.name, "vendor": row.vendor, "raw_cost": row.raw_cost,
+        "cost_period": row.cost_period, "covered_count_override": row.covered_count_override,
+        "renewal_date": row.renewal_date, "is_managed": row.is_managed,
+        "tooling_pct": row.tooling_pct, "source_tag": row.source_tag,
+        "persona_ids": row.persona_ids,
+        "annual_cost": it.annual_cost, "covered_count": it.people_covered,
+        "persona_covered_count": it.personas_headcount,
+        "per_unit_annual_cost": it.cost_per_person,
+        "effective_annual_cost": it.effective_annual_cost,
+        "effective_tooling_pct": it.tooling_pct, "tooling_source": it.tooling_source,
+    }
+
+
 @router.get("/third-party", response_model=list[schemas.ThirdPartyOut])
 def list_third_party(engagement_id: str, db: Session = Depends(get_db)):
     _require_engagement(db, engagement_id)
-    return db.execute(
+    interp = raw.interpreted(db, engagement_id)
+    rows = db.execute(
         select(models.ThirdPartyProduct).where(
             models.ThirdPartyProduct.engagement_id == engagement_id
         )
     ).scalars().all()
+    return [_tool_out(r, interp) for r in rows]
 
 
 def _set_tp_persona_tags(row: models.ThirdPartyProduct, persona_ids: list[str]):
@@ -668,11 +637,10 @@ def create_third_party(engagement_id: str, payload: schemas.ThirdPartyIn, db: Se
     persona_ids = data.pop("persona_ids", [])
     row = models.ThirdPartyProduct(engagement_id=engagement_id, **data)
     _set_tp_persona_tags(row, persona_ids)
-    _normalize_third_party(db, eng, row)
     db.add(row)
     db.commit()
     db.refresh(row)
-    return row
+    return _tool_out(row, raw.interpreted(db, engagement_id))
 
 
 @router.patch("/third-party/{tp_id}", response_model=schemas.ThirdPartyOut)
@@ -686,10 +654,9 @@ def update_third_party(engagement_id: str, tp_id: str, payload: schemas.ThirdPar
         _set_tp_persona_tags(row, data.pop("persona_ids"))
     for k, v in data.items():
         setattr(row, k, v)
-    _normalize_third_party(db, eng, row)
     db.commit()
     db.refresh(row)
-    return row
+    return _tool_out(row, raw.interpreted(db, engagement_id))
 
 
 @router.delete("/third-party/{tp_id}", status_code=204)

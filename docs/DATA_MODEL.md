@@ -666,29 +666,25 @@ Licence names.
 
 ### 4.6 ThirdPartyProduct — non-Microsoft spend
 - **Identity:** `uuid`. **Scope:** engagement-scoped.
-- **Field ownership:** user-entered (`name`, `raw_cost`, `cost_period`,
-  `covered_count_override`, `is_managed`, `tooling_pct`, `renewal_date`);
-  **derived-on-write** (`annual_cost`, `covered_count`, `effective_annual_cost`,
-  `per_unit_annual_cost`); provenance.
-- **Covers is derived:** `covered_count` = the combined headcount of the tagged
-  personas (§4.6a), unless the operator sets `covered_count_override`, which
-  always wins (e.g. the product covers more users than the tagged personas;
-  blank/NULL = derived). **Covers is a primary (core) field on the line-item row**
-  — because it drives the whole displacement economics — editing it sets
-  `covered_count_override`, with the persona-derived sum shown as the placeholder
-  (so a blank/unset covered population is visible at input, not buried). The
-  expander keeps the read-only derivation detail (persona sum, per-unit). The
-  persisted `covered_count` stays the single effective value the engine and
-  exports read.
-- **Write-normalization:** `_normalize_third_party()` in `routers/entities.py` —
-  the single place that: annualizes (`×12` if monthly), applies the managed split
-  (`effective = annual × tooling_pct` when managed, else `annual`), derives
-  `covered_count` (override else persona sum), and computes
-  `per_unit = effective / covered_count`. Every create/update calls it; nothing
-  else computes these. Persona headcount edits and persona deletes re-run it for
-  the engagement's products (`_renormalize_third_party_covers`) so derived covers
-  never go stale. A startup backfill preserved pre-existing manual covers values
-  that disagree with the persona sum as explicit overrides.
+- **Field ownership:** user-entered only (`name`, `raw_cost`, `cost_period`,
+  `covered_count_override`, `is_managed`, `tooling_pct`, `renewal_date`), plus
+  provenance. Nothing derived is stored on the row (TARGET_SCHEMA §4.5).
+- **`tooling_pct`:** NULL = inherit the engagement's default; code never writes the
+  resolved value back. Values stored before this rule are kept as explicit values
+  (TARGET_SCHEMA §12: today's data can't tell chosen from inherited); a person
+  clears the field to inherit.
+- **Derived (interpreted, never stored):** annual cost (`×12` if monthly), the
+  effective tooling % and its source, effective cost (`annual × tooling` when
+  managed), people covered (`covered_count_override` else the tagged personas'
+  headcount, §4.6a) and cost per person — all in `tco_engine/interpret.py`. The tool
+  API returns them read-only beside the entered fields (`annual_cost`,
+  `covered_count`, `persona_covered_count`, `effective_annual_cost`,
+  `per_unit_annual_cost`, `effective_tooling_pct`, `tooling_source`). People covered
+  is a core field on the row: editing it sets `covered_count_override`, with the
+  personas' headcount shown as the placeholder.
+- **Upgrade:** the stored derived columns are dropped at startup. Before they are,
+  a value typed into the old covers column (non-zero, different from the personas'
+  headcount, no override) is kept as `covered_count_override` (`db._preserve_manual_covers`).
 - **CRUD:** `GET/POST/PATCH/DELETE …/third-party`; `persona_ids` on the body
   reconciles the tag set.
 - **Relationships:** target of `CoverageMapEntry` (third-party) and of exactly one
@@ -1173,15 +1169,15 @@ Conventions that make it repeatable, not snowflaked:
 - Every handler first calls `_require_engagement(db, eid)` — one ownership guard.
 - Every sub-resource handler re-checks `row.engagement_id == eid` before mutating,
   so an id from another engagement 404s instead of leaking.
-- Create/update for any data set with derived fields routes through that set's
-  single write-normalization function (e.g. `_normalize_third_party`).
+- Nothing derived is written on create/update: derived values are interpreted on
+  read (`tco_engine/interpret.py`) and returned beside the entered fields.
 - **Domain actions are explicit verbs**, not magic fields: `…/ratify`,
   `…/dispositions/{id}/override`, `…/duplicate`. Reading the result is a GET
   (`…/result`) and never writes.
 
 **Adding a new first-class data set:** define the §2 contract, add the ORM model
 (UUID PK, `engagement_id` FK, cascade relationship on Engagement), add Pydantic
-in/out schemas, and add the four CRUD routes + any write-normalization. Do not
+in/out schemas, and add the four CRUD routes. Derived values go in the interpreter. Do not
 introduce a second way to represent or fetch that data.
 
 ---
@@ -1192,8 +1188,8 @@ introduce a second way to represent or fetch that data.
 | --- | --- | --- | --- |
 | **User-entered** | The SA in the workshop | headcount, raw_cost, target price, `in_scope`, override choice | Never overwritten by compute |
 | **Seeded** | Library copy on create | Outcome name, Microsoft coverage | Editable; `is_custom`/`seed_key` track origin |
-| **Derived-on-write** | Normalization fn at write | annual_cost, per_unit, effective cost, annual prices | Recomputed on every create/update |
-| **Engine-output** | `compute` only | disposition, residual, scenario spend cache | Overwritten on every compute |
+| **Interpreted** | `tco_engine/interpret.py`, on read | a tool's annual / effective cost, people covered, cost per person; effective prices; shares | Never stored; rebuilt on every read |
+| **Engine-output** | the engine, on read | disposition, residual, scenario spend | Never stored; rebuilt on every read |
 
 If a field's owner is ambiguous, that is a design smell — pick one before shipping.
 

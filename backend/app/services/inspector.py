@@ -22,10 +22,9 @@ from .. import models
 _SKIP = {"engagement_id", ("current_microsoft_licenses", "persona_id")}
 
 _PROVENANCE = {"source_tag", "ai_suggested", "ratified", "seed_key", "catalog_version", "source"}
-_DERIVED = {
-    "annual_cost", "effective_annual_cost", "per_unit_annual_cost",
-    "covered_count",  # persona-headcount sum unless covered_count_override is set
-}
+# No derived value is stored on an engagement row any more: derived figures are
+# interpreted (tco_engine/interpret.py) and calculated (the engine), never persisted.
+_DERIVED: set[str] = set()
 _SYSTEM = {"created_at", "updated_at", "generated_at"}
 
 _LABELS = {
@@ -106,7 +105,7 @@ def _registry():
         {"cls": models.ThirdPartyProduct, "type": "ThirdPartyProduct",
          "label": "Third-party products",
          "desc": "Non-Microsoft spend. Effective cost (managed split) feeds displacement.",
-         "primary": ["name", "annual_cost", "covered_count"], "extra": ["persona_ids"]},
+         "primary": ["name", "raw_cost", "covered_count_override"], "extra": ["persona_ids"]},
         {"cls": models.CoverageMapEntry, "type": "CoverageMapEntry", "label": "Coverage map",
          "desc": "Product ↔ outcome matrix. Only ratified entries reach the engine.",
          "primary": ["outcome_id", "coverage", "ratified"], "extra": []},

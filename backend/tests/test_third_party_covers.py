@@ -107,48 +107,41 @@ def test_persona_headcount_change_and_delete_resync_covers(client):
     assert tp2["persona_covered_count"] == 700
 
 
-def test_startup_backfill_preserves_manual_covers(client):
-    """Rows from before covers became derived: a non-zero manual value that
-    disagrees with the persona sum becomes an explicit override (math unchanged);
-    an unfilled zero with tagged personas re-derives from them."""
-    from app import models
-    from app.db import SessionLocal
-    from app.main import _backfill_third_party_covers_override
+def test_dropping_stored_covers_keeps_a_typed_value_as_the_override(client):
+    """A database from before covers became derived holds people-covered values a
+    person typed in the stored column. Before that column is dropped, a non-zero
+    value that differs from the tagged personas' headcount becomes the explicit
+    override, so no number changes; one equal to the personas' sum, or zero, is
+    left to derive."""
+    from sqlalchemy import text
 
-    eid = _mk_engagement(client, "Covers Backfill Co")
+    from app.db import _preserve_manual_covers, engine
+
+    eid = _mk_engagement(client, "Covers Upgrade Co")
     kw = _mk_persona(client, eid, "KW", 100)
-    tagged = client.post(f"/api/engagements/{eid}/third-party", json={
-        "name": "LegacyManual", "raw_cost": 4000, "persona_ids": [kw["id"]]}).json()
-    zeroed = client.post(f"/api/engagements/{eid}/third-party", json={
-        "name": "LegacyZero", "raw_cost": 5000, "persona_ids": [kw["id"]]}).json()
-    untagged = client.post(f"/api/engagements/{eid}/third-party", json={
-        "name": "LegacyUntagged", "raw_cost": 7000}).json()
+    rows = {n: client.post(f"/api/engagements/{eid}/third-party", json={
+        "name": n, "raw_cost": 4000, **({"persona_ids": [kw["id"]]} if n != "Untagged" else {})}).json()
+        for n in ("Typed", "SameAsPersonas", "Zero", "Untagged")}
 
-    db = SessionLocal()
+    # Recreate the legacy column with the values an old version stored.
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE third_party_products ADD COLUMN covered_count INTEGER"))
+        for name, value in (("Typed", 40), ("SameAsPersonas", 100), ("Zero", 0), ("Untagged", 70)):
+            conn.execute(text("UPDATE third_party_products SET covered_count = :v WHERE id = :i"),
+                         {"v": value, "i": rows[name]["id"]})
     try:
-        # Simulate pre-migration rows: manual covers values, no override column.
-        db.get(models.ThirdPartyProduct, tagged["id"]).covered_count = 40
-        db.get(models.ThirdPartyProduct, zeroed["id"]).covered_count = 0
-        db.get(models.ThirdPartyProduct, untagged["id"]).covered_count = 70
-        db.commit()
-        _backfill_third_party_covers_override(db)
-        _backfill_third_party_covers_override(db)  # idempotent
+        _preserve_manual_covers()
+        _preserve_manual_covers()  # idempotent
     finally:
-        db.close()
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE third_party_products DROP COLUMN covered_count"))
 
-    rows = {t["name"]: t for t in client.get(f"/api/engagements/{eid}/third-party").json()}
-    # Manual 40 vs persona sum 100 → preserved as an override.
-    assert rows["LegacyManual"]["covered_count_override"] == 40
-    assert rows["LegacyManual"]["covered_count"] == 40
-    # Unfilled 0 with a tagged persona → re-derived to the persona sum.
-    assert rows["LegacyZero"]["covered_count_override"] is None
-    assert rows["LegacyZero"]["covered_count"] == 100
-    assert float(rows["LegacyZero"]["per_unit_annual_cost"]) == 50.0  # 5000 / 100
-    # Manual 70 with no tags → preserved as an override.
-    assert rows["LegacyUntagged"]["covered_count_override"] == 70
-    assert rows["LegacyUntagged"]["covered_count"] == 70
-
-
+    got = {t["name"]: t for t in client.get(f"/api/engagements/{eid}/third-party").json()}
+    assert got["Typed"]["covered_count_override"] == 40 and got["Typed"]["covered_count"] == 40
+    assert got["Untagged"]["covered_count_override"] == 70
+    assert got["SameAsPersonas"]["covered_count_override"] is None
+    assert got["SameAsPersonas"]["covered_count"] == 100
+    assert got["Zero"]["covered_count_override"] is None and got["Zero"]["covered_count"] == 100
 def test_duplicate_carries_covers_override(client):
     eid = _mk_engagement(client, "Covers Dup Co")
     kw = _mk_persona(client, eid, "KW", 120)
@@ -162,3 +155,25 @@ def test_duplicate_carries_covers_override(client):
     assert tp["covered_count_override"] == 240
     assert tp["covered_count"] == 240
     assert tp["persona_covered_count"] == 120
+
+
+def test_tooling_inherits_the_engagement_default_until_a_person_sets_it(client):
+    """A managed tool with no tooling % of its own stores NULL and follows the
+    engagement's default, including when the default changes later (TARGET_SCHEMA
+    §4.5). Setting it stores the person's value; clearing it inherits again."""
+    eid = _mk_engagement(client, "Tooling Co")
+    kw = _mk_persona(client, eid, "KW", 100)
+    t = client.post(f"/api/engagements/{eid}/third-party", json={
+        "name": "MSSP", "raw_cost": 10000, "is_managed": True, "persona_ids": [kw["id"]]}).json()
+    assert t["tooling_pct"] is None and t["tooling_source"] == "engagement"
+    assert float(t["effective_tooling_pct"]) == 0.30 and float(t["effective_annual_cost"]) == 3000.0
+
+    client.patch(f"/api/engagements/{eid}", json={"global_tooling_pct": 0.5})
+    [t] = client.get(f"/api/engagements/{eid}/third-party").json()
+    assert t["tooling_pct"] is None and float(t["effective_annual_cost"]) == 5000.0
+
+    t = client.patch(f"/api/engagements/{eid}/third-party/{t['id']}", json={"tooling_pct": 0.2}).json()
+    assert float(t["tooling_pct"]) == 0.2 and t["tooling_source"] == "tool"
+    assert float(t["effective_annual_cost"]) == 2000.0
+    t = client.patch(f"/api/engagements/{eid}/third-party/{t['id']}", json={"tooling_pct": None}).json()
+    assert t["tooling_pct"] is None and float(t["effective_annual_cost"]) == 5000.0

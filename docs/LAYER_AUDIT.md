@@ -104,11 +104,27 @@ and the ORM price properties are now deleted.
 
 ## Phase 3 — no derived value written onto a raw row; references by key
 
-- Retire the `ThirdPartyProduct` derived columns (`annual_cost`, `covered_count`, `per_unit_annual_cost`, `effective_annual_cost`). `_normalize_third_party` also writes the resolved `tooling_pct` onto the raw column, and an engagement-default change never reaches existing tools.
-- Store "use the default" as NULL (tooling %, defaults copied at engagement creation).
+**3a (done):**
+- A tool row stores only what was entered. The four derived columns are
+  dropped, and a value typed into the old covers column is kept as the override
+  first.
+- `_normalize_third_party` is gone. `tooling_pct` is nullable, and NULL means
+  inherit the engagement default, so a change to that default now reaches its
+  tools.
+- The tool API returns the interpreter's figures read-only.
+
+**Still to do:**
+- Store "use the default" as NULL for the engagement defaults copied from the
+  install settings at creation.
 - A carve-out keeps the parent's entered headcount; the effective headcount is interpreted.
 - Scenario and licence targets carry a `bundle_id` set by the picker. Name and substring resolution (`bundles.resolve_bundle`, which ends in `ILIKE %ref%`) is only for unlinked rows, which are flagged unread.
 - List prices follow the live catalog; a typed price is an explicit override (D9).
+
+The carve-out headcount and live list prices both change what existing
+engagements have stored (a parent's headcount; a stored list price becoming
+"follow the catalog"). CLAUDE.md forbids migrating existing engagement data
+outside the planned move to the target schema, so they land with that
+migration (TARGET_SCHEMA §12), with its before/after report.
 
 ## Phase 4 — trace any number back to what was entered
 

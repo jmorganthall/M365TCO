@@ -222,12 +222,9 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
     for tp in src.third_party_products:
         ntp = models.ThirdPartyProduct(
             engagement_id=dst.id, name=tp.name, vendor=tp.vendor, raw_cost=tp.raw_cost,
-            cost_period=tp.cost_period, annual_cost=tp.annual_cost,
-            covered_count=tp.covered_count, covered_count_override=tp.covered_count_override,
-            per_unit_annual_cost=tp.per_unit_annual_cost,
+            cost_period=tp.cost_period, covered_count_override=tp.covered_count_override,
             renewal_date=tp.renewal_date,
-            is_managed=tp.is_managed, tooling_pct=tp.tooling_pct,
-            effective_annual_cost=tp.effective_annual_cost, source_tag=tp.source_tag,
+            is_managed=tp.is_managed, tooling_pct=tp.tooling_pct, source_tag=tp.source_tag,
         )
         for pid in tp.persona_ids:
             mapped = persona_map.get(pid)
@@ -369,7 +366,7 @@ def sanity_check(engagement_id: str, db: Session = Depends(get_db)):
     if not ai.is_enabled():
         raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
     result = results.current_result(db, engagement_id)
-    summary = sanity.build_sanity_payload(eng, result)
+    summary = sanity.build_sanity_payload(eng, result, raw_layer.interpreted(db, engagement_id))
     row = defaults.get_defaults(db)
     model = row.sanity_check_model or settings.sanity_check_model
     try:

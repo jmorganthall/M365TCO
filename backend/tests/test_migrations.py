@@ -208,3 +208,25 @@ def test_backfill_process_automation_coverage_targets_power_automate_suites(tmp_
     # F1 was never granted it (no Power Platform), and only once per bundle.
     assert "m365-f1" not in got
     assert len(rows) == len(got)
+
+
+def test_a_not_null_column_that_became_nullable_is_relaxed_keeping_its_values(tmp_path):
+    """third_party_products.tooling_pct was NOT NULL with the resolved value written
+    back; NULL now means "inherit the engagement default". An existing database is
+    rebuilt nullable with every stored value kept."""
+    from app.db import _relax_not_null
+
+    eng = create_engine(f"sqlite:///{tmp_path}/old.db")
+    with eng.begin() as c:
+        c.execute(text("CREATE TABLE third_party_products ("
+                       "id VARCHAR PRIMARY KEY, name VARCHAR, tooling_pct NUMERIC(6, 4) NOT NULL)"))
+        c.execute(text("INSERT INTO third_party_products VALUES ('t1', 'Okta', 0.45)"))
+
+    _relax_not_null(eng)
+    _relax_not_null(eng)  # idempotent
+
+    col = next(c for c in inspect(eng).get_columns("third_party_products") if c["name"] == "tooling_pct")
+    assert col["nullable"]
+    with eng.begin() as c:
+        assert float(c.execute(text("SELECT tooling_pct FROM third_party_products WHERE id='t1'")).scalar()) == 0.45
+        c.execute(text("INSERT INTO third_party_products (id, name, tooling_pct) VALUES ('t2', 'New', NULL)"))

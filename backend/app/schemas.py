@@ -449,17 +449,21 @@ class ThirdPartyOut(ORMModel):
     vendor: str
     raw_cost: Decimal
     cost_period: str
-    annual_cost: Decimal
-    covered_count: int  # effective covers: override if set, else the persona sum
     covered_count_override: Optional[int]
-    persona_covered_count: int  # derived: combined headcount of tagged personas
-    per_unit_annual_cost: Decimal
     renewal_date: Optional[date]
     is_managed: bool
-    tooling_pct: Decimal
-    effective_annual_cost: Decimal
+    tooling_pct: Optional[Decimal]  # as entered; NULL = inherit the engagement default
     source_tag: str
     persona_ids: list[str]
+    # Derived, read-only — the interpreter's values (tco_engine/interpret.py), never
+    # stored on the row.
+    annual_cost: Decimal
+    covered_count: int            # people covered: the override if set, else the personas
+    persona_covered_count: int    # the tagged personas' combined headcount
+    per_unit_annual_cost: Decimal
+    effective_annual_cost: Decimal
+    effective_tooling_pct: Decimal
+    tooling_source: str           # "tool" | "engagement"
 
 
 # ---- Coverage map entry ----

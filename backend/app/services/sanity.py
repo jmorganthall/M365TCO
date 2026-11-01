@@ -15,7 +15,7 @@ from __future__ import annotations
 SEVERITIES = ("error", "warn", "info")
 
 
-def build_sanity_payload(eng, result: dict) -> dict:
+def build_sanity_payload(eng, result: dict, interpreted) -> dict:
     """Assemble a compact, model-friendly summary of an engagement's inputs and
     computed rollup. Pure: takes the ORM engagement and the serialized compute
     result, returns a plain dict. Kept small on purpose — the check reasons over
@@ -41,12 +41,13 @@ def build_sanity_payload(eng, result: dict) -> dict:
         }
         for l in eng.licenses_in_scope
     ]
+    # Each tool's cost and people covered as the interpreter reads them.
     third_party = [
         {
-            "name": t.name, "annual_cost": float(t.annual_cost or 0),
-            "covered_count": t.covered_count, "is_managed": t.is_managed,
+            "name": t.name, "annual_cost": float(t.annual_cost),
+            "covered_count": t.people_covered, "is_managed": raw_t.is_managed,
         }
-        for t in eng.third_party_products
+        for t, raw_t in zip(interpreted.tools, interpreted.raw.tools)
     ]
     return {
         "customer": eng.customer_name,
