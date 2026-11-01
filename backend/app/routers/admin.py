@@ -78,6 +78,7 @@ def update_global_defaults(
     for k, v in payload.model_dump(exclude_unset=True).items():
         if v is not None:
             setattr(row, k, v)
+    db.add(row)  # the first save creates the record
     db.commit()
     db.refresh(row)
     return row

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import Help from './Help.jsx'
 import { api, usd, money, pct, useDataVersion, useInterpreted, useResult } from '../api'
 import BundleAnalysis from './BundleAnalysis.jsx'
+import TracePanel from './TracePanel.jsx'
 import SkuCombobox from './SkuCombobox.jsx'
 import { BasisSelect, effectiveBasis, termLabel, billingLabel, segmentLabel } from './basis.jsx'
 import { TextInput } from './CommitInput.jsx'
@@ -25,7 +26,7 @@ function MonthlyInput({ annual, onCommit, style }) {
 // base price, discount, term/payment model, and add-on bundles (composed) in
 // the expander. Term/billing default to the engagement's pricing basis; a
 // line-level selection requotes the composed target from the catalog.
-function ScenarioRow({ p, s, r, iv, bundles, basis, meta, moneyUnit, update, remove, onAnalyze, onCarve, parentName }) {
+function ScenarioRow({ p, s, r, iv, onTrace, bundles, basis, meta, moneyUnit, update, remove, onAnalyze, onCarve, parentName }) {
   const [open, setOpen] = useState(false)
   // The last SETTLED target pick (not the live typed text) — "changed SKU"
   // means a genuinely different product, which re-seeds the $/seat/mo.
@@ -140,6 +141,7 @@ function ScenarioRow({ p, s, r, iv, bundles, basis, meta, moneyUnit, update, rem
         <td className={`num ${r && r.delta_annual < 0 ? 'pos' : ''}`} data-label="Delta">{r ? money(r.delta_annual, moneyUnit) : '—'}</td>
         <td className="num">
           <button className="ghost sm" title="Best bundle" onClick={onAnalyze}>⚡</button>{' '}
+          <button className="ghost sm" title="How these numbers were built" onClick={onTrace}>🔎</button>{' '}
           {onCarve && (
             <>
               <button className="ghost sm" title="Move part of this persona onto a different plan"
@@ -324,6 +326,7 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
   const [err, setErr] = useState('')
   const [analyzePersona, setAnalyzePersona] = useState(null)
   const [carvePersona, setCarvePersona] = useState(null)
+  const [tracePersona, setTracePersona] = useState(null)   // the persona whose numbers are traced
   const [splits, setSplits] = useState([])        // seat-cap split offers (D27)
   const [dismissed, setDismissed] = useState({})   // "Not now", this visit only
 
@@ -408,7 +411,8 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
             )
             return (
               <React.Fragment key={p.id}>
-                <ScenarioRow p={p} s={s} r={resultFor(s.id)} iv={interp.scenario[s.id]} bundles={bundles} basis={basis}
+                <ScenarioRow p={p} s={s} r={resultFor(s.id)} iv={interp.scenario[s.id]}
+                  onTrace={() => setTracePersona(p.id)} bundles={bundles} basis={basis}
                   meta={meta} moneyUnit={moneyUnit} update={update} remove={remove}
                   onAnalyze={() => setAnalyzePersona(p)}
                   onCarve={p.parent_persona_id ? null
@@ -443,6 +447,9 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
         </tbody>
       </table>
 
+      {tracePersona && (
+        <TracePanel engagement={engagement} personaId={tracePersona} onClose={() => setTracePersona(null)} />
+      )}
       {analyzePersona && (
         <BundleAnalysis engagement={engagement} persona={analyzePersona}
           onApply={(composed) => applyBundle(analyzePersona, composed)}
