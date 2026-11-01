@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Optional
 
-from .rules import applies_to, covers_tool
+from .rules import applies_to, covers_tool, headcount_shares
 from .models import (
     Coverage,
     CoverageScope,
@@ -546,34 +546,28 @@ def compute(engagement: Engagement) -> EngineResult:
     # coverage (6.10), the seat cap and Review use. A persona without a scenario
     # keeps its share (it isn't moving), so a move retires only its own share.
 
+    # Each line's split across the personas it applies to, by headcount — the one
+    # definition (tco_engine/rules.headcount_shares), shared with the interpreter.
+    # A single-persona line counts in full; a shared line is never double-counted;
+    # with no headcount among them the line splits evenly so no cost is lost.
+    hc = {pid: p.headcount for pid, p in personas.items()}
+    line_shares = [
+        headcount_shares(list(line.persona_ids) or list(personas), hc)
+        for line in engagement.current_licenses
+    ]
+
     scenario_results: list[ScenarioResult] = []
     for scenario in engagement.scenarios:
         persona = personas.get(scenario.persona_id)
         if persona is None:
             continue
 
-        # Each current license applies to one or more personas; its total cost is
-        # distributed across their combined headcount, so this persona's share is
-        # (its headcount / the pool's total headcount). A single-persona line
-        # therefore counts in full, and a shared line is never double-counted
-        # across personas (Section 6.2). An untagged line's pool is every persona
-        # with a scenario (org-wide), so it is attributed and retired rather than
-        # dropped.
         current_ms = Decimal("0")
-        for line in engagement.current_licenses:
-            if line.persona_ids:
-                if persona.id not in line.persona_ids:
-                    continue
-                pool = [pid for pid in line.persona_ids if pid in personas]
-            else:  # untagged -> Org-wide: every persona
-                pool = list(personas)
+        for line, shares in zip(engagement.current_licenses, line_shares):
+            if not applies_to(line.persona_ids, persona.id):
+                continue
             line_total = Decimal(line.quantity_assigned) * line.unit_price_paid_annual
-            pool_hc = sum(personas[pid].headcount for pid in pool)
-            if pool_hc > 0:
-                share = Decimal(persona.headcount) / Decimal(pool_hc)
-            else:  # personas with no headcount → even split so cost isn't lost
-                share = Decimal(1) / Decimal(len(pool) or 1)
-            current_ms += line_total * share
+            current_ms += line_total * shares.get(persona.id, Decimal(0))
 
         # Linear-by-user offset, capped at the covered population (Sections
         # 6.3 / 6.3a): each product this scenario displaces credits its

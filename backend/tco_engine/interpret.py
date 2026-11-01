@@ -25,12 +25,13 @@ as a raw fact, so this module stays portable with the engine.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import cached_property
 from datetime import date
 from decimal import Decimal
 from typing import Optional
 
 from .money import cost_per_person, managed_effective_cost
-from .rules import covers_tool
+from .rules import covers_tool, headcount_shares
 from .models import (
     CoverageScope,
     CurrentLicenseLine,
@@ -45,23 +46,6 @@ from .models import (
 
 ZERO = Decimal("0")
 ONE = Decimal("1")
-
-
-# ---------------------------------------------------------------------------
-# Shares
-# ---------------------------------------------------------------------------
-
-def headcount_shares(applies_to: list[str], headcount: dict[str, int]) -> dict[str, Decimal]:
-    """Each persona's fraction of something that applies to `applies_to`, by
-    headcount (ENGINE_SPEC 6.2). With no headcount among them, an even split so no
-    cost is lost. Fractions sum to 1 (empty when it applies to nobody)."""
-    pool = [pid for pid in applies_to if pid in headcount]
-    if not pool:
-        return {}
-    total = sum(headcount[pid] for pid in pool)
-    if total > 0:
-        return {pid: Decimal(headcount[pid]) / Decimal(total) for pid in pool}
-    return {pid: ONE / Decimal(len(pool)) for pid in pool}
 
 
 # ---------------------------------------------------------------------------
@@ -393,11 +377,19 @@ class Interpreted:
     seat_caps: tuple[ISeatCap, ...] = ()
     findings: tuple[IFinding, ...] = ()
 
+    @cached_property
+    def _licence_index(self) -> dict[str, ILicenseLine]:
+        return {l.id: l for l in self.licence_lines}
+
+    @cached_property
+    def _tool_index(self) -> dict[str, ITool]:
+        return {t.id: t for t in self.tools}
+
     def licence(self, licence_id: str) -> ILicenseLine:
-        return next(l for l in self.licence_lines if l.id == licence_id)
+        return self._licence_index[licence_id]
 
     def tool(self, tool_id: str) -> ITool:
-        return next(t for t in self.tools if t.id == tool_id)
+        return self._tool_index[tool_id]
 
     def lines_for(self, persona_id: str) -> list[ILicenseLine]:
         """The in-scope licence lines that apply to a persona (tagged, or Org-wide)."""
