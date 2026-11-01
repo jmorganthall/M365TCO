@@ -19,7 +19,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from .. import models
-from . import raw, results
+from . import raw, results, review
 
 RULES = {
     "today_microsoft": (
@@ -167,6 +167,17 @@ def persona_trace(db: Session, engagement_id: str, persona_id: str) -> dict:
             "rule": RULES["change"], "parts": [],
         })
 
+    # ---- Open questions that touch this persona (Review's wording) -------
+    # A finding about the persona itself, or about a licence or tool it holds.
+    its_lines = {l.id for l in i.lines_for(persona_id)}
+    its_tools = {t for (t, p) in i.tool_shares if p == persona_id}
+    questions = [
+        {"code": c["code"], "step": c["step"], "severity": c["severity"], "message": c["message"]}
+        for c in review.review(db, engagement_id)["checks"]
+        if c.get("persona_id") == persona_id or persona_id in (c.get("persona_ids") or ())
+        or c.get("licence_id") in its_lines or c.get("tool_id") in its_tools
+    ]
+
     headline = result.rollup.headline
     items = [{
         "label": t.label, "sub_line": t.sub_line, "annual_amount": _f(t.annual_amount),
@@ -180,4 +191,5 @@ def persona_trace(db: Session, engagement_id: str, persona_id: str) -> dict:
                     "in_scope": bool(sr.in_scope) if sr else False},
         "figures": figures,
         "headline_items": items,
+        "questions": questions,
     }

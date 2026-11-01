@@ -105,14 +105,14 @@ export default function BundleAnalysis({ engagement, persona, onApply, onClose }
                       {' · '}{usd(b.alone_saves_annual / 12)}/mo less</span>
                   )}
                   {b.cap_limited && (
-                    <span className="badge neg" title="Other personas use every Business seat.">
-                      No Business seats left
+                    <span className="badge neg" title={`Other personas use every seat under ${b.cap_name || 'the seat cap'}.`}>
+                      No seats left under the cap
                     </span>
                   )}
                   {b.over_cap_by > 0 && (
                     <span className="badge"
-                      title={`${b.cap_headroom} Business seats left; ${b.over_cap_by} of ${persona.headcount} would be over. After applying, split them on the row.`}>
-                      {b.over_cap_by} over the Business cap
+                      title={`${b.cap_name || 'The seat cap'}: ${b.cap_headroom} seats left; ${b.over_cap_by} of ${persona.headcount} would be over. After applying, split them on the row.`}>
+                      {b.over_cap_by} over the seat cap
                     </span>
                   )}
                   {b.addons.length > 0 && (

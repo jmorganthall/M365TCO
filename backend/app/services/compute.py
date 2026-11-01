@@ -264,6 +264,7 @@ def analyze_persona_bundles(
     # left the family isn't recommended; with too few, the recommendation stands and
     # the persona is offered a split (seat_cap.split_offer).
     cap_headroom_by_reference: dict[str, int] = {}
+    cap_name_by_reference: dict[str, str] = {}    # the limit's own name, for wording
     seat_caps = limits.seat_cap_context(db, engagement_id, exclude_persona_id=persona_id,
                                         interpreted=interp)
     capped_refs: set[str] = set()
@@ -274,9 +275,9 @@ def analyze_persona_bundles(
         for cap in seat_caps:
             for ref in cap["member_references"]:
                 # If a reference is capped by more than one limit, the tightest wins.
-                cap_headroom_by_reference[ref] = min(
-                    cap["headroom"], cap_headroom_by_reference.get(ref, cap["headroom"])
-                )
+                if cap["headroom"] <= cap_headroom_by_reference.get(ref, cap["headroom"]):
+                    cap_headroom_by_reference[ref] = cap["headroom"]
+                    cap_name_by_reference[ref] = cap["name"]
 
     if headcount is not None and persona.headcount:
         current_ms = current_ms * Decimal(n) / Decimal(persona.headcount)
@@ -477,6 +478,7 @@ def analyze_persona_bundles(
             "cap_limited": b.cap_limited,
             "cap_headroom": b.cap_headroom,
             "over_cap_by": b.over_cap_by,
+            "cap_name": cap_name_by_reference.get(b.sku_reference),
             "positioning": positioning(b),
             # D29: the family's shared tool decision gives this plan; and this
             # persona's own cheaper plan, which decides a tool differently.

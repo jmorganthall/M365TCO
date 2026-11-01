@@ -96,6 +96,19 @@ export default function TracePanel({ engagement, personaId, onClose }) {
             })}
           </div>
         ))}
+        {t && t.questions?.length > 0 && (
+          <div className="trace-figure">
+            <b>Open questions that touch these numbers</b>
+            <ul style={{ margin: '.3rem 0 0', paddingLeft: '1.1rem' }}>
+              {t.questions.map((q, i) => (
+                <li key={i} className={q.severity === 'warn' ? '' : 'muted'}>
+                  {q.message}{' '}
+                  <a className="sm" href={`#/e/${eid}/${q.step}`} onClick={onClose}>{stepTitle(q.step)} ›</a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {t && t.headline_items.length > 0 && (
           <div className="trace-figure">
             <b>When it counts in the headline</b>

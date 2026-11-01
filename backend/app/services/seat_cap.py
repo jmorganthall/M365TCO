@@ -56,7 +56,7 @@ def split_offer(db: Session, engagement_id: str, persona_id: str, interpreted=No
     if f is None:
         return None
     x = f.facts
-    cap_name = next(c.name for c in i.seat_caps if c.key == x["cap_key"])
+    cap_name = x["cap_name"]
     headcount = x["headcount"]
     seats_left = x["seats_left"]
     other_seats = headcount - seats_left

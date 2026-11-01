@@ -679,7 +679,7 @@ def _findings(raw, lines, tools, scenarios, tables, seat_caps) -> tuple[IFinding
         kind = "no_seats" if left <= 0 else "nested" if p.parent_persona_id else "split"
         f.append(IFinding("seat_cap_exceeded", "future", persona_id=p.id, facts={
             "kind": kind, "persona_name": p.name, "headcount": p.headcount,
-            "plan": s.target_sku_reference, "cap_key": c.key, "cap": c.max_quantity,
+            "plan": s.target_sku_reference, "cap_key": c.key, "cap_name": c.name, "cap": c.max_quantity,
             "used_elsewhere": c.used_by_others(p.id), "seats_left": left}))
 
     # ---- Capability comparison ----

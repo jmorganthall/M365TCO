@@ -32,8 +32,11 @@ def review(db: Session, engagement_id: str) -> dict:
     checks: list[dict] = []
     left_out: list[dict] = []
 
+    subject: dict = {}   # what the finding being worded is about (persona, licence, tool)
+
     def check(code, step, message, severity="warn"):
-        checks.append({"code": code, "step": step, "severity": severity, "message": message})
+        checks.append({"code": code, "step": step, "severity": severity, "message": message,
+                       **subject})
 
     def leave_out(what, why, step):
         left_out.append({"what": what, "why": why, "step": step})
@@ -54,7 +57,10 @@ def review(db: Session, engagement_id: str) -> dict:
     for f in i.findings:
         x = f.facts
         if f.code in after_future and not residual_done:
+            subject = {}
             residual(); residual_done = True
+        subject = {"persona_id": f.persona_id, "licence_id": f.licence_id, "tool_id": f.tool_id,
+                   "persona_ids": list(x.get("persona_ids") or ())}
         if f.code == "no_groups":
             check(f.code, f.step, "No personas yet. Add the personas who get different licences.")
         elif f.code == "headcount_vs_employees":
@@ -99,15 +105,15 @@ def review(db: Session, engagement_id: str) -> dict:
             check(f.code, f.step, f"{x['name']} has no future plan yet, so it isn't in the totals.")
         elif f.code == "seat_cap_exceeded":
             if x["kind"] == "no_seats":
-                msg = (f"{x['persona_name']}: {x['headcount']:,} people on {x['plan']}, but no Business "
-                       f"seats are left ({x['used_elsewhere']:,} of {x['cap']:,} are used by other personas). "
+                msg = (f"{x['persona_name']}: {x['headcount']:,} people on {x['plan']}, but {x['cap_name']} has no "
+                       f"seats left ({x['used_elsewhere']:,} of {x['cap']:,} are used by other personas). "
                        f"Choose another plan on Future state.")
             elif x["kind"] == "nested":
-                msg = (f"{x['persona_name']}: {x['headcount']:,} people on {x['plan']}, but only "
-                       f"{x['seats_left']:,} Business seats are left. Reduce this carve-out on Future state.")
+                msg = (f"{x['persona_name']}: {x['headcount']:,} people on {x['plan']}, but {x['cap_name']} "
+                       f"has only {x['seats_left']:,} seats left. Reduce this carve-out on Future state.")
             else:
-                msg = (f"{x['persona_name']}: {x['headcount']:,} people on {x['plan']}, but only "
-                       f"{x['seats_left']:,} Business seats are left. Split it on Future state.")
+                msg = (f"{x['persona_name']}: {x['headcount']:,} people on {x['plan']}, but {x['cap_name']} "
+                       f"has only {x['seats_left']:,} seats left. Split it on Future state.")
             check(f.code, f.step, msg)
         elif f.code == "license_unread":
             check(f.code, f.step,
@@ -131,6 +137,7 @@ def review(db: Session, engagement_id: str) -> dict:
                   f"{x['persona_name']}: {n} capabilit{y} the plan adds {verb} not yet confirmed as missing today.")
             leave_out(f"{n} new capabilit{y} for {x['persona_name']}",
                       "not yet confirmed as missing today", "gaps")
+    subject = {}
     if not residual_done:
         residual()
 

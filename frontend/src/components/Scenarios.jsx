@@ -501,14 +501,14 @@ function SplitOffer({ eid, offer: o, onLater, onDone }) {
   const elsewhere = o.used_elsewhere
     ? ` (the rest of the future state uses ${o.used_elsewhere.toLocaleString()} of ${o.cap.toLocaleString()})` : ''
   const head = (
-    <><b>Over the {o.cap.toLocaleString()}-seat Business cap.</b> {o.headcount.toLocaleString()} people on{' '}
-      {o.plan}, {o.seats_left.toLocaleString()} Business seats left{elsewhere}.</>
+    <><b>Over the {o.cap.toLocaleString()}-seat limit</b> — {o.cap_name}. {o.headcount.toLocaleString()} people on{' '}
+      {o.plan}, {o.seats_left.toLocaleString()} seats left{elsewhere}.</>
   )
   if (o.kind !== 'split') {
     const why = {
-      no_seats: 'No Business seats are left, so there is nothing to split — choose another plan for this persona.',
+      no_seats: `${o.cap_name} has no seats left, so there is nothing to split — choose another plan for this persona.`,
       nested: 'This is a carve-out; reduce its seats, or split its parent instead.',
-      no_alternative: 'No priced plan outside the Business family covers what these people need, so the rest can\u2019t be placed.',
+      no_alternative: `No priced plan outside ${o.cap_name} covers what these people need, so the rest can\u2019t be placed.`,
     }[o.kind]
     return <div className="popcheck warn-box">{head} <span className="muted">{why}</span></div>
   }
@@ -527,7 +527,7 @@ function SplitOffer({ eid, offer: o, onLater, onDone }) {
       <div style={{ margin: '.35rem 0' }}>
         Split it: <b>{o.persona_name}</b> keeps {o.parent_side === 'capped' ? capped : other}; a carve-out
         takes {o.parent_side === 'capped' ? other : capped} — {o.other_plan} is the best plan for them
-        without the Business cap. The carve-out keeps their licences, tools and requirements.
+        outside {o.cap_name}. The carve-out keeps their licences, tools and requirements.
       </div>
       <div style={{ display: 'flex', gap: '.5rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div style={{ minWidth: 280 }}><label>Carve-out name</label>
