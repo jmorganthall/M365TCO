@@ -12,10 +12,7 @@ from .. import models
 
 
 def get_defaults(db: Session) -> models.GlobalDefaults:
+    """The install settings. Before anyone saves them, an unsaved row with the
+    built-in defaults — reading never creates it (viewing never writes)."""
     row = db.get(models.GlobalDefaults, "singleton")
-    if row is None:
-        row = models.GlobalDefaults(id="singleton")
-        db.add(row)
-        db.commit()
-        db.refresh(row)
-    return row
+    return row if row is not None else models.GlobalDefaults.unsaved()

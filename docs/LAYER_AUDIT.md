@@ -141,9 +141,21 @@ engagements have stored (a parent's headcount; a stored list price becoming
 outside the planned move to the target schema, so they land with that
 migration (TARGET_SCHEMA §12), with its before/after report.
 
-## Phase 4 — trace any number back to what was entered
+## Phase 4 — trace any number back to what was entered (done)
 
-Each calculated figure carries the interpreted rows it used, and each of those the
-raw rows behind them. The Data inspector gets a Trace panel:
-Calculated → Interpreted (derived, read-only) → Raw (editable, linked to its step),
-with the rule applied at each hop.
+`GET …/trace/personas/{id}` (`services/trace.py`) shows, for one persona, every
+figure the readout shows for it: Microsoft licences today, the tools its move
+retires, its recommended plan, and the change. Each figure has:
+- its value and the rule that produced it (worded from ENGINE_SPEC);
+- its parts, each with the **derived** values behind it (the interpreter,
+  read-only) and the **entered** values behind those, with the walkthrough step
+  that edits them;
+- the persona's timed amounts in the headline.
+
+Every figure's parts add up to it, and a test holds that. The GUI opens it with 🔎
+on each Future state row and on each persona column of the Summary bridge.
+
+Found on the way: reading the install settings created their row (a write on
+read). `GlobalDefaults.unsaved()` now returns the defaults without storing them;
+the first save creates the row. Engagement settings resolve through the same
+helper, so the built-in defaults are written once.

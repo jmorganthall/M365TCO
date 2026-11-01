@@ -16,7 +16,7 @@ from ..config import settings
 from ..db import get_db
 from ..services import (
     ai, ai_prompts, branding, compute, defaults, exporter, limits, narrative,
-    readout, results, review, sanity, seeds,
+    readout, results, review, sanity, seeds, trace,
 )
 from ..services import raw as raw_layer
 
@@ -334,6 +334,18 @@ def engagement_interpreted(engagement_id: str, db: Session = Depends(get_db)):
     the engine reads it. Derived and read-only."""
     _get_engagement(db, engagement_id)
     return raw_layer.interpreted_view(db, engagement_id)
+
+
+@router.get("/{engagement_id}/trace/personas/{persona_id}")
+def trace_persona(engagement_id: str, persona_id: str, db: Session = Depends(get_db)):
+    """How each of a persona's figures was built: the engine's figure, the derived
+    values behind it and the entries behind those, with the rule at each step
+    (services/trace). Reads only."""
+    _get_engagement(db, engagement_id)
+    try:
+        return trace.persona_trace(db, engagement_id, persona_id)
+    except ValueError:
+        raise HTTPException(404, "Persona not found")
 
 
 @router.post("/{engagement_id}/compute", deprecated=True)

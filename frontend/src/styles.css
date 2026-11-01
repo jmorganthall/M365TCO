@@ -490,3 +490,16 @@ button.badge.licence-flag { background: transparent; padding: .12rem .45rem; fon
   .vd-kpi-num { font-size: 2.3rem; }
   .vd-kpi { min-height: 160px; }
 }
+
+/* Trace panel (how a persona's numbers were built) */
+.trace-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .55); z-index: 50;
+  display: flex; justify-content: center; align-items: flex-start; overflow-y: auto; padding: 2rem 1rem; }
+.trace-panel { width: min(920px, 100%); margin: 0; }
+.trace-figure { border-top: 1px solid var(--border); padding: .7rem 0; }
+.trace-part { margin-top: .35rem; }
+.trace-part-head { width: 100%; display: flex; justify-content: space-between; text-align: left; }
+.trace-layers { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; padding: .4rem 0 .2rem 1rem; }
+.trace-facts { background: var(--panel2); border-radius: 6px; padding: .4rem .6rem; font-size: .8rem; }
+.trace-facts-head { font-weight: 600; margin-bottom: .25rem; display: flex; gap: .5rem; align-items: center; }
+.trace-facts td { padding: .1rem .4rem .1rem 0; vertical-align: top; }
+@media (max-width: 700px) { .trace-layers { grid-template-columns: 1fr; } }

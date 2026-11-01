@@ -87,14 +87,15 @@ def _source_tag_col(default="CustomerStated"):
     return mapped_column(SAEnum(*SOURCE_TAGS, name="source_tag"), default=default)
 
 
-# Engagement field -> (install settings field, built-in default when neither is set).
+# Engagement field -> the install settings field it inherits (GlobalDefaults, whose
+# column defaults are the built-in values).
 _INHERITABLE = {
-    "global_tooling_pct": ("default_tooling_pct", Decimal("0.30")),
-    "default_segment": ("default_segment", "Commercial"),
-    "default_term_duration": ("default_term_duration", "P1Y"),
-    "default_billing_plan": ("default_billing_plan", "Monthly"),
-    "ecif_roi_conservative": ("default_ecif_roi_conservative", Decimal("10")),
-    "ecif_roi_generous": ("default_ecif_roi_generous", Decimal("5")),
+    "global_tooling_pct": "default_tooling_pct",
+    "default_segment": "default_segment",
+    "default_term_duration": "default_term_duration",
+    "default_billing_plan": "default_billing_plan",
+    "ecif_roi_conservative": "default_ecif_roi_conservative",
+    "ecif_roi_generous": "default_ecif_roi_generous",
 }
 
 
@@ -179,11 +180,9 @@ class Engagement(Base):
 
         session = object_session(self)
         row = session.get(GlobalDefaults, "singleton") if session is not None else None
-        out = {}
-        for field, (install_field, built_in) in _INHERITABLE.items():
-            v = getattr(row, install_field, None) if row is not None else None
-            out[field] = v if v is not None else built_in
-        return out
+        if row is None:
+            row = GlobalDefaults.unsaved()
+        return {field: getattr(row, install_field) for field, install_field in _INHERITABLE.items()}
 
     @property
     def effective_settings(self) -> dict:
@@ -885,6 +884,17 @@ class GlobalDefaults(Base):
     their own copy of these values on creation ("seed, then own")."""
 
     __tablename__ = "global_defaults"
+
+    @classmethod
+    def unsaved(cls) -> "GlobalDefaults":
+        """The install settings before anyone has saved them: a row that isn't
+        stored, carrying each column's declared default. Reading never creates the
+        stored row; the first save does."""
+        row = cls(id="singleton")
+        for col in cls.__table__.columns:
+            if getattr(row, col.key) is None and col.default is not None and col.default.is_scalar:
+                setattr(row, col.key, col.default.arg)
+        return row
 
     # Single well-known row.
     id: Mapped[str] = mapped_column(String, primary_key=True, default="singleton")

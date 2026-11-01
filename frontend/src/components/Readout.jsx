@@ -6,6 +6,7 @@ import { api, usd, useDataVersion, useResult } from '../api'
 // The bridge tables keep signed accounting math.
 const usd0 = (v) => `$${Math.abs(Math.round(Number(v) || 0)).toLocaleString('en-US')}`
 import { PricingBadge } from './PricingBanner.jsx'
+import TracePanel from './TracePanel.jsx'
 
 export default function Readout({ engagement }) {
   const eid = engagement.id
@@ -19,6 +20,7 @@ export default function Readout({ engagement }) {
   const [narratives, setNarratives] = useState(null)
   const [narrativesAt, setNarrativesAt] = useState(null)
   const [outcomes, setOutcomes] = useState([])
+  const [tracePersona, setTracePersona] = useState(null)   // the persona whose numbers are traced
   const outcomeName = (id) => outcomes.find((o) => o.id === id)?.name || id
 
   useEffect(() => {
@@ -72,6 +74,9 @@ export default function Readout({ engagement }) {
 
   return (
     <>
+      {tracePersona && (
+        <TracePanel engagement={engagement} personaId={tracePersona} onClose={() => setTracePersona(null)} />
+      )}
       <div className="card">
         <div className="readout-toolbar">
           {aiEnabled && (
@@ -294,7 +299,9 @@ export default function Readout({ engagement }) {
                   <tr>
                     <th></th>
                     {cols.map((s) => (
-                      <th key={s.scenario_id} className="num">{s.persona_name}
+                      <th key={s.scenario_id} className="num">
+                        <button className="ghost sm" title="How these numbers were built"
+                          onClick={() => setTracePersona(s.persona_id)}>🔎 {s.persona_name}</button>
                         <small className="muted bridge-plan">→ {s.target_label || s.target_sku_reference}</small></th>
                     ))}
                     <th className="num">Total</th>
