@@ -150,7 +150,7 @@ export default function BundleAnalysis({ engagement, persona, onApply, onClose }
                 </div></td>
                 <td className="num">
                   <button className="sm" onClick={() => onApply({
-                    sku_reference: b.sku_reference,
+                    sku_reference: b.sku_reference, bundle_id: b.base_bundle_id,
                     price: prices?.[b.sku_reference] ?? b.base_price_annual,
                     addons: b.addons.map((a) => ({ bundle_id: a.bundle_id, unit_price_annual: a.unit_price_annual })),
                   })}>Use</button>

@@ -123,9 +123,16 @@ and the ORM price properties are now deleted.
 - This also removes a snowflake: the engagement's built-in billing default
   ("Annual") differed from the install's ("Monthly").
 
+**3c (done):**
+- A scenario stores the plan a person picked (`bundle_id`, TARGET_SCHEMA §5.2),
+  set by every picker. Name resolution is used only when nothing was picked, and
+  Future state says which: picked, matched by name, or not a library plan.
+- Re-pricing and add-on eligibility decide the base plan in one place
+  (`_scenario_base`), with the same rule as the interpreter.
+- Licence lines already had their link (the unknown-licence card's "same as").
+
 **Still to do:**
 - A carve-out keeps the parent's entered headcount; the effective headcount is interpreted.
-- Scenario and licence targets carry a `bundle_id` set by the picker. Name and substring resolution (`bundles.resolve_bundle`, which ends in `ILIKE %ref%`) is only for unlinked rows, which are flagged unread.
 - List prices follow the live catalog; a typed price is an explicit override (D9).
 
 The carve-out headcount and live list prices both change what existing

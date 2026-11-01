@@ -785,8 +785,14 @@ every other step while items wait, and the review's `library_update_pending` not
 
 ### 4.8 PersonaScenario — the target-state plan
 - **Identity:** `uuid`. **Scope:** engagement-scoped. One per persona in practice.
-- **Relationships:** hard FK `persona_id`; **soft ref** to the base target bundle
-  via `target_sku_reference`; **add-on bundles** via `ScenarioAddon` (§4.8a).
+- **Relationships:** hard FK `persona_id`; the base plan is the nullable FK
+  `bundle_id` when a person picked one (TARGET_SCHEMA §5.2 `base_bundle_key`), with
+  `target_sku_reference` the name as entered. With no pick, the name is resolved
+  (a soft ref). Every picker sets `bundle_id`: the SKU picker (a catalog SKU's
+  plan), ⚡ "Use", "Fill in recommended plans", the seat-cap split, a carve-out onto
+  the same plan, and duplicate. Typing a different plan's name drops it. The
+  interpreter reports `plan_source` (picked / name / none), shown under the plan on
+  Future state. **Add-on bundles** via `ScenarioAddon` (§4.8a).
 - **Field ownership:** user-entered (`target_sku_reference` + `target_unit_price_annual`
   = the base bundle & its list price, `target_discount_pct`, the price-override pair
   below, `in_scope`, `term_duration`/`billing_plan`). Its spend and delta are

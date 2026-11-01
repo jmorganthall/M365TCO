@@ -731,8 +731,13 @@ class PersonaScenario(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     engagement_id: Mapped[str] = mapped_column(ForeignKey("engagements.id"))
     persona_id: Mapped[str] = mapped_column(ForeignKey("personas.id"))
-    # The BASE bundle of the future state. Add-on bundles layer on via scenario_addons.
+    # The BASE bundle of the future state, as typed or picked (TARGET_SCHEMA §5.2
+    # `entered_reference`). Add-on bundles layer on via scenario_addons.
     target_sku_reference: Mapped[str] = mapped_column(String, default="")
+    # The library plan the base IS, when a person picked one (TARGET_SCHEMA §5.2
+    # `base_bundle_key`): set by every picker, so the plan never depends on how its
+    # name resolves. NULL = typed, not picked: the name is resolved instead.
+    bundle_id: Mapped[str | None] = mapped_column(ForeignKey("bundles.id"), nullable=True)
     target_unit_price_annual: Mapped[float] = mapped_column(Numeric(14, 4), default=0)
     # Discount off the composed list price (fraction; 0.15 = 15%). Applies to
     # base + add-ons to yield the net target price — unless a price override is on,

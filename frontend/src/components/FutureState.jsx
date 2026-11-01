@@ -58,7 +58,7 @@ function RecommendPlans({ engagement, onDone }) {
           continue
         }
         await api.post(`/api/engagements/${eid}/scenarios`, {
-          persona_id: p.id, target_sku_reference: best.sku_reference,
+          persona_id: p.id, target_sku_reference: best.sku_reference, bundle_id: best.base_bundle_id,
           target_unit_price_annual: best.base_price_annual, in_scope: true,
           addons: (best.addons || []).map((a) => ({ bundle_id: a.bundle_id, unit_price_annual: a.unit_price_annual })),
         })
