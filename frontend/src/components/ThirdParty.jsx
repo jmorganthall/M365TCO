@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api, money, pct } from '../api'
+import { api, money, pct, useInterpreted } from '../api'
 import Help from './Help.jsx'
 import DateInput from './DateInput.jsx'
 import { TextInput } from './CommitInput.jsx'
@@ -49,18 +49,17 @@ function UsedBy({ personas, tagIds, onChange, dimmed }) {
 // (name, cost, renewal, who uses it, managed), the unusual details — vendor, the
 // managed service's software share, a covers number that differs from the
 // personas' headcount — in the expander (docs/WALKTHROUGH.md §3, step 3).
-function ProductRow({ t, meta, personas, moneyUnit, update, remove }) {
+function ProductRow({ t, it, missing, meta, personas, moneyUnit, update, remove }) {
   const [open, setOpen] = useState(false)
   const tagIds = t.persona_ids || []
   const overridden = t.covered_count_override != null
-  const leftOut = !(Number(t.raw_cost) > 0) || !(t.covered_count > 0)
   return (
     <>
       <tr>
         <td><button className="ghost sm" title="Details" onClick={() => setOpen(!open)}>{open ? '▾' : '▸'}</button></td>
         <td data-label="Tool"><TextInput value={t.name} style={{ minWidth: 120 }} onCommit={(v) => update(t.id, { name: v })} />
-          {leftOut && <div><span className="badge warn" title="A tool with no cost or no users is left out of the numbers">
-            left out — {!(Number(t.raw_cost) > 0) ? 'no cost' : 'no users'}</span></div>}</td>
+          {missing && <div><span className="badge warn" title="Left out of the numbers until it has a cost, people and at least one use (Review lists it too)">
+            left out — {missing.join(', ')}</span></div>}</td>
         <td className="num" data-label="Cost"><NumInput value={t.raw_cost} style={{ width: 90 }}
           onCommit={(n) => update(t.id, { raw_cost: n })} /></td>
         <td data-label="Per">
@@ -100,7 +99,7 @@ function ProductRow({ t, meta, personas, moneyUnit, update, remove }) {
                   onCommit={(n) => update(t.id, { covered_count_override: n })} />
                 <small className="src">Blank = the personas' headcount ({t.persona_covered_count}).</small></div>
               <div><label>Counted · per person</label>
-                <div className="muted" style={{ paddingTop: '.35rem' }}>{t.covered_count} people · {money(t.effective_annual_cost, moneyUnit)} · {money(t.per_unit_annual_cost, moneyUnit)} each</div>
+                <div className="muted" style={{ paddingTop: '.35rem' }}>{it ? <>{it.people_covered} people · {money(it.effective_annual_cost, moneyUnit)} · {money(it.cost_per_person, moneyUnit)} each</> : '—'}</div>
                 <small className="src">The cost counted (after any managed-service share), split per person covered.</small></div>
             </div>
           </td>
@@ -112,6 +111,7 @@ function ProductRow({ t, meta, personas, moneyUnit, update, remove }) {
 
 export default function ThirdParty({ engagement, meta, moneyUnit = 'mo' }) {
   const base = `/api/engagements/${engagement.id}/third-party`
+  const interp = useInterpreted(engagement.id)
   const [items, setItems] = useState([])
   const [err, setErr] = useState('')
   const blank = {
@@ -250,7 +250,9 @@ export default function ThirdParty({ engagement, meta, moneyUnit = 'mo' }) {
         </tr></thead>
         <tbody>
           {items.map((t) => (
-            <ProductRow key={t.id} t={t} meta={meta} personas={personas} moneyUnit={moneyUnit}
+            <ProductRow key={t.id} t={t} it={interp.tool[t.id]}
+              missing={interp.findings.find((f) => f.code === 'tool_incomplete' && f.tool_id === t.id)?.facts.missing}
+              meta={meta} personas={personas} moneyUnit={moneyUnit}
               update={update} remove={remove} />
           ))}
         </tbody>

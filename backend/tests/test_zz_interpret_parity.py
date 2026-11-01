@@ -1421,3 +1421,44 @@ def test_readout_reads_the_interpreter_as_it_read_raw_rows(client):
             for lic in eng.licenses_in_scope:
                 assert ctx.licence_prices(lic.id) == (float(lic.effective_unit_price_annual),
                                                       float(lic.list_unit_price_annual)), (eid, lic.id)
+
+
+def test_readout_views_equal_what_each_renderer_added_up(client):
+    """The totals and groupings now computed once (services/results.views) equal
+    the sums the Summary screen and the HTML readout each did themselves."""
+    from app.db import SessionLocal
+    from app.services import results
+
+    with SessionLocal() as db:
+        for eid in _all_engagement_ids():
+            r = results.current_result(db, eid)
+            v = r["views"]
+            assert v["new_outcome_count"] == len(
+                {o["id"] for n in r["new_outcomes"] for o in n.get("outcomes") or []}), eid
+            annual, timed = {}, {}
+            for i in r["rollup"]["headline"]["items"]:
+                if i.get("sub_line") == "consolidation" and i.get("persona_id"):
+                    annual[i["persona_id"]] = annual.get(i["persona_id"], 0.0) + float(i["annual_amount"])
+                    timed[i["persona_id"]] = timed.get(i["persona_id"], 0.0) + float(i["amount"])
+            assert {k: c["annual"] for k, c in v["consolidation_by_persona"].items()} == annual, eid
+            assert {k: c["timed"] for k, c in v["consolidation_by_persona"].items()} == timed, eid
+            for q in r["rollup"]["quick_wins"]:
+                by = {}
+                for c in q.get("covered_by") or []:
+                    by[c["persona_name"]] = by.get(c["persona_name"], 0) + c["seats"]
+                got = v["quick_win_who"][q["third_party_product_id"]]
+                assert {w["persona_name"]: w["seats"] for w in got} == by, eid
+            in_scope = [s for s in r["scenarios"] if s["in_scope"]]
+            freed = r["rollup"]["freed_third_party"]
+            key = {"redundant_today_annual": "redundant_today_annual",
+                   "move_unlocked_annual": "move_unlocked_annual",
+                   "credited_annual": "credited_offset_annual"}
+            for g in v["bridge"]:
+                already = g["key"] != "replaced"
+                items = [f for f in freed if bool(f["already_covered"]) == already and float(f[g["field"]] or 0)]
+                assert abs(g["total"] - sum(float(f[g["field"]]) for f in items)) < 1e-6, eid
+                for s in in_scope:
+                    old = sum(next((float(o[key[g["field"]]] or 0) for o in s["offsets"]
+                                    if o["third_party_product_id"] == f["third_party_product_id"]), 0.0)
+                              for f in items)
+                    assert abs(g["by_scenario"][s["scenario_id"]] - old) < 1e-6, eid

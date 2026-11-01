@@ -226,6 +226,15 @@ for each persona p where applies(product, p):
     population += (p, headcount(p), status(p))
 
 unassigned_count = covered_count − Σ headcount over population   # may be negative
+
+# The same, summed, for the keep-or-retire question (shown, never re-derived):
+uncovered_count         = max(covered_count − displaced_users, 0)
+uncovered_annual        = money(uncovered_count × per_unit_annual_cost)
+remaining_persona_count = Σ headcount over non-Replaced population
+replaced_count          = Σ headcount over Replaced population
+held_count              = covered_count − unassigned_count
+over_licensed_only      = remaining_persona_count = 0 and unassigned_count > 0
+                          and uncovered_count > 0
 ```
 
 Because carve-outs take their seats out of the parent, persona headcounts are

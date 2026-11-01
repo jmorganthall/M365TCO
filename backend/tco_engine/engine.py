@@ -115,6 +115,17 @@ class ProductDispositionResult:
     # fewer). Σ non-Replaced headcount + unassigned_count = covered − displaced.
     population: list[PopulationShare] = field(default_factory=list)
     unassigned_count: int = 0
+    # The population, summed (6.4a) — what the keep-or-retire question shows:
+    # people the plans leave uncovered (covered − displaced, ≥ 0) and what they
+    # cost at the per-person rate; people on non-Replaced personas; people on
+    # Replaced personas; the personas' total holding the tool; and whether the
+    # only remainder is seats beyond our headcount (over-licensing).
+    uncovered_count: int = 0
+    uncovered_annual: Decimal = Decimal("0")
+    remaining_persona_count: int = 0
+    replaced_count: int = 0
+    held_count: int = 0
+    over_licensed_only: bool = False
     # Set by the reader, not the engine: the operator's stored decision currently
     # has no effect because the move alone fully retires the tool (TARGET_SCHEMA
     # §1.2.3). The decision is shown as none and kept as entered.
@@ -379,6 +390,9 @@ def compute(engagement: Engagement) -> EngineResult:
                 missing_outcome_ids=missing))
         unassigned_count = product.covered_count - sum(p.headcount for p in population)
         per_unit = product.per_unit_annual_cost
+        uncovered_count = max(product.covered_count - displaced_users, 0)
+        remaining_persona_count = sum(p.headcount for p in population if p.status != "Replaced")
+        replaced_count = sum(p.headcount for p in population if p.status == "Replaced")
 
         override = product.override
         residual_count = max(product.covered_count - displaced_users, 0)
@@ -425,6 +439,13 @@ def compute(engagement: Engagement) -> EngineResult:
                 requires_residual_classification=requires_classification,
                 population=population,
                 unassigned_count=unassigned_count,
+                uncovered_count=uncovered_count,
+                uncovered_annual=_money(Decimal(uncovered_count) * per_unit),
+                remaining_persona_count=remaining_persona_count,
+                replaced_count=replaced_count,
+                held_count=product.covered_count - unassigned_count,
+                over_licensed_only=(remaining_persona_count == 0 and unassigned_count > 0
+                                    and uncovered_count > 0),
             )
         )
 

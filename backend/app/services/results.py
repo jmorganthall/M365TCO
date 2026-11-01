@@ -83,7 +83,89 @@ def current_result(db: Session, engagement_id: str) -> dict:
     result["dropped_capability"] = compute.dropped_capability(db, engagement_id, result)
     compute.attach_target_labels(db, engagement_id, result)
     result["narratives"] = narratives_view(eng)["narratives"]
+    for lim in result["license_limits"]:
+        lim["over_by"] = max(lim["current_over_by"], lim["target_over_by"])
+    result["views"] = views(result)
     return result
+
+
+# The bridge's third-party groups: which products each draws on, and which of their
+# amounts (ENGINE_SPEC 6.8, 6.8a). The offset field is the per-scenario counterpart.
+_BRIDGE_GROUPS = (
+    ("already_today", True, "redundant_today_annual", "redundant_today_annual"),
+    ("already_rest", True, "move_unlocked_annual", "move_unlocked_annual"),
+    ("replaced", False, "credited_annual", "credited_offset_annual"),
+)
+
+
+def views(result: dict) -> dict:
+    """Totals and groupings every readout shows — the Summary screen, the HTML and
+    PDF readout — computed once here so neither renderer adds anything up itself
+    (TARGET_SCHEMA §1.5). Pure over the serialized result.
+
+    - `bridge`: the third-party groups of the spend bridge, each with its products,
+      every amount per in-scope scenario, and the totals. A product the move
+      replaces but whose credit is $0 is kept, flagged `zero_credit` (its covered
+      population isn't set); a renderer may show or drop it.
+    - `new_outcome_count`: distinct outcomes any in-scope persona gains.
+    - `consolidation_by_persona`: each persona's consolidation, yearly and as timed
+      over the horizon (the headline's items, ENGINE_SPEC 6.11).
+    - `quick_win_who`: per quick-win tool, who already holds its capability — one
+      entry per persona, with its seats and the licences covering them, most seats
+      first (ENGINE_SPEC 6.10 `covered_by`)."""
+    in_scope = [s for s in result.get("scenarios") or [] if s.get("in_scope")]
+    rollup = result.get("rollup") or {}
+
+    def offset(s, pid, field):
+        return next((float(o.get(field) or 0) for o in s.get("offsets") or []
+                     if o["third_party_product_id"] == pid), 0.0)
+
+    bridge = []
+    for key, already, field, off_field in _BRIDGE_GROUPS:
+        rows = []
+        for f in rollup.get("freed_third_party") or []:
+            if bool(f.get("already_covered")) != already:
+                continue
+            total = float(f.get(field) or 0)
+            zero_credit = field == "credited_annual" and total == 0
+            if not total and not zero_credit:
+                continue
+            rows.append({
+                "third_party_product_id": f["third_party_product_id"],
+                "third_party_product_name": f["third_party_product_name"],
+                "total": total, "zero_credit": zero_credit,
+                "by_scenario": {s.get("scenario_id"): offset(s, f["third_party_product_id"], off_field)
+                                for s in in_scope},
+            })
+        bridge.append({
+            "key": key, "field": field, "items": rows,
+            "total": sum(r["total"] for r in rows),
+            "by_scenario": {s.get("scenario_id"): sum(r["by_scenario"][s.get("scenario_id")] for r in rows)
+                            for s in in_scope},
+        })
+
+    new_ids = {o["id"] for n in result.get("new_outcomes") or [] for o in n.get("outcomes") or []}
+
+    consolidation: dict[str, dict] = {}
+    for i in (rollup.get("headline") or {}).get("items") or []:
+        if i.get("sub_line") == "consolidation" and i.get("persona_id"):
+            c = consolidation.setdefault(i["persona_id"], {"annual": 0.0, "timed": 0.0})
+            c["annual"] += float(i.get("annual_amount") or 0)
+            c["timed"] += float(i.get("amount") or 0)
+
+    who: dict[str, list[dict]] = {}
+    for q in rollup.get("quick_wins") or []:
+        by: dict[str, list[dict]] = {}
+        for c in q.get("covered_by") or []:
+            by.setdefault(c["persona_name"], []).append(c)
+        who[q["third_party_product_id"]] = sorted(
+            ({"persona_name": name, "seats": sum(c["seats"] for c in cs),
+              "licences": [{"sku_reference": c.get("sku_reference") or "", "seats": c["seats"]} for c in cs]}
+             for name, cs in by.items()),
+            key=lambda w: -w["seats"])
+
+    return {"bridge": bridge, "new_outcome_count": len(new_ids),
+            "consolidation_by_persona": consolidation, "quick_win_who": who}
 
 
 def narratives_view(eng: models.Engagement) -> dict:

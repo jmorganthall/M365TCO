@@ -29,6 +29,8 @@ from decimal import Decimal
 
 from tco_engine.interpret import RawEngagement, interpret
 
+from .results import views as results_views
+
 from .. import models
 from . import branding as branding_svc
 from . import help_text
@@ -229,8 +231,11 @@ class _Context:
         # A tool missing its cost, users or uses is left out of the document (§5) —
         # the interpreter's `tool_incomplete` finding, the same one Review shows.
         self.left_out_tools = {f.tool_id for f in self.interp.findings if f.code == "tool_incomplete"}
-        self.run_rate_by_pid: dict[str, float] = {}
-        self.timed_by_pid: dict[str, float] = {}
+        # Totals and groupings computed once for every readout (services/results.views).
+        self.views = result.get("views") or results_views(result)
+        cons = self.views["consolidation_by_persona"]
+        self.run_rate_by_pid = {pid: c["annual"] for pid, c in cons.items()}
+        self.timed_by_pid = {pid: c["timed"] for pid, c in cons.items()}
         # Each duplicate tool's share of its year counted within the horizon (its
         # quick win's timed amount ÷ annual amount), to time a persona's part of it.
         self.qw_factor: dict[str, float] = {
@@ -238,11 +243,6 @@ class _Context:
             for i in self.items
             if i.get("kind") == "quick_win" and str(i.get("item_key", "")).startswith("qw:")
             and _f(i.get("annual_amount"))}
-        for i in self.items:
-            if i.get("sub_line") == "consolidation" and i.get("persona_id"):
-                pid = i["persona_id"]
-                self.run_rate_by_pid[pid] = self.run_rate_by_pid.get(pid, 0.0) + _f(i["annual_amount"])
-                self.timed_by_pid[pid] = self.timed_by_pid.get(pid, 0.0) + _f(i["amount"])
 
     def _tlabel(self, s) -> str:
         return s.get("target_label") or s.get("target_sku_reference") or "—"
@@ -298,8 +298,7 @@ class _Context:
         rr = _f(h.get("run_rate_annual"))
         horizon_total = _f(h.get("run_rate_horizon_amount"))
         months = self.months
-        n_new = len({o["id"] for n in self.result.get("new_outcomes") or []
-                     for o in n.get("outcomes") or []})
+        n_new = self.views["new_outcome_count"]
         full = h.get("full_run_rate_month")
         reach = ("" if full is None else
                  "full run rate from day one" if full == 0 else
@@ -449,21 +448,19 @@ class _Context:
             f"</tr></thead><tbody>{rows}</tbody></table></section>"
         )
 
-    @staticmethod
-    def _quick_win_who(q) -> str:
+    def _quick_win_who(self, q) -> str:
         """The row under a quick win: which personas already have it, and through
-        which current licence (engine §6.10 covered_by), one entry per persona."""
-        by: dict[str, list[dict]] = {}
-        for c in q.get("covered_by") or []:
-            by.setdefault(c["persona_name"], []).append(c)
-        if not by:
+        which current licence — one entry per persona, most seats first
+        (services/results.views `quick_win_who`, engine §6.10 covered_by)."""
+        who = self.views["quick_win_who"].get(q["third_party_product_id"]) or []
+        if not who:
             return ""
         parts = []
-        # Largest group first, so the line reads from the bulk of the saving down.
-        for name, cs in sorted(by.items(), key=lambda kv: -sum(c["seats"] for c in kv[1])):
+        for w in who:
+            cs = w["licences"]
             lic = (E(cs[0]["sku_reference"] or "a current licence") if len(cs) == 1 else ", ".join(
                 f"{E(c['sku_reference'] or 'a current licence')} ({c['seats']:,})" for c in cs))
-            parts.append(f"<div class='who'><b>{E(name)}</b> · {sum(c['seats'] for c in cs):,} seats"
+            parts.append(f"<div class='who'><b>{E(w['persona_name'])}</b> · {w['seats']:,} seats"
                          f" <span class='muted'>via {lic}</span></div>")
         return (f"<tr class='qw-who'><td></td><td colspan='4'><div class='who-label'>Already covered for</div>"
                 f"{''.join(parts)}</td></tr>")
@@ -641,16 +638,7 @@ class _Context:
         # One column per persona while it fits (up to three); beyond that the total
         # only — each persona's page carries its own itemised impact.
         cols = self.in_scope if 2 <= len(self.in_scope) <= 3 else []
-        freed = r.get("freed_third_party") or []
-        already = [f for f in freed if f.get("already_covered")]
-        newly = [f for f in freed if not f.get("already_covered")]
-        offset_key = {"redundant_today_annual": "redundant_today_annual",
-                      "move_unlocked_annual": "move_unlocked_annual",
-                      "credited_annual": "credited_offset_annual"}
-
-        def off(s, pid, field):
-            return next((_f(o.get(offset_key[field])) for o in s.get("offsets", [])
-                         if o["third_party_product_id"] == pid), 0.0)
+        groups = {g["key"]: g for g in self.views["bridge"]}
 
         def cells(values, total, cls=""):
             if values is None:                       # a total-only row
@@ -659,16 +647,17 @@ class _Context:
                             for v in values)
                     + f"<td class='num {cls}'>{_amt(total, cls=False)}</td>")
 
-        def group(label, items, field):
-            items = [f for f in items if _f(f.get(field))]
+        def group(label, key):
+            # The customer document drops a $0 row (a tool with no covered population).
+            g = groups[key]
+            items = [f for f in g["items"] if f["total"]]
             if not items:
                 return ""
             head = (f"<tr class='group'><td>{label}</td>"
-                    + cells([sum(off(s, f["third_party_product_id"], field) for f in items) for s in cols],
-                            sum(_f(f[field]) for f in items)) + "</tr>")
+                    + cells([g["by_scenario"][s["scenario_id"]] for s in cols], g["total"]) + "</tr>")
             return head + "".join(
                 f"<tr class='sub'><td>{E(f['third_party_product_name'])}</td>"
-                + cells([off(s, f["third_party_product_id"], field) for s in cols], f[field]) + "</tr>"
+                + cells([f["by_scenario"][s["scenario_id"]] for s in cols], f["total"]) + "</tr>"
                 for f in items)
 
         delta = _f(r.get("net_tco_delta_annual"))            # cost-positive
@@ -682,9 +671,9 @@ class _Context:
             "<tr class='group'><td>Current Microsoft licences</td>"
             + cells([_f(s["current_microsoft_annual"]) for s in cols], r.get("existing_microsoft_annual"))
             + "</tr>"
-            + group("Tools already covered today", already, "redundant_today_annual")
-            + group("Remaining seats the new plans retire", already, "move_unlocked_annual")
-            + group("Tools the new plans replace", newly, "credited_annual")
+            + group("Tools already covered today", "already_today")
+            + group("Remaining seats the new plans retire", "already_rest")
+            + group("Tools the new plans replace", "replaced")
             + "<tr class='group'><td>Less: recommended Microsoft plans</td>"
             + cells([-_f(s["target_spend_annual"]) for s in cols], -_f(r.get("target_microsoft_annual")))
             + "</tr>"

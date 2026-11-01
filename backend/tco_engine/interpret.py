@@ -187,6 +187,7 @@ class IPersona:
     # A licence line that applies to it is unread (D23): its outcome changes are
     # left out of every readout. Its money is unaffected.
     outcomes_unknown: bool = False
+    carved_out_seats: int = 0           # headcount now in this persona's carve-outs
 
 
 @dataclass(frozen=True)
@@ -212,6 +213,9 @@ class ILicenseLine:
     applies_to: tuple[str, ...]         # persona ids, Org-wide expanded
     assumed: bool                       # untagged, read as Org-wide (D12)
     annual_cost: Decimal                # assigned × effective price
+    pct_off_list: Decimal = ZERO        # how far below list the effective price is (≥ 0)
+    unused_seats: int = 0               # purchased − assigned (≥ 0)
+    unused_annual: Decimal = ZERO       # unused seats × effective price
 
     @property
     def in_scope(self) -> bool:
@@ -247,6 +251,8 @@ class IScenario:
     covered_outcome_ids: frozenset[str]
     in_scope: bool
     complete: bool                      # has a target and a price (or override)
+    discounted_net_annual: Decimal = ZERO   # composed list × (1 − discount), before any override
+    pct_off_list: Decimal = ZERO            # how far below the composed list the net is (≥ 0)
 
 
 @dataclass(frozen=True)
@@ -433,12 +439,15 @@ def interpret(raw: RawEngagement) -> Interpreted:
         effective = line.overridden_price_annual if overridden else line.list_price_annual
         assumed = not line.persona_ids
         applies = everyone if assumed else tuple(p for p in line.persona_ids if p in known)
+        unused = max((line.quantity_purchased or 0) - (line.quantity_assigned or 0), 0)
         il = ILicenseLine(
             id=line.id, read_state=state, outcomes=outcomes, bundle_id=bundle_id,
             list_price_annual=line.list_price_annual, effective_price_annual=effective,
             price_source="override" if overridden else "list",
             applies_to=applies, assumed=assumed,
             annual_cost=Decimal(line.quantity_assigned) * effective,
+            pct_off_list=_pct_off(line.list_price_annual, effective),
+            unused_seats=unused, unused_annual=Decimal(unused) * effective,
         )
         lines.append(il)
         if il.in_scope:
@@ -485,8 +494,8 @@ def interpret(raw: RawEngagement) -> Interpreted:
             covered |= raw.microsoft_coverage.get(a.bundle_id, frozenset())
         composed = s.list_price_annual + sum((a.list_price_annual for a in s.addons), ZERO)
         overridden = s.price_override and s.overridden_price_annual is not None
-        net = (s.overridden_price_annual if overridden
-               else composed * (ONE - (s.discount_pct or ZERO)))
+        discounted = composed * (ONE - (s.discount_pct or ZERO))
+        net = s.overridden_price_annual if overridden else discounted
         scenarios.append(IScenario(
             id=s.id, persona_id=s.persona_id, target_sku_reference=s.target_sku_reference,
             base_bundle_id=s.resolved_bundle_id,
@@ -495,12 +504,15 @@ def interpret(raw: RawEngagement) -> Interpreted:
             price_source="override" if overridden else "list",
             covered_outcome_ids=frozenset(covered), in_scope=s.in_scope,
             complete=bool((s.target_sku_reference or "").strip()) and (overridden or net > 0),
+            discounted_net_annual=discounted, pct_off_list=_pct_off(composed, net),
         ))
 
     personas = tuple(
         IPersona(p.id, p.name, p.headcount, p.parent_persona_id,
                  outcomes_unknown=any(l.read_state == "unread" and p.id in l.applies_to
-                                      for l in lines))
+                                      for l in lines),
+                 carved_out_seats=sum(c.headcount for c in raw.personas
+                                      if c.parent_persona_id == p.id))
         for p in raw.personas)
 
     tables = _outcome_tables(raw, lines, tools, scenarios)
@@ -511,6 +523,11 @@ def interpret(raw: RawEngagement) -> Interpreted:
         licence_shares=licence_shares, tools=tuple(tools), tool_shares=tool_shares,
         scenarios=tuple(scenarios), seat_caps=seat_caps, findings=findings, **tables,
     )
+
+
+def _pct_off(list_price: Decimal, price: Decimal) -> Decimal:
+    """How far below list a price sits, as a fraction (0 at or above list)."""
+    return max(ZERO, (list_price - price) / list_price) if list_price > 0 else ZERO
 
 
 def normalize_name(text: str) -> str:

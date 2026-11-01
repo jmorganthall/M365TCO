@@ -47,18 +47,17 @@ function Decision({ d, onDecide, outcomeName }) {
   const [mode, setMode] = useState(current)
   const [reason, setReason] = useState(d.override_reason || '')
   useEffect(() => { setMode(current); setReason(d.override_reason || '') }, [current, d.override_reason])
-  // A forced retirement zeroes the engine's residual, so count the people the
-  // plans actually leave uncovered (covered − displaced) from the population.
+  // The people the plans leave uncovered, what they cost, and whether they are only
+  // seats beyond our headcount — the engine's population summary (ENGINE_SPEC
+  // 6.4a), shown as is. (A forced retirement zeroes the residual, not these.)
   const forced = d.override === 'ForceFullElimination'
-  const uncovered = Math.max((d.covered_count || 0) - (d.displaced_users || 0), 0)
-  const personaLeft = (d.population || []).filter((p) => p.status !== 'Replaced')
-    .reduce((t, p) => t + p.headcount, 0)
-  const held = (d.covered_count || 0) - (d.unassigned_count || 0)
+  const uncovered = d.uncovered_count
+  const held = d.held_count
   // Every uncovered seat is one the tool counts beyond the personas holding it:
   // the question is whether our headcount is right (the tool is over-licensed),
   // not whether to retire it from people who still need it.
-  const overOnly = personaLeft === 0 && (d.unassigned_count || 0) > 0 && uncovered > 0
-  const cost = usd(uncovered * (d.per_unit_annual_cost || 0))
+  const overOnly = d.over_licensed_only
+  const cost = usd(d.uncovered_annual)
   const choose = (m) => {
     setMode(m)
     if (m === 'retire' && overOnly && !reason.trim()) setReason(OVERLICENSED_REASON)
@@ -128,7 +127,7 @@ function WhereFrom({ d, uncovered, outcomeName }) {
   const replaced = pop.filter((p) => p.status === 'Replaced')
   const left = pop.filter((p) => p.status !== 'Replaced' && p.headcount > 0)
   const extra = d.unassigned_count || 0
-  const replacedCount = replaced.reduce((t, p) => t + p.headcount, 0)
+  const replacedCount = d.replaced_count
   const reason = (p) => (p.status === 'PlanGap'
     ? `plan doesn't cover ${(p.missing_outcome_ids || []).map((id) => outcomeName[id] || id).join(', ') || 'what the tool does'}`
     : STATUS_REASON[p.status]())
@@ -151,8 +150,8 @@ function WhereFrom({ d, uncovered, outcomeName }) {
           <li>
             <span className="n">{extra > 0 ? extra : `−${-extra}`}</span>
             <span>{extra > 0
-              ? <><b>Licensed beyond our headcount</b> <span className="muted">— the tool is licensed for {d.covered_count}; the personas holding it total {d.covered_count - extra}</span></>
-              : <><b>Licensed below our headcount</b> <span className="muted">— the tool is licensed for {d.covered_count}; the personas holding it total {d.covered_count - extra}</span></>}
+              ? <><b>Licensed beyond our headcount</b> <span className="muted">— the tool is licensed for {d.covered_count}; the personas holding it total {d.held_count}</span></>
+              : <><b>Licensed below our headcount</b> <span className="muted">— the tool is licensed for {d.covered_count}; the personas holding it total {d.held_count}</span></>}
             </span>
           </li>
         )}

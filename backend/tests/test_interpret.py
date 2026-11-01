@@ -348,3 +348,17 @@ def test_headcount_against_employees():
     [f] = [f for f in i.findings if f.code == "headcount_vs_employees"]
     assert f.severity == "info" and f.facts == {"total": 400, "employees": 500}
     assert "headcount_vs_employees" not in _codes(interpret(_raw(employee_count=400)))
+
+
+def test_display_figures_come_from_the_interpreter():
+    i = interpret(_raw(
+        personas=(RawPersona("a", "A", 100), RawPersona("c", "Carved", 30, parent_persona_id="a")),
+        licence_lines=(_line(quantity_purchased=450, price_override=True,
+                             overridden_price_annual=D("324")),),
+        scenarios=(_plan(discount_pct=D("0.25")),)))
+    line = i.licence("l")
+    assert line.pct_off_list == D("0.25")                      # 324 vs 432
+    assert line.unused_seats == 50 and line.unused_annual == D("16200")
+    sc = i.scenarios[0]
+    assert sc.discounted_net_annual == D("324.00") and sc.pct_off_list == D("0.25")
+    assert {p.id: p.carved_out_seats for p in i.personas} == {"a": 30, "c": 0}

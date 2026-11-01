@@ -27,6 +27,33 @@ export function useDataVersion() {
 // POSTs that only read (they take a body, but change nothing).
 const READ_ONLY_POSTS = [/\/bundle-analysis$/, /\/compute$/, /\/sanity-check$/]
 
+// The engagement's interpreted layer (GET …/interpreted): every derived input —
+// effective prices, % off list, unused seats, people covered, findings — as the
+// engine reads it. Screens display these; they never compute them. Refetched after
+// every write, like the result.
+export function useInterpreted(eid) {
+  const version = useDataVersion()
+  const [state, setState] = useState({ eid: null, data: null })
+  useEffect(() => {
+    if (!eid) return undefined
+    let live = true
+    api.get(`/api/engagements/${eid}/interpreted`)
+      .then((data) => { if (live) setState({ eid, data }) })
+      .catch(() => {})
+    return () => { live = false }
+  }, [eid, version])
+  const data = state.eid === eid ? state.data : null
+  const index = (rows) => Object.fromEntries((rows || []).map((r) => [r.id, r]))
+  return {
+    data,
+    licence: index(data?.licence_lines),
+    tool: index(data?.tools),
+    scenario: index(data?.scenarios),
+    persona: index(data?.personas),
+    findings: data?.findings || [],
+  }
+}
+
 // The engagement's calculated result, refetched after every write.
 export function useResult(eid) {
   const version = useDataVersion()

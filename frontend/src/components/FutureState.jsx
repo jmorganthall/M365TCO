@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api, useDataVersion } from '../api'
+import { api, useDataVersion, useInterpreted } from '../api'
 import Help from './Help.jsx'
 import Scenarios from './Scenarios.jsx'
 import PartlyReplaced from './PartlyReplaced.jsx'
@@ -15,7 +15,7 @@ export default function FutureState({ engagement, meta, moneyUnit }) {
   return (
     <>
       <CarveOutDrift engagement={engagement} refreshKey={changed} />
-      <RecommendPlans engagement={engagement} changed={changed} />
+      <RecommendPlans engagement={engagement} />
       <Scenarios engagement={engagement} meta={meta} moneyUnit={moneyUnit} />
       <PartlyReplaced engagement={engagement} />
     </>
@@ -26,20 +26,21 @@ export default function FutureState({ engagement, meta, moneyUnit }) {
 // lowest-cost plan (plus add-ons) that keeps everything the persona has today; a
 // persona and its carve-outs decide each tool together (TARGET_SCHEMA D29). An
 // explicit action, never automatic — and every plan stays editable.
-function RecommendPlans({ engagement, changed, onDone }) {
+function RecommendPlans({ engagement, onDone }) {
   const eid = engagement.id
   const [missing, setMissing] = useState(null)
   const [busy, setBusy] = useState(false)
   const [report, setReport] = useState(null)
   const [err, setErr] = useState('')
 
+  // Personas with no plan: the interpreter's `group_without_plan` finding (the same
+  // one Review shows), refetched after every write.
+  const interp = useInterpreted(eid)
   useEffect(() => {
-    Promise.all([api.get(`/api/engagements/${eid}/personas`), api.get(`/api/engagements/${eid}/scenarios`)])
-      .then(([ps, ss]) => {
-        const has = new Set(ss.map((s) => s.persona_id))
-        setMissing(ps.filter((p) => !has.has(p.id)))
-      }).catch((e) => setErr(e.message))
-  }, [eid, changed])
+    if (!interp.data) return
+    setMissing(interp.findings.filter((f) => f.code === 'group_without_plan')
+      .map((f) => ({ id: f.persona_id, name: f.facts.name })))
+  }, [interp.data])
 
   async function fill() {
     setBusy(true); setErr(''); setReport(null)

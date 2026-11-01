@@ -1607,3 +1607,18 @@ def test_quick_win_reports_which_licence_covers_which_persona():
     assert got == [("Office", "Business Premium", 280), ("Office", "E3", 20),
                    ("Plant", "Tenant filter", 26)]
     assert sum(c.seats for c in q.covered_by) == q.displaced_today == 326
+
+
+def test_population_summary_for_the_keep_or_retire_question():
+    """6.4a summed: a 500-seat tool held by one 450-person persona that moves. The
+    50 left are seats beyond our headcount, so the question is over-licensing."""
+    kw = Persona(id="kw", name="KW", headcount=450)
+    okta = ThirdPartyProduct(id="okta", name="Okta", annual_cost=D("50000"), covered_count=500,
+                             delivered_outcome_ids=frozenset({IDENTITY}), persona_ids=frozenset({"kw"}))
+    sc = PersonaScenario(id="s", persona_id="kw", target_sku_reference="E5",
+                         target_unit_price_annual=D("0"), target_covered_outcome_ids=frozenset({IDENTITY}))
+    [d] = compute(Engagement(id="e", personas=[kw], third_party_products=[okta],
+                             scenarios=[sc])).dispositions
+    assert d.uncovered_count == 50 and d.uncovered_annual == D("5000.00")   # 50 × $100
+    assert d.replaced_count == 450 and d.remaining_persona_count == 0
+    assert d.held_count == 450 and d.over_licensed_only

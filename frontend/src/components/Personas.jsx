@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api } from '../api'
+import { api, useInterpreted } from '../api'
 import Help from './Help.jsx'
 import { TextInput } from './CommitInput.jsx'
 
@@ -28,6 +28,8 @@ function withCarveOutsUnderParents(items) {
 }
 
 export default function Personas({ engagement, meta }) {
+  // Seats carved out of each persona: the interpreter's figure, not a sum here.
+  const interp = useInterpreted(engagement.id)
   const base = `/api/engagements/${engagement.id}/personas`
   const [items, setItems] = useState([])
   const [outcomes, setOutcomes] = useState([])
@@ -102,9 +104,9 @@ export default function Personas({ engagement, meta }) {
                     {carveOuts.length > 0 && (
                       <div className="pill-list" style={{ marginTop: 3 }}>
                         <span className="badge muted"
-                          title={`${carveOuts.reduce((n, c) => n + c.headcount, 0)} seats now sit in carve-outs of this persona`}>
+                          title={`${interp.persona[p.id]?.carved_out_seats ?? '…'} seats now sit in carve-outs of this persona`}>
                           {carveOuts.length} carve-out{carveOuts.length > 1 ? 's' : ''}
-                          {' '}({carveOuts.reduce((n, c) => n + c.headcount, 0)} seats)</span>
+                          {' '}({interp.persona[p.id]?.carved_out_seats ?? '…'} seats)</span>
                       </div>
                     )}
                   </td>
