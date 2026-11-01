@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api, usd } from '../api'
+import { api, usd, useDataVersion, useResult } from '../api'
 
 // Compact unsigned money for headline altitude ($246,560) — direction is said
 // in words ("saved" / "adds"), never as a sign next to the word savings.
@@ -9,9 +9,11 @@ import { PricingBadge } from './PricingBanner.jsx'
 
 export default function Readout({ engagement }) {
   const eid = engagement.id
-  const [result, setResult] = useState(null)
+  const { result, err: resultErr } = useResult(eid)
+  const version = useDataVersion()
   const [snapshots, setSnapshots] = useState([])
-  const [err, setErr] = useState('')
+  const [actionErr, setErr] = useState('')
+  const err = actionErr || resultErr
   const [aiEnabled, setAiEnabled] = useState(false)
   const [narrating, setNarrating] = useState(false)
   const [narratives, setNarratives] = useState(null)
@@ -19,13 +21,11 @@ export default function Readout({ engagement }) {
   const [outcomes, setOutcomes] = useState([])
   const outcomeName = (id) => outcomes.find((o) => o.id === id)?.name || id
 
-  function compute() {
-    setErr('')
-    api.post(`/api/engagements/${eid}/compute`).then(setResult).catch((e) => setErr(e.message))
-    api.get(`/api/engagements/${eid}/snapshots`).then(setSnapshots).catch(() => {})
-  }
   useEffect(() => {
-    compute()
+    api.get(`/api/engagements/${eid}/snapshots`).then(setSnapshots).catch(() => {})
+  }, [eid, version])
+  useEffect(() => {
+    setErr('')
     // Narratives are ENGAGEMENT-LEVEL data — load the stored set (survives
     // navigation); the Business narratives button regenerates and replaces it.
     setNarratives(null); setNarrativesAt(null)
@@ -47,13 +47,12 @@ export default function Readout({ engagement }) {
   async function setOverride(tpId, payload) {
     try {
       await api.put(`/api/engagements/${eid}/dispositions/${tpId}/override`, payload)
-      compute()
     } catch (e) { setErr(e.message) }
   }
   async function snapshot() {
     const label = prompt('Snapshot label?', new Date().toISOString().slice(0, 10))
     if (label === null) return
-    try { await api.post(`/api/engagements/${eid}/snapshots?label=${encodeURIComponent(label)}`); compute() }
+    try { await api.post(`/api/engagements/${eid}/snapshots?label=${encodeURIComponent(label)}`) }
     catch (e) { setErr(e.message) }
   }
 
@@ -89,7 +88,8 @@ export default function Readout({ engagement }) {
         <div className="hero-block">
           <div>
             <RunRateHeadline h={r.headline} inScope={inScope} currency={engagement.currency}
-              newCount={new Set((result.new_outcomes || []).flatMap((n) => (n.outcomes || []).map((o) => o.id))).size} />
+              newCount={result.views.new_outcome_count}
+              consolidation={result.views.consolidation_by_persona} />
           </div>
         </div>
         <div className="popcheck">
@@ -129,9 +129,11 @@ export default function Readout({ engagement }) {
                   {q.covered_by?.length > 0 && (
                     <tr className="qw-who"><td></td><td colSpan={4}>
                       <div className="muted">Already covered for</div>
-                      {quickWinWho(q).map((w) => (
-                        <div key={w.name}><b>{w.name}</b> · {w.seats} seats{' '}
-                          <span className="muted">via {w.licences}</span></div>
+                      {(result.views.quick_win_who[q.third_party_product_id] || []).map((w) => (
+                        <div key={w.persona_name}><b>{w.persona_name}</b> · {w.seats} seats{' '}
+                          <span className="muted">via {w.licences.length === 1
+                            ? (w.licences[0].sku_reference || 'a current licence')
+                            : w.licences.map((c) => `${c.sku_reference || 'a current licence'} (${c.seats})`).join(', ')}</span></div>
                       ))}
                     </td></tr>
                   )}
@@ -246,20 +248,12 @@ export default function Readout({ engagement }) {
           The quick-win group reconciles exactly with the Quick wins card.</p>
         {(() => {
           const freed = r.freed_third_party || []
-          const already = freed.filter((f) => f.already_covered)
-          const newly = freed.filter((f) => !f.already_covered)
+          // The third-party groups, their products and every amount per persona —
+          // summed once in the backend (results.views.bridge); nothing is added here.
+          const groups = Object.fromEntries(result.views.bridge.map((g) => [g.key, g]))
           // One column per in-scope persona plus Total. With a single persona the
           // total IS that persona, so columns only appear at two or more.
           const cols = inScope.length > 1 ? inScope : []
-          // Offset field per product per persona; the group field on the product
-          // rollup maps to the matching per-offset field.
-          const OFFSET_FIELD = {
-            redundant_today_annual: 'redundant_today_annual',
-            move_unlocked_annual: 'move_unlocked_annual',
-            credited_annual: 'credited_offset_annual',
-          }
-          const offsetOf = (s, pid, field) =>
-            Number(s.offsets.find((o) => o.third_party_product_id === pid)?.[OFFSET_FIELD[field]] || 0)
           const fmt = (v, negate) => (negate ? (v ? `−${usd(v)}` : usd(0)) : usd(v))
           const cells = (values, total, { negate = false, cls = '' } = {}) => (
             <>
@@ -272,22 +266,22 @@ export default function Readout({ engagement }) {
           // A bridge group: products contributing via `field`. GUI keeps the
           // operator hint for $0-credited tools (covered population not set);
           // the customer HTML drops those rows entirely.
-          const block = (label, sub, arr, field) => {
-            const items = arr.filter((f) => Number(f[field] || 0) || (field === 'credited_annual' && Number(f.credited_annual || 0) === 0 && !f.already_covered))
+          const block = (label, sub, key) => {
+            const g = groups[key]
+            const items = g.items
             if (!items.length) return null
-            const total = items.reduce((t, f) => t + Number(f[field] || 0), 0)
             return (
               <React.Fragment key={label}>
                 <tr>
                   <td>Less: {label} <small className="muted">{sub}</small></td>
-                  {cells(cols.map((s) => items.reduce((t, f) => t + offsetOf(s, f.third_party_product_id, field), 0)), total, { negate: true, cls: 'pos' })}
+                  {cells(cols.map((s) => g.by_scenario[s.scenario_id]), g.total, { negate: true, cls: 'pos' })}
                 </tr>
                 {items.map((f) => (
                   <tr key={f.third_party_product_id} className="bridge-sub">
-                    <td>↳ {f.third_party_product_name}{Number(f.credited_annual || 0) === 0
+                    <td>↳ {f.third_party_product_name}{f.zero_credit
                       ? <span className="muted"> — $0 credited (set its covered population to count its spend)</span>
                       : null}</td>
-                    {cells(cols.map((s) => offsetOf(s, f.third_party_product_id, field)), f[field], { negate: true, cls: 'pos' })}
+                    {cells(cols.map((s) => f.by_scenario[s.scenario_id]), f.total, { negate: true, cls: 'pos' })}
                   </tr>
                 ))}
               </React.Fragment>
@@ -324,9 +318,9 @@ export default function Readout({ engagement }) {
                     </tr>
                   )
                   : <>
-                    {block('third-party redundant today', '(the quick wins — no licensing change required)', already, 'redundant_today_annual')}
-                    {block('further seats on those tools retired by the move', '(covered only once the target lands)', already, 'move_unlocked_annual')}
-                    {block('third-party newly retired by the move', '(capability arrives with the target)', newly, 'credited_annual')}
+                    {block('third-party redundant today', '(the quick wins — no licensing change required)', 'already_today')}
+                    {block('further seats on those tools retired by the move', '(covered only once the target lands)', 'already_rest')}
+                    {block('third-party newly retired by the move', '(capability arrives with the target)', 'replaced')}
                   </>}
                 <tr className="bridge-total">
                   <td><b>Net change in run-rate</b> <small className="muted">{saving ? `(${usd0(r.net_tco_delta_annual)}/yr saved)` : r.net_tco_delta_annual > 0 ? `(${usd0(r.net_tco_delta_annual)}/yr added)` : '(no net change)'}</small></td>
@@ -382,7 +376,7 @@ export default function Readout({ engagement }) {
                   <td className={`num ${l.current_over_by > 0 ? 'warn' : ''}`}>{l.current_seats}</td>
                   <td className={`num ${l.target_over_by > 0 ? 'warn' : ''}`}>{l.target_seats}</td>
                   <td>{l.violated
-                    ? <span className="badge warn">Over by {Math.max(l.current_over_by, l.target_over_by)}</span>
+                    ? <span className="badge warn">Over by {l.over_by}</span>
                     : <span className="badge pos">Within cap</span>}</td>
                 </tr>
               ))}
@@ -507,7 +501,7 @@ function NarrativeBlock({ n, eid, onSaved, onError }) {
 // consolidation (each persona's move, its own value — quick-win credit stripped,
 // so ① and ② never double-count) and ③ over-licensing, each per year with its
 // share of the savings (from the engine). How it is reached is the RampCard below.
-function RunRateHeadline({ h, inScope, currency, newCount }) {
+function RunRateHeadline({ h, inScope, currency, newCount, consolidation }) {
   if (!h) return null
   const months = h.horizon_months
   const total = Number(h.amount) || 0
@@ -533,12 +527,8 @@ function RunRateHeadline({ h, inScope, currency, newCount }) {
   const marks = parts.length > 1 ? ['①', '②', '③'] : []
   let n = 0
   const mark = () => (marks[n++] ? `${marks[n - 1]} ` : '')
-  const byPersona = {}
-  for (const i of h.items || []) {
-    if (i.sub_line === 'consolidation' && i.persona_id) {
-      byPersona[i.persona_id] = (byPersona[i.persona_id] || 0) + Number(i.annual_amount)
-    }
-  }
+  // Each persona's consolidation, summed once in the backend (results.views).
+  const byPersona = Object.fromEntries(Object.entries(consolidation || {}).map(([pid, c]) => [pid, c.annual]))
   return (
     <>
       <div className="muted">Total opportunity · at full run rate over the period modelled · {currency} <PricingBadge /></div>
@@ -802,18 +792,3 @@ function OverrideCell({ d, onSet }) {
   return <span className="muted">—</span>
 }
 
-// A quick win's seat allocation (engine §6.10 covered_by) grouped by persona:
-// who already has the tool's capability, how many seats, through which licence.
-function quickWinWho(q) {
-  const by = new Map()
-  for (const c of q.covered_by || []) {
-    if (!by.has(c.persona_name)) by.set(c.persona_name, [])
-    by.get(c.persona_name).push(c)
-  }
-  return [...by].map(([name, cs]) => ({
-    name,
-    seats: cs.reduce((t, c) => t + c.seats, 0),
-    licences: cs.length === 1 ? (cs[0].sku_reference || 'a current licence')
-      : cs.map((c) => `${c.sku_reference || 'a current licence'} (${c.seats})`).join(', '),
-  })).sort((a, b) => b.seats - a.seats)  // largest group first
-}

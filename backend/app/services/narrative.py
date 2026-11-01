@@ -31,27 +31,21 @@ def build_customer_context(eng) -> dict:
     }
 
 
-def build_narrative_payload(eng, result: dict) -> list[dict]:
+def build_narrative_payload(eng, result: dict, interpreted) -> list[dict]:
     """One grounded narrative-input dict per in-scope scenario: the persona and
-    headcount, the SKUs they hold today, the target bundle + add-ons, the
+    headcount, the licences they hold today, the target bundle + add-ons, the
     third-party tools the move displaces, and the annual current/target/delta.
-    Pure: takes the ORM engagement and the serialized compute result."""
-    # Current SKUs a persona holds today, from the engagement's licenses (tags).
-    skus_by_persona: dict[str, list[str]] = {}
-    for lic in eng.licenses_in_scope:
-        ref = (lic.sku_reference or "").strip()
-        if not ref:
-            continue
-        for pid in (lic.persona_ids or []):
-            skus_by_persona.setdefault(pid, []).append(ref)
-
-    # Add-on bundle names per scenario (base is target_sku_reference in result).
-    bundle_name = {b.id: b.name for b in _bundles(eng)}
-    addons_by_persona: dict[str, list[str]] = {}
-    for s in eng.scenarios:
-        addons_by_persona[s.persona_id] = [
-            bundle_name.get(a.bundle_id, a.bundle_id) for a in s.addons
-        ]
+    Pure: what each persona holds is the interpreter's (`interpreted`, lines tagged
+    to it or Org-wide); everything else is the serialized result."""
+    raw_lines = {l.id: l for l in interpreted.raw.licence_lines}
+    skus_by_persona: dict[str, list[str]] = {
+        p.id: [ref for l in interpreted.lines_for(p.id)
+               if (ref := (raw_lines[l.id].sku_reference or "").strip())]
+        for p in interpreted.personas
+    }
+    # The plan's add-on names, as every readout labels them (compute.attach_target_labels).
+    addons_by_persona = {s.get("persona_id"): s.get("target_addons") or []
+                         for s in result.get("scenarios", []) or []}
 
     # Outcomes the move lights up per persona (computed by services/compute and
     # attached to the result) — the concrete "what's new" the prompt grounds in.
@@ -85,19 +79,6 @@ def build_narrative_payload(eng, result: dict) -> list[dict]:
             "delta_annual": s.get("delta_annual"),
         })
     return out
-
-
-def _bundles(eng):
-    """The global bundle library, via the engagement's session. Falls back to an
-    empty list if unavailable (add-on ids then show as ids, never crash)."""
-    from sqlalchemy import inspect as _inspect
-    from sqlalchemy import select
-    from .. import models
-
-    session = _inspect(eng).session
-    if session is None:
-        return []
-    return session.execute(select(models.Bundle)).scalars().all()
 
 
 def normalize_narratives(data: dict, personas: list[str]) -> list[dict]:

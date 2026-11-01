@@ -26,7 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models
-from . import bundles, compute
+from . import bundles, raw
 
 # The order an answered name's state is reported in when its lines differ.
 _STATE_ORDER = ("unread", "linked", "mapped", "named", "out_of_scope", "resolved")
@@ -65,8 +65,8 @@ def _covered_bundle_ids(db: Session, engagement_id: str) -> set[str]:
 def list_names(db: Session, eng: models.Engagement) -> list[dict]:
     """One item per licence name that needs an answer or has a person's answer.
     Names the library reads on its own (`resolved`) aren't listed. Unread first."""
-    sku_outcomes = compute._ratified_sku_outcomes(db, eng.id)
-    readings = compute.licence_readings(db, eng, sku_outcomes)
+    # How each line is read is the interpreter's (tco_engine.interpret, D23).
+    interp = raw.interpreted(db, eng.id)
     persona_names = {p.id: p.name for p in eng.personas}
     outcome_names = {o.id: o.name for o in eng.outcomes}
     plan = {b.id: b for b in bundles.list_bundles(db)}
@@ -80,7 +80,7 @@ def list_names(db: Session, eng: models.Engagement) -> list[dict]:
 
     items = []
     for key, lines in grouped.items():
-        states = [readings[lic.id].state for lic in lines]
+        states = [interp.licence(lic.id).read_state for lic in lines]
         has_answer = any(lic.bundle_id or lic.outcome_links or lic.out_of_scope for lic in lines)
         if set(states) <= {"resolved"} and not has_answer:
             continue
@@ -108,7 +108,7 @@ def list_names(db: Session, eng: models.Engagement) -> list[dict]:
 
         delivers = set()
         for lic in lines:
-            delivers |= readings[lic.id].outcomes
+            delivers |= interp.licence(lic.id).outcomes
 
         resolved_id = bundles.resolve_bundle(db, name) if name else None
         # "Use the library's list": the library knows this plan, and this

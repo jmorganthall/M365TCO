@@ -214,16 +214,12 @@ def timed_headline(engagement: Engagement, scenario_results, quick_wins) -> Head
             product_id=q.third_party_product_id)
 
     # ---- Consolidation: each in-scope persona's move ----
-    scenario_persona_ids = {
-        s.persona_id for s in engagement.scenarios if s.persona_id in personas
-    }
-
     def persona_lines(pid):
         """The licence lines that apply to this persona (tagged to it, or untagged
-        = the org-wide pool of personas with a scenario), as in Section 6.2."""
+        = Org-wide, every persona), as in Section 6.2."""
         return [
             line for line in engagement.current_licenses
-            if (pid in line.persona_ids if line.persona_ids else pid in scenario_persona_ids)
+            if not line.persona_ids or pid in line.persona_ids
         ]
 
     def line_renewal(line):

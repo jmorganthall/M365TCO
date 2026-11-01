@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api } from '../api'
+import { api, useDataVersion, useInterpreted } from '../api'
 import Help from './Help.jsx'
 import Scenarios from './Scenarios.jsx'
 import PartlyReplaced from './PartlyReplaced.jsx'
@@ -9,17 +9,15 @@ import CarveOutDrift from './CarveOutDrift.jsx'
 // recommended plan for every persona without one, adjust plans, and answer the
 // keep-or-retire question for tools only partly replaced.
 export default function FutureState({ engagement, meta, moneyUnit }) {
-  const [plansKey, setPlansKey] = useState(0)     // remount the plans after a fill-in
-  const [changed, setChanged] = useState(0)       // refresh the keep-or-retire card
+  // Every card refreshes after any write (api.js data version) — no card has to
+  // tell another that something changed.
+  const changed = useDataVersion()
   return (
     <>
-      <CarveOutDrift engagement={engagement} refreshKey={changed}
-        onMatched={() => { setPlansKey((k) => k + 1); setChanged((k) => k + 1) }} />
-      <RecommendPlans engagement={engagement} changed={changed}
-        onDone={() => { setPlansKey((k) => k + 1); setChanged((k) => k + 1) }} />
-      <Scenarios key={plansKey} engagement={engagement} meta={meta} moneyUnit={moneyUnit}
-        onChanged={() => setChanged((k) => k + 1)} />
-      <PartlyReplaced engagement={engagement} refreshKey={changed} />
+      <CarveOutDrift engagement={engagement} refreshKey={changed} />
+      <RecommendPlans engagement={engagement} />
+      <Scenarios engagement={engagement} meta={meta} moneyUnit={moneyUnit} />
+      <PartlyReplaced engagement={engagement} />
     </>
   )
 }
@@ -28,20 +26,21 @@ export default function FutureState({ engagement, meta, moneyUnit }) {
 // lowest-cost plan (plus add-ons) that keeps everything the persona has today; a
 // persona and its carve-outs decide each tool together (TARGET_SCHEMA D29). An
 // explicit action, never automatic — and every plan stays editable.
-function RecommendPlans({ engagement, changed, onDone }) {
+function RecommendPlans({ engagement, onDone }) {
   const eid = engagement.id
   const [missing, setMissing] = useState(null)
   const [busy, setBusy] = useState(false)
   const [report, setReport] = useState(null)
   const [err, setErr] = useState('')
 
+  // Personas with no plan: the interpreter's `group_without_plan` finding (the same
+  // one Review shows), refetched after every write.
+  const interp = useInterpreted(eid)
   useEffect(() => {
-    Promise.all([api.get(`/api/engagements/${eid}/personas`), api.get(`/api/engagements/${eid}/scenarios`)])
-      .then(([ps, ss]) => {
-        const has = new Set(ss.map((s) => s.persona_id))
-        setMissing(ps.filter((p) => !has.has(p.id)))
-      }).catch((e) => setErr(e.message))
-  }, [eid, changed])
+    if (!interp.data) return
+    setMissing(interp.findings.filter((f) => f.code === 'group_without_plan')
+      .map((f) => ({ id: f.persona_id, name: f.facts.name })))
+  }, [interp.data])
 
   async function fill() {
     setBusy(true); setErr(''); setReport(null)

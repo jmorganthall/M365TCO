@@ -17,6 +17,8 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from tco_engine.rules import covers_tool
+
 from .. import models
 
 
@@ -32,19 +34,15 @@ def _rows(db: Session, engagement_id: str):
     return licences, tools
 
 
-def _plan_retires(db: Session, persona_id: str, tools, sku_outcomes, tp_outcomes) -> set[str] | None:
-    """The tools (of `tools`) this persona's chosen plan retires — base plus add-ons
-    cover everything the tool delivers. None when it has no plan."""
-    from .compute import _cover_key
-
-    sc = db.execute(select(models.PersonaScenario).where(
-        models.PersonaScenario.persona_id == persona_id)).scalars().first()
+def _plan_retires(interp, persona_id: str, tools) -> set[str] | None:
+    """The tools (of `tools`) this persona's chosen plan retires — the interpreter's
+    plan coverage and the shared retirement rule (tco_engine.rules). None when it
+    has no plan."""
+    sc = next((s for s in interp.scenarios if s.persona_id == persona_id), None)
     if sc is None:
         return None
-    cover = set(sku_outcomes.get(_cover_key(db, sc.target_sku_reference), set()))
-    for addon in sc.addons:
-        cover |= sku_outcomes.get(addon.bundle_id, set())
-    return {t.id for t in tools if tp_outcomes.get(t.id) and tp_outcomes[t.id] <= cover}
+    return {t.id for t in tools
+            if covers_tool(interp.tool(t.id).delivered_outcome_ids, sc.covered_outcome_ids)}
 
 
 def drift(db: Session, engagement_id: str) -> list[dict]:
@@ -53,15 +51,14 @@ def drift(db: Session, engagement_id: str) -> list[dict]:
     chosen plan keeps while the parent's retires (`plan_keeps`) or retires while the
     parent's keeps (`plan_retires`), by name. Carve-outs that match are left out."""
     from . import personas as persona_order
-    from .compute import _ratified_sku_outcomes, _ratified_thirdparty_outcomes
+    from . import raw
 
     eng = db.get(models.Engagement, engagement_id)
     if eng is None:
         return []
     by_id = {p.id: p for p in eng.personas}
     licences, tools = _rows(db, engagement_id)
-    sku_outcomes = _ratified_sku_outcomes(db, engagement_id)
-    tp_outcomes = _ratified_thirdparty_outcomes(db, engagement_id)
+    interp = raw.interpreted(db, engagement_id)
     out = []
     for child in persona_order.ordered(eng.personas):
         parent = by_id.get(child.parent_persona_id or "")
@@ -77,8 +74,8 @@ def drift(db: Session, engagement_id: str) -> list[dict]:
         # Plans: only tools both sides hold (applies to no persona, or tagged to both).
         shared = [t for t in tools if not t.persona_ids
                   or (child.id in t.persona_ids and parent.id in t.persona_ids)]
-        mine = _plan_retires(db, child.id, shared, sku_outcomes, tp_outcomes)
-        theirs = _plan_retires(db, parent.id, shared, sku_outcomes, tp_outcomes)
+        mine = _plan_retires(interp, child.id, shared)
+        theirs = _plan_retires(interp, parent.id, shared)
         names = {t.id: t.name or "(unnamed tool)" for t in shared}
         row["plan_keeps"] = sorted(names[i] for i in (theirs - mine)) if mine is not None and theirs is not None else []
         row["plan_retires"] = sorted(names[i] for i in (mine - theirs)) if mine is not None and theirs is not None else []

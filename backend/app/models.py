@@ -34,7 +34,6 @@ PRODUCT_KINDS = ("MicrosoftSku", "ThirdParty")
 # Coverage is binary: a CoverageMapEntry existing means the outcome IS covered.
 # ("Full" is the single stored marker — there is no partial coverage.)
 COVERAGE = ("Full",)
-DISPOSITIONS = ("FullyEliminated", "PartiallyReduced", "Unchanged")
 OVERRIDES = ("None", "ForceFullElimination")
 RESIDUAL_INTENTS = ("None", "IntendedOutOfScope")
 # How many seats a current-licensing line entitles (ENGINE_SPEC 6.10). "PerUser"
@@ -475,7 +474,8 @@ class CurrentMicrosoftLicense(Base):
     # Explicit price override: the SKU/outcome is unchanged, but the customer pays
     # a negotiated rate that differs from list. `price_override` flags it on;
     # `overridden_price_annual` holds the manual $/seat/yr. When on, this is the
-    # load-bearing price the engine consumes (see effective_unit_price_annual) and
+    # load-bearing price the engine consumes (the interpreter's effective price,
+    # tco_engine/interpret.py) and
     # the readout badges "−X% vs list"; "revert to list" clears the flag and the
     # price falls back to the catalog at the line's basis. Supersedes the old
     # annotation-only `discount_pct` (retired) — the override actually drives spend.
@@ -543,21 +543,6 @@ class CurrentMicrosoftLicense(Base):
     def persona_ids(self) -> list[str]:
         """The personas this license applies to (many-to-many tags)."""
         return [pl.persona_id for pl in self.persona_links]
-
-    @property
-    def list_unit_price_annual(self) -> Decimal:
-        """The catalog list baseline (`unit_price_paid_annual`) as a Decimal — the
-        reference the override's "% off list" is measured against."""
-        return Decimal(str(self.unit_price_paid_annual or 0))
-
-    @property
-    def effective_unit_price_annual(self) -> Decimal:
-        """What the customer actually pays per seat/yr: the manual override when
-        `price_override` is on, else the list baseline. The load-bearing price the
-        engine consumes for current spend."""
-        if self.price_override and self.overridden_price_annual is not None:
-            return Decimal(str(self.overridden_price_annual))
-        return self.list_unit_price_annual
 
 
 class CurrentLicensePersona(Base):
@@ -742,41 +727,11 @@ class PersonaScenario(Base):
     # the catalog at the new basis (prices stay hand-editable afterward).
     term_duration: Mapped[str | None] = mapped_column(String, nullable=True)
     billing_plan: Mapped[str | None] = mapped_column(String, nullable=True)
-    # Derived fields cached for snapshotting; recomputed by the engine on demand.
-    current_spend_annual: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
-    target_spend_annual: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
-    delta_annual: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
 
     engagement: Mapped[Engagement] = relationship(back_populates="scenarios")
     addons: Mapped[list["ScenarioAddon"]] = relationship(
         cascade="all, delete-orphan", back_populates="scenario"
     )
-
-    @property
-    def composed_list_annual(self) -> Decimal:
-        """Catalog list for the composed target (base + add-ons), before discount
-        and before any override — the baseline the "% off list" is measured
-        against."""
-        total = Decimal(str(self.target_unit_price_annual or 0))
-        for a in self.addons:
-            total += Decimal(str(a.unit_price_annual or 0))
-        return total
-
-    @property
-    def discounted_net_annual(self) -> Decimal:
-        """(base + add-ons) × (1 − discount) — the composed net target price when no
-        override is set."""
-        return self.composed_list_annual * (
-            Decimal("1") - Decimal(str(self.target_discount_pct or 0))
-        )
-
-    @property
-    def effective_net_annual(self) -> Decimal:
-        """The net target price per seat/yr the engine consumes: the manual override
-        when `price_override` is on, else the discounted composed net."""
-        if self.price_override and self.overridden_price_annual is not None:
-            return Decimal(str(self.overridden_price_annual))
-        return self.discounted_net_annual
 
 
 class CoverageGapAnswer(Base):
@@ -851,8 +806,10 @@ class ScenarioAddon(Base):
 
 
 class ProductDisposition(Base):
-    """Persisted engine output per third-party product (PRD 5.9). Holds the
-    operator's override/intent choices so reasons survive a recompute."""
+    """The operator's decision on a third-party product: a forced retirement (with
+    its reason) or an intended residual. Raw data only — the engine's disposition
+    of the product (displaced, residual, cost) is calculated on read
+    (services/results) and never stored here."""
 
     __tablename__ = "product_dispositions"
 
@@ -861,12 +818,6 @@ class ProductDisposition(Base):
     third_party_product_id: Mapped[str] = mapped_column(
         ForeignKey("third_party_products.id")
     )
-    displaced_users: Mapped[int] = mapped_column(Integer, default=0)
-    disposition: Mapped[str] = mapped_column(
-        SAEnum(*DISPOSITIONS, name="disposition"), default="Unchanged"
-    )
-    residual_count: Mapped[int] = mapped_column(Integer, default=0)
-    residual_annual_cost: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
     override: Mapped[str] = mapped_column(
         SAEnum(*OVERRIDES, name="override"), default="None"
     )

@@ -85,6 +85,35 @@ def test_untagged_current_license_counts_orgwide_and_is_retired():
     assert r.net_tco_delta_annual == D("126144.00")
 
 
+def test_untagged_licence_is_shared_by_every_persona_not_only_the_movers():
+    """Org-wide means every persona (TARGET_SCHEMA D12, ENGINE_SPEC 6.2). 255 untagged
+    seats, one persona of 100 moving and one of 155 with no plan: the mover's share
+    is 100/255 of the line, so its move retires only that share. The other 155/255
+    stays with the people who aren't moving, on both sides, and is in no delta.
+    (The pool used to be only personas with a scenario, so the 100 movers were
+    credited with retiring all 255 seats.)"""
+    movers = Persona(id="m", name="Movers", headcount=100)
+    stay = Persona(id="s", name="Staying", headcount=155)
+    bp = CurrentLicenseLine(
+        quantity_assigned=255, unit_price_paid_annual=D("264"), persona_ids=()
+    )
+    scenario = PersonaScenario(
+        id="sc", persona_id="m", target_sku_reference="E3",
+        target_unit_price_annual=D("432"),
+    )
+    eng = Engagement(
+        id="e", personas=[movers, stay], third_party_products=[], scenarios=[scenario],
+        current_licenses=[bp],
+    )
+    res = compute(eng)
+    sc = res.scenarios[0]
+    # 255 × 264 = 67,320 for the line; the movers' share is 100/255 = 26,400.
+    assert sc.current_microsoft_annual == D("26400.00")
+    assert sc.target_spend_annual == D("43200.00")          # 100 × 432
+    assert sc.delta_annual == D("16800.00")                 # 43,200 − 26,400
+    assert res.rollup.existing_microsoft_annual == D("26400.00")
+
+
 def test_quick_wins_flags_duplicates_current_licensing_already_covers():
     """A third-party product whose outcomes the CURRENT licensing already delivers
     is a quick win — droppable today, with no scenario move. Save-$X-today."""
@@ -1578,3 +1607,18 @@ def test_quick_win_reports_which_licence_covers_which_persona():
     assert got == [("Office", "Business Premium", 280), ("Office", "E3", 20),
                    ("Plant", "Tenant filter", 26)]
     assert sum(c.seats for c in q.covered_by) == q.displaced_today == 326
+
+
+def test_population_summary_for_the_keep_or_retire_question():
+    """6.4a summed: a 500-seat tool held by one 450-person persona that moves. The
+    50 left are seats beyond our headcount, so the question is over-licensing."""
+    kw = Persona(id="kw", name="KW", headcount=450)
+    okta = ThirdPartyProduct(id="okta", name="Okta", annual_cost=D("50000"), covered_count=500,
+                             delivered_outcome_ids=frozenset({IDENTITY}), persona_ids=frozenset({"kw"}))
+    sc = PersonaScenario(id="s", persona_id="kw", target_sku_reference="E5",
+                         target_unit_price_annual=D("0"), target_covered_outcome_ids=frozenset({IDENTITY}))
+    [d] = compute(Engagement(id="e", personas=[kw], third_party_products=[okta],
+                             scenarios=[sc])).dispositions
+    assert d.uncovered_count == 50 and d.uncovered_annual == D("5000.00")   # 50 × $100
+    assert d.replaced_count == 450 and d.remaining_persona_count == 0
+    assert d.held_count == 450 and d.over_licensed_only

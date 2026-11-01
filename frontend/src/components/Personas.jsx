@@ -1,25 +1,12 @@
 import React, { useEffect, useState } from 'react'
-import { api } from '../api'
+import { api, useInterpreted } from '../api'
 import Help from './Help.jsx'
+import { TextInput } from './CommitInput.jsx'
 
 // Inline (auto-saving) text field that holds local state and commits on blur or
 // Enter — not per keystroke. The row's update() does a PATCH-and-reload, which
 // would otherwise reset the input mid-typing and garble what you type. Re-syncs
 // from the persisted value when the field isn't focused.
-function TextInput({ value, onCommit, ...rest }) {
-  const [v, setV] = useState(value ?? '')
-  const [focused, setFocused] = useState(false)
-  useEffect(() => { if (!focused) setV(value ?? '') }, [value, focused])
-  const commit = () => { setFocused(false); if (v !== (value ?? '')) onCommit(v) }
-  return (
-    <input {...rest} value={v}
-      onFocus={() => setFocused(true)}
-      onChange={(e) => setV(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }} />
-  )
-}
-
 // Order personas so every carve-out sits directly under the persona it came from.
 // The lineage is the point of the feature: a split that renders as an unrelated
 // row somewhere else in the list is exactly the confusion it exists to prevent.
@@ -41,6 +28,8 @@ function withCarveOutsUnderParents(items) {
 }
 
 export default function Personas({ engagement, meta }) {
+  // Seats carved out of each persona: the interpreter's figure, not a sum here.
+  const interp = useInterpreted(engagement.id)
   const base = `/api/engagements/${engagement.id}/personas`
   const [items, setItems] = useState([])
   const [outcomes, setOutcomes] = useState([])
@@ -115,14 +104,14 @@ export default function Personas({ engagement, meta }) {
                     {carveOuts.length > 0 && (
                       <div className="pill-list" style={{ marginTop: 3 }}>
                         <span className="badge muted"
-                          title={`${carveOuts.reduce((n, c) => n + c.headcount, 0)} seats now sit in carve-outs of this persona`}>
+                          title={`${interp.persona[p.id]?.carved_out_seats ?? '…'} seats now sit in carve-outs of this persona`}>
                           {carveOuts.length} carve-out{carveOuts.length > 1 ? 's' : ''}
-                          {' '}({carveOuts.reduce((n, c) => n + c.headcount, 0)} seats)</span>
+                          {' '}({interp.persona[p.id]?.carved_out_seats ?? '…'} seats)</span>
                       </div>
                     )}
                   </td>
-                  <td className="num" data-label="Headcount"><input type="number" value={p.headcount}
-                    onChange={(e) => update(p.id, { headcount: Number(e.target.value) })} style={{ width: 90 }} /></td>
+                  <td className="num" data-label="Headcount"><TextInput type="number" min="0" value={p.headcount}
+                    onCommit={(v) => update(p.id, { headcount: Number(v) || 0 })} style={{ width: 90 }} /></td>
                   <td data-label="Description"><TextInput value={p.description || ''} placeholder="Who they are (optional)"
                     onCommit={(v) => update(p.id, { description: v })} /></td>
                   <td className="num" data-label="Requires">{reqs.length || <span className="muted">—</span>}</td>

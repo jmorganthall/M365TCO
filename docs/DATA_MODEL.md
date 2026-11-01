@@ -503,17 +503,22 @@ linked to the first by `parent_persona_id`:
   is a real Microsoft constraint that spans a **family** of bundles and must be
   checked against the **totality** of current + future state — so it is neither a
   field on one bundle nor a per-line value.
-- **Evaluation (derived, persists nothing):** `services/limits.evaluate` computes a
-  **tenant-wide aggregate** at compute time — current-license seats plus in-scope
-  scenario headcount on member bundles (a scenario counts once whether its base or
-  an add-on is a member), compared to the cap. It is a **pure computation over
+- **One count of future seats:** the interpreter's `seat_caps` (`tco_engine/interpret.py`) is the single
+  definition of a cap's seats in the future state: a persona with an in-scope
+  scenario counts its headcount when the scenario's base or any add-on is a member;
+  every other persona counts its share of the assigned seats on member licence lines
+  (untagged lines apply to everyone). The Readout card, the recommender, the split
+  offer and Review all use it, so they can never disagree.
+- **Evaluation (derived, persists nothing):** `services/limits.evaluate` reports, per
+  limit, seats today (assigned seats on member lines) and seats in the future state
+  (the count above), each compared to the cap. It is a **pure computation over
   existing first-class objects** (the correct "don't create second-class data"
   outcome, like §4.10a); the result rides on the compute/readout response as
   `license_limits` and is shown on the Readout, so a violation is never hidden.
 - **Seats left and the split (TARGET_SCHEMA D27):** `services/limits.seat_cap_context`
-  gives one persona the seats left in the **future state** (other personas' in-scope
-  scenarios, or their current member lines when they have no scenario; a moving
-  persona's current lines never count). The best-bundle optimizer always uses it:
+  gives one persona the seats left in the **future state**: the same count, less
+  that persona's own seats. Caps are matched to a plan by member bundle id (base or
+  add-on), never by a display name. The best-bundle optimizer always uses it:
   with no seats left a capped plan isn't recommended; with too few, the plan stays
   recommended and `services/seat_cap.split_offer` offers a split — the seats left on
   the capped plan, the rest on the best uncapped plan, the larger side the parent —
@@ -544,7 +549,7 @@ linked to the first by `parent_persona_id`:
 - **Price override (first-class):** `price_override` (bool) + `overridden_price_annual`.
   The SKU (hence the outcome/coverage) is unchanged, but the customer pays a
   negotiated rate that differs from list. The **effective** price the engine
-  consumes is `effective_unit_price_annual` = the override when `price_override`
+  consumes is the interpreter's effective price = the override when `price_override`
   is on, else the list baseline — so an override actually lowers current spend
   (`unit_price_paid_annual` stays the list reference the "% off list" badge is
   measured against). "Revert to list" clears the flag and re-seeds the baseline
@@ -596,11 +601,11 @@ linked to the first by `parent_persona_id`:
   TARGET_SCHEMA §4.4 `bundle_key`, D23) — a person's explicit link, answered on the
   unknown-licence card. The customer's `sku_reference` is kept for display; the
   line reads as the linked plan. Written only by `PUT …/licence-names/answer`
-  (read-only on the line's API). Readers: `compute.licence_readings` (the
+  (read-only on the line's API). Readers: the interpreter's licence read state (`tco_engine/interpret.py`) (the
   hydrator, the recommender, the coverage comparison), the Settings licence-name
   list. GUI surface: the card, a "same as …" row chip and the Data Inspector. A
   plan a line is linked to can't be deleted (409).
-- **How a line is read** (`compute.licence_readings`, TARGET_SCHEMA "Reading a
+- **How a line is read** (the interpreter's licence read state (`tco_engine/interpret.py`), TARGET_SCHEMA "Reading a
   line", D23), first match wins: **out of scope** (delivers nothing, in no number) →
   **linked** (`bundle_id`: its plan's ratified coverage) → **mapped** (its confirmed
   `CurrentLicenseOutcome` rows, §4.5b) → **named** (legacy coverage entered on the
@@ -644,7 +649,7 @@ linked to the first by `parent_persona_id`:
   once per licence name onto every line of that name; cleared by any other answer.
   Read only while the line has no `bundle_id`. Deleting an outcome deletes its
   rows; Duplicate copies them with the outcome ids remapped.
-- **Readers:** `compute.licence_readings` (state `mapped`), the card, the Settings
+- **Readers:** the interpreter's licence read state (`tco_engine/interpret.py`) (state `mapped`), the card, the Settings
   licence-name list. GUI surface: the card's chips and the Data Inspector's
   "Delivers (answered on Other tools)" column (`CurrentMicrosoftLicense.outcome_ids`).
 
@@ -780,12 +785,12 @@ every other step while items wait, and the review's `library_update_pending` not
   via `target_sku_reference`; **add-on bundles** via `ScenarioAddon` (§4.8a).
 - **Field ownership:** user-entered (`target_sku_reference` + `target_unit_price_annual`
   = the base bundle & its list price, `target_discount_pct`, the price-override pair
-  below, `in_scope`, `term_duration`/`billing_plan`); **engine-output
-  cache** (`current_spend_annual`, `target_spend_annual`, `delta_annual`).
+  below, `in_scope`, `term_duration`/`billing_plan`). Its spend and delta are
+  **calculated on read** (`services/results`), never stored on the row.
 - **Price override (first-class):** `price_override` (bool) + `overridden_price_annual`
   — the same mechanism as the current line (§4.5), applied to the composed **net**
   target. The base SKU + add-ons are unchanged, but the customer pays a negotiated
-  net $/seat/yr. `effective_net_annual` = the override when on, else
+  net $/seat/yr. The interpreter's scenario `net_annual` = the override when on, else
   `(base + add-ons) × (1 − discount)`; the override **supersedes** the discount
   (which stays available when the override is off) and is what the engine consumes.
   The "% off list" badge is measured against `composed_list_annual` (base + add-ons,
@@ -833,23 +838,19 @@ retired via `_RETIRED_COLUMNS` and physically dropped; `services/swap.py` and th
 a carve-out's seats like any other scenario — no swap-specific branch in
 `services/limits`.
 
-### 4.9 ProductDisposition — split ownership, by design
-This is the canonical example of the field-ownership rule, because one row mixes
-operator-owned and engine-owned fields.
-- **Identity:** `uuid`. **Scope:** engagement-scoped. One per third-party product.
-- **Operator-owned (survive recompute):** `override`, `override_reason`,
-  `residual_intent`. One deliberate exception: when natural displacement alone
-  fully eliminates the product (no residual left to classify), compute clears a
-  stored classification automatically — an override with nothing to override is
-  stale; if a residual later reappears, the classification gate asks again.
-- **Engine-output (overwritten every compute):** `displaced_users`,
+### 4.9 ProductDisposition — the operator's decision on a tool
+Holds only what a person decides; the engine's disposition of the tool is
+calculated on read and never stored here.
+- **Identity:** `uuid`. **Scope:** engagement-scoped. At most one per third-party product.
+- **Operator-owned:** `override`, `override_reason`, `residual_intent`. Code never
+  rewrites them. When the move alone fully retires the tool, the decision has no
+  residual to answer: the result shows the tool with no decision and flags it
+  `decision_not_applicable` (TARGET_SCHEMA §1.2.3). The stored decision is kept and
+  applies again if a residual returns.
+- **Calculated (in the result, not on this row):** `displaced_users`,
   `disposition`, `residual_count`, `residual_annual_cost`.
-- **Module rule:** `services/compute.py` reads the operator-owned fields **into**
-  the engine and writes only the engine-output fields **back** — it never clobbers
-  an operator's choice. The override endpoint writes only operator fields.
-- **CRUD:** upserted by `compute`; operator fields set via
-  `PUT …/dispositions/{tp_id}/override` (which enforces "reason required for
-  ForceFullElimination").
+- **CRUD:** created and set only by `PUT …/dispositions/{tp_id}/override` (which
+  enforces "reason required for ForceFullElimination").
 
 ### 4.10 EngagementSnapshot — reproducible readout
 - **Identity:** `uuid`. **Scope:** engagement-scoped (now cascades with the
@@ -1124,15 +1125,18 @@ Rule of thumb: **same-engagement → hard FK; reference to global/versioned cata
 The global library is never mutated by workshop edits — this is the
 "scoped copy, not shared mutable state" pattern.
 
-### 6.2 Compute (hydrate → engine → persist)
-`compute.compute_and_persist()`:
+### 6.2 Compute (hydrate → engine, on read — nothing persisted)
+`results.current_result()` is the one read path every screen, export, snapshot,
+Review and Workshop value uses (`GET …/result`; `POST …/compute` is a deprecated
+alias). It writes nothing:
 1. **Hydrate** ORM rows into pure engine dataclasses, applying the **ratify gate**
    (only `ratified` coverage becomes outcome sets) and reading operator-owned
    disposition fields.
 2. Run the pure engine (`tco_engine.compute`).
-3. **Persist back** only engine-output fields (scenario spend cache + disposition
-   outputs), preserving operator-owned fields.
-4. The readout routes then append the **license-limit evaluation**
+3. Order the result for display and flag operator decisions that currently have
+   no effect (`decision_not_applicable`). Nothing is written back: every read
+   reflects every edit, so there is no separate recompute step.
+4. It then appends the **license-limit evaluation**
    (`services/limits.evaluate`, §4.4e) as `license_limits` and
    the per-persona **new-outcomes story** (`services/compute.new_outcomes` —
    the Coverage Check computation reused: outcomes the in-scope target lights
@@ -1172,7 +1176,8 @@ Conventions that make it repeatable, not snowflaked:
 - Create/update for any data set with derived fields routes through that set's
   single write-normalization function (e.g. `_normalize_third_party`).
 - **Domain actions are explicit verbs**, not magic fields: `…/ratify`,
-  `…/dispositions/{id}/override`, `…/duplicate`, `…/compute`.
+  `…/dispositions/{id}/override`, `…/duplicate`. Reading the result is a GET
+  (`…/result`) and never writes.
 
 **Adding a new first-class data set:** define the §2 contract, add the ORM model
 (UUID PK, `engagement_id` FK, cascade relationship on Engagement), add Pydantic

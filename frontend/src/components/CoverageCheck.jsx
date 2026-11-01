@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api } from '../api'
+import { api, useInterpreted } from '../api'
 import Help from './Help.jsx'
 
 // The $0 placeholder tool older versions created for "covered elsewhere". It is
@@ -23,6 +23,7 @@ const WARN_CALLOUT = {
 export default function CoverageCheck({ engagement, onNavigate }) {
   const eid = engagement.id
   const base = `/api/engagements/${eid}`
+  const interp = useInterpreted(eid)
   const [data, setData] = useState(null)
   const [err, setErr] = useState('')
 
@@ -83,7 +84,7 @@ export default function CoverageCheck({ engagement, onNavigate }) {
         never claimed or costed; an unanswered one is left out until answered.</p>
       {err && <div className="err">{err}</div>}
       {data.personas.length === 0 && <p className="muted">No personas yet — add personas first.</p>}
-      <UnreadLicences personas={data.personas} onNavigate={onNavigate} />
+      <UnreadLicences findings={interp.findings} onNavigate={onNavigate} />
 
       {data.personas.map((p) => (
         <div key={p.persona_id} className="card" style={{ background: 'var(--panel2)' }}>
@@ -255,14 +256,11 @@ function FixLink({ step, label, onNavigate, inline = false }) {
 
 // Shown first, and loudly (WALKTHROUGH step 5): Microsoft licences the library
 // can't read, once per name with the personas holding each, linked to their card.
-function UnreadLicences({ personas, onNavigate }) {
-  const byName = {}
-  personas.forEach((p) => (p.unmapped_current_licenses || []).forEach((u) => {
-    const key = u.sku_reference.toLowerCase().split(/\s+/).join(' ')
-    byName[key] = byName[key] || { name: u.sku_reference, groups: [] }
-    byName[key].groups.push(p.persona_name)
-  }))
-  const list = Object.values(byName)
+function UnreadLicences({ findings, onNavigate }) {
+  // One per licence name, with the personas holding it: the interpreter's
+  // `license_unread` finding — the same one Review shows.
+  const list = findings.filter((f) => f.code === 'license_unread')
+    .map((f) => ({ name: f.facts.name, groups: f.facts.personas }))
   if (!list.length) return null
   return (
     <div className="card card-loud" style={{ background: 'var(--panel2)' }}>

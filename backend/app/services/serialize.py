@@ -71,6 +71,13 @@ def result_to_dict(result: EngineResult) -> dict:
                     for p in d.population
                 ],
                 "unassigned_count": d.unassigned_count,
+                "decision_not_applicable": d.decision_not_applicable,
+                "uncovered_count": d.uncovered_count,
+                "uncovered_annual": _num(d.uncovered_annual),
+                "remaining_persona_count": d.remaining_persona_count,
+                "replaced_count": d.replaced_count,
+                "held_count": d.held_count,
+                "over_licensed_only": d.over_licensed_only,
             }
             for d in result.dispositions
         ],

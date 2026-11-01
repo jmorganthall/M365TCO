@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Optional
 
+from .rules import applies_to, covers_tool
 from .models import (
     Coverage,
     CoverageScope,
@@ -114,6 +115,21 @@ class ProductDispositionResult:
     # fewer). Σ non-Replaced headcount + unassigned_count = covered − displaced.
     population: list[PopulationShare] = field(default_factory=list)
     unassigned_count: int = 0
+    # The population, summed (6.4a) — what the keep-or-retire question shows:
+    # people the plans leave uncovered (covered − displaced, ≥ 0) and what they
+    # cost at the per-person rate; people on non-Replaced personas; people on
+    # Replaced personas; the personas' total holding the tool; and whether the
+    # only remainder is seats beyond our headcount (over-licensing).
+    uncovered_count: int = 0
+    uncovered_annual: Decimal = Decimal("0")
+    remaining_persona_count: int = 0
+    replaced_count: int = 0
+    held_count: int = 0
+    over_licensed_only: bool = False
+    # Set by the reader, not the engine: the operator's stored decision currently
+    # has no effect because the move alone fully retires the tool (TARGET_SCHEMA
+    # §1.2.3). The decision is shown as none and kept as entered.
+    decision_not_applicable: bool = False
 
 
 @dataclass
@@ -246,9 +262,7 @@ def _scenario_displaces_product(
     hydrated sets). A product that delivers no outcomes is treated as NOT
     displaceable — there is nothing the SKU can be shown to cover.
     """
-    if not product.delivered_outcome_ids:
-        return False
-    return product.delivered_outcome_ids.issubset(scenario.target_covered_outcome_ids)
+    return covers_tool(product.delivered_outcome_ids, scenario.target_covered_outcome_ids)
 
 
 def _product_applies_to_persona(product: ThirdPartyProduct, persona_id: str) -> bool:
@@ -258,7 +272,7 @@ def _product_applies_to_persona(product: ThirdPartyProduct, persona_id: str) -> 
     pre-tag headcount spread. Without this, displacement credit leaks to any
     persona whose target happens to cover the tool's outcomes — even one that
     was never assigned the tool."""
-    return not product.persona_ids or persona_id in product.persona_ids
+    return applies_to(product.persona_ids, persona_id)
 
 
 def _quick_win_seats(
@@ -376,6 +390,9 @@ def compute(engagement: Engagement) -> EngineResult:
                 missing_outcome_ids=missing))
         unassigned_count = product.covered_count - sum(p.headcount for p in population)
         per_unit = product.per_unit_annual_cost
+        uncovered_count = max(product.covered_count - displaced_users, 0)
+        remaining_persona_count = sum(p.headcount for p in population if p.status != "Replaced")
+        replaced_count = sum(p.headcount for p in population if p.status == "Replaced")
 
         override = product.override
         residual_count = max(product.covered_count - displaced_users, 0)
@@ -422,6 +439,13 @@ def compute(engagement: Engagement) -> EngineResult:
                 requires_residual_classification=requires_classification,
                 population=population,
                 unassigned_count=unassigned_count,
+                uncovered_count=uncovered_count,
+                uncovered_annual=_money(Decimal(uncovered_count) * per_unit),
+                remaining_persona_count=remaining_persona_count,
+                replaced_count=replaced_count,
+                held_count=product.covered_count - unassigned_count,
+                over_licensed_only=(remaining_persona_count == 0 and unassigned_count > 0
+                                    and uncovered_count > 0),
             )
         )
 
@@ -516,13 +540,11 @@ def compute(engagement: Engagement) -> EngineResult:
             )
 
     # ----- Per-persona scenario math (Section 6.2 / 6.3) -----
-    # Personas that have a scenario (appear in the readout). An UNTAGGED current
-    # license — one the operator entered without attributing to a persona — is
-    # treated as an org-wide pool distributed across these, so it still counts as
-    # current spend and is retired when they move, instead of silently vanishing.
-    scenario_persona_ids = {
-        s.persona_id for s in engagement.scenarios if s.persona_id in personas
-    }
+    # An UNTAGGED current licence — entered without attributing it to a persona —
+    # is Org-wide (TARGET_SCHEMA D12): it applies to EVERY persona and its cost is
+    # shared by headcount across all of them, the same reading the quick-win
+    # coverage (6.10), the seat cap and Review use. A persona without a scenario
+    # keeps its share (it isn't moving), so a move retires only its own share.
 
     scenario_results: list[ScenarioResult] = []
     for scenario in engagement.scenarios:
@@ -543,10 +565,8 @@ def compute(engagement: Engagement) -> EngineResult:
                 if persona.id not in line.persona_ids:
                     continue
                 pool = [pid for pid in line.persona_ids if pid in personas]
-            else:  # untagged -> org-wide pool of scenario personas
-                if persona.id not in scenario_persona_ids:
-                    continue
-                pool = list(scenario_persona_ids)
+            else:  # untagged -> Org-wide: every persona
+                pool = list(personas)
             line_total = Decimal(line.quantity_assigned) * line.unit_price_paid_annual
             pool_hc = sum(personas[pid].headcount for pid in pool)
             if pool_hc > 0:

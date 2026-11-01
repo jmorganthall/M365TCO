@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { sheetSegment } from './basis.jsx'
 
@@ -122,9 +122,21 @@ export default function SkuCombobox({
   const [skus, setSkus] = useState([])
   const [open, setOpen] = useState(false)
   useEffect(() => { loadSkus().then(setSkus) }, [])
+  // Typing edits a local draft; the value is committed once — on a pick, Enter or
+  // leaving the field — never per keystroke (a save per key re-reads every
+  // calculated number and lets replies land out of order).
+  const [text, setTextState] = useState(value || '')
+  const textRef = useRef(value || '')   // read by blur, which can fire before a re-render
+  const setText = (v) => { textRef.current = v; setTextState(v) }
+  const focused = useRef(false)
+  const committed = useRef(value || '')
+  useEffect(() => {
+    if (!focused.current) { setText(value || ''); committed.current = value || '' }
+  }, [value])
+  const commit = (v) => { if (v !== committed.current) { committed.current = v; onChange(v) } }
 
   const basis = { segment, term, billing }
-  const q = (value || '').trim()
+  const q = (text || '').trim()
 
   // Build option list: seed shortcodes first, then ranked catalog variants.
   // Dedup by title+price so identical rows collapse but distinct prices remain
@@ -152,20 +164,21 @@ export default function SkuCombobox({
   return (
     <div className="combo">
       <input
-        value={value || ''}
+        value={text}
         placeholder={placeholder}
         style={style}
-        onFocus={() => setOpen(true)}
-        onChange={(e) => { onChange(e.target.value); setOpen(true) }}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onFocus={() => { focused.current = true; setOpen(true) }}
+        onChange={(e) => { setText(e.target.value); setOpen(true) }}
+        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+        onBlur={() => { focused.current = false; commit(textRef.current); setTimeout(() => setOpen(false), 150) }}
       />
       {open && options.length > 0 && (
         <div className="combo-list">
           {options.map((o, i) => (
             <div
               key={`${o.title}-${i}`}
-              className={`combo-item ${o.title === value ? 'sel' : ''}`}
-              onMouseDown={() => { onChange(o.title); onSelectSku && onSelectSku(o.sku); setOpen(false) }}
+              className={`combo-item ${o.title === text ? 'sel' : ''}`}
+              onMouseDown={() => { setText(o.title); commit(o.title); onSelectSku && onSelectSku(o.sku); setOpen(false) }}
             >
               <span className="combo-id">{o.title}</span>
               {o.sub && o.sub !== o.title && <span className="combo-name">{o.sub}</span>}

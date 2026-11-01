@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api } from '../api'
+import { api, notifyDataChanged } from '../api'
 import { EngagementBasisEditor } from './basis.jsx'
 import Help from './Help.jsx'
 import DateInput from './DateInput.jsx'
@@ -201,6 +201,7 @@ export function SummaryCard({ engagement, onUpdate, onPdfCreated }) {
     try {
       const res = await fetch(`/api/engagements/${engagement.id}/customer-report.pdf`, { method: 'POST' })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText)
+      notifyDataChanged()  // a Presented snapshot was recorded
       const blob = await res.blob()
       const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') || '')?.[1] || 'M365-TCO.pdf'
       const url = URL.createObjectURL(blob)

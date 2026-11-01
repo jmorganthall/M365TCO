@@ -27,6 +27,10 @@ import html
 from datetime import date
 from decimal import Decimal
 
+from tco_engine.interpret import RawEngagement, interpret
+
+from .results import views as results_views
+
 from .. import models
 from . import branding as branding_svc
 from . import help_text
@@ -167,12 +171,17 @@ def _image(data_url: str | None) -> str:
 # ---- The document ------------------------------------------------------------
 
 def build_html(eng: models.Engagement, result: dict, gaps: list[dict],
-               brand: dict, *, prepared: date | None = None) -> str:
-    """`result` is the readout result (_computed_dict); `gaps` the capability
-    comparison per persona (compute.persona_coverage_gaps); `brand` the resolved
-    practice branding (services/branding.resolved)."""
+               brand: dict, *, prepared: date | None = None, interpreted=None) -> str:
+    """`result` is the readout result (services/results.current_result); `gaps` the
+    capability comparison per persona (compute.persona_coverage_gaps); `brand` the
+    resolved practice branding (services/branding.resolved); `interpreted` the
+    engagement read through the rules (services/raw.interpreted) — what each persona
+    holds, each tool's uses, each licence's price."""
     prepared = prepared or date.today()
-    ctx = _Context(eng, result, gaps, brand, prepared)
+    if interpreted is None:   # a document with no engagement data behind it
+        interpreted = interpret(RawEngagement(id=getattr(eng, "id", "") or "", personas=(),
+                                              licence_lines=(), tools=(), scenarios=()))
+    ctx = _Context(eng, result, gaps, brand, prepared, interpreted)
     body = "".join([
         ctx.footer("running-footer"), ctx.cover(), ctx.opportunity(), ctx.quick_wins(),
         ctx.persona_pages(), ctx.bridge(), ctx.third_party(), ctx.assumptions(),
@@ -186,16 +195,17 @@ def build_html(eng: models.Engagement, result: dict, gaps: list[dict],
 
 
 def build_pdf(eng: models.Engagement, result: dict, gaps: list[dict], brand: dict,
-              *, prepared: date | None = None) -> bytes:
+              *, prepared: date | None = None, interpreted=None) -> bytes:
     from weasyprint import HTML  # imported here: only the PDF needs it
 
-    doc = build_html(eng, result, gaps, brand, prepared=prepared)
+    doc = build_html(eng, result, gaps, brand, prepared=prepared, interpreted=interpreted)
     return HTML(string=doc).write_pdf()
 
 
 class _Context:
-    def __init__(self, eng, result, gaps, brand, prepared):
+    def __init__(self, eng, result, gaps, brand, prepared, interpreted):
         self.eng, self.result, self.brand, self.prepared = eng, result, brand, prepared
+        self.interp = interpreted
         self.logo = _image(brand.get("logo_data_url"))
         self.rollup = result.get("rollup") or {}
         self.h = self.rollup.get("headline") or {}
@@ -213,15 +223,19 @@ class _Context:
         self.outcome_name = {o.id: o.name for o in eng.outcomes}
         self.dispositions = [d for d in result.get("dispositions") or []
                              if _f(d.get("effective_annual_cost")) or _f(d.get("residual_annual_cost"))]
-        # Ratified uses per tool, for "Used for" (a tool with none is left out, §5).
-        self.tool_uses: dict[str, list[str]] = {}
-        for ce in eng.coverage_entries:
-            if ce.product_kind == "ThirdParty" and ce.ratified and ce.third_party_product_id:
-                name = self.outcome_name.get(ce.outcome_id)
-                if name:
-                    self.tool_uses.setdefault(ce.third_party_product_id, []).append(name)
-        self.run_rate_by_pid: dict[str, float] = {}
-        self.timed_by_pid: dict[str, float] = {}
+        # Each tool's ratified uses, for "Used for" — as the interpreter reads them.
+        self.tool_uses: dict[str, list[str]] = {
+            t.id: names for t in self.interp.tools
+            if (names := sorted(self.outcome_name[o] for o in t.delivered_outcome_ids
+                                if o in self.outcome_name))}
+        # A tool missing its cost, users or uses is left out of the document (§5) —
+        # the interpreter's `tool_incomplete` finding, the same one Review shows.
+        self.left_out_tools = {f.tool_id for f in self.interp.findings if f.code == "tool_incomplete"}
+        # Totals and groupings computed once for every readout (services/results.views).
+        self.views = result.get("views") or results_views(result)
+        cons = self.views["consolidation_by_persona"]
+        self.run_rate_by_pid = {pid: c["annual"] for pid, c in cons.items()}
+        self.timed_by_pid = {pid: c["timed"] for pid, c in cons.items()}
         # Each duplicate tool's share of its year counted within the horizon (its
         # quick win's timed amount ÷ annual amount), to time a persona's part of it.
         self.qw_factor: dict[str, float] = {
@@ -229,11 +243,6 @@ class _Context:
             for i in self.items
             if i.get("kind") == "quick_win" and str(i.get("item_key", "")).startswith("qw:")
             and _f(i.get("annual_amount"))}
-        for i in self.items:
-            if i.get("sub_line") == "consolidation" and i.get("persona_id"):
-                pid = i["persona_id"]
-                self.run_rate_by_pid[pid] = self.run_rate_by_pid.get(pid, 0.0) + _f(i["annual_amount"])
-                self.timed_by_pid[pid] = self.timed_by_pid.get(pid, 0.0) + _f(i["amount"])
 
     def _tlabel(self, s) -> str:
         return s.get("target_label") or s.get("target_sku_reference") or "—"
@@ -289,8 +298,7 @@ class _Context:
         rr = _f(h.get("run_rate_annual"))
         horizon_total = _f(h.get("run_rate_horizon_amount"))
         months = self.months
-        n_new = len({o["id"] for n in self.result.get("new_outcomes") or []
-                     for o in n.get("outcomes") or []})
+        n_new = self.views["new_outcome_count"]
         full = h.get("full_run_rate_month")
         reach = ("" if full is None else
                  "full run rate from day one" if full == 0 else
@@ -440,21 +448,19 @@ class _Context:
             f"</tr></thead><tbody>{rows}</tbody></table></section>"
         )
 
-    @staticmethod
-    def _quick_win_who(q) -> str:
+    def _quick_win_who(self, q) -> str:
         """The row under a quick win: which personas already have it, and through
-        which current licence (engine §6.10 covered_by), one entry per persona."""
-        by: dict[str, list[dict]] = {}
-        for c in q.get("covered_by") or []:
-            by.setdefault(c["persona_name"], []).append(c)
-        if not by:
+        which current licence — one entry per persona, most seats first
+        (services/results.views `quick_win_who`, engine §6.10 covered_by)."""
+        who = self.views["quick_win_who"].get(q["third_party_product_id"]) or []
+        if not who:
             return ""
         parts = []
-        # Largest group first, so the line reads from the bulk of the saving down.
-        for name, cs in sorted(by.items(), key=lambda kv: -sum(c["seats"] for c in kv[1])):
+        for w in who:
+            cs = w["licences"]
             lic = (E(cs[0]["sku_reference"] or "a current licence") if len(cs) == 1 else ", ".join(
                 f"{E(c['sku_reference'] or 'a current licence')} ({c['seats']:,})" for c in cs))
-            parts.append(f"<div class='who'><b>{E(name)}</b> · {sum(c['seats'] for c in cs):,} seats"
+            parts.append(f"<div class='who'><b>{E(w['persona_name'])}</b> · {w['seats']:,} seats"
                          f" <span class='muted'>via {lic}</span></div>")
         return (f"<tr class='qw-who'><td></td><td colspan='4'><div class='who-label'>Already covered for</div>"
                 f"{''.join(parts)}</td></tr>")
@@ -475,13 +481,8 @@ class _Context:
             + (f" · {E(desc)}" if desc else "") + "</div></div>")
 
         # Today
-        lines = [l for l in self.eng.licenses_in_scope
-                 if (pid in l.persona_ids if l.persona_ids else True)]
-        tools = [t for t in self.eng.third_party_products
-                 if _f(t.raw_cost) > 0 and (t.covered_count or 0) > 0 and self.tool_uses.get(t.id)
-                 and (not t.persona_ids or pid in t.persona_ids)]
-        lic_chips = "".join(f"<span class='chip plain'>{E(r)}</span>"
-                            for r in sorted({l.sku_reference for l in lines if l.sku_reference}))
+        refs, tools = self.today_of(pid)
+        lic_chips = "".join(f"<span class='chip plain'>{E(r)}</span>" for r in sorted(refs))
         today = "<div class='col'><h3>Today</h3>"
         today += (f"<div class='label'>Microsoft licences</div><div class='chips'>{lic_chips}</div>"
                   if lic_chips else "<p class='muted'>No Microsoft licences recorded.</p>")
@@ -637,16 +638,7 @@ class _Context:
         # One column per persona while it fits (up to three); beyond that the total
         # only — each persona's page carries its own itemised impact.
         cols = self.in_scope if 2 <= len(self.in_scope) <= 3 else []
-        freed = r.get("freed_third_party") or []
-        already = [f for f in freed if f.get("already_covered")]
-        newly = [f for f in freed if not f.get("already_covered")]
-        offset_key = {"redundant_today_annual": "redundant_today_annual",
-                      "move_unlocked_annual": "move_unlocked_annual",
-                      "credited_annual": "credited_offset_annual"}
-
-        def off(s, pid, field):
-            return next((_f(o.get(offset_key[field])) for o in s.get("offsets", [])
-                         if o["third_party_product_id"] == pid), 0.0)
+        groups = {g["key"]: g for g in self.views["bridge"]}
 
         def cells(values, total, cls=""):
             if values is None:                       # a total-only row
@@ -655,16 +647,17 @@ class _Context:
                             for v in values)
                     + f"<td class='num {cls}'>{_amt(total, cls=False)}</td>")
 
-        def group(label, items, field):
-            items = [f for f in items if _f(f.get(field))]
+        def group(label, key):
+            # The customer document drops a $0 row (a tool with no covered population).
+            g = groups[key]
+            items = [f for f in g["items"] if f["total"]]
             if not items:
                 return ""
             head = (f"<tr class='group'><td>{label}</td>"
-                    + cells([sum(off(s, f["third_party_product_id"], field) for f in items) for s in cols],
-                            sum(_f(f[field]) for f in items)) + "</tr>")
+                    + cells([g["by_scenario"][s["scenario_id"]] for s in cols], g["total"]) + "</tr>")
             return head + "".join(
                 f"<tr class='sub'><td>{E(f['third_party_product_name'])}</td>"
-                + cells([off(s, f["third_party_product_id"], field) for s in cols], f[field]) + "</tr>"
+                + cells([f["by_scenario"][s["scenario_id"]] for s in cols], f["total"]) + "</tr>"
                 for f in items)
 
         delta = _f(r.get("net_tco_delta_annual"))            # cost-positive
@@ -678,9 +671,9 @@ class _Context:
             "<tr class='group'><td>Current Microsoft licences</td>"
             + cells([_f(s["current_microsoft_annual"]) for s in cols], r.get("existing_microsoft_annual"))
             + "</tr>"
-            + group("Tools already covered today", already, "redundant_today_annual")
-            + group("Remaining seats the new plans retire", already, "move_unlocked_annual")
-            + group("Tools the new plans replace", newly, "credited_annual")
+            + group("Tools already covered today", "already_today")
+            + group("Remaining seats the new plans retire", "already_rest")
+            + group("Tools the new plans replace", "replaced")
             + "<tr class='group'><td>Less: recommended Microsoft plans</td>"
             + cells([-_f(s["target_spend_annual"]) for s in cols], -_f(r.get("target_microsoft_annual")))
             + "</tr>"
@@ -775,12 +768,28 @@ class _Context:
             f"{retired_html}</section>"
         )
 
+    # ---- What each persona holds, as the interpreter reads it ---------------------
+    def today_of(self, pid: str):
+        """A persona's Microsoft licence names and the tools it holds today (tagged
+        to it, or Org-wide), leaving out tools with no cost, users or uses."""
+        raw_lines = {l.id: l for l in self.interp.raw.licence_lines}
+        refs = {raw_lines[l.id].sku_reference for l in self.interp.lines_for(pid)
+                if raw_lines[l.id].sku_reference}
+        tools = [self.products[t.id] for t in self.interp.tools_for(pid)
+                 if t.id not in self.left_out_tools and t.id in self.products]
+        return refs, tools
+
+    def licence_prices(self, licence_id: str) -> tuple[float, float]:
+        """(effective, list) price per seat per year — the interpreter's."""
+        il = self.interp.licence(licence_id)
+        return _f(il.effective_price_annual), _f(il.list_price_annual)
+
     # ---- 7. Assumptions, timing, method ------------------------------------------
     def assumptions(self) -> str:
         eng, parts = self.eng, []
         if eng.licenses_in_scope:
             def lic_row(lic):
-                eff, base = _f(lic.effective_unit_price_annual), _f(lic.list_unit_price_annual)
+                eff, base = self.licence_prices(lic.id)
                 note = ""
                 if lic.price_override:
                     note = (" <span class='muted'>(negotiated price"
@@ -802,12 +811,12 @@ class _Context:
                      "negotiated price is entered.")
         persona_name = {p.id: p.name for p in eng.personas}
         tlabels = {s["persona_id"]: self._tlabel(s) for s in self.scenarios}
+        # The plans' net and list prices are the interpreter's (what the engine costs).
         negotiated = [
             f"{E(persona_name.get(sc.persona_id, 'Persona'))} → {E(tlabels.get(sc.persona_id, sc.target_sku_reference))}: "
-            f"${_f(sc.effective_net_annual):,.2f} per seat per year"
-            + (f" ({_pct((_f(sc.composed_list_annual) - _f(sc.effective_net_annual)) / _f(sc.composed_list_annual))} below list)"
-               if _f(sc.composed_list_annual) else "")
-            for sc in eng.scenarios if sc.price_override]
+            f"${_f(sc.net_annual):,.2f} per seat per year"
+            + (f" ({_pct(_f(sc.pct_off_list))} below list)" if _f(sc.composed_list_annual) else "")
+            for sc in self.interp.scenarios if sc.price_source == "override"]
         if negotiated:
             notes.append("<b>Negotiated prices on the recommended plans:</b> " + "; ".join(negotiated) + ".")
         managed = [d for d in self.dispositions if d["is_managed"]]

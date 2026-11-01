@@ -45,6 +45,103 @@ the data layer on input, never inside the engine.
 > looks up that bundle's covered outcomes, so a target and its coverage always
 > speak the same language (fixes "target names a SKU the coverage map doesn't").
 
+## Interpretation — raw data read through the rules (6.0)
+
+The engine's inputs above are built by one pure function, `interpret(raw) →
+interpreted` (`tco_engine/interpret.py`, TARGET_SCHEMA §6), then adapted by
+`to_engine`. The data layer only loads what people entered (`services/raw.py`)
+plus two catalog facts the interpreter can't look up itself: which plan a typed
+name resolves to, and the engagement's ratified coverage. Every rule below is
+defined once, here, and every consumer reads its result (`GET …/interpreted`).
+
+```
+# Licence line (D23) — how it is read, first match wins:
+read_state = out_of_scope   if line.out_of_scope                  (delivers nothing, in no number)
+           | linked / unread if line.linked_bundle_id             (its plan's coverage; unread if none)
+           | mapped          if a person ticked outcomes          (those outcomes)
+           | named           if coverage exists for the exact typed name (legacy)
+           | resolved        if the typed name resolves to a plan with coverage
+           | unread          otherwise                           (cost counts; outcomes unknown)
+effective_price = overridden_price  if price_override and overridden_price is set   (source "override")
+                | list_price                                                         (source "list")
+applies_to      = persona_ids, or EVERY persona when untagged (assumed = true, D12)
+annual_cost     = quantity_assigned × effective_price
+share(line, p)  = annual_cost × headcount(p) / Σ headcount(applies_to)
+                  (even split when that total is 0; out-of-scope lines have no shares)
+
+# Tool
+annual_cost     = raw_cost × 12 if cost_period = Monthly, else raw_cost
+tooling_pct     = the tool's own value, else the engagement default          (source)
+effective_cost  = 6.5 below;  cost_per_person = 6.3 below on people_covered
+people_covered  = covered_count_override if set (source "override"),
+                  else Σ headcount of its tagged personas (source "personas")
+applies_to      = persona_ids, or every persona when untagged (assumed)
+share(tool, p)  = cost_per_person × headcount(p) for p in applies_to
+                  (a covers override above the personas' headcount leaves a
+                  remainder that is nobody's share)
+
+# Scenario
+covered         = coverage(resolved base plan, else the typed name) ∪ coverage(each add-on)
+composed_list   = base list + Σ add-on list
+net             = overridden_price if price_override and set (source "override")
+                | composed_list × (1 − discount_pct)              (source "list")
+complete        = has a target name and (an override or net > 0)
+```
+
+```
+# Persona × outcome tables (TARGET_SCHEMA §6.3) — per persona p
+delivered_today(o) = an in-scope line applying to p delivers o (by_microsoft)
+                   or a tool applying to p delivers o            (by_tool)
+                   or p's gap answer for o is CoveredOutsideInventory (by_outside)
+needed(o)          = o ∈ p's declared requirements, or — with none declared —
+                     delivered_today(o)                      (needed_source)
+retired(tool, p)   = p has a plan and (the plan covers every outcome the tool
+                     delivers [6.6, tco_engine/rules.covers_tool] or the operator
+                     forced it); the tool applies to p [6.3a, rules.applies_to]
+quick_win(tool, p) = p's current Microsoft lines deliver every outcome the tool does
+delivered_after(o) = with no plan: delivered_today(o); else the plan covers o, or
+                     a tool p keeps delivers o, or o is covered outside the inventory
+status(o)          = Pending          if p's plan is incomplete
+                   | MovedToMicrosoft if today only by tools and the plan covers o
+                   | Kept             if delivered today and after
+                   | Gained           if new after and p's answer is NotDeliveredToday
+                   | Unconfirmed      if new after and unanswered (never claimed, D21)
+                   | Lost             if delivered today, not after
+                   | Gap              if needed and delivered neither
+outcomes_unknown(p) = an unread line applies to p (D23)
+```
+
+```
+# Seat caps (D27) — per licensing limit L, over its member plans
+current_seats(L)  = Σ assigned seats on in-scope lines whose typed name resolves to a member
+usage(L, p)       = headcount(p)                 if p's in-scope plan (base or any add-on) is a member
+                  | Σ over member lines applying to p of assigned × headcount(p) / Σ headcount(line's personas)
+                                                 if p has no in-scope plan
+unattributed(L)   = assigned seats on member lines whose personas have no headcount
+future_seats(L)   = round(Σ usage + unattributed);  seats_left(L, p) = cap − round(Σ usage of others + unattributed)
+seat_cap_exceeded(p) when p's in-scope plan is under a cap and headcount(p) > seats_left
+                  (the tightest cap decides; kind no_seats | nested | split)
+
+# Findings (TARGET_SCHEMA §6.4) — code, step, subject, facts; worded by Review
+no_groups, headcount_vs_employees, licence_untagged, seats_vs_headcount,
+unused_seats_unanswered, renewal_date_missing, license_out_of_scope, tool_incomplete,
+group_without_plan, seat_cap_exceeded, license_unread (one per normalized name),
+capability_changes_unknown, target_unmapped, capability_dropped, gap_unanswered.
+(residual_unanswered and library_update_pending are added by Review: they need
+the engine result and the shared library.)
+```
+
+Retirement here is the engine's displacement rule exactly: the parity test checks
+every persona's retired tools against the engine's credited offsets. (TARGET_SCHEMA
+definition 4 narrows it to the outcomes the persona *needs*; adopting that is a
+number change, left for its own decision.)
+
+The engine's `CurrentLicenseLine.unit_price_paid_annual` is the line's effective
+price; its `ThirdPartyProduct.annual_cost` / `covered_count` / `tooling_pct` are the
+interpreted values above (no longer the values stored on the tool row);
+`target_unit_price_annual` is the scenario's `net`. The 6.5 and 6.3 formulas are one
+function each (`tco_engine/money.py`), used by both the interpreter and the engine.
+
 ## Derived per-product cost (6.5 managed split)
 
 ```
@@ -129,6 +226,15 @@ for each persona p where applies(product, p):
     population += (p, headcount(p), status(p))
 
 unassigned_count = covered_count − Σ headcount over population   # may be negative
+
+# The same, summed, for the keep-or-retire question (shown, never re-derived):
+uncovered_count         = max(covered_count − displaced_users, 0)
+uncovered_annual        = money(uncovered_count × per_unit_annual_cost)
+remaining_persona_count = Σ headcount over non-Replaced population
+replaced_count          = Σ headcount over Replaced population
+held_count              = covered_count − unassigned_count
+over_licensed_only      = remaining_persona_count = 0 and unassigned_count > 0
+                          and uncovered_count > 0
 ```
 
 Because carve-outs take their seats out of the parent, persona headcounts are
@@ -148,16 +254,18 @@ it.
 # and a shared line is never double-counted across personas. (If the pool has zero
 # total headcount, the line is split evenly by count so cost is not lost.)
 #
-# UNTAGGED lines (empty persona_ids) are treated as an ORG-WIDE pool: the pool is
-# every persona that has a scenario, distributed by headcount. This means a
-# current license the operator entered without attributing it to a persona (e.g.
-# "255 Business Premium") still counts as current spend and is retired when those
-# personas move to a target — rather than silently vanishing from the TCO.
+# UNTAGGED lines (empty persona_ids) are ORG-WIDE (TARGET_SCHEMA D12): the pool is
+# EVERY persona, distributed by headcount — the same reading the quick-win
+# coverage (6.10), the seat cap (6.13), the recommender and Review use. A persona
+# with a scenario carries its share as current spend and retires it when it moves;
+# a persona without one keeps its share (it isn't moving), so that share is in no
+# scenario and in no delta. (The pool used to be only personas with a scenario,
+# which credited the movers with retiring seats held by people who stay.)
 current_microsoft = Σ over lines whose pool includes this persona of
       line_total * (persona.headcount / Σ headcount of the line's pool)
-    where line_total = line.quantity_assigned * line.effective_unit_price_annual
+    where line_total = line.quantity_assigned * effective price (Interpretation, 6.0)
       and pool = line.persona_ids if set, else all personas with a scenario
-# effective_unit_price_annual = the line's explicit price override when set
+# effective price = the line's explicit price override when set
 # (price_override + overridden_price_annual), else the catalog list baseline
 # (unit_price_paid_annual). An override is a negotiated rate on the SAME SKU, so it
 # lowers current spend without changing coverage.
@@ -426,8 +534,8 @@ does not exist, so the error is always toward **under**-crediting.
 > persona that holds nothing because a different line has spare seats.
 
 > `coverage_scope` governs **seat counts**, not which personas can see a
-> capability. The capability views (persona coverage gaps, the Business Premium
-> §6.2's org-wide cost pool) still treat an untagged
+> capability. The capability views (persona coverage gaps) and
+> §6.2's org-wide cost pool still treat an untagged
 > line as org-wide — those guards are deliberately conservative: over-counting
 > there withholds a move, while over-counting seats here would assert savings the
 > customer cannot realize.
@@ -491,7 +599,7 @@ for r in in-scope scenarios:
                              for o in r.offsets if o.move_unlocked_annual > 0) or 0)
     if ms_change < 0:    # a REDUCTION waits for every line it touches to renew
         lines = the licence lines that apply to r's persona (6.2's rule: tagged to it,
-                or untagged = the org-wide pool of personas with a scenario)
+                or untagged = Org-wide, every persona)
         item(−ms_change, max(start(L.renewal_date or microsoft_renewal_date) for L in lines))
 
 # 3. Over-licensing — unused seats the customer confirmed are not needed.

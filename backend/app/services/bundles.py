@@ -15,6 +15,8 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from tco_engine.interpret import normalize_name
+
 from .. import models
 
 SEED_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "seeds")
@@ -88,8 +90,9 @@ def seed_bundles(db: Session) -> None:
 
 def normalize_alias(text: str) -> str:
     """How a licence name is compared and stored as an alias: lower case, single
-    spaces (the same normalization name resolution applies to what is typed)."""
-    return " ".join(_norm(text).split())
+    spaces (the same normalization name resolution applies to what is typed). One
+    definition, shared with the interpreter (tco_engine.interpret.normalize_name)."""
+    return normalize_name(text)
 
 
 def _seed_aliases(db: Session, by_key: dict) -> None:

@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react'
 import Help from './Help.jsx'
-import { api, usd, money, pct } from '../api'
+import { api, usd, money, pct, useDataVersion, useInterpreted, useResult } from '../api'
 import BundleAnalysis from './BundleAnalysis.jsx'
 import SkuCombobox from './SkuCombobox.jsx'
 import { BasisSelect, effectiveBasis, termLabel, billingLabel, segmentLabel } from './basis.jsx'
+import { TextInput } from './CommitInput.jsx'
 
 // Target prices are stored annualized; the UI edits per-seat MONTHLY.
 const annualToMonthly = (a) => (a ? Math.round((Number(a) / 12) * 100) / 100 : 0)
@@ -15,36 +16,16 @@ function MonthlyInput({ annual, onCommit, style }) {
   return (
     <input type="number" style={style} value={val}
       onChange={(e) => setVal(e.target.value)}
-      onBlur={() => onCommit(monthlyToAnnual(val))} />
+      onBlur={() => onCommit(monthlyToAnnual(val))}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }} />
   )
-}
-
-// composed catalog list per seat = base + add-ons (pre-discount) — the baseline
-// the "% off list" is measured against.
-const composedList = (s) => {
-  const base = Number(s.target_unit_price_annual) || 0
-  const addons = (s.addons || []).reduce((sum, a) => sum + (Number(a.unit_price_annual) || 0), 0)
-  return base + addons
-}
-// discounted net = composed list × (1 − discount), matching the engine.
-const netAnnual = (s) => composedList(s) * (1 - (Number(s.target_discount_pct) || 0))
-// effective net = the manual override when set, else the discounted net. Mirrors
-// PersonaScenario.effective_net_annual on the backend.
-const effectiveNet = (s) =>
-  s.price_override && s.overridden_price_annual != null
-    ? Number(s.overridden_price_annual)
-    : netAnnual(s)
-// Fraction below composed list the effective net sits at (0 when at/above list).
-const pctOffList = (s) => {
-  const list = composedList(s)
-  return list > 0 ? Math.max(0, (list - effectiveNet(s)) / list) : 0
 }
 
 // One scenario as an expandable line item: base bundle + net $/seat/mo up top;
 // base price, discount, term/payment model, and add-on bundles (composed) in
 // the expander. Term/billing default to the engagement's pricing basis; a
 // line-level selection requotes the composed target from the catalog.
-function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove, onAnalyze, onCarve, parentName }) {
+function ScenarioRow({ p, s, r, iv, bundles, basis, meta, moneyUnit, update, remove, onAnalyze, onCarve, parentName }) {
   const [open, setOpen] = useState(false)
   // The last SETTLED target pick (not the live typed text) — "changed SKU"
   // means a genuinely different product, which re-seeds the $/seat/mo.
@@ -75,13 +56,17 @@ function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove,
   const setAddonPrice = (bid, annual) =>
     update(s.id, { addons: payload().map((a) => (a.bundle_id === bid ? { ...a, unit_price_annual: annual } : a)) })
 
-  const off = pctOffList(s)
+  // Every price figure below is the interpreter's (GET …/interpreted), the same
+  // value the engine costs: composed list, discounted net, net, % off list.
+  const n = (k) => (iv ? Number(iv[k]) : null)
+  const shown = (annual, per = 1) => (annual == null ? '—' : usd(annual / per))
+  const off = n('pct_off_list') || 0
   // Turn the explicit net-price override on/off. Enabling seeds the manual net
   // from the current discounted net so the number doesn't jump; disabling keeps
   // the stored override and lets the net fall back to the composed list.
   const toggleOverride = (on) => {
     if (on) {
-      const seed = s.overridden_price_annual != null ? s.overridden_price_annual : netAnnual(s)
+      const seed = s.overridden_price_annual != null ? s.overridden_price_annual : n('discounted_net_annual')
       update(s.id, { price_override: true, overridden_price_annual: seed })
     } else {
       update(s.id, { price_override: false })
@@ -131,12 +116,12 @@ function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove,
           )}
           {s.price_override && (
             <div className="pill-list" style={{ marginTop: 3 }}>
-              <span className="badge" title={`Custom net price · list ${usd(composedList(s))}/seat/yr`}>
+              <span className="badge" title={`Custom net price · list ${shown(n('composed_list_annual'))}/seat/yr`}>
                 override{off > 0 ? ` −${pct(off)}` : ''}</span>
             </div>
           )}
         </td>
-        <td className="num" data-label="Net $/seat/mo">{usd(effectiveNet(s) / 12)}</td>
+        <td className="num" data-label="Net $/seat/mo">{shown(n('net_annual'), 12)}</td>
         <td data-label="Scope"><input type="checkbox" style={{ width: 'auto' }} checked={s.in_scope}
           onChange={(e) => update(s.id, { in_scope: e.target.checked })} /></td>
         <td className="num" data-label="Current">{r ? money(r.current_spend_annual, moneyUnit) : '—'}</td>
@@ -163,20 +148,20 @@ function ScenarioRow({ p, s, r, bundles, basis, meta, moneyUnit, update, remove,
                   onCommit={(annual) => update(s.id, { target_unit_price_annual: annual })} />
                 <small className="src">Auto-filled from the catalog ERP · {usd(s.target_unit_price_annual)}/yr.</small></div>
               <div><label>Discount</label>
-                <input type="number" step="0.05" value={s.target_discount_pct ?? ''} placeholder="e.g. 0.15"
+                <TextInput type="number" step="0.05" value={s.target_discount_pct ?? ''} placeholder="e.g. 0.15"
                   disabled={s.price_override}
-                  onChange={(e) => update(s.id, { target_discount_pct: e.target.value === '' ? null : Number(e.target.value) })} />
+                  onCommit={(v) => update(s.id, { target_discount_pct: v === '' ? null : Number(v) })} />
                 <small className="src">{s.price_override
                   ? 'Superseded by the custom net price below.'
                   : 'Fraction off the composed list (0.15 = 15%).'}</small></div>
               <div><label>Net $/seat/mo</label>
                 {s.price_override
-                  ? <MonthlyInput annual={effectiveNet(s)}
+                  ? <MonthlyInput annual={n('net_annual')}
                       onCommit={(annual) => update(s.id, { overridden_price_annual: annual })} />
-                  : <div className="muted" style={{ paddingTop: '.35rem', fontSize: '.95rem' }}>{usd(netAnnual(s) / 12)}</div>}
+                  : <div className="muted" style={{ paddingTop: '.35rem', fontSize: '.95rem' }}>{shown(n('discounted_net_annual'), 12)}</div>}
                 <small className="src">{s.price_override
-                  ? <>Custom price · list {usd(composedList(s) / 12)}{off > 0 ? ` (−${pct(off)})` : ''}.</>
-                  : <>(base + add-ons) × (1 − discount) · {usd(netAnnual(s))}/yr.</>}</small></div>
+                  ? <>Custom price · list {shown(n('composed_list_annual'), 12)}{off > 0 ? ` (−${pct(off)})` : ''}.</>
+                  : <>(base + add-ons) × (1 − discount) · {shown(n('discounted_net_annual'))}/yr.</>}</small></div>
               <div><label>Custom price</label>
                 <label className="src" style={{ display: 'flex', alignItems: 'center', gap: '.4rem' }}>
                   <input type="checkbox" style={{ width: 'auto' }} checked={!!s.price_override}
@@ -317,26 +302,29 @@ function CarvePanel({ eid, persona, bundles, onDone, onCancel }) {
   )
 }
 
-export default function Scenarios({ engagement, meta, moneyUnit = 'mo', onChanged }) {
+export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
   const eid = engagement.id
   const [personas, setPersonas] = useState([])
   const [scenarios, setScenarios] = useState([])
   const [bundles, setBundles] = useState([])
-  const [result, setResult] = useState(null)
+  const { result, err: resultErr } = useResult(eid)
+  const interp = useInterpreted(eid)
+  const version = useDataVersion()
   const [err, setErr] = useState('')
   const [analyzePersona, setAnalyzePersona] = useState(null)
   const [carvePersona, setCarvePersona] = useState(null)
   const [splits, setSplits] = useState([])        // seat-cap split offers (D27)
   const [dismissed, setDismissed] = useState({})   // "Not now", this visit only
 
+  // Raw rows and the split offers, reloaded after every write anywhere; the
+  // calculated columns come from the shared result (useResult), so nothing here
+  // needs a "recompute".
   function load() {
     api.get(`/api/engagements/${eid}/personas`).then(setPersonas)
     api.get(`/api/engagements/${eid}/scenarios`).then(setScenarios)
+    api.get(`/api/engagements/${eid}/seat-cap-splits`).then(setSplits).catch(() => setSplits([]))
   }
-  useEffect(() => {
-    load()
-    compute()
-  }, [eid])
+  useEffect(() => { load() }, [eid, version])
   // Quote autofill prices at THIS engagement's pricing basis — refetched when
   // the basis changes (edited on Customer Info) so add-on autofill never quotes
   // at a stale basis.
@@ -352,20 +340,15 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo', onChange
   const basis = effectiveBasis(null, engagement)
 
   async function createScenario(pid) {
-    try { await api.post(`/api/engagements/${eid}/scenarios`, { persona_id: pid, target_sku_reference: '', target_unit_price_annual: 0 }); load() }
+    try { await api.post(`/api/engagements/${eid}/scenarios`, { persona_id: pid, target_sku_reference: '', target_unit_price_annual: 0 }) }
     catch (e) { setErr(e.message) }
   }
   async function update(id, patch) {
-    try { await api.patch(`/api/engagements/${eid}/scenarios/${id}`, patch); await load(); compute() }
+    try { await api.patch(`/api/engagements/${eid}/scenarios/${id}`, patch) }
     catch (e) { setErr(e.message) }
   }
   async function remove(id) {
-    try { await api.del(`/api/engagements/${eid}/scenarios/${id}`); load() } catch (e) { setErr(e.message) }
-  }
-  async function compute() {
-    setErr('')
-    try { setResult(await api.post(`/api/engagements/${eid}/compute`)); onChanged?.() } catch (e) { setErr(e.message) }
-    api.get(`/api/engagements/${eid}/seat-cap-splits`).then(setSplits).catch(() => setSplits([]))
+    try { await api.del(`/api/engagements/${eid}/scenarios/${id}`) } catch (e) { setErr(e.message) }
   }
 
   async function applyBundle(persona, { sku_reference, price, addons }) {
@@ -381,22 +364,17 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo', onChange
       if (existing) await api.patch(`/api/engagements/${eid}/scenarios/${existing.id}`, body)
       else await api.post(`/api/engagements/${eid}/scenarios`, { persona_id: persona.id, ...body })
       setAnalyzePersona(null)
-      await load()
-      compute()
     } catch (e) { setErr(e.message) }
   }
 
   return (
     <div className="card">
-      <div className="flex-between">
-        <h2 style={{ marginTop: 0 }}>Future state per persona <Help k="future.plan" /></h2>
-        <button onClick={compute}>Recompute</button>
-      </div>
+      <h2 style={{ marginTop: 0 }}>Future state per persona <Help k="future.plan" /></h2>
       <p className="hint">A plan is a base bundle plus any add-ons; their capabilities combine and
         their prices add up. ⚡ shows the options for a persona; ▸ holds add-ons, agreed prices and
         splitting a persona <Help k="future.carve" />. Prices are per seat per month.</p>
 
-      {err && <div className="err">{err}</div>}
+      {(err || resultErr) && <div className="err">{err || resultErr}</div>}
 
       <table className="resp-table">
         <thead><tr>
@@ -418,7 +396,7 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo', onChange
             )
             return (
               <React.Fragment key={p.id}>
-                <ScenarioRow p={p} s={s} r={resultFor(s.id)} bundles={bundles} basis={basis}
+                <ScenarioRow p={p} s={s} r={resultFor(s.id)} iv={interp.scenario[s.id]} bundles={bundles} basis={basis}
                   meta={meta} moneyUnit={moneyUnit} update={update} remove={remove}
                   onAnalyze={() => setAnalyzePersona(p)}
                   onCarve={p.parent_persona_id ? null
@@ -432,7 +410,7 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo', onChange
                       <td colSpan={9} style={{ background: 'var(--panel2)' }}>
                         <SplitOffer eid={eid} offer={o}
                           onLater={() => setDismissed({ ...dismissed, [p.id]: true })}
-                          onDone={() => { load(); compute() }} />
+                          />
                       </td>
                     </tr>
                   )
@@ -443,7 +421,7 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo', onChange
                     <td colSpan={9} style={{ background: 'var(--panel2)' }}>
                       <CarvePanel eid={eid} persona={p} bundles={bundles}
                         onCancel={() => setCarvePersona(null)}
-                        onDone={() => { setCarvePersona(null); load(); compute() }} />
+                        onDone={() => setCarvePersona(null)} />
                     </td>
                   </tr>
                 )}

@@ -1,29 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react'
 import Help from './Help.jsx'
 import DateInput from './DateInput.jsx'
-import { api, usd, pct } from '../api'
+import { api, usd, pct, useInterpreted } from '../api'
 import SkuCombobox, { loadSkus, matchSku } from './SkuCombobox.jsx'
 import { BasisSelect, billingLabel, effectiveBasis, segmentLabel, termLabel } from './basis.jsx'
+import { TextInput } from './CommitInput.jsx'
 
 // Prices are stored annualized (the engine works in annual USD); the UI edits
 // per-seat MONTHLY. Convert at the boundary only.
 const annualToMonthly = (a) => (a ? Math.round((Number(a) / 12) * 100) / 100 : 0)
 const monthlyToAnnual = (m) => Math.round(Number(m || 0) * 12 * 100) / 100
-
-// The catalog LIST baseline (unit_price_paid_annual) and the EFFECTIVE price the
-// customer pays — the manual override when the line overrides list, else the list
-// baseline. Mirrors CurrentMicrosoftLicense.effective_unit_price_annual on the
-// backend so the GUI and engine agree on what the line costs.
-const listAnnual = (l) => Number(l.unit_price_paid_annual || 0)
-const effectiveAnnual = (l) =>
-  l.price_override && l.overridden_price_annual != null
-    ? Number(l.overridden_price_annual)
-    : listAnnual(l)
-// Fraction below list the effective price sits at (0 when at/above list).
-const pctOffList = (l) => {
-  const list = listAnnual(l)
-  return list > 0 ? Math.max(0, (list - effectiveAnnual(l)) / list) : 0
-}
 
 // Monthly $/seat cell: holds local text so decimals type cleanly, commits the
 // annualized value on blur. Resyncs when the stored value changes (e.g. a SKU
@@ -34,7 +20,8 @@ function MonthlyPriceInput({ annual, onCommit, style }) {
   return (
     <input type="number" style={style} value={val}
       onChange={(e) => setVal(e.target.value)}
-      onBlur={() => onCommit(monthlyToAnnual(val))} />
+      onBlur={() => onCommit(monthlyToAnnual(val))}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }} />
   )
 }
 
@@ -43,7 +30,7 @@ const UNUSED_WORD = { '': 'not answered', Intended: 'kept on purpose', NotNeeded
 // One license line. The row shows the common case (fully assigned); the ▸
 // expander reveals the non-standard modifiers — shelfware (assigned below
 // purchased), discount, price basis, persona — so they don't clutter the row.
-function LicenseRow({ l, eng, meta, personas, catalog, update, remove, reading, onNavigate }) {
+function LicenseRow({ l, il, eng, meta, personas, catalog, update, remove, reading, onNavigate }) {
   const [open, setOpen] = useState(false)
   // The last SETTLED SKU pick (not the live typed text, which patches per
   // keystroke) — so "changed SKU" means a genuinely different product.
@@ -60,7 +47,12 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove, reading, 
   // Entitlement scope: a per-user line entitles its assigned seats and no more;
   // a tenant-wide line entitles the whole population it applies to.
   const tenantWide = l.coverage_scope === 'TenantWide'
-  const off = pctOffList(l)
+  // The price figures and unused seats are the interpreter's (GET …/interpreted):
+  // the effective price the engine costs, how far below list it is, unused seats
+  // and what they cost.
+  const effective = il ? Number(il.effective_price_annual) : null
+  const list = il ? Number(il.list_price_annual) : null
+  const off = il ? Number(il.pct_off_list) : 0
   const chips = []
   // How the line is read (TARGET_SCHEMA D23). A licence the library can't read is
   // answered on Other tools, never here — the flag links there.
@@ -76,14 +68,14 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove, reading, 
   if (notInCatalog) chips.push(<span key="c" className="badge warn" title="No matching SKU in the imported price list">⚠ not in catalog</span>)
   if (!fullyAssigned) chips.push(<span key="a" className="badge warn">{l.quantity_assigned}/{l.quantity_purchased} assigned</span>)
   // Unused seats need the customer's answer before they count (or don't).
-  const unused = Math.max((l.quantity_purchased || 0) - (l.quantity_assigned || 0), 0)
+  const unused = il ? il.unused_seats : 0
   if (unused > 0) chips.push(
     <span key="u" className={`badge ${l.unused_seats_answer ? 'muted' : 'warn'}`}
       title="Unused seats: bought but not assigned">
       {unused} unused · {UNUSED_WORD[l.unused_seats_answer || '']}</span>)
   if (l.renewal_date) chips.push(<span key="r" className="badge muted" title="This line's own Microsoft renewal">renews {l.renewal_date}</span>)
   if (l.price_override) chips.push(
-    <span key="ov" className="badge" title={`Custom price · list ${usd(listAnnual(l))}/seat/yr`}>
+    <span key="ov" className="badge" title={`Custom price · list ${usd(list)}/seat/yr`}>
       override{off > 0 ? ` −${pct(off)}` : ''}</span>)
   if (overridden) chips.push(<span key="basis" className="badge muted" title="Pricing basis overrides the engagement default">{segmentLabel(basis.segment)} · {basis.term}</span>)
   // A tenant-wide line entitles EVERY user it applies to, regardless of the seat
@@ -114,7 +106,7 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove, reading, 
   // fall back to list.
   const toggleOverride = (on) => {
     if (on) {
-      const seed = l.overridden_price_annual != null ? l.overridden_price_annual : listAnnual(l)
+      const seed = l.overridden_price_annual != null ? l.overridden_price_annual : l.unit_price_paid_annual
       update(l.id, { price_override: true, overridden_price_annual: seed })
     } else {
       update(l.id, { price_override: false })
@@ -179,9 +171,9 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove, reading, 
               update(l.id, patch)
             }
           }} /></td>
-        <td className="num" data-label="Qty"><input type="number" style={{ width: 80 }} value={l.quantity_purchased}
-          onChange={(e) => setQty(e.target.value)} /></td>
-        <td className="num" data-label="Monthly $/seat"><MonthlyPriceInput annual={effectiveAnnual(l)} style={{ width: 100 }}
+        <td className="num" data-label="Qty"><TextInput type="number" style={{ width: 80 }} value={l.quantity_purchased}
+          onCommit={setQty} /></td>
+        <td className="num" data-label="Monthly $/seat"><MonthlyPriceInput annual={effective} style={{ width: 100 }}
           onCommit={(annual) => update(l.id, l.price_override
             ? { overridden_price_annual: annual }
             : { unit_price_paid_annual: annual })} /></td>
@@ -196,8 +188,8 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove, reading, 
           <td colSpan={5} style={{ background: 'var(--panel2)' }}>
             <div className="grid c4" style={{ padding: '.4rem 0' }}>
               <div><label>Assigned to people <Help k="licences.assigned" /></label>
-                <input type="number" value={l.quantity_assigned}
-                  onChange={(e) => update(l.id, { quantity_assigned: Number(e.target.value) })} />
+                <TextInput type="number" value={l.quantity_assigned}
+                  onCommit={(v) => update(l.id, { quantity_assigned: Number(v) })} />
                 <small className="src">Below purchased = shelfware.</small></div>
               <div><label>What you pay <Help k="licences.price" /></label>
                 <label className="src" style={{ display: 'flex', alignItems: 'center', gap: '.4rem' }}>
@@ -207,7 +199,7 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove, reading, 
                 </label>
                 <small className="src">
                   {l.price_override
-                    ? <>Paying <b>{usd(effectiveAnnual(l) / 12)}</b>/seat/mo · list {usd(listAnnual(l) / 12)}
+                    ? <>Paying <b>{usd(effective / 12)}</b>/seat/mo · list {usd(list / 12)}
                       {off > 0 ? ` (−${pct(off)})` : ''}. Edit the $/seat cell above.</>
                     : <>The $/seat cell shows the catalog list. Tick to enter a negotiated price.</>}
                 </small></div>
@@ -245,7 +237,7 @@ function LicenseRow({ l, eng, meta, personas, catalog, update, remove, reading, 
                 ) : <div className="muted" style={{ padding: '.35rem 0' }}>None — every seat bought is assigned.</div>}
                 <small className="src">
                   {unused > 0
-                    ? <>{unused} seat{unused === 1 ? '' : 's'} bought but not assigned ({usd(unused * effectiveAnnual(l))}/yr).
+                    ? <>{unused} seat{unused === 1 ? '' : 's'} bought but not assigned ({usd(il?.unused_annual)}/yr).
                       Some organisations keep spares for quick onboarding. Only seats the customer says
                       are <b>not needed</b> count, as over-licensing, from this line's Microsoft renewal.</>
                     : <>Set Assigned below Qty to record unused seats.</>}
@@ -313,6 +305,7 @@ export default function CurrentLicensing({ engagement, meta, onUpdate, onNavigat
   const [parsed, setParsed] = useState(null)
   const [catalog, setCatalog] = useState([])  // price-list SKUs, for validation
   const [readings, setReadings] = useState({})  // line id -> its licence name's reading
+  const interp = useInterpreted(engagement.id)
 
   const load = () => {
     api.get(base).then(setItems).catch((e) => setErr(e.message))
@@ -494,7 +487,7 @@ export default function CurrentLicensing({ engagement, meta, onUpdate, onNavigat
         </tr></thead>
         <tbody>
           {items.map((l) => (
-            <LicenseRow key={l.id} l={l} eng={engagement} meta={meta} personas={personas} catalog={catalog}
+            <LicenseRow key={l.id} l={l} il={interp.licence[l.id]} eng={engagement} meta={meta} personas={personas} catalog={catalog}
               update={update} remove={remove} reading={readings[l.id]} onNavigate={onNavigate} />
           ))}
         </tbody>

@@ -20,11 +20,8 @@ from statistics import mean, median
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from tco_engine import compute as engine_compute
-
 from .. import models
-from . import compute
-from .serialize import result_to_dict
+from . import results
 
 # Money is shown over 36 months — the yearly run rate × 3 for every workshop,
 # whatever its own modelling horizon, so workshops compare like for like.
@@ -142,10 +139,9 @@ def summarize(workshops: list[dict], outcome_names: dict[str, str],
 
 
 def _today_result(db: Session, engagement_id: str) -> dict:
-    """The engagement recomputed now, persisting nothing (the Review step's path)."""
-    result = result_to_dict(engine_compute(compute.hydrate(db, engagement_id)))
-    result["new_outcomes"] = compute.new_outcomes(db, engagement_id, result)
-    return result
+    """The engagement's result now, through the one read path (services/results),
+    so "if completed today" is built exactly like the frozen "as completed"."""
+    return results.current_result(db, engagement_id)
 
 
 def workshop_value(db: Session) -> dict:

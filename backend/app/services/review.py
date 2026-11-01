@@ -2,25 +2,33 @@
 works without AI, plus the list of what is being LEFT OUT because it wasn't
 answered — so the AE can ask before producing the PDF.
 
-A pure read: it hydrates and runs the engine without persisting anything
-(viewing never writes). Each check names the step where it is fixed.
+The checks are the interpreter's findings (tco_engine.interpret `findings`,
+TARGET_SCHEMA §6.4); this module only words them. A pure read (viewing never
+writes). Each check names the step where it is fixed.
 """
 
 from __future__ import annotations
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from tco_engine import compute as engine_compute
 
 from .. import models
-from . import bundles, compute, library_updates, seat_cap
+from . import library_updates, raw, results
 
 STEP_ORDER = ["customer", "groups", "tools", "future", "gaps", "review", "summary"]
 
 
+def _plural_cap(n: int) -> tuple[str, str]:
+    return ("y" if n == 1 else "ies"), ("is" if n == 1 else "are")
+
+
 def review(db: Session, engagement_id: str) -> dict:
+    """The interpreter's findings (tco_engine.interpret, TARGET_SCHEMA §6.4), worded,
+    plus the two that come from outside it: a partly replaced tool with no
+    keep-or-retire answer (an engine result) and pending library updates."""
     eng = db.get(models.Engagement, engagement_id)
+    i = raw.interpreted(db, engagement_id)
+    outcome_name = {o.id: o.name for o in eng.outcomes}
     checks: list[dict] = []
     left_out: list[dict] = []
 
@@ -30,134 +38,97 @@ def review(db: Session, engagement_id: str) -> dict:
     def leave_out(what, why, step):
         left_out.append({"what": what, "why": why, "step": step})
 
-    personas = {p.id: p for p in eng.personas}
-    total_hc = sum(p.headcount or 0 for p in eng.personas)
+    def residual():
+        result = results.engine_result(db, engagement_id)
+        for d in result.dispositions:
+            if d.requires_residual_classification:
+                check("residual_unanswered", "future",
+                      f"{d.third_party_product_name} is only partly replaced. Keep it for the remaining "
+                      f"users, or retire it?")
+                leave_out(f"Retiring the rest of {d.third_party_product_name}",
+                          "not yet decided — assumed kept", "future")
 
-    # ---- Personas & licences -----------------------------------------------
-    if not eng.personas:
-        check("no_groups", "groups", "No personas yet. Add the personas who get different licences.")
-    if eng.employee_count and total_hc and total_hc != eng.employee_count:
-        check("headcount_vs_employees", "groups",
-              f"The personas add up to {total_hc:,} people; the customer has {eng.employee_count:,} "
-              f"employees. Is a persona missing, or is the employee count out of date?", "info")
-
-    for lic in eng.licenses_in_scope:
-        name = lic.sku_reference or "A licence line"
-        tagged = [personas[pid] for pid in lic.persona_ids if pid in personas]
-        if not lic.persona_ids:
-            check("licence_untagged", "groups",
-                  f"{name} isn't assigned to any persona, so it is counted across every persona. "
+    after_future = {"license_unread", "capability_changes_unknown", "target_unmapped",
+                    "capability_dropped", "gap_unanswered"}
+    residual_done = False
+    for f in i.findings:
+        x = f.facts
+        if f.code in after_future and not residual_done:
+            residual(); residual_done = True
+        if f.code == "no_groups":
+            check(f.code, f.step, "No personas yet. Add the personas who get different licences.")
+        elif f.code == "headcount_vs_employees":
+            check(f.code, f.step,
+                  f"The personas add up to {x['total']:,} people; the customer has {x['employees']:,} "
+                  f"employees. Is a persona missing, or is the employee count out of date?", "info")
+        elif f.code == "licence_untagged":
+            check(f.code, f.step,
+                  f"{x['name']} isn't assigned to any persona, so it is counted across every persona. "
                   f"Say which personas get it.")
-        elif lic.coverage_scope != "TenantWide":
-            hc = sum(p.headcount or 0 for p in tagged)
-            if lic.quantity_assigned != hc:
-                check("seats_vs_headcount", "groups",
-                      f"{name}: {lic.quantity_assigned:,} seats are assigned, but the personas that get "
-                      f"it have {hc:,} people. Adjust the seats, or split the persona if only some of "
-                      f"them hold it.", "info")
-        unused = max((lic.quantity_purchased or 0) - (lic.quantity_assigned or 0), 0)
-        if unused and not lic.unused_seats_answer:
-            check("unused_seats_unanswered", "groups",
-                  f"{name}: {unused:,} seats are paid for but not assigned. Kept on purpose, or not needed?")
-            leave_out(f"{unused:,} unused {name} seats",
+        elif f.code == "seats_vs_headcount":
+            check(f.code, f.step,
+                  f"{x['name']}: {x['assigned']:,} seats are assigned, but the personas that get "
+                  f"it have {x['headcount']:,} people. Adjust the seats, or split the persona if only some of "
+                  f"them hold it.", "info")
+        elif f.code == "unused_seats_unanswered":
+            check(f.code, f.step,
+                  f"{x['name']}: {x['unused']:,} seats are paid for but not assigned. Kept on purpose, or not needed?")
+            leave_out(f"{x['unused']:,} unused {x['name']} seats",
                       "not yet answered whether they're needed", "groups")
-    in_scope = eng.licenses_in_scope
-    if in_scope and not eng.microsoft_renewal_date and any(
-            not lic.renewal_date for lic in in_scope):
-        check("renewal_date_missing", "groups",
-              "The Microsoft agreement has no renewal date, so it is treated as month-to-month: "
-              "Microsoft reductions count from today.", "info")
-    out = [lic.sku_reference or "A licence line" for lic in eng.current_licenses if lic.out_of_scope]
-    if out:
-        check("license_out_of_scope", "groups",
-              f"Set aside as out of scope for this workshop: {', '.join(out)}. "
-              f"They are in no number; the PDF lists them.", "info")
-
-    # ---- Other tools --------------------------------------------------------
-    tp_outcomes = compute._ratified_thirdparty_outcomes(db, engagement_id)
-    for t in eng.third_party_products:
-        missing = []
-        if not t.raw_cost or float(t.raw_cost) <= 0:
-            missing.append("no cost")
-        if not t.covered_count:
-            missing.append("no users")
-        if not tp_outcomes.get(t.id):
-            missing.append("no uses ticked")
-        if missing:
-            check("tool_incomplete", "tools",
-                  f"{t.name or 'A tool'} has {', '.join(missing)}, so it is left out of the numbers.")
-            leave_out(t.name or "A tool", ", ".join(missing), "tools")
-        elif not t.renewal_date:
-            check("renewal_date_missing", "tools",
-                  f"{t.name}: no renewal date, so it is treated as month-to-month and its saving "
+        elif f.code == "renewal_date_missing" and x["subject"] == "agreement":
+            check(f.code, f.step,
+                  "The Microsoft agreement has no renewal date, so it is treated as month-to-month: "
+                  "Microsoft reductions count from today.", "info")
+        elif f.code == "license_out_of_scope":
+            check(f.code, f.step,
+                  f"Set aside as out of scope for this workshop: {', '.join(x['names'])}. "
+                  f"They are in no number; the PDF lists them.", "info")
+        elif f.code == "tool_incomplete":
+            check(f.code, f.step,
+                  f"{x['name']} has {', '.join(x['missing'])}, so it is left out of the numbers.")
+            leave_out(x["name"], ", ".join(x["missing"]), "tools")
+        elif f.code == "renewal_date_missing":
+            check(f.code, f.step,
+                  f"{x['name']}: no renewal date, so it is treated as month-to-month and its saving "
                   f"counts from today.", "info")
-
-    # ---- Future state (engine, not persisted) ------------------------------
-    result = engine_compute(compute.hydrate(db, engagement_id))
-    with_scenario = {s.persona_id for s in eng.scenarios}
-    for p in eng.personas:
-        if p.id not in with_scenario:
-            check("group_without_plan", "future",
-                  f"{p.name} has no future plan yet, so it isn't in the totals.")
-    # The Business seat cap, in the future state (TARGET_SCHEMA D27): a plan that
-    # needs more Business seats than are left is not something Microsoft will sell.
-    for o in seat_cap.split_offers(db, engagement_id):
-        if o["kind"] == "no_seats":
-            msg = (f"{o['persona_name']}: {o['headcount']:,} people on {o['plan']}, but no Business "
-                   f"seats are left ({o['used_elsewhere']:,} of {o['cap']:,} are used by other personas). "
-                   f"Choose another plan on Future state.")
-        elif o["kind"] == "nested":
-            msg = (f"{o['persona_name']}: {o['headcount']:,} people on {o['plan']}, but only "
-                   f"{o['seats_left']:,} Business seats are left. Reduce this carve-out on Future state.")
-        else:
-            msg = (f"{o['persona_name']}: {o['headcount']:,} people on {o['plan']}, but only "
-                   f"{o['seats_left']:,} Business seats are left. Split it on Future state.")
-        check("seat_cap_exceeded", "future", msg)
-    for d in result.dispositions:
-        if d.requires_residual_classification:
-            check("residual_unanswered", "future",
-                  f"{d.third_party_product_name} is only partly replaced. Keep it for the remaining "
-                  f"users, or retire it?")
-            leave_out(f"Retiring the rest of {d.third_party_product_name}",
-                      "not yet decided — assumed kept", "future")
-
-    # ---- Capability comparison (shared with the Coverage Check) -------------
-    gaps = compute.persona_coverage_gaps(db, engagement_id)
-    # A licence nobody can read (D23): one question per licence name, answered on
-    # Other tools; until then each group holding it has its capability changes
-    # left out (its money still counts).
-    unread: dict[str, tuple[str, list[str]]] = {}
-    for g in gaps:
-        for u in g["unmapped_current_licenses"]:
-            key = bundles.normalize_alias(u["sku_reference"])
-            unread.setdefault(key, (u["sku_reference"], []))[1].append(g["persona_name"])
-    for ref, groups in unread.values():
-        check("license_unread", "tools",
-              f"What {ref} includes isn't known yet ({', '.join(groups)}). Say it's the same as a "
-              f"library plan, tick what it delivers, or set it aside as out of scope.")
-    for g in gaps:
-        name = g["persona_name"]
-        if g["unmapped_current_licenses"]:
-            if g["has_scenario"]:
-                refs = ", ".join(u["sku_reference"] for u in g["unmapped_current_licenses"])
-                leave_out(f"Capability changes for {name}", f"what {refs} includes isn't answered",
-                          "tools")
-            continue
-        if g["has_scenario"] and g["target_unmapped"]:
-            check("target_unmapped", "future",
-                  f"{name}: the future plan isn't recognised, so its capabilities can't be compared.")
-        if g["dropped_outcomes"]:
-            names = ", ".join(o["name"] for o in g["dropped_outcomes"])
-            check("capability_dropped", "future",
-                  f"{name}'s future plan drops something it has today: {names}. Confirm that's intended.",
+        elif f.code == "group_without_plan":
+            check(f.code, f.step, f"{x['name']} has no future plan yet, so it isn't in the totals.")
+        elif f.code == "seat_cap_exceeded":
+            if x["kind"] == "no_seats":
+                msg = (f"{x['persona_name']}: {x['headcount']:,} people on {x['plan']}, but no Business "
+                       f"seats are left ({x['used_elsewhere']:,} of {x['cap']:,} are used by other personas). "
+                       f"Choose another plan on Future state.")
+            elif x["kind"] == "nested":
+                msg = (f"{x['persona_name']}: {x['headcount']:,} people on {x['plan']}, but only "
+                       f"{x['seats_left']:,} Business seats are left. Reduce this carve-out on Future state.")
+            else:
+                msg = (f"{x['persona_name']}: {x['headcount']:,} people on {x['plan']}, but only "
+                       f"{x['seats_left']:,} Business seats are left. Split it on Future state.")
+            check(f.code, f.step, msg)
+        elif f.code == "license_unread":
+            check(f.code, f.step,
+                  f"What {x['name']} includes isn't known yet ({', '.join(x['personas'])}). Say it's the same as a "
+                  f"library plan, tick what it delivers, or set it aside as out of scope.")
+        elif f.code == "capability_changes_unknown":
+            leave_out(f"Capability changes for {x['persona_name']}",
+                      f"what {', '.join(x['names'])} includes isn't answered", "tools")
+        elif f.code == "target_unmapped":
+            check(f.code, f.step,
+                  f"{x['persona_name']}: the future plan isn't recognised, so its capabilities can't be compared.")
+        elif f.code == "capability_dropped":
+            names = ", ".join(outcome_name.get(o, o) for o in f.outcome_ids)
+            check(f.code, f.step,
+                  f"{x['persona_name']}'s future plan drops something it has today: {names}. Confirm that's intended.",
                   "info")
-        n = len(g["unconfirmed_outcomes"])
-        if g["has_scenario"] and n:
-            check("gap_unanswered", "gaps",
-                  f"{name}: {n} capabilit{'y' if n == 1 else 'ies'} the plan adds "
-                  f"{'is' if n == 1 else 'are'} not yet confirmed as missing today.")
-            leave_out(f"{n} new capabilit{'y' if n == 1 else 'ies'} for {name}",
+        elif f.code == "gap_unanswered":
+            n = x["count"]
+            y, verb = _plural_cap(n)
+            check(f.code, f.step,
+                  f"{x['persona_name']}: {n} capabilit{y} the plan adds {verb} not yet confirmed as missing today.")
+            leave_out(f"{n} new capabilit{y} for {x['persona_name']}",
                       "not yet confirmed as missing today", "gaps")
+    if not residual_done:
+        residual()
 
     # ---- Library updates (TARGET_SCHEMA §4.7, §6.4) ---------------------------
     waiting = library_updates.pending(db, eng)
@@ -168,7 +139,7 @@ def review(db: Session, engagement_id: str) -> dict:
               f"(the shared library changed after it was created). Apply or decline "
               f"{'them' if n > 1 else 'it'} on the Coverage check.", "info")
 
-    rank = {s: i for i, s in enumerate(STEP_ORDER)}
+    rank = {s: k for k, s in enumerate(STEP_ORDER)}
     # A licence nobody can read blanks whole groups' capability story: it leads.
     checks.sort(key=lambda c: (c["code"] != "license_unread", rank.get(c["step"], 99),
                                c["severity"] != "warn"))
