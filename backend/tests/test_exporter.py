@@ -185,7 +185,7 @@ def test_readout_renders_business_narrative_when_present(client, monkeypatch):
             "move_incremental_delta_annual": 0, "offsets": []}],
         "dispositions": [],
         "narratives": [
-            {"persona": "Knowledge Worker", "today": "On E3 + Okta.",
+            {"persona_id": "p1", "persona": "Knowledge Worker", "today": "On E3 + Okta.",
              "whats_new": "E5 consolidates identity.", "value": "Saves $45k/yr."}
         ],
     }

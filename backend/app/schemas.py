@@ -355,6 +355,9 @@ class CurrentLicenseIn(BaseModel):
     # Personas this line applies to (many-to-many tags).
     persona_ids: list[str] = []
     source_tag: str = "CustomerStated"
+    # A pick from the catalog (not stored): the server sets the name and quotes the
+    # picked row's list price (entities._apply_pick).
+    catalog_sku_id: Optional[str] = None
 
 
 class CurrentLicenseOut(ORMModel):
@@ -524,6 +527,8 @@ class ScenarioIn(BaseModel):
     term_duration: Optional[str] = None
     billing_plan: Optional[str] = None
     addons: list[ScenarioAddonIn] = []
+    # A pick from the catalog (not stored): see CurrentLicenseIn.catalog_sku_id.
+    catalog_sku_id: Optional[str] = None
 
 
 class ScenarioUpdate(BaseModel):
@@ -538,6 +543,7 @@ class ScenarioUpdate(BaseModel):
     term_duration: Optional[str] = None
     billing_plan: Optional[str] = None
     addons: Optional[list[ScenarioAddonIn]] = None
+    catalog_sku_id: Optional[str] = None
 
 
 class ScenarioOut(ORMModel):

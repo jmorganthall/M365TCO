@@ -419,7 +419,9 @@ def scenario_narrative(engagement_id: str, db: Session = Depends(get_db)):
         raise HTTPException(502, f"Narrative generation failed: {exc}")
 
     # Replace the stored set wholesale — regeneration is the update path.
-    persona_by_name = {p.name: p.id for p in eng.personas}
+    # The model answers by persona name; map each back to the persona it was sent for.
+    persona_by_name = {s["persona_name"]: s["persona_id"]
+                       for s in result["scenarios"] if s.get("in_scope")}
     for old in list(eng.narratives):
         db.delete(old)
     db.flush()

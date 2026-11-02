@@ -30,9 +30,6 @@ function MonthlyInput({ annual, onCommit, style }) {
 // line-level selection requotes the composed target from the catalog.
 function ScenarioRow({ p, s, r, iv, onTrace, bundles, basis, meta, moneyUnit, update, remove, onAnalyze, onCarve, parentName }) {
   const [open, setOpen] = useState(false)
-  // The last SETTLED target pick (not the live typed text) — "changed SKU"
-  // means a genuinely different product, which re-seeds the $/seat/mo.
-  const settledSku = useRef(s.target_sku_reference)
   const bundleName = (id) => bundles.find((b) => b.id === id)?.name || id
   // Effective quoting basis for this line: scenario override else engagement default.
   const effBasis = {
@@ -98,23 +95,12 @@ function ScenarioRow({ p, s, r, iv, onTrace, bundles, basis, meta, moneyUnit, up
           <SkuCombobox value={s.target_sku_reference} style={{ minWidth: 130 }}
             segment={effBasis.segment} term={effBasis.term} billing={effBasis.billing}
             onChange={(v) => update(s.id, { target_sku_reference: v })}
+            // A pick sends the catalog row; the server records its name and library
+            // plan and quotes its list price (a different SKU, or no price yet). A
+            // seeded shortcode saves the name only.
             onSelectSku={(sku, title) => {
-              // A seeded shortcode: save the name only and leave the price alone.
-              if (!sku) { if (title !== s.target_sku_reference) update(s.id, { target_sku_reference: title }); return }
-              // Switching to a DIFFERENT SKU re-seeds the base $/seat/mo from the
-              // catalog ERP; re-picking the same one keeps a hand-tuned price.
-              const changed = sku.sku_title !== settledSku.current
-              settledSku.current = sku.sku_title
-              // A pick records the library plan the SKU is (TARGET_SCHEMA §5.2), with
-              // the name it was picked under, so the plan never depends on name matching.
-              const patch = { target_sku_reference: sku.sku_title, bundle_id: sku.bundle_id || null }
-              if (changed || !Number(s.target_unit_price_annual)) {
-                patch.target_unit_price_annual = sku.annual_erp_price
-                // A genuine base-SKU change clears any net-price override (it was a
-                // negotiated rate for the OLD target).
-                if (changed) { patch.price_override = false; patch.overridden_price_annual = null }
-              }
-              update(s.id, patch)
+              if (sku) update(s.id, { catalog_sku_id: sku.id })
+              else if (title !== s.target_sku_reference) update(s.id, { target_sku_reference: title })
             }} />
           {s.target_sku_reference && iv && (
             <div className="src" style={{ fontSize: '.72rem' }}

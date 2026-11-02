@@ -169,11 +169,22 @@ def views(result: dict) -> dict:
 
 
 def narratives_view(eng: models.Engagement) -> dict:
-    """The stored per-persona business narratives, as the API and readouts show them."""
-    rows = sorted(eng.narratives, key=lambda n: n.persona_name)
+    """The stored per-persona business narratives, as the API and readouts show them.
+
+    Each is joined to its persona by id, so a renamed persona keeps its narrative
+    and shows its current name. The name stored with the narrative is shown only
+    when the persona is gone (or the row predates the link)."""
+    current = {p.id: p.name for p in eng.personas}
+    order = persona_order.rank(eng.personas)
+
+    def name(n):
+        return current.get(n.persona_id) or n.persona_name
+
+    rows = sorted(eng.narratives, key=lambda n: (order.get(n.persona_id, len(order)), name(n)))
     return {
         "narratives": [
-            {"id": n.id, "persona": n.persona_name, "today": n.today,
+            {"id": n.id, "persona_id": n.persona_id if n.persona_id in current else None,
+             "persona": name(n), "today": n.today,
              "whats_new": n.whats_new, "value": n.value,
              "source_tag": n.source_tag}
             for n in rows

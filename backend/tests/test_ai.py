@@ -423,3 +423,30 @@ def test_readout_without_narratives_has_no_business_case(client):
     assert "The business case" not in client.get(f"/api/engagements/{eid}/readout.html").text
     wb = load_workbook(io.BytesIO(client.get(f"/api/engagements/{eid}/readout.xlsx").content))
     assert "Business case" not in wb.sheetnames
+
+
+def test_a_renamed_persona_keeps_its_narrative(client, monkeypatch):
+    """Narratives join their persona by id, not name: renaming the persona keeps
+    the narrative on its page, under the new name."""
+    from app.routers import engagements as eng_router
+
+    monkeypatch.setattr(eng_router.ai, "is_enabled", lambda: True)
+    monkeypatch.setattr(
+        eng_router.ai, "scenario_narratives",
+        lambda scenarios, instructions, model=None, web_search=False, customer=None: [
+            {"persona": s["persona"], "today": "Today text.", "whats_new": "New text.",
+             "value": "Value text."} for s in scenarios])
+
+    eid = client.post("/api/engagements", json={"customer_name": "Rename Co"}).json()["id"]
+    kw = client.post(f"/api/engagements/{eid}/personas",
+                     json={"name": "KW", "headcount": 100}).json()
+    client.post(f"/api/engagements/{eid}/scenarios",
+                json={"persona_id": kw["id"], "target_sku_reference": "E3",
+                      "target_unit_price_annual": 0, "in_scope": True})
+    client.post(f"/api/engagements/{eid}/narrative")
+    client.patch(f"/api/engagements/{eid}/personas/{kw['id']}", json={"name": "Office staff"})
+
+    [n] = client.get(f"/api/engagements/{eid}/narrative").json()["narratives"]
+    assert n["persona_id"] == kw["id"] and n["persona"] == "Office staff"
+    html = client.get(f"/api/engagements/{eid}/readout.html").text
+    assert "<div class='narrative'>" in html and "Value text." in html
