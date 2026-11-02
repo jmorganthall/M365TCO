@@ -96,9 +96,14 @@ and the ORM price properties are now deleted.
 - The engine splits licence cost over personas itself. That repeats the
   interpreter's `licence_shares`, and they agree by construction. Making the
   engine read the shares is part of storing the calculated layer.
-- Picking a SKU still looks its catalog price up in the browser
-  (`matchSku`, CurrentLicensing and Scenarios). This goes away with live list
-  prices in Phase 3: no list price is stored, so there is nothing to requote.
+- ~~Picking a SKU still looks its catalog price up in the browser.~~ Done: a pick
+  sends the catalog row it picked (`catalog_sku_id`, not stored) and the server
+  names the line and quotes the row's list price. A licence line's "revert to
+  list" (`POST …/current-licenses/{id}/list-price`) and a change to its basis
+  requote on the server, as a plan's basis change already did. An add-on's price
+  still comes from the server's bundle list as the browser received it.
+- ~~Narratives join their persona by name.~~ Done: by persona id, so a renamed
+  persona keeps its narrative and shows its current name.
 - The best-bundle panel's price edits are what-if inputs sent to the
   recommender, not derived figures. They stay.
 

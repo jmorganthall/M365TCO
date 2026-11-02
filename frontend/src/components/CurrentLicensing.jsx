@@ -32,11 +32,10 @@ const UNUSED_WORD = { '': 'not answered', Intended: 'kept on purpose', NotNeeded
 // One license line. The row shows the common case (fully assigned); the ▸
 // expander reveals the non-standard modifiers — shelfware (assigned below
 // purchased), discount, price basis, persona — so they don't clutter the row.
-function LicenseRow({ l, il, eng, meta, personas, catalog, update, remove, reading, onNavigate }) {
+function LicenseRow({ l, il, eng, meta, personas, catalog, update, post, remove, reading, onNavigate }) {
   const [open, setOpen] = useState(false)
   // The last SETTLED SKU pick (not the live typed text, which patches per
   // keystroke) — so "changed SKU" means a genuinely different product.
-  const settledSku = useRef(l.sku_reference)
   const fullyAssigned = l.quantity_assigned === l.quantity_purchased
   const tagIds = l.persona_ids || []
   const tagNames = tagIds.map((id) => personas.find((p) => p.id === id)?.name).filter(Boolean)
@@ -115,27 +114,9 @@ function LicenseRow({ l, il, eng, meta, personas, catalog, update, remove, readi
     }
   }
 
-  // "Revert to list": stop overriding AND re-pull the list baseline from the
-  // catalog at this line's basis, honoring the current terms (segment/term/billing).
-  const revertToList = () => {
-    const m = catalog.length ? matchSku(catalog, l.sku_reference, basis) : null
-    const patch = { price_override: false }
-    if (m) { patch.unit_price_paid_annual = m.annual_erp_price; patch.source_tag = 'ListPrice' }
-    update(l.id, patch)
-  }
-
-  // A line-level basis change (segment/term/payment) re-resolves the SKU
-  // against the catalog at the NEW effective basis and re-seeds the $/seat from
-  // that variant in the same patch — changing the purchase model is an explicit
-  // request to requote (mirrors the scenario requote). No catalog match → the
-  // basis still changes, the price is left alone.
-  const rebasedPatch = (patch) => {
-    if (!catalog.length || !(l.sku_reference || '').trim()) return patch
-    const m = matchSku(catalog, l.sku_reference, effectiveBasis({ ...l, ...patch }, eng))
-    return m
-      ? { ...patch, unit_price_paid_annual: m.annual_erp_price, source_tag: 'ListPrice' }
-      : patch
-  }
+  // "Revert to list": stop overriding and use the catalog list price at this
+  // line's basis — quoted by the server.
+  const revertToList = () => post(`${l.id}/list-price`)
 
   // Editing quantity keeps a fully-assigned line fully assigned; once shelfware
   // is set (assigned ≠ purchased), the two move independently.
@@ -153,28 +134,11 @@ function LicenseRow({ l, il, eng, meta, personas, catalog, update, remove, readi
         <td data-label="SKU"><SkuCombobox value={l.sku_reference}
           segment={basis.segment} term={basis.term} billing={basis.billing}
           onChange={(v) => update(l.id, { sku_reference: v })}
+          // A pick sends the catalog row; the server sets the name and quotes its list
+          // price (a different SKU, or no price yet). A seeded shortcode saves the name only.
           onSelectSku={(sku, title) => {
-            // A seeded shortcode: save the name only and leave the price alone.
-            if (!sku) { if (title !== l.sku_reference) update(l.id, { sku_reference: title }); return }
-            // Re-seed the $/seat when the pick is a DIFFERENT SKU than the line
-            // held (switching products means the old price no longer applies),
-            // or when the line has no price yet. Re-picking the SAME SKU never
-            // clobbers a captured customer/discounted rate. The picked row is
-            // already resolved to the line's basis, so the seeded price is the
-            // right variant's.
-            const changed = sku.sku_title !== settledSku.current
-            settledSku.current = sku.sku_title
-            if (changed || !Number(l.unit_price_paid_annual)) {
-              // ERP = the customer-facing list price. UnitPrice is the partner
-              // net (~ERP × 0.80) and must never seed what a CUSTOMER pays. A
-              // genuine SKU change also clears any price override — the override
-              // was a negotiated rate for the OLD SKU.
-              const patch = { sku_reference: title, unit_price_paid_annual: sku.annual_erp_price, source_tag: 'ListPrice' }
-              if (changed) { patch.price_override = false; patch.overridden_price_annual = null }
-              update(l.id, patch)
-            } else if (title !== l.sku_reference) {
-              update(l.id, { sku_reference: title })
-            }
+            if (sku) update(l.id, { catalog_sku_id: sku.id })
+            else if (title !== l.sku_reference) update(l.id, { sku_reference: title })
           }} /></td>
         <td className="num" data-label="Qty"><TextInput type="number" style={{ width: 80 }} value={l.quantity_purchased}
           onCommit={setQty} /></td>
@@ -265,16 +229,16 @@ function LicenseRow({ l, il, eng, meta, personas, catalog, update, remove, readi
             <div className="grid c4" style={{ padding: '.4rem 0' }}>
               <div><label>Segment</label>
                 <BasisSelect kind="segment" value={l.segment} inheritFrom={eng.effective_settings.default_segment}
-                  onChange={(v) => update(l.id, rebasedPatch({ segment: v }))} />
+                  onChange={(v) => update(l.id, { segment: v })} />
                 <small className="src">Overrides the engagement segment for this line only.</small></div>
               <div><label>Term</label>
                 <BasisSelect kind="term" value={l.term_duration} meta={meta}
                   inheritFrom={eng.effective_settings.default_term_duration}
-                  onChange={(v) => update(l.id, rebasedPatch({ term_duration: v }))} /></div>
+                  onChange={(v) => update(l.id, { term_duration: v })} /></div>
               <div><label>Payment</label>
                 <BasisSelect kind="billing" value={l.billing_plan} meta={meta}
                   inheritFrom={eng.effective_settings.default_billing_plan}
-                  onChange={(v) => update(l.id, rebasedPatch({ billing_plan: v }))} />
+                  onChange={(v) => update(l.id, { billing_plan: v })} />
                 <small className="src">Changing the basis re-seeds this line's $/seat from the matching catalog variant.</small></div>
               <div><label>List price</label>
                 <button className="ghost sm" style={{ marginTop: '.15rem' }}
@@ -299,7 +263,7 @@ export default function CurrentLicensing({ engagement, meta, onUpdate, onNavigat
   // so every tab's SKU lookups follow the same object (no stale local copy).
   const engBasis = effectiveBasis(null, engagement)
   const blank = {
-    sku_reference: '', quantity: 0,
+    sku_reference: '', catalog_sku_id: null, quantity: 0,
     unit_price_paid_annual: 0, source_tag: 'CustomerStated',
   }
   const [form, setForm] = useState(blank)
@@ -380,6 +344,9 @@ export default function CurrentLicensing({ engagement, meta, onUpdate, onNavigat
       const qty = Number(form.quantity) || 0
       await api.post(base, {
         sku_reference: form.sku_reference,
+        // A picked SKU: the server names the line and quotes its list price
+        // unless a price was typed.
+        catalog_sku_id: form.catalog_sku_id,
         // Default fully assigned; expand a line to model shelfware.
         quantity_purchased: qty, quantity_assigned: qty,
         unit_price_paid_annual: Number(form.unit_price_paid_annual),
@@ -390,6 +357,9 @@ export default function CurrentLicensing({ engagement, meta, onUpdate, onNavigat
   }
   async function update(id, patch) {
     try { await api.patch(`${base}/${id}`, patch); load() } catch (e) { setErr(e.message) }
+  }
+  async function post(path) {
+    try { await api.post(`${base}/${path}`); load() } catch (e) { setErr(e.message) }
   }
   async function remove(id) {
     try { await api.del(`${base}/${id}`); load() } catch (e) { setErr(e.message) }
@@ -497,7 +467,7 @@ export default function CurrentLicensing({ engagement, meta, onUpdate, onNavigat
         <tbody>
           {items.map((l) => (
             <LicenseRow key={l.id} l={l} il={interp.licence[l.id]} eng={engagement} meta={meta} personas={personas} catalog={catalog}
-              update={update} remove={remove} reading={readings[l.id]} onNavigate={onNavigate} />
+              update={update} post={post} remove={remove} reading={readings[l.id]} onNavigate={onNavigate} />
           ))}
         </tbody>
       </table>
@@ -506,21 +476,17 @@ export default function CurrentLicensing({ engagement, meta, onUpdate, onNavigat
         <div><label>SKU reference</label>
           <SkuCombobox value={form.sku_reference} placeholder="Microsoft 365 E3"
             segment={engBasis.segment} term={engBasis.term} billing={engBasis.billing}
-            onChange={(v) => setForm((f) => ({ ...f, sku_reference: v }))}
-            onSelectSku={(sku, title) => setForm((f) => (
-              // Keep a price the user already entered; only seed list when
-              // empty — and list = ERP, the customer-facing price.
-              !sku || Number(f.unit_price_paid_annual)
-                ? { ...f, sku_reference: title }
-                : { ...f, sku_reference: title, unit_price_paid_annual: sku.annual_erp_price, source_tag: 'ListPrice' }
-            ))} /></div>
+            onChange={(v) => setForm((f) => ({ ...f, sku_reference: v, catalog_sku_id: null }))}
+            onSelectSku={(sku, title) => setForm((f) => ({ ...f, sku_reference: title, catalog_sku_id: sku?.id || null }))} /></div>
         <div><label>Quantity</label>
           <input type="number" value={form.quantity}
             onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
           <small className="src">Assumed fully assigned; expand a line for shelfware.</small></div>
         <div><label>Monthly $/seat paid</label>
           <MonthlyPriceInput annual={form.unit_price_paid_annual}
-            onCommit={(annual) => setForm((f) => ({ ...f, unit_price_paid_annual: annual }))} /></div>
+            onCommit={(annual) => setForm((f) => ({ ...f, unit_price_paid_annual: annual }))} />
+          {form.catalog_sku_id && !Number(form.unit_price_paid_annual) && (
+            <small className="src">Blank: the catalog list price is used.</small>)}</div>
         <div style={{ display: 'flex', alignItems: 'flex-end' }}>
           <button onClick={add}>Add license line</button></div>
       </div>

@@ -521,10 +521,65 @@ def _set_persona_tags(row: models.CurrentMicrosoftLicense, persona_ids: list[str
     )
 
 
+# ---- Catalog picks and list prices, quoted on the server ---------------------
+def _picked_sku(db: Session, sku_id: str | None) -> models.MicrosoftSku | None:
+    if not sku_id:
+        return None
+    sku = db.get(models.MicrosoftSku, sku_id)
+    if sku is None:
+        raise HTTPException(422, "That catalog SKU is no longer in the price list; pick it again.")
+    return sku
+
+
+def _apply_pick(sku: models.MicrosoftSku, data: dict, *, ref: str, price: str,
+                old_ref: str, old_price) -> None:
+    """A pick from the catalog: the line takes the picked SKU's name and, when the
+    pick is a different SKU than the line held or the line has no price yet, its
+    list price (the annual ERP of the exact row picked, already at the line's
+    basis). A different SKU also ends a negotiated price, which was for the old
+    one. Anything sent in the same request wins."""
+    changed = sku.sku_title != (old_ref or "")
+    data.setdefault(ref, sku.sku_title)
+    if price not in data and (changed or not old_price):
+        data[price] = sku.annual_erp_price
+        if changed:
+            data.setdefault("price_override", False)
+            data.setdefault("overridden_price_annual", None)
+
+
+def _licence_basis(eng: models.Engagement, row: models.CurrentMicrosoftLicense) -> dict:
+    """The line's quoting basis: its own segment/term/billing, else the engagement's."""
+    basis = bundles.engagement_price_basis(eng)
+    for key, attr in (("segment", "segment"), ("term", "term_duration"), ("billing", "billing_plan")):
+        if getattr(row, attr):
+            basis[key] = getattr(row, attr)
+    return basis
+
+
+def _requote_licence(db: Session, eng: models.Engagement, row: models.CurrentMicrosoftLicense) -> None:
+    """Re-pull the line's list price from the catalog at its basis (the licence twin
+    of _requote_scenario). Only a price the catalog finds (> 0) is written, so a
+    hand-entered price on an uncatalogued licence survives."""
+    if not (row.sku_reference or "").strip():
+        return
+    price = bundles.catalog_annual_erp(db, row.sku_reference, bundle_id=row.bundle_id,
+                                       **_licence_basis(eng, row))
+    if price > 0:
+        row.unit_price_paid_annual = price
+        row.source_tag = "ListPrice"
+
+
 @router.post("/current-licenses", response_model=schemas.CurrentLicenseOut, status_code=201)
 def create_license(engagement_id: str, payload: schemas.CurrentLicenseIn, db: Session = Depends(get_db)):
     _require_engagement(db, engagement_id)
     data = payload.model_dump()
+    sku = _picked_sku(db, data.pop("catalog_sku_id", None))
+    if sku is not None:
+        # A new line on a picked SKU: its name, and its list price unless one was typed.
+        data["sku_reference"] = sku.sku_title
+        if not data.get("unit_price_paid_annual"):
+            data["unit_price_paid_annual"] = sku.annual_erp_price
+            data["source_tag"] = "ListPrice"
     persona_ids = data.pop("persona_ids", [])
     row = models.CurrentMicrosoftLicense(engagement_id=engagement_id, **data)
     _set_persona_tags(row, persona_ids)
@@ -536,14 +591,42 @@ def create_license(engagement_id: str, payload: schemas.CurrentLicenseIn, db: Se
 
 @router.patch("/current-licenses/{license_id}", response_model=schemas.CurrentLicenseOut)
 def update_license(engagement_id: str, license_id: str, payload: schemas.CurrentLicenseIn, db: Session = Depends(get_db)):
+    eng = _require_engagement(db, engagement_id)
     row = db.get(models.CurrentMicrosoftLicense, license_id)
     if row is None or row.engagement_id != engagement_id:
         raise HTTPException(404, "License not found")
     data = payload.model_dump(exclude_unset=True)
+    sku = _picked_sku(db, data.pop("catalog_sku_id", None))
+    if sku is not None:
+        _apply_pick(sku, data, ref="sku_reference", price="unit_price_paid_annual",
+                    old_ref=row.sku_reference, old_price=row.unit_price_paid_annual)
+        if "unit_price_paid_annual" in data:
+            data.setdefault("source_tag", "ListPrice")
     if "persona_ids" in data:
         _set_persona_tags(row, data.pop("persona_ids"))
+    # Changing the line's segment, term or payment model is a request to requote it
+    # (as for a plan); a price sent in the same request wins.
+    basis_changed = any(k in data and data[k] != getattr(row, k)
+                        for k in ("segment", "term_duration", "billing_plan"))
     for k, v in data.items():
         setattr(row, k, v)
+    if basis_changed and "unit_price_paid_annual" not in data:
+        _requote_licence(db, eng, row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.post("/current-licenses/{license_id}/list-price", response_model=schemas.CurrentLicenseOut)
+def revert_licence_to_list(engagement_id: str, license_id: str, db: Session = Depends(get_db)):
+    """Stop paying a negotiated price and use the catalog list price at the line's
+    basis. The negotiated price is kept for a later re-enable."""
+    eng = _require_engagement(db, engagement_id)
+    row = db.get(models.CurrentMicrosoftLicense, license_id)
+    if row is None or row.engagement_id != engagement_id:
+        raise HTTPException(404, "License not found")
+    row.price_override = False
+    _requote_licence(db, eng, row)
     db.commit()
     db.refresh(row)
     return row
@@ -930,6 +1013,14 @@ def create_scenario(engagement_id: str, payload: schemas.ScenarioIn, db: Session
     _require_engagement(db, engagement_id)
     data = payload.model_dump()
     addons = data.pop("addons", [])
+    sku = _picked_sku(db, data.pop("catalog_sku_id", None))
+    if sku is not None:
+        # A plan on a picked SKU: its name and library plan, and its list price
+        # unless one was typed.
+        data["target_sku_reference"] = sku.sku_title
+        data["bundle_id"] = data.get("bundle_id") or sku.bundle_id
+        if not data.get("target_unit_price_annual"):
+            data["target_unit_price_annual"] = sku.annual_erp_price
     _check_bundle(db, data.get("bundle_id"))
     # One plan per persona (TARGET_SCHEMA §5.2): a second would be costed too.
     if db.execute(select(models.PersonaScenario.id).where(
@@ -951,6 +1042,12 @@ def update_scenario(engagement_id: str, scenario_id: str, payload: schemas.Scena
     if row is None or row.engagement_id != engagement_id:
         raise HTTPException(404, "Scenario not found")
     data = payload.model_dump(exclude_unset=True)
+    sku = _picked_sku(db, data.pop("catalog_sku_id", None))
+    if sku is not None:
+        # The pick records the library plan the SKU is (TARGET_SCHEMA §5.2).
+        data.setdefault("bundle_id", sku.bundle_id)
+        _apply_pick(sku, data, ref="target_sku_reference", price="target_unit_price_annual",
+                    old_ref=row.target_sku_reference, old_price=row.target_unit_price_annual)
     _check_bundle(db, data.get("bundle_id"))
     # A renamed target keeps its picked plan only while the new name still reads as
     # that plan; typing a different plan's name drops the link (the name is then

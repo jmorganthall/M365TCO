@@ -217,7 +217,8 @@ class _Context:
         self.gaps_by_pid = {g["persona_id"]: g for g in gaps}
         self.new_by_pid = {n["persona_id"]: n for n in result.get("new_outcomes") or []}
         self.dropped_by_pid = {d["persona_id"]: d for d in result.get("dropped_capability") or []}
-        self.narr_by_name = {n.get("persona"): n for n in result.get("narratives") or []}
+        # Narratives by persona id; a narrative whose persona is gone matches no scenario.
+        self.narr_by_pid = {n["persona_id"]: n for n in result.get("narratives") or [] if n.get("persona_id")}
         self.personas = {p.id: p for p in eng.personas}
         self.products = {t.id: t for t in eng.third_party_products}
         self.outcome_name = {o.id: o.name for o in eng.outcomes}
@@ -618,7 +619,7 @@ class _Context:
         return f"<div class='capabilities'><h3>Capability Changes</h3>{''.join(parts)}</div>"
 
     def _narrative(self, s) -> str:
-        n = self.narr_by_name.get(s["persona_name"])
+        n = self.narr_by_pid.get(s["persona_id"])
         if not n or not any(n.get(k) for k in ("today", "whats_new", "value")):
             return ""
         body = "".join(f"<p><b>{label}</b> {E(n[key])}</p>"
