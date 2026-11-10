@@ -219,6 +219,7 @@ async def lifespan(_app: FastAPI):
         _backfill_coverage_bundle_ids(db)
         _backfill_binary_coverage(db)
         _backfill_new_default_outcomes(db)
+        _backfill_outcome_areas(db)
         _backfill_process_automation_coverage(db)
         _backfill_endpoint_protection_coverage(db)
         _backfill_coverage_corrections(db)
@@ -434,6 +435,26 @@ def _retire_coverage_pairs(db) -> None:
     db.commit()
 
 
+def _backfill_outcome_areas(db) -> None:
+    """Additive backfill (GUIDED_PLAN G9): give each global library outcome that
+    has no area the seed file's area for its key. The global template only; an
+    existing engagement's copy changes only when a person applies the Library
+    updates item. An area an operator set is never overwritten. Idempotent."""
+    from sqlalchemy import select
+
+    from . import models
+    from .services import seeds as seeds_service
+
+    areas = {o["key"]: o.get("area") for o in seeds_service.load_outcomes()["outcomes"]}
+    changed = False
+    for d in db.execute(select(models.DefaultOutcome)).scalars():
+        if d.area is None and areas.get(d.key):
+            d.area = areas[d.key]
+            changed = True
+    if changed:
+        db.commit()
+
+
 def _backfill_new_default_outcomes(db) -> None:
     """Additive migration: insert any default outcome from the seed file whose key
     is missing (so existing deployments pick up newly-added outcomes like Desktop
@@ -459,7 +480,8 @@ def _backfill_new_default_outcomes(db) -> None:
             max_sort += 1
             db.add(models.DefaultOutcome(
                 key=o["key"], name=o["name"],
-                description=o.get("description", ""), sort_order=max_sort))
+                description=o.get("description", ""), sort_order=max_sort,
+                area=o.get("area")))
             added.add(o["key"])
     if not added:
         return

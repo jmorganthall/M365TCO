@@ -211,3 +211,61 @@ def test_a_licence_the_library_learned_is_offered_as_a_link(client):
             db.execute(delete(models.BundleAlias).where(
                 models.BundleAlias.alias == bundles_service.normalize_alias(name)))
             db.commit()
+
+
+def test_outcome_areas_are_copied_and_offered_to_older_engagements(client):
+    """GUIDED_PLAN G9: a new engagement copies each library outcome's area. An
+    engagement whose outcomes have no area is offered one Library updates item;
+    applying it groups them, and an area set for this customer is kept."""
+    from app import models
+    from app.db import SessionLocal
+
+    eid = client.post("/api/engagements", json={"customer_name": "Areas Co"}).json()["id"]
+    outs = client.get(f"/api/engagements/{eid}/outcomes").json()
+    by_key = {o["seed_key"]: o for o in outs}
+    assert by_key["email-hygiene"]["area"] == "Email security"
+    assert by_key["endpoint-edr"]["area"] == "Endpoint"
+    assert not [i for i in client.get(f"/api/engagements/{eid}/library-updates").json()["items"]
+                if i["kind"] == "outcome_areas"]
+
+    # An older engagement: no areas, except one the customer named themselves.
+    with SessionLocal() as db:
+        for o in db.query(models.Outcome).filter_by(engagement_id=eid):
+            o.area = "Mine" if o.seed_key == "siem" else None
+        db.commit()
+    items = [i for i in client.get(f"/api/engagements/{eid}/library-updates").json()["items"]
+             if i["kind"] == "outcome_areas"]
+    from app.services.seeds import load_outcomes
+    seeded = {o["key"] for o in load_outcomes()["outcomes"]}
+    assert len(items) == 1
+    assert items[0]["count"] == len([o for o in outs if o["seed_key"] in seeded]) - 1
+    r = client.post(f"/api/engagements/{eid}/library-updates/apply", json={"kind": "outcome_areas"})
+    assert r.status_code == 204, r.text
+    by_key = {o["seed_key"]: o for o in client.get(f"/api/engagements/{eid}/outcomes").json()}
+    assert by_key["email-hygiene"]["area"] == "Email security" and by_key["siem"]["area"] == "Mine"
+    assert not [i for i in client.get(f"/api/engagements/{eid}/library-updates").json()["items"]
+                if i["kind"] == "outcome_areas"]
+
+    # Blank clears an area to "not grouped".
+    oid = by_key["siem"]["id"]
+    assert client.patch(f"/api/engagements/{eid}/outcomes/{oid}", json={"area": "  "}).json()["area"] is None
+
+
+def test_backfill_gives_the_global_library_its_areas(client):
+    from app import models
+    from app.db import SessionLocal
+    from app.main import _backfill_outcome_areas
+
+    with SessionLocal() as db:
+        rows = db.query(models.DefaultOutcome).all()
+        for d in rows:
+            d.area = None
+        rows[0].area = "Operator's own"
+        db.commit()
+        _backfill_outcome_areas(db)
+        _backfill_outcome_areas(db)
+        got = {d.key: d.area for d in db.query(models.DefaultOutcome)}
+    from app.services.seeds import load_outcomes
+    seeded = {o["key"] for o in load_outcomes()["outcomes"]}
+    assert got[rows[0].key] == "Operator's own"
+    assert all(got[k] for k in seeded if k in got)

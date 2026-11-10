@@ -192,7 +192,7 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
     for o in src.outcomes:
         no = models.Outcome(
             engagement_id=dst.id, name=o.name, description=o.description,
-            is_custom=o.is_custom, seed_key=o.seed_key,
+            is_custom=o.is_custom, seed_key=o.seed_key, area=o.area,
         )
         db.add(no)
         db.flush()

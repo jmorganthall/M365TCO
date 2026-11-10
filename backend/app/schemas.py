@@ -93,6 +93,7 @@ class DefaultOutcomeIn(BaseModel):
     name: str
     description: str = ""
     sort_order: Optional[int] = None
+    area: Optional[str] = None
 
 
 class DefaultOutcomeOut(ORMModel):
@@ -101,6 +102,7 @@ class DefaultOutcomeOut(ORMModel):
     name: str
     description: str
     sort_order: int
+    area: Optional[str] = None
 
 
 class DefaultCoverageIn(BaseModel):
@@ -310,6 +312,7 @@ class OutcomeIn(BaseModel):
     name: str = ""
     description: str = ""
     is_custom: bool = True
+    area: Optional[str] = None
 
 
 # ---- Stored business narrative (operator edit) ----
@@ -328,6 +331,7 @@ class OutcomeOut(ORMModel):
     # first-class object's durable key, so consumers reference outcomes by identity
     # rather than by mutable display name. System-derived, read-only.
     seed_key: Optional[str] = None
+    area: Optional[str] = None
 
 
 # ---- Current Microsoft license ----
@@ -414,7 +418,8 @@ class LicenceNamePlanIn(BaseModel):
 
 # ---- Library updates review (TARGET_SCHEMA §4.7) ----
 class LibraryUpdateIn(BaseModel):
-    kind: Literal["outcome_added", "coverage_added", "coverage_removed", "licence_in_library"]
+    kind: Literal["outcome_added", "coverage_added", "coverage_removed", "licence_in_library",
+                  "outcome_areas"]
     outcome_key: Optional[str] = None   # outcome_added
     bundle_id: Optional[str] = None     # coverage_added / coverage_removed
     sku_reference: Optional[str] = None  # licence_in_library

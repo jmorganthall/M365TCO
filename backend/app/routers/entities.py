@@ -464,6 +464,8 @@ def update_outcome(engagement_id: str, outcome_id: str, payload: schemas.Outcome
     if row is None or row.engagement_id != engagement_id:
         raise HTTPException(404, "Outcome not found")
     for k, v in payload.model_dump(exclude_unset=True).items():
+        if k == "area":
+            v = (v or "").strip() or None   # blank = not grouped (NULL)
         setattr(row, k, v)
     db.commit()
     db.refresh(row)

@@ -78,7 +78,7 @@ Each phase is one pull request to `main`, with its tests.
 | 1 | This plan and the contract changes | done |
 | 2 | Interpretation: one splitting rule (G2, G5, G6), the seat-mismatch answer (G4), the persona baseline (G3), total headcount (G8) | done |
 | 3 | Retire `product_dispositions` (G7) | done |
-| 4 | Outcome areas (G9) | — |
+| 4 | Outcome areas (G9) | done |
 | 5 | The guided walkthrough GUI, steps 1–10 and 13 (G10, G11, G16) | — |
 | 6 | Contracts and cost lines (G12) | — |
 | 7 | Practice services and result sections, steps 11–12 (G13–G15) | — |

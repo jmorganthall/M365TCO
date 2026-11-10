@@ -53,7 +53,7 @@ def seed_default_outcomes(db: Session) -> None:
         db.add(
             models.DefaultOutcome(
                 key=o["key"], name=o["name"],
-                description=o.get("description", ""), sort_order=i,
+                description=o.get("description", ""), sort_order=i, area=o.get("area"),
             )
         )
     db.commit()
@@ -98,6 +98,7 @@ def seed_engagement(db: Session, engagement: models.Engagement) -> None:
             description=o.description,
             is_custom=False,
             seed_key=o.key,
+            area=o.area,
         )
         db.add(row)
         db.flush()  # assign id
