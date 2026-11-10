@@ -4,7 +4,10 @@
   --panel2: #232a52;
   --ink: #e8ebff;
   --muted: #9aa3d4;
-  --accent: #5b7cff;
+  /* UI dos and don'ts CO4: white on the accent fill is 5.0:1 (was 3.6:1). Accent
+     used as TEXT (links) takes the lighter tint, 5.8:1+ on every panel (DK3, UI1). */
+  --accent: #4363e6;
+  --accent-text: #8fa4ff;
   --pos: #34d399;
   --neg: #f87171;
   --warn: #fbbf24;
@@ -17,8 +20,9 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-size: 14px;
+  line-height: 1.5; /* TY1 */
 }
-a { color: var(--accent); }
+a { color: var(--accent-text); text-decoration: underline; text-underline-offset: 2px; } /* CO6 */
 /* ---- App shell: a fixed top bar over a scrollable main ---- */
 /* There is deliberately no engagement sidebar: the app runs on a shared screen,
    so customers are found by search on the Open-engagement page instead. */
@@ -189,6 +193,8 @@ tr.qw-who td { padding-top: 0; font-size: .78rem; }
 table.bridge tr.bridge-sub td { color: var(--muted); padding-left: 1.4rem; font-size: .8rem; }
 table.bridge tr.bridge-total td { border-top: 1px solid var(--border); padding-top: .45rem; }
 .err { color: var(--neg); font-size: .82rem; margin: .4rem 0; }
+/* CO2: an error is never colour alone. */
+.err::before { content: "⚠ "; }
 /* Advisory box for a feature that is on but inert — loud enough to notice,
    not styled as an error (nothing is broken; something needs a decision). */
 /* A carve-out row: tied to the persona above it by an indent and an elbow, and
@@ -239,7 +245,7 @@ small.src { color: var(--muted); font-size: .72rem; }
 .kind-tag { font-size: .58rem; text-transform: uppercase; letter-spacing: .04em; padding: 0 .25rem;
   border: 1px solid var(--border); border-radius: 4px; color: var(--muted); }
 .kind-derived { color: var(--warn); border-color: var(--warn); }
-.kind-provenance { color: var(--accent); border-color: var(--accent); }
+.kind-provenance { color: var(--accent-text); border-color: var(--accent); }
 
 /* ---- Selectable tag toggle (persona tags): whole chip fills when on ---- */
 .tag-toggle {
@@ -504,43 +510,57 @@ button.badge.licence-flag { background: transparent; padding: .12rem .45rem; fon
 .trace-facts td { padding: .1rem .4rem .1rem 0; vertical-align: top; }
 @media (max-width: 700px) { .trace-layers { grid-template-columns: 1fr; } }
 
-/* ---- Guided walkthrough (docs/GUIDED_PLAN.md G16): one question per screen ---- */
-.guide { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 1.2rem; margin-top: 1rem; align-items: start; }
+/* ---- Guided walkthrough (docs/GUIDED_PLAN.md G16): one question per screen ----
+   Spacing comes from one scale (SP2): 4, 8, 16, 24, 32 px. */
+.guide { display: grid; grid-template-columns: minmax(0, 1fr) 264px; gap: 24px; margin-top: 16px; align-items: start; }
 @media (max-width: 900px) { .guide { grid-template-columns: 1fr; } }
-.guide-progress { display: flex; gap: 4px; margin-bottom: .8rem; flex-wrap: wrap; }
-.guide-dot { flex: 1 1 0; min-width: 18px; height: 6px; padding: 0; border-radius: 3px; background: var(--border); border: 0; }
+.guide-progress { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+.guide-dot { flex: 1 1 0; min-width: 16px; height: 8px; padding: 0; border-radius: 4px; background: var(--border); border: 0; }
 .guide-dot span { display: none; }
 .guide-dot.done { background: var(--accent); opacity: .55; }
 .guide-dot.on { background: var(--accent); }
-.guide-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 2rem 2.2rem 1.4rem; min-height: 360px; }
-@media (max-width: 600px) { .guide-card { padding: 1.2rem 1rem; } }
-.guide-q { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .5rem; font-weight: 650; }
-.guide-why { color: var(--muted); font-size: 1rem; margin: 0 0 1.4rem; max-width: 46rem; }
-.guide-big { font-size: 1.6rem; padding: .6rem .8rem; max-width: 26rem; }
-.guide-label { display: block; color: var(--muted); margin: 1rem 0 .3rem; font-size: .85rem; }
-.guide-row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin: .45rem 0; }
+.guide-card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 32px 32px 24px; min-height: 360px; }
+@media (max-width: 600px) { .guide-card { padding: 24px 16px; } }
+.guide-q { font-size: 1.7rem; line-height: 1.25; margin: 0 0 8px; font-weight: 650; letter-spacing: -0.02em; } /* TY3, TY6 */
+.guide-why { color: var(--muted); font-size: 1rem; margin: 0 0 24px; max-width: 65ch; } /* TY2 */
+.guide-big { font-size: 1.6rem; padding: 8px 16px; max-width: 26rem; }
+.guide-label { display: block; color: var(--muted); margin: 16px 0 4px; font-size: .85rem; } /* SP1: closer to its field */
+.guide-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
 .guide-row input, .guide-row select { width: auto; }
-.guide-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .8rem; }
-.guide-choice { text-align: left; padding: 1.1rem 1.2rem; font-size: 1.1rem; border-radius: 12px; display: flex; flex-direction: column; gap: .3rem; }
-.guide-choice small { color: rgba(255,255,255,.75); font-size: .85rem; font-weight: 400; }
-.guide-block { padding: .8rem 0; border-top: 1px solid var(--border); }
+.guide-field { display: flex; flex-direction: column; gap: 4px; }
+.guide-field label { margin: 0; }
+.guide-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.guide-choice { text-align: left; padding: 16px 24px; font-size: 1.1rem; border-radius: 12px; display: flex; flex-direction: column; gap: 4px; }
+.guide-choice small { color: rgba(255,255,255,.85); font-size: .85rem; font-weight: 400; }
+.guide-block { padding: 16px 0; border-top: 1px solid var(--border); } /* SP3: more space between groups than within */
 .guide-block:first-of-type { border-top: 0; }
 .guide-block-title { font-weight: 600; font-size: 1.05rem; }
-.guide-desc { font-size: .85rem; margin: .15rem 0 .4rem; }
-.guide-chips { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; margin-top: .4rem; }
-.guide-chips .badge { display: inline-flex; align-items: center; gap: .3rem; font-size: .85rem; padding: .25rem .55rem; }
-.chip-x { background: transparent; border: 0; color: var(--muted); padding: 0 .1rem; font-size: .8rem; }
-.guide-count { font-size: 1rem; margin-top: 1rem; }
-.guide-nav { display: flex; justify-content: space-between; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
-.guide-nav button { font-size: 1rem; padding: .55rem 1.2rem; }
-.guide-table { width: 100%; margin: .6rem 0 1rem; }
-.guide-table td, .guide-table th { padding: .45rem .5rem; }
+.guide-desc { font-size: .85rem; margin: 4px 0 8px; max-width: 65ch; }
+.guide-chips { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+.guide-chips .badge { display: inline-flex; align-items: center; gap: 4px; font-size: .85rem; padding: 4px 8px; }
+.chip-x { background: transparent; border: 0; color: var(--muted); padding: 0 4px; font-size: .8rem; }
+.guide-count { font-size: 1rem; margin-top: 16px; }
+.guide-nav { display: flex; justify-content: space-between; margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); }
+.guide-nav button { font-size: 1rem; padding: 8px 24px; }
+.guide-table { width: 100%; margin: 8px 0 16px; }
+.guide-table td, .guide-table th { padding: 8px; }
 .guide-table tfoot td { border-top: 1px solid var(--border); font-weight: 600; }
-.guide-stats { display: flex; gap: 2.5rem; flex-wrap: wrap; margin: .5rem 0 1rem; }
-.guide-stat { font-size: 2rem; font-weight: 700; }
-.guide-rail { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 1rem; position: sticky; top: 1rem; }
-.guide-rail-title { font-weight: 600; margin-bottom: .6rem; }
-.guide-rail-row { display: flex; justify-content: space-between; gap: .5rem; padding: .45rem 0; border-top: 1px solid var(--border); font-size: .88rem; }
+.guide-stats { display: flex; gap: 32px; flex-wrap: wrap; margin: 8px 0 16px; }
+.guide-stat { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; }
+.guide-rail { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 16px; position: sticky; top: 16px; }
+.guide-rail-title { font-weight: 600; margin-bottom: 8px; }
+.guide-rail-row { display: flex; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px solid var(--border); font-size: .88rem; }
 .guide-rail-row .muted { font-size: .75rem; }
 .guide-rail-row.total { border-top: 2px solid var(--accent); }
 .guide-card input[type=date] { max-width: 16rem; }
+
+/* MO1, MO3: on touch screens, 44px tap targets and 16px input text (iOS zooms on
+   anything smaller). Desktop keeps its dense tables on purpose. */
+@media (pointer: coarse), (max-width: 700px) {
+  input, select, textarea { font-size: 16px; }
+  button, .step { min-height: 44px; }
+  button.sm, .chip-x, .help-btn { min-height: 44px; min-width: 44px; }
+  /* The progress bar is a position indicator; Back and Continue are the way to
+     move, so its segments stay thin (a deliberate exception to MO1). */
+  .guide-dot { min-height: 0; height: 8px; }
+}
