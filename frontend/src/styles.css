@@ -584,7 +584,6 @@ button.badge.licence-flag { background: transparent; padding: .12rem .45rem; fon
 .lic-adding label { margin: 0; }
 
 /* Guided Groups step: each group with what it needs (required outcomes). */
-.group-item { padding: 8px 0 16px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
 .needs { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; }
 .needs-item { font-size: .85rem; }
 
@@ -609,3 +608,27 @@ button.destructive:disabled { background: var(--panel2); color: var(--muted); op
 .check-notes { margin-top: 16px; }
 .check-notes summary { cursor: pointer; color: var(--muted); }
 .check-note { font-size: .85rem; padding: 4px 0; }
+
+/* Guided Groups step: groups as a table (name, people, one column per need, remove)
+   and a separate, dashed "Add a group" panel. */
+.groups-grid { display: grid; grid-template-columns: minmax(140px, 1fr) 104px repeat(var(--needs, 3), 96px) 44px;
+  column-gap: 8px; align-items: center; margin: 8px 0 16px; }
+.groups-head, .groups-row { display: contents; }
+.groups-head > span { font-size: .78rem; color: var(--muted); padding-bottom: 8px; border-bottom: 1px solid var(--border); line-height: 1.25; }
+.groups-row > * { margin: 8px 0; }
+.groups-row input[type=number] { width: 100%; text-align: right; }
+.need-col { text-align: center; }
+.groups-head .num { text-align: right; }
+.group-add { border: 1px dashed var(--border); border-radius: 12px; padding: 16px; margin-top: 8px; }
+.group-add-title { font-weight: 600; margin-bottom: 8px; }
+.group-add-needs { font-size: .85rem; margin-top: 16px; }
+.group-add .needs { margin-top: 4px; }
+/* Phones: the name takes its own line; people, the needs and remove share the next. */
+@media (max-width: 700px) {
+  .groups-grid { grid-template-columns: 88px repeat(var(--needs, 3), minmax(0, 1fr)) 44px; }
+  .groups-head > span:first-child, .groups-row > :first-child { grid-column: 1 / -1; }
+  .groups-head > span:first-child { border-bottom: 0; padding-bottom: 0; }
+  .groups-row > :first-child { margin-bottom: 0; }
+  .groups-head .need-col { font-size: .7rem; }
+  .groups-head .num { text-align: left; }
+}
