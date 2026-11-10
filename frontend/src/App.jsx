@@ -19,6 +19,7 @@ import DeliveredCard from './components/DeliveredCard.jsx'
 import DataInspector from './components/DataInspector.jsx'
 import AdminPanel from './components/AdminPanel.jsx'
 import WorkshopValue from './components/WorkshopValue.jsx'
+import DeleteEngagement from './components/DeleteEngagement.jsx'
 import { StepIntro } from './components/Help.jsx'
 import Guided, { GUIDE_STEPS } from './components/Guided.jsx'
 
@@ -132,15 +133,18 @@ export default function App() {
     const copy = await api.post(`/api/engagements/${id}/duplicate`)
     open(copy)
   }
-  async function remove(e) {
-    if (!confirm(`Delete “${e.customer_name || 'Untitled'}” and all its data?`)) return false
-    await api.del(`/api/engagements/${e.id}`)
-    if (activeId === e.id) go('/')
-    return true
+  // Deleting asks for the customer's name to be typed (DeleteEngagement).
+  const [deleting, setDeleting] = useState(null)
+  function remove(e) { setDeleting(e) }
+  function deleted() {
+    const id = deleting?.id
+    setDeleting(null); setActive(null)
+    if (activeId === id) go('/')
   }
 
   return (
     <div className="app-root">
+      {deleting && <DeleteEngagement engagement={deleting} onDeleted={deleted} onCancel={() => setDeleting(null)} />}
       <header className="topbar">
         <div className="topbar-left">
           {route.view !== 'home' && (
@@ -316,7 +320,7 @@ function EngagementTools({ active, onData, onDuplicate, onDelete }) {
           }}>
             {item('📊 Data inspector', onData, active)}
             {item('⧉ Duplicate engagement', onDuplicate)}
-            {item('× Delete engagement', onDelete)}
+            {item('× Delete workshop…', onDelete)}
           </div>
         </>
       )}

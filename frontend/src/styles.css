@@ -587,3 +587,19 @@ button.badge.licence-flag { background: transparent; padding: .12rem .45rem; fon
 .group-item { padding: 8px 0 16px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
 .needs { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; }
 .needs-item { font-size: .85rem; }
+
+/* Confirm dialogs (e.g. deleting a workshop). Red is for the destructive action only (CO3). */
+.modal-backdrop { position: fixed; inset: 0; z-index: 100; background: rgba(5, 7, 20, .7);
+  display: flex; align-items: center; justify-content: center; padding: 16px; }
+.modal { width: 100%; max-width: 480px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 16px; padding: 24px; }
+.modal h2 { margin: 0 0 8px; font-size: 1.25rem; letter-spacing: -0.01em; }
+.modal p { color: var(--muted); margin: 0 0 16px; max-width: 65ch; }
+.modal label { font-size: .85rem; color: var(--ink); margin-bottom: 4px; }
+.modal input { font-size: 1rem; }
+.modal-phrase { user-select: all; }
+.modal-hint { font-size: .8rem; margin-top: 4px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+button.destructive { background: #b42323; color: #fff; }
+button.destructive:disabled { background: var(--panel2); color: var(--muted); opacity: 1; }
+@media (max-width: 600px) { .modal-backdrop { align-items: flex-end; } .modal { border-radius: 16px 16px 0 0; } }

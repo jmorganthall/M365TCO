@@ -105,3 +105,16 @@ def test_zero_cost_tools_are_left_out_of_the_disposition_tables(client):
     real = client.post(f"{b}/third-party", json={"name": "Real", "raw_cost": 1000, "persona_ids": [g["id"]]}).json()
     client.post(f"{b}/third-party", json={"name": "Nothing", "raw_cost": 0, "persona_ids": [g["id"]]})
     assert client.get(f"{b}/result").json()["views"]["dispositions_shown"] == [real["id"]]
+
+
+def test_deleting_a_workshop_needs_the_customer_name(client):
+    eid = client.post("/api/engagements", json={"customer_name": "Contoso Ltd"}).json()["id"]
+    url = f"/api/engagements/{eid}"
+    assert client.delete(url).status_code == 409
+    assert client.delete(url, params={"confirm_name": "contoso ltd"}).status_code == 409   # exact, case and all
+    assert client.delete(url, params={"confirm_name": "Contoso"}).status_code == 409
+    assert client.get(url).status_code == 200
+    assert client.delete(url, params={"confirm_name": " Contoso Ltd "}).status_code == 204
+    assert client.get(url).status_code == 404
+    blank = client.post("/api/engagements", json={"customer_name": ""}).json()["id"]
+    assert client.delete(f"/api/engagements/{blank}", params={"confirm_name": "delete"}).status_code == 204
