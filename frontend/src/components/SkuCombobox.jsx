@@ -4,8 +4,8 @@ import { sheetSegment } from './basis.jsx'
 
 // Shared searchable SKU picker. Type a few characters (e.g. "O365 E5") and the
 // list ranks by SIMILARITY — closest matches first — rather than requiring the
-// query to be an exact substring. Value stays a plain string so seeded coverage
-// shortcodes (F1/F3/E3/E5) and catalog titles both work.
+// query to be an exact substring. Value stays a plain string, so a typed name the
+// catalog doesn't list still works (the library's plan names and aliases resolve it).
 //
 // Basis-aware: when a `segment` / `term` / `billing` are supplied (from the
 // license line's effective pricing basis), the list narrows to that priced
@@ -23,9 +23,6 @@ export function loadSkus() {
   }
   return _skusPromise
 }
-
-// Seeded coverage-library shortcodes that may not appear as catalog titles.
-const SEED_REFS = ['F1', 'F3', 'E3', 'E5']
 
 // Annual term is the common baseline; used only to order variants when no
 // explicit term basis is given.
@@ -139,7 +136,7 @@ export default function SkuCombobox({
   const basis = { segment, term, billing }
   const q = (text || '').trim()
 
-  // Build option list: seed shortcodes first, then ranked catalog variants.
+  // Build option list: ranked catalog variants.
   // Dedup by title+price so identical rows collapse but distinct prices remain
   // (that's the fix — a cheaper same-titled variant no longer hides silently).
   const ranked = rankSkus(skus, q, basis)
@@ -156,11 +153,7 @@ export default function SkuCombobox({
       meta: `${_money(sku.annual_erp_price)} · ${sku.segment} · ${sku.term_duration} · ${sku.billing_plan}`,
     })
   }
-  const seedOpts = (q
-    ? SEED_REFS.filter((r) => r.toLowerCase().includes(q.toLowerCase()))
-    : SEED_REFS
-  ).map((r) => ({ title: r, sub: 'seeded coverage', sku: null, meta: '' }))
-  const options = [...seedOpts, ...catalogOpts].slice(0, 60)
+  const options = catalogOpts.slice(0, 60)
 
   return (
     <div className="combo">
