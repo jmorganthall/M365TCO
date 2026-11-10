@@ -1111,3 +1111,47 @@ what people own.
   cheapest gap-closing add-ons, plus add-ons that retire a tool for less than it
   costs, by net cost (D28); a carve-out family decides each tool together (D29). Still to design: a preference for upleveling, and pricing a new
   customer on the "(no Teams)" suites plus Teams Enterprise.
+
+---
+
+## 17. Persona-guided walkthrough additions *(guided)*
+
+Agreed in [`GUIDED_PLAN.md`](GUIDED_PLAN.md) (decisions G1–G19). Each item lands in
+the phase named there.
+
+**Raw additions**
+- `engagements.supported_headcount` (int, nullable): how many people IT supports,
+  asked first in the guided flow (G8). Read by the groups step's count-down and by the
+  `headcount_mismatch` finding. `NULL` = not asked.
+- `third_party_products.extra_seats_answer` ∈ {`ExtraSeats`, `PeopleWhoStay`},
+  nullable (G4). Read by the interpreter's people-covered rule (ENGINE_SPEC §6.0a).
+  `NULL` = not answered, read as `PeopleWhoStay`.
+- `outcomes.area` and `default_outcomes.area` (text, nullable) (G9). Copied with the
+  library on engagement creation. Read by the guided outcome walk.
+- **`tool_contracts`** (G12): `id`, `engagement_id`, `name`, `vendor`, `total_cost`
+  (CHECK ≥ 0), `cost_period`, `renewal_date`, `is_managed`. A
+  `third_party_products.contract_id` (nullable) makes a tool a cost line of a
+  contract. A line inherits the contract's renewal date and managed flag when its own
+  is not set. The contract's total less the sum of its lines is interpreted as a
+  "not broken down" line delivering every outcome of the contract's lines, held by
+  every persona any line is given to.
+- **`practice_services`** (G13), install-wide, entered by an admin, **never seeded**:
+  `id`, `name`, `kind` ∈ {`ManagedSecurity`, `Calling`, `Other`}, `price_monthly`
+  (per user), `description`, `sort_order`, `archived`. **`practice_service_outcomes`**
+  (`service_id`, `outcome_key`): what it delivers, by library outcome key.
+  **`scenario_services`** (`scenario_id`, `service_id`): a service in a persona's
+  future state.
+
+**Retired**
+- `product_dispositions` (G7): the forced full elimination, its reason and the
+  intended residual. Like-for-like displacement and G4 replace them. The
+  `residual_unanswered` finding is replaced by `extra_seats_unanswered`.
+
+**Interpreted additions**
+- `i_persona_baseline` (G3): per persona, `microsoft_annual`, `tools_annual`,
+  `total_annual`, `per_user_monthly`. Needs no scenario.
+- On each interpreted tool: `people_held` (Σ headcount of the personas it applies to),
+  `stated_seats`, `standing_seats` (seats outside the personas that stay), and the
+  people-covered source.
+- Findings: `extra_seats_unanswered` (G4), `tool_seats_short` (G5),
+  `headcount_mismatch` (G8).

@@ -34,7 +34,9 @@ resolved value), and **AI is optional** (the engine and every export work with A
 off; AI only suggests, enriches and narrates).
 
 `docs/WALKTHROUGH.md` is the agreed design for the guided walkthrough an account
-executive runs with a customer. GUI work on the workshop flow follows it.
+executive runs with a customer. GUI work on the workshop flow follows it. `docs/GUIDED_PLAN.md` refines it with the persona-first
+guided flow (decisions G1–G19) and tracks its build phases; where they differ, the
+plan wins.
 
 Everything is a first-class object; minimize data that lives outside one. Read
 and obey `docs/DATA_ARCHITECTURE.md` and `docs/DATA_MODEL.md`; `docs/DATA_MAP.md`

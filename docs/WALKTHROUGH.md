@@ -1,5 +1,9 @@
 # Guided walkthrough — the agreed design
 
+> **Refined by [`GUIDED_PLAN.md`](GUIDED_PLAN.md)** (November 2026): a persona-first,
+> one-question-per-screen flow over the same data. Where the two differ, that plan
+> wins; its §3 lists what changes here (W4 and step 4's keep-or-retire question).
+
 > **Status: agreed design, built on today's data model.** This document describes how
 > the TCO workshop becomes a guided walkthrough that an account executive can run live
 > with a customer. It was agreed in a design review of the current GUI in October 2026,
