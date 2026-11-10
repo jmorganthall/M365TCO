@@ -880,6 +880,26 @@ GUIDED_PLAN G12. One invoice and one renewal; its cost lines are
 - **GUI:** the guided pricing step (a contract screen, and "Break this down" on a
   tool) and the Contracts table under the tools in the detail view.
 
+### 4.8d PracticeService, PracticeServiceOutcome, ScenarioService — the practice's services
+GUIDED_PLAN G13–G15.
+- **PracticeService:** install-wide, entered by an admin in Settings → Practice
+  services; **never seeded** (names are runtime data, CLAUDE.md white-label rule).
+  `name`, `kind` ∈ {`ManagedSecurity`, `Calling`, `Other`}, `price_monthly` (per
+  user), `description`, `sort_order`, `archived` (hidden from pickers, kept where
+  used). CRUD: `GET/POST/PATCH /api/admin/practice-services`.
+- **PracticeServiceOutcome:** (`service_id`, `outcome_key`): what the service
+  delivers, by library outcome key, validated against the library.
+- **ScenarioService:** (`scenario_id`, `service_id`): a service in a persona's
+  future state. Set with `PUT …/scenarios/{id}/services`; shown on the guided
+  Managed security and Calling steps and on the detail Future state step.
+- **Read by:** the interpreter (the services' outcomes join the scenario's coverage;
+  their price is `services_unit_price_annual`, ENGINE_SPEC 6.2a) and the result's
+  `views.sections` (Microsoft 365 / managed security / calling, and the managed
+  share a managed-security service replaces, G14), shown on Summary, the guided
+  steps and the HTML/PDF readout. A library outcome
+  `managed-detection-response` (Security operations) is what a managed SOC tool and a
+  managed-security service both deliver.
+
 ### 4.9 ProductDisposition — retired
 The operator's keep-or-retire decision (forced full elimination, intended
 residual) is retired (GUIDED_PLAN G7): displacement is like for like, and the one

@@ -145,6 +145,9 @@ class PersonaScenario:
     target_unit_price_annual: Decimal
     in_scope: bool = True
     target_covered_outcome_ids: frozenset[str] = field(default_factory=frozenset)
+    # The practice's services in this persona's future state (GUIDED_PLAN G13), per
+    # user per year. Part of the target's cost, never of the Microsoft totals.
+    services_unit_price_annual: Decimal = Decimal("0")
 
 
 @dataclass

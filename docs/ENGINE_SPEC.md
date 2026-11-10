@@ -183,6 +183,29 @@ a tool the persona keeps would appear on both sides of a baseline comparison and
 cancel, so `target − (microsoft + displaced tools)` equals
 `(target + kept tools) − baseline`.
 
+## Practice services in the future state (6.2a)
+
+GUIDED_PLAN G13–G15. A persona's future state can include the practice's own
+services (`scenario_services`). The interpreter adds each service's outcomes to the
+scenario's covered outcomes (so they count in the displacement test, 6.6) and keeps
+what the Microsoft plan alone delivers as `microsoft_outcome_ids`. The engine takes
+the services' price per user per year as `services_unit_price_annual`:
+
+```
+target_services  = headcount × services_unit_price_annual
+target_spend     = headcount × target_unit_price_annual + target_services
+target_microsoft = Σ in-scope (target_spend − target_services)        # services never count as Microsoft
+net_tco_delta    = target_microsoft + target_services − existing_microsoft − existing_third_party
+msft_uplift      = target_microsoft − existing_microsoft                # ECIF excludes services
+```
+
+**Sections (a result view, `views.sections`).** A retired tool's credit belongs to
+Microsoft when the Microsoft plan alone delivers everything the tool does, else to
+the kind of service that delivers what Microsoft doesn't. When a managed tool is
+retired by a managed-security service, the managed share of its price
+(`annual × (1 − tooling_pct)` per person covered, never counted in 6.5) is credited
+to that section too. Without that share the sections add up to `net_tco_delta`.
+
 ## Derived per-product cost (6.5 managed split)
 
 ```

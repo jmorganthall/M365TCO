@@ -31,6 +31,7 @@ def result_to_dict(result: EngineResult) -> dict:
                     s.current_third_party_offset_annual
                 ),
                 "move_incremental_delta_annual": _num(s.move_incremental_delta_annual),
+                "target_services_annual": _num(s.target_services_annual),
                 "offsets": [
                     {
                         "third_party_product_id": o.third_party_product_id,
@@ -114,6 +115,7 @@ def result_to_dict(result: EngineResult) -> dict:
                 result.rollup.move_incremental_delta_annual
             ),
             "msft_uplift_annual": _num(result.rollup.msft_uplift_annual),
+            "target_services_annual": _num(result.rollup.target_services_annual),
             "ecif_funding_low": _num(result.rollup.ecif_funding_low),
             "ecif_funding_high": _num(result.rollup.ecif_funding_high),
             "quick_wins": [

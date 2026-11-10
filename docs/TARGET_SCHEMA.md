@@ -1137,7 +1137,8 @@ the phase named there.
   every persona any line is given to.
 - **`practice_services`** (G13), install-wide, entered by an admin, **never seeded**:
   `id`, `name`, `kind` ∈ {`ManagedSecurity`, `Calling`, `Other`}, `price_monthly`
-  (per user), `description`, `sort_order`, `archived`. **`practice_service_outcomes`**
+  (per user), `description`, `sort_order`, `archived` (hidden from pickers, kept on
+  futures that use it). **`practice_service_outcomes`**
   (`service_id`, `outcome_key`): what it delivers, by library outcome key.
   **`scenario_services`** (`scenario_id`, `service_id`): a service in a persona's
   future state.

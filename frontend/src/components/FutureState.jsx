@@ -3,6 +3,7 @@ import { api, useDataVersion, useInterpreted } from '../api'
 import Help from './Help.jsx'
 import Scenarios from './Scenarios.jsx'
 import ExtraSeats from './ExtraSeats.jsx'
+import { Sections, ServicePicker } from './PracticeServices.jsx'
 import CarveOutDrift from './CarveOutDrift.jsx'
 
 // Step 4 — Future state per persona (docs/WALKTHROUGH.md §3): fill in the
@@ -18,6 +19,13 @@ export default function FutureState({ engagement, meta, moneyUnit }) {
       <RecommendPlans engagement={engagement} />
       <Scenarios engagement={engagement} meta={meta} moneyUnit={moneyUnit} />
       <ExtraSeats engagement={engagement} moneyUnit={moneyUnit} />
+      <div className="card">
+        <h2 style={{ marginTop: 0 }}>Practice services</h2>
+        <p className="hint">The practice's own services in each group's future state. Their outcomes count in what the
+          move replaces; their price is part of the future cost, shown in its own section.</p>
+        <ServicePicker engagement={engagement} moneyUnit={moneyUnit} />
+        <Sections engagement={engagement} />
+      </div>
     </>
   )
 }
