@@ -188,6 +188,9 @@ class RawEngagement:
     # The engagement's outcome id(s) for "24x7 managed detection & response": what
     # the managed share of a managed tool delivers (G14).
     managed_outcome_ids: frozenset[str] = frozenset()
+    # Catalog fact: the library plans that are full plans (kind "bundle"), not
+    # add-ons — two of them on one group is likely double licensing.
+    base_bundle_ids: frozenset[str] = frozenset()
 
 
 # ---------------------------------------------------------------------------
@@ -847,6 +850,14 @@ def _findings(raw, lines, tools, scenarios, tables, seat_caps, contracts=()) -> 
         if rl.persona_ids and not any(p in known for p in rl.persona_ids):
             f.append(IFinding("tagged_to_missing_group", "groups", "left_out", licence_id=l.id,
                               facts={"name": rl.sku_reference or "A licence line", "kind": "licence"}))
+    # Two or more full plans for the same people (e.g. Office 365 E3 and Business
+    # Standard): either double licensing, or a group that should be split.
+    for p in raw.personas:
+        mine = [l for l in in_scope if p.id in l.applies_to
+                and (raw_lines[l.id].linked_bundle_id or raw_lines[l.id].resolved_bundle_id) in raw.base_bundle_ids]
+        if len(mine) > 1:
+            f.append(IFinding("two_base_plans", "groups", persona_id=p.id, facts={
+                "persona_name": p.name, "names": [raw_lines[l.id].sku_reference for l in mine]}))
     # Licensing limits already broken by today's licences (e.g. more than 300
     # Business seats): the future state can't keep everyone on that family.
     for c in seat_caps:
@@ -992,7 +1003,9 @@ def _findings(raw, lines, tools, scenarios, tables, seat_caps, contracts=()) -> 
                                   outcome_ids=tuple(dropped), facts={"persona_name": p.name}))
         unanswered = sorted(r.outcome_id for r in rows if r.by_target and not r.delivered_today
                             and (p.id, r.outcome_id) not in raw.gap_answers)
-        if unanswered:
+        # Nothing to confirm for a plan that's out of scope or a group with no people:
+        # neither is in the numbers.
+        if unanswered and plan.in_scope and p.headcount > 0:
             f.append(IFinding("gap_unanswered", "gaps", persona_id=p.id,
                               outcome_ids=tuple(unanswered),
                               facts={"persona_name": p.name, "count": len(unanswered)}))

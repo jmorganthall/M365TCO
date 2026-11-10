@@ -63,3 +63,45 @@ def test_a_tool_given_only_to_an_empty_group_names_the_group(client):
     client.post(f"{b}/third-party", json={"name": "GhostTool", "raw_cost": 12000, "persona_ids": [ghost["id"]]})
     [c] = [c for c in client.get(f"{b}/review").json()["checks"] if c["code"] == "tool_incomplete"]
     assert "no people in Ghost" in c["message"]
+
+
+def test_two_full_plans_on_one_group_are_flagged(client):
+    b = _eng(client, "Double Licence Co")
+    g = client.post(f"{b}/personas", json={"name": "Office", "headcount": 300}).json()
+    for name in ("Office 365 E3", "Microsoft 365 Business Standard"):
+        client.post(f"{b}/current-licenses", json={"sku_reference": name, "quantity_assigned": 300,
+                                                   "unit_price_paid_annual": 100, "persona_ids": [g["id"]]})
+    client.post(f"{b}/current-licenses", json={"sku_reference": "Microsoft 365 E5 Security", "quantity_assigned": 300,
+                                               "unit_price_paid_annual": 100, "persona_ids": [g["id"]]})
+    [c] = [c for c in client.get(f"{b}/review").json()["checks"] if c["code"] == "two_base_plans"]
+    assert "Office 365 E3" in c["message"] and "Business Standard" in c["message"]
+    assert "E5 Security" not in c["message"]          # an add-on is not a second plan
+
+
+def test_m365_shorthand_reads_as_the_plan(client):
+    b = _eng(client, "Alias Co")
+    g = client.post(f"{b}/personas", json={"name": "Office", "headcount": 10}).json()
+    client.post(f"{b}/current-licenses", json={"sku_reference": "M365 E3", "quantity_assigned": 10,
+                                               "unit_price_paid_annual": 100, "persona_ids": [g["id"]]})
+    [line] = client.get(f"{b}/interpreted").json()["licence_lines"]
+    assert line["read_state"] == "resolved"
+
+
+def test_no_gap_questions_for_out_of_scope_plans_or_empty_groups(client):
+    b = _eng(client, "Quiet Review Co")
+    g = client.post(f"{b}/personas", json={"name": "Empty", "headcount": 0}).json()
+    h = client.post(f"{b}/personas", json={"name": "Parked", "headcount": 50}).json()
+    client.post(f"{b}/scenarios", json={"persona_id": g["id"], "target_sku_reference": "Microsoft 365 E5",
+                                        "target_unit_price_annual": 600, "in_scope": True})
+    s = client.post(f"{b}/scenarios", json={"persona_id": h["id"], "target_sku_reference": "Microsoft 365 E5",
+                                            "target_unit_price_annual": 600, "in_scope": True}).json()
+    client.patch(f"{b}/scenarios/{s['id']}", json={"in_scope": False})
+    assert not [c for c in client.get(f"{b}/review").json()["checks"] if c["code"] == "gap_unanswered"]
+
+
+def test_zero_cost_tools_are_left_out_of_the_disposition_tables(client):
+    b = _eng(client, "Zero Tool Co")
+    g = client.post(f"{b}/personas", json={"name": "Office", "headcount": 10}).json()
+    real = client.post(f"{b}/third-party", json={"name": "Real", "raw_cost": 1000, "persona_ids": [g["id"]]}).json()
+    client.post(f"{b}/third-party", json={"name": "Nothing", "raw_cost": 0, "persona_ids": [g["id"]]})
+    assert client.get(f"{b}/result").json()["views"]["dispositions_shown"] == [real["id"]]

@@ -82,6 +82,13 @@ just extra (the whole cost goes) or people who will stay on the tool?
 - Every number shown comes from the backend: the interpreter's `baselines` and
   `summary` (count-down, totals, standing seats) and the result's
   `views.personas` (today, after and change per user per month).
+- The Microsoft step uses the same searchable plan picker as the detail view (catalog
+  pick = name and list price from the server). When a group's size no longer matches
+  its licence's seats, the step offers "Set seats to N" (one click, never automatic).
+- Review also flags a group holding two full plans (`two_base_plans`), and skips the
+  "not confirmed" question for out-of-scope plans and empty groups. Disposition
+  tables leave out $0 lines (`views.dispositions_shown`).
+- "+ New customer" in the top bar opens `#/new`; "‹ All customers" goes to the search.
 - The Recommendation screen shows Review's future-state checks (for example a
   Business seat cap) beside the plans.
 

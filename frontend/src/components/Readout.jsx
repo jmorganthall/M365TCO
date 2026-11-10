@@ -386,7 +386,7 @@ export default function Readout({ engagement }) {
           <thead><tr><th>Product</th><th>Disposition</th><th className="num">Displaced/Covered</th>
             <th className="num">Residual</th><th className="num">Residual $/yr</th></tr></thead>
           <tbody>
-            {result.dispositions.map((d) => (
+            {result.dispositions.filter((d) => (result.views?.dispositions_shown || []).includes(d.third_party_product_id)).map((d) => (
               <tr key={d.third_party_product_id}>
                 <td>{d.third_party_product_name}</td>
                 <td>
