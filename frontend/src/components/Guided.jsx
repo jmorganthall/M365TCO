@@ -1,8 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { api, money, useDataVersion, useInterpreted, useResult, usd } from '../api'
-import { RecommendPlans } from './FutureState.jsx'
-import ExtraSeats from './ExtraSeats.jsx'
-import { Sections, ServicePicker } from './PracticeServices.jsx'
 import { EngagementBasisEditor, effectiveBasis } from './basis.jsx'
 import SkuCombobox from './SkuCombobox.jsx'
 
@@ -16,12 +13,7 @@ export const GUIDE_STEPS = [
   ['outcomes', 'How you work today'],
   ['tools', 'Price your tools'],
   ['today', 'Today'],
-  ['plan', 'Recommendation'],
-  ['gaps', "What's new"],
-  ['seats', 'Seats'],
-  ['security', 'Managed security'],
-  ['calling', 'Calling'],
-  ['summary', 'Summary'],
+  ['check', 'Check the data'],
 ]
 
 // A list endpoint, refetched after every write (like useResult).
@@ -94,25 +86,8 @@ export default function Guided({ engagement, meta, step, sub, onGo, onUpdate, on
           {step === 'tools' && priceables[subIdx]?.kind === 'contract'
             ? <PriceContract {...ctx} contract={priceables[subIdx].contract} n={subIdx} of={priceables.length} />
             : step === 'tools' && <PriceTool {...ctx} tool={priceables[subIdx]?.tool} n={subIdx} of={priceables.length} />}
-          {step === 'gaps' && <GapSweep {...ctx} />}
           {step === 'today' && <TodayQ {...ctx} />}
-          {step === 'plan' && <PlanQ {...ctx} />}
-          {step === 'seats' && <SeatsQ {...ctx} />}
-          {step === 'security' && (
-            <Ask title="Who should we watch over?"
-              why="Our managed security service watches alerts around the clock. Add it to a group and it replaces the managed part of what you pay a provider today; Microsoft's security replaces the tooling.">
-              <ServicePicker engagement={engagement} kind="ManagedSecurity" />
-              <Sections engagement={engagement} only="ManagedSecurity" />
-            </Ask>
-          )}
-          {step === 'calling' && (
-            <Ask title="Who needs a phone number?"
-              why="Teams Phone is the phone system; our calling service is the phone line. A phone system you pay for today goes away only when a group has both.">
-              <ServicePicker engagement={engagement} kind="Calling" />
-              <Sections engagement={engagement} only="Calling" />
-            </Ask>
-          )}
-          {step === 'summary' && <SummaryQ {...ctx} />}
+          {step === 'check' && <CheckQ {...ctx} />}
           {err && <div className="err" style={{ marginTop: '1rem' }}>{err}</div>}
           <div className="guide-nav">
             {i > 0 || subIdx > 0 ? <button className="ghost" onClick={back}>‹ Back</button> : <span />}
@@ -423,7 +398,9 @@ function AddLicence({ p, first, engagement, pick }) {
 
 function OutcomeWalk({ base, area, n, of, tools, interp, personas, call }) {
   const coverage = useList(`${base}/coverage`) || []
+  const stored = useList(`${base}/coverage-gap-answers`) || []
   if (!area) return <Ask title="No capabilities in this engagement's library yet." />
+  const delivered = new Set((interp.data?.today || []).filter((t) => t.delivered_today).map((t) => `${t.persona_id}|${t.outcome_id}`))
   const toolRows = coverage.filter((c) => c.product_kind === 'ThirdParty' && c.ratified)
   const names = Object.fromEntries(personas.map((p) => [p.id, p.name]))
   async function addTool(o, name) {
@@ -440,7 +417,18 @@ function OutcomeWalk({ base, area, n, of, tools, interp, personas, call }) {
         const mine = toolRows.filter((c) => c.outcome_id === o.id)
         const ms = (interp.data?.today || []).filter((t) => t.outcome_id === o.id && t.by_microsoft).map((t) => names[t.persona_id]).filter(Boolean)
         const others = tools.filter((t) => !mine.some((c) => c.third_party_product_id === t.id))
-        return <OutcomeRow key={o.id} o={o} mine={mine} ms={ms} others={others} tools={tools}
+        // "Not delivered today": the groups nothing delivers this to, confirmed as a
+        // real gap (coverage_gap_answers NotDeliveredToday), so a plan that adds it
+        // counts it as gained. Not offered once a tool is picked for it.
+        const lacking = personas.filter((p) => p.headcount > 0 && !delivered.has(`${p.id}|${o.id}`))
+        const confirmed = stored.filter((a) => a.outcome_id === o.id && a.answer === 'NotDeliveredToday'
+          && lacking.some((p) => p.id === a.persona_id))
+        const gap = mine.length || !lacking.length ? null : {
+          done: confirmed.length === lacking.length, who: lacking.map((p) => p.name),
+          confirm: () => call(async () => { for (const p of lacking) await api.put(`${base}/coverage-gap-answers`, { persona_id: p.id, outcome_id: o.id, answer: 'NotDeliveredToday' }) }),
+          undo: () => call(async () => { for (const a of confirmed) await api.del(`${base}/coverage-gap-answers/${a.id}`) }),
+        }
+        return <OutcomeRow key={o.id} o={o} mine={mine} ms={ms} others={others} tools={tools} gap={gap}
           onAdd={(tid) => call(() => api.post(`${base}/coverage`, { outcome_id: o.id, product_kind: 'ThirdParty', third_party_product_id: tid, ratified: true }))}
           onRemove={(cid) => call(() => api.del(`${base}/coverage/${cid}`))}
           onNew={(name) => addTool(o, name)} />
@@ -449,7 +437,7 @@ function OutcomeWalk({ base, area, n, of, tools, interp, personas, call }) {
   )
 }
 
-function OutcomeRow({ o, mine, ms, others, tools, onAdd, onRemove, onNew }) {
+function OutcomeRow({ o, mine, ms, others, tools, gap, onAdd, onRemove, onNew }) {
   const toolName = (id) => tools.find((t) => t.id === id)?.name || 'A tool'
   return (
     <div className="guide-block">
@@ -462,6 +450,10 @@ function OutcomeRow({ o, mine, ms, others, tools, onAdd, onRemove, onNew }) {
             <button className="chip-x" title="Not used for this" onClick={() => onRemove(c.id)}>✕</button></span>
         ))}
         <ToolPicker others={others} onAdd={onAdd} onNew={onNew} />
+        {gap && (gap.done
+          ? <span className="badge" title={`Confirmed: ${gap.who.join(', ')} don't have this today`}>✓ Not delivered today
+              <button className="chip-x" title="Undo" aria-label="Undo not delivered today" onClick={gap.undo}>↺</button></span>
+          : <button className="ghost sm" title={`Confirm ${gap.who.join(', ')} don't have this today`} onClick={gap.confirm}>Not delivered today</button>)}
       </div>
     </div>
   )
@@ -625,53 +617,6 @@ function PriceContract({ base, contract, n, of, tools, interp, outcomes, call })
 // recommendation, GUIDED_PLAN G10): the only time the answer changes a number,
 // because a capability counts as gained once it's confirmed missing today. One
 // block per group; one click confirms them all; an exception is one link.
-function GapSweep({ base, outcomes, personas, interp, result, call }) {
-  const name = Object.fromEntries(outcomes.map((o) => [o.id, o.name]))
-  const answers = Object.fromEntries((useList(`${base}/coverage-gap-answers`) || []).map((a) => [`${a.persona_id}|${a.outcome_id}`, a.answer]))
-  const plan = Object.fromEntries((result?.views?.personas || []).map((v) => [v.persona_id, v.plan]))
-  const groups = personas.filter((p) => p.headcount > 0).map((p) => ({
-    p,
-    items: (interp.data?.proposed || []).filter((r) => r.persona_id === p.id && r.in_scope && r.by_target
-      && (!r.delivered_today || answers[`${p.id}|${r.outcome_id}`] === 'CoveredOutsideInventory'))
-      .map((r) => ({ id: r.outcome_id, answer: answers[`${p.id}|${r.outcome_id}`] || null })),
-  })).filter((g) => g.items.length > 0)
-  const put = (p, ids, answer) => call(async () => {
-    for (const id of ids) await api.put(`${base}/coverage-gap-answers`, { persona_id: p.id, outcome_id: id, answer })
-  })
-  return (
-    <Ask title="Here's what's new for each group."
-      why="What each group's new plan adds that nothing gives them today. Confirm it's new and it counts as gained; if they already get one some other way, say so.">
-      {groups.length === 0 && <p className="pos">Nothing to confirm: no group's plan adds anything they don't have today.</p>}
-      {groups.map(({ p, items }) => {
-        const open = items.filter((i) => !i.answer).map((i) => i.id)
-        return (
-          <div key={p.id} className="guide-block">
-            <div className="guide-block-title">{p.name}{plan[p.id] && <span className="muted"> · {plan[p.id]} adds</span>}</div>
-            <div className="guide-chips">
-              {items.map((i) => (
-                <span key={i.id} className={`badge ${i.answer === 'NotDeliveredToday' ? 'pos' : ''}`}
-                  style={i.answer === 'CoveredOutsideInventory' ? { textDecoration: 'line-through', opacity: .6 } : undefined}
-                  title={i.answer === 'CoveredOutsideInventory' ? 'They already have this another way' : i.answer ? 'Confirmed new' : 'Not confirmed yet'}>
-                  {name[i.id] || 'A capability'}
-                  {i.answer === 'CoveredOutsideInventory'
-                    ? <button className="chip-x" title="Actually new for them" onClick={() => put(p, [i.id], 'NotDeliveredToday')}>↺</button>
-                    : <button className="chip-x" title="They already have this another way" onClick={() => put(p, [i.id], 'CoveredOutsideInventory')}>✕</button>}
-                </span>
-              ))}
-            </div>
-            <div className="guide-chips">
-              {open.length > 0
-                ? <button className="ghost sm" onClick={() => put(p, open, 'NotDeliveredToday')}>These are all new for {p.name}</button>
-                : <span className="src pos">Confirmed.</span>}
-              <span className="muted" style={{ fontSize: '.8rem' }}>✕ on one they already have another way.</span>
-            </div>
-          </div>
-        )
-      })}
-    </Ask>
-  )
-}
-
 function TodayQ({ personas, interp }) {
   const s = interp.data?.summary
   return (
@@ -702,76 +647,45 @@ function TodayQ({ personas, interp }) {
   )
 }
 
-function PlanQ({ engagement, base, personas, result, onDetail }) {
-  const view = Object.fromEntries((result?.views?.personas || []).map((v) => [v.persona_id, v]))
-  const totals = result?.views?.persona_totals
-  const years = totals?.horizon_years || engagement.modeling_horizon_years || 3
-  // Review's checks for the future state (seat caps, plans that drop a capability),
-  // worded by the backend; shown here so nothing waits until the end.
+
+// The last step: does the data line up, and is everything collected? Review's
+// checks for the data steps (groups, licences, tools), each with a button back to
+// the step that fixes it. Recommendations live in the detail view, not here.
+const FIX_STEP = {
+  no_groups: 'groups', headcount_mismatch: 'groups', headcount_vs_employees: 'groups',
+  tool_incomplete: 'tools', tool_seats_short: 'tools', contract_lines_exceed: 'tools',
+}
+function CheckQ({ base, interp, personas, tools, onGo, onDetail }) {
   const review = useList(`${base}/review`)
-  const checks = (review?.checks || []).filter((c) => c.step === 'future' || c.code === 'current_over_cap')
-  return (
-    <Ask title="Here's the Microsoft plan we'd recommend for each group."
-      why="The lowest-cost plan that keeps everything each group has today. A tool's share goes away only where the plan does everything that tool does.">
-      <RecommendPlans engagement={engagement} />
-      <table className="guide-table">
-        <thead><tr><th>Group</th><th>Plan</th><th className="num">Today / user / mo</th>
-          <th className="num">After / user / mo</th><th className="num">Change / user / mo</th>
-          <th className="num">Per year</th><th className="num">Over {years} years</th></tr></thead>
-        <tbody>
-          {personas.map((p) => {
-            const v = view[p.id]
-            return (
-              <tr key={p.id}><td>{p.name}</td><td>{v?.plan || <span className="muted">no plan yet</span>}</td>
-                <td className="num">{v ? usd(v.today_per_user_monthly) : '…'}</td>
-                <td className="num">{v ? usd(v.after_per_user_monthly) : '…'}</td>
-                <td className={`num ${v && v.delta_per_user_monthly < 0 ? 'pos' : ''}`}>{v ? usd(v.delta_per_user_monthly) : '…'}</td>
-                <td className={`num ${v && v.delta_annual < 0 ? 'pos' : ''}`}>{v ? usd(v.delta_annual) : '…'}</td>
-                <td className={`num ${v && v.delta_horizon < 0 ? 'pos' : ''}`}>{v ? usd(v.delta_horizon) : '…'}</td></tr>
-            )
-          })}
-        </tbody>
-        {totals && <tfoot><tr><td>All groups</td><td /><td /><td /><td />
-          <td className={`num ${totals.delta_annual < 0 ? 'pos' : ''}`}>{usd(totals.delta_annual)}</td>
-          <td className={`num ${totals.delta_horizon < 0 ? 'pos' : ''}`}>{usd(totals.delta_horizon)}</td></tr></tfoot>}
-      </table>
-      <p className="muted" style={{ fontSize: '.8rem' }}>Negative is a saving. Over {years} years is at the full yearly rate; the
-        summary's headline times each saving from the renewal that unlocks it.</p>
-      {checks.map((c, n) => <div key={n} className={`src ${c.severity === 'info' ? 'muted' : 'warn'}`}>{c.message}</div>)}
-      <button className="ghost" style={{ marginTop: '.8rem' }} onClick={() => onDetail('future')}>Change a plan in the detail view ›</button>
-    </Ask>
-  )
-}
-
-function SeatsQ({ engagement, interp }) {
-  const asked = interp.findings.some((f) => f.code === 'extra_seats_unanswered')
-    || (interp.data?.tools || []).some((t) => t.extra_seats > 0 && t.extra_seats_answer)
-  return (
-    <Ask title={asked ? "A few tools have more seats than people." : 'Every replaced tool lines up.'}
-      why={asked ? "If the extra seats aren't needed, we'll show the whole cost going away. If they belong to people who stay on the tool, that part stays." : 'Nothing to ask here.'}>
-      <ExtraSeats engagement={engagement} moneyUnit="yr" />
-    </Ask>
-  )
-}
-
-function SummaryQ({ engagement, interp, result, onDetail }) {
+  const checks = (review?.checks || []).filter((c) => c.step === 'groups' || c.step === 'tools')
+  const fixes = checks.filter((c) => c.severity !== 'info')
+  const notes = checks.filter((c) => c.severity === 'info')
   const s = interp.data?.summary
-  const r = result?.rollup
-  const open = interp.findings.filter((f) => f.severity !== 'info').length
+  const target = (c) => FIX_STEP[c.code] || (c.tool_id ? 'tools' : c.step === 'tools' ? 'microsoft' : 'microsoft')
   return (
-    <Ask title="The picture so far.">
-      {s && r && (
+    <Ask title={fixes.length ? 'A few things to sort out before the recommendation.' : 'Everything we need is collected.'}
+      why="This checks that the groups, licences and tools line up. Fix what's listed, then go on to the recommendation.">
+      {s && (
         <div className="guide-stats">
+          <div><div className="muted">Groups</div><div className="guide-stat">{personas.length}</div></div>
+          <div><div className="muted">People</div><div className="guide-stat">{s.groups_headcount.toLocaleString()}</div></div>
+          <div><div className="muted">Tools</div><div className="guide-stat">{tools.filter((t) => !t.contract_id).length}</div></div>
           <div><div className="muted">Today, per year</div><div className="guide-stat">{usd(s.baseline_total_annual)}</div></div>
-          <div><div className="muted">Change per year</div>
-            <div className={`guide-stat ${r.net_tco_delta_annual < 0 ? 'pos' : ''}`}>{usd(r.net_tco_delta_annual)}</div></div>
         </div>
       )}
-      <Sections engagement={engagement} />
-      <p className="muted">{open ? `${open} item${open === 1 ? '' : 's'} still to check on Review.` : 'Nothing left to check.'}</p>
-      <div className="guide-chips">
-        <button className="ghost" onClick={() => onDetail('review')}>Review ›</button>
-        <button onClick={() => onDetail('summary')}>Summary and PDF ›</button>
+      {fixes.map((c, n) => (
+        <div key={n} className="check-row">
+          <div className="err" style={{ margin: 0 }}>{c.message}</div>
+          <button className="ghost sm" onClick={() => onGo(target(c), 0)}>Fix ›</button>
+        </div>
+      ))}
+      {notes.length > 0 && (
+        <details className="check-notes"><summary>{notes.length} note{notes.length === 1 ? '' : 's'} (not blocking)</summary>
+          {notes.map((c, n) => <div key={n} className="muted check-note">{c.message}</div>)}
+        </details>
+      )}
+      <div className="guide-chips" style={{ marginTop: 24 }}>
+        <button className={fixes.length ? 'ghost' : ''} onClick={() => onDetail('future')}>Continue to recommendations ›</button>
       </div>
     </Ask>
   )
