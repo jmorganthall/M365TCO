@@ -73,3 +73,22 @@ def test_a_plan_pick_names_prices_and_links_the_plan(client):
     assert float(e5["target_unit_price_annual"]) == 684
     assert not e5["price_override"]
     assert client.patch(url, json={"catalog_sku_id": "gone"}).status_code == 422
+
+
+def test_a_free_price_list_plan_is_not_a_missing_price(client):
+    """$0 from the price list is a real price (a free or donated plan); $0 because
+    nothing was found is flagged (licence_price_missing)."""
+    eid, p = _setup(client, "Free Plan Co")
+    base = f"/api/engagements/{eid}"
+    free = client.post(f"{base}/current-licenses", json={
+        "sku_reference": "A donated plan", "unit_price_paid_annual": 0, "source_tag": "ListPrice",
+        "quantity_purchased": 10, "quantity_assigned": 10, "persona_ids": [p["id"]]}).json()
+    unknown = client.post(f"{base}/current-licenses", json={
+        "sku_reference": "Nothing on the price list", "unit_price_paid_annual": 0,
+        "quantity_purchased": 10, "quantity_assigned": 10, "persona_ids": [p["id"]]}).json()
+    i = client.get(f"{base}/interpreted").json()
+    known = {l["id"]: l["price_known"] for l in i["licence_lines"]}
+    assert known[free["id"]] is True and known[unknown["id"]] is False
+    missing = [f for f in i["findings"] if f["code"] == "licence_price_missing"]
+    assert [f["licence_id"] for f in missing] == [unknown["id"]]
+    assert any(c["code"] == "licence_price_missing" for c in client.get(f"{base}/review").json()["checks"])

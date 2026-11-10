@@ -79,6 +79,10 @@ def review(db: Session, engagement_id: str) -> dict:
                   f"{x['name']} is quoted for {x['users_covered']:,} users; the groups that get it have "
                   f"{x['people']:,} people. The whole quote is spread over those groups. Check the quote or "
                   f"which groups get it.", "info")
+        elif f.code == "licence_price_missing":
+            check(f.code, f.step,
+                  f"No price found for {x['name']}, so it counts as $0. Load the price list in Settings, "
+                  f"or enter the price in the detail view.")
         elif f.code == "contract_lines_exceed":
             check(f.code, f.step,
                   f"{x['name']}: the lines add up to ${x['lines']:,.0f} a year, more than the contract's "

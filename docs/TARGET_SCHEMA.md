@@ -1169,3 +1169,7 @@ the phase named there.
   `people` (in the in-scope futures that include it), `persona_ids`,
   `per_user_annual`, `per_user_monthly`. Findings `service_quote_unused` (a quote no
   future includes) and `service_quote_seats` (users covered ≠ people).
+- On each interpreted licence line: `price_known` — false only when it costs $0
+  because no price was found (not from the price list, not negotiated, nothing
+  typed). A $0 price-list plan (free or donated) is known. Finding
+  `licence_price_missing` for each in-scope line whose price isn't known.

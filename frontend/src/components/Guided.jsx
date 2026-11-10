@@ -378,7 +378,9 @@ function LicenceLine({ l, il, first, base, call, remove, seatsFix }) {
     <>
       <div className="lic-row">
         <div><span className="lic-tag">{first ? 'Main plan' : 'Add-on'}</span> {l.sku_reference}</div>
-        <div className="num">{il ? <>{money(il.effective_price_annual, 'mo')}<span className="muted"> per person</span></> : '…'}</div>
+        <div className="num">{!il ? '…' : il.price_known && Number(il.effective_price_annual) === 0
+          ? <span title="The price list prices this plan at $0">Free<span className="muted"> on the price list</span></span>
+          : <>{money(il.effective_price_annual, 'mo')}<span className="muted"> per person</span></>}</div>
         <button className="ghost sm lic-x" aria-label={`Remove ${l.sku_reference}`} title="Remove" onClick={() => remove(l)}>✕</button>
       </div>
       {seatsFix && (
@@ -388,8 +390,8 @@ function LicenceLine({ l, il, first, base, call, remove, seatsFix }) {
             quantity_assigned: seatsFix.facts.headcount, quantity_purchased: seatsFix.facts.headcount }))}>
             Make it the whole group</button> If only some of them have it, they are a group of their own.</div>
       )}
-      {il && Number(il.effective_price_annual) === 0 && (
-        <div className="err lic-note">No price found for {l.sku_reference}. Load the price list in Settings, or enter the price in the detail view.</div>
+      {il && !il.price_known && (
+        <div className="err lic-note">No price found for {l.sku_reference}, so it counts as $0. Load the price list in Settings, or enter the price in the detail view.</div>
       )}
     </>
   )

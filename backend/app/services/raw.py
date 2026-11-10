@@ -115,6 +115,7 @@ def load_raw(db: Session, engagement_id: str) -> RawEngagement:
             unused_seats_answer=lic.unused_seats_answer,
             out_of_scope=bool(lic.out_of_scope),
             linked_bundle_id=lic.bundle_id,
+            price_from_catalog=lic.source_tag == "ListPrice",
             mapped_outcome_ids=frozenset(l.outcome_id for l in lic.outcome_links if l.ratified),
             resolved_bundle_id=resolve(lic.sku_reference),
         )
