@@ -632,3 +632,10 @@ button.destructive:disabled { background: var(--panel2); color: var(--muted); op
   .groups-head .need-col { font-size: .7rem; }
   .groups-head .num { text-align: left; }
 }
+
+/* A practice service's quote (GUIDED_PLAN G13a) and the "Replacing your MDR" panel. */
+.quote-row { display: flex; flex-direction: column; gap: 8px; padding: 16px 0; border-top: 1px solid var(--border); }
+.quote-row.quote-empty { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+.quote-fields { display: flex; flex-wrap: wrap; gap: 16px; }
+.mdr-panel { margin-top: 24px; }
+.mdr-panel h3 { margin: 0 0 8px; }

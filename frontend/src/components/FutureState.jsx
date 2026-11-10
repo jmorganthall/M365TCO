@@ -3,7 +3,7 @@ import { api, useDataVersion, useInterpreted } from '../api'
 import Help from './Help.jsx'
 import Scenarios from './Scenarios.jsx'
 import ExtraSeats from './ExtraSeats.jsx'
-import { Sections, ServicePicker } from './PracticeServices.jsx'
+import { MdrPanel, Sections, ServicePicker } from './PracticeServices.jsx'
 import CarveOutDrift from './CarveOutDrift.jsx'
 import { PlanTable, WhatsNew } from './PlanCards.jsx'
 
@@ -28,6 +28,7 @@ export default function FutureState({ engagement, meta, moneyUnit }) {
           move replaces; their price is part of the future cost, shown in its own section.</p>
         <ServicePicker engagement={engagement} moneyUnit={moneyUnit} />
         <Sections engagement={engagement} />
+        <MdrPanel engagement={engagement} />
       </div>
     </>
   )

@@ -43,7 +43,7 @@ def review(db: Session, engagement_id: str) -> dict:
     for f in i.findings:
         x = f.facts
         subject = {"persona_id": f.persona_id, "licence_id": f.licence_id, "tool_id": f.tool_id,
-                   "persona_ids": list(x.get("persona_ids") or ())}
+                   "persona_ids": list(x.get("persona_ids") or ()), "contract_id": x.get("contract_id")}
         if f.code == "no_groups":
             check(f.code, f.step, "No personas yet. Add the personas who get different licences.")
         elif f.code == "headcount_mismatch":
@@ -70,6 +70,15 @@ def review(db: Session, engagement_id: str) -> dict:
                   f"{x['name']} now costs ${x['current_monthly']:,.2f} per user per month; this engagement "
                   f"uses ${x['locked_monthly']:,.2f}, the price when it was added. Apply the new price on "
                   f"Future state if it should.", "info")
+        elif f.code == "service_quote_unused":
+            check(f.code, f.step,
+                  f"{x['name']} has a quote, but no group's future state includes it, so the quote is in "
+                  f"no number. Tick it for the groups that get it on Future state.")
+        elif f.code == "service_quote_seats":
+            check(f.code, f.step,
+                  f"{x['name']} is quoted for {x['users_covered']:,} users; the groups that get it have "
+                  f"{x['people']:,} people. The whole quote is spread over those groups. Check the quote or "
+                  f"which groups get it.", "info")
         elif f.code == "contract_lines_exceed":
             check(f.code, f.step,
                   f"{x['name']}: the lines add up to ${x['lines']:,.0f} a year, more than the contract's "

@@ -225,6 +225,9 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
         db.add(nc)
         db.flush()
         contract_map[c.id] = nc.id
+    for q in src.service_quotes:
+        db.add(models.ServiceQuote(engagement_id=dst.id, service_id=q.service_id, total_cost=q.total_cost,
+                                   cost_period=q.cost_period, users_covered=q.users_covered))
     tp_map: dict[str, str] = {}
     for tp in src.third_party_products:
         ntp = models.ThirdPartyProduct(

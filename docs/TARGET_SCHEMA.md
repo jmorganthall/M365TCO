@@ -1144,6 +1144,13 @@ the phase named there.
   price locked when added; NULL = rows from before locking, read at the current
   price): a service in a persona's
   future state.
+- **`service_quotes`** (G13a): `id`, `engagement_id`, `service_id`, `total_cost`
+  (≥ 0), `cost_period`, `users_covered` (nullable; NULL = not stated). What the
+  practice delivering a service quoted this customer, at most one per service per
+  engagement. Which groups get the service stays on `scenario_services`; the
+  interpreter spreads the quote over the people in those groups (one splitting
+  rule, G2), so they carry exactly the quote. `users_covered` is compared, never
+  used to scale the cost. With a quote the locked Settings price is not used.
 
 **Retired**
 - `product_dispositions` (G7): the forced full elimination, its reason and the
@@ -1158,3 +1165,7 @@ the phase named there.
   people-covered source.
 - Findings: `extra_seats_unanswered` (G4), `tool_seats_short` (G5),
   `headcount_mismatch` (G8).
+- `i_service_quote` (G13a): per quoted service, `annual_cost`, `users_covered`,
+  `people` (in the in-scope futures that include it), `persona_ids`,
+  `per_user_annual`, `per_user_monthly`. Findings `service_quote_unused` (a quote no
+  future includes) and `service_quote_seats` (users covered ≠ people).

@@ -21,6 +21,7 @@ from tco_engine.interpret import (
     RawPersona,
     RawScenario,
     RawContract,
+    RawQuote,
     RawService,
     RawTool,
     Interpreted,
@@ -176,6 +177,10 @@ def load_raw(db: Session, engagement_id: str) -> RawEngagement:
             id=c.id, name=c.name or "", total_cost=_dec(c.total_cost), cost_period=c.cost_period or "Annual",
             renewal_date=c.renewal_date.isoformat() if c.renewal_date else None)
             for c in eng.tool_contracts),
+        service_quotes=tuple(RawQuote(
+            service_id=q.service_id, total_cost=_dec(q.total_cost), cost_period=q.cost_period or "Annual",
+            users_covered=q.users_covered, name=q.service.name, kind=q.service.kind or "Other")
+            for q in eng.service_quotes),
         licence_limits=_limits(db),
     )
 
@@ -228,6 +233,8 @@ def interpreted_view(db: Session, engagement_id: str) -> dict:
         "tools": rows(i.tools),
         # Vendor contracts and what their lines leave "not broken down" (G12).
         "contracts": rows(i.contracts),
+        # Practice services quoted for this customer, spread over who gets them (G13a).
+        "service_quotes": rows(i.service_quotes),
         "tool_shares": [{"tool_id": t, "persona_id": p, "annual": float(v)}
                         for (t, p), v in i.tool_shares.items()],
         "scenarios": rows(i.scenarios),

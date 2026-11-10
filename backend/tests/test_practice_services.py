@@ -98,3 +98,65 @@ def test_readout_shows_sections_only_with_a_service(client):
     client.put(f"{b}/scenarios/{s['id']}/services", json={"service_ids": [svc["id"]]})
     html = client.get(f"{b}/readout.html").text
     assert "Microsoft 365 and Our Services" in html and "Calling line" in html
+
+
+# ---- G13a: a service's quote for this customer --------------------------------
+
+def _mdr(client, name):
+    b, s = _setup(client, name, "SOC Q", ["endpoint-edr", "managed-detection-response"], managed=True)
+    svc = client.post("/api/admin/practice-services", json={
+        "name": "MDR quoted", "kind": "ManagedSecurity", "price_monthly": 15,
+        "outcome_keys": ["managed-detection-response"]}).json()
+    client.put(f"{b}/scenarios/{s['id']}/services", json={"service_ids": [svc["id"]]})
+    return b, s, svc
+
+
+def test_a_quote_is_spread_over_the_people_who_get_the_service(client):
+    b, s, svc = _mdr(client, "Quote Co")
+    q = client.post(f"{b}/service-quotes", json={"service_id": svc["id"], "total_cost": 1000,
+                                                  "cost_period": "Monthly", "users_covered": 80})
+    assert q.status_code == 201
+    i = client.get(f"{b}/interpreted").json()
+    iq = i["service_quotes"][0]
+    # 12,000 a year over the 100 people in the group: $10 per user per month.
+    assert iq["annual_cost"] == 12000 and iq["people"] == 100 and iq["per_user_monthly"] == 10
+    assert i["scenarios"][0]["services_annual"] == 120
+    assert any(f["code"] == "service_quote_seats" for f in i["findings"])
+    r = client.get(f"{b}/result").json()
+    assert r["rollup"]["target_services_annual"] == 12000          # exactly the quote
+    m = r["views"]["mdr"]
+    assert m["retired_annual"] == 100000 and m["services_annual"] == 12000 and m["change_annual"] == -88000
+    assert m["tools"][0]["software_by_microsoft"] and m["services"][0]["users_covered"] == 80
+    assert r["views"]["sections"]["combined_change_annual"] == r["rollup"]["net_tco_delta_annual"]
+    # One quote per service; a person can go back to the Settings price.
+    assert client.post(f"{b}/service-quotes", json={"service_id": svc["id"]}).status_code == 409
+    assert client.patch(f"{b}/service-quotes/{q.json()['id']}", json={"total_cost": -1}).status_code == 422
+    assert client.delete(f"{b}/service-quotes/{q.json()['id']}").status_code == 204
+    assert client.get(f"{b}/result").json()["rollup"]["target_services_annual"] == 18000
+
+
+def test_a_quote_nobody_gets_is_in_no_number_and_is_flagged(client):
+    b, s, svc = _mdr(client, "Unused Quote Co")
+    client.post(f"{b}/service-quotes", json={"service_id": svc["id"], "total_cost": 50000})
+    client.put(f"{b}/scenarios/{s['id']}/services", json={"service_ids": []})
+    i = client.get(f"{b}/interpreted").json()
+    f = next(f for f in i["findings"] if f["code"] == "service_quote_unused")
+    assert f["facts"]["name"] == "MDR quoted"
+    r = client.get(f"{b}/result").json()
+    assert r["rollup"]["target_services_annual"] == 0 and r["views"]["mdr"] is None
+
+
+def test_a_quoted_service_skips_the_settings_price_notice(client):
+    b, s, svc = _mdr(client, "Quote Notice Co")
+    client.patch(f"/api/admin/practice-services/{svc['id']}", json={"price_monthly": 20})
+    codes = lambda: {f["code"] for f in client.get(f"{b}/interpreted").json()["findings"]}  # noqa: E731
+    assert "service_price_changed" in codes()
+    client.post(f"{b}/service-quotes", json={"service_id": svc["id"], "total_cost": 1})
+    assert "service_price_changed" not in codes()
+
+
+def test_the_managed_part_is_listed_under_its_tool(client):
+    b, s, svc = _mdr(client, "Order Co")
+    shown = client.get(f"{b}/result").json()["views"]["dispositions_shown"]
+    i = shown.index(next(t for t in shown if t.startswith("managed-share:")))
+    assert shown[i - 1] == shown[i][len("managed-share:"):]

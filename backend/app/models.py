@@ -219,6 +219,9 @@ class Engagement(Base):
     tool_contracts: Mapped[list["ToolContract"]] = relationship(
         back_populates="engagement", cascade="all, delete-orphan"
     )
+    service_quotes: Mapped[list["ServiceQuote"]] = relationship(
+        back_populates="engagement", cascade="all, delete-orphan"
+    )
     coverage_entries: Mapped[list["CoverageMapEntry"]] = relationship(
         back_populates="engagement", cascade="all, delete-orphan"
     )
@@ -935,6 +938,32 @@ class ScenarioService(Base):
     price_monthly: Mapped[float | None] = mapped_column(Numeric(14, 4), nullable=True)
 
     scenario: Mapped["PersonaScenario"] = relationship(back_populates="service_links")
+    service: Mapped[PracticeService] = relationship()
+
+
+class ServiceQuote(Base):
+    """What a practice service costs this customer, as quoted by the practice that
+    delivers it (GUIDED_PLAN G13a): a total cost, its period, and how many users it
+    covers. Which groups get the service stays on their future states
+    (scenario_services); the interpreter spreads the quote over the people in
+    those groups, the same splitting rule as a tool's cost (ENGINE_SPEC 6.2a).
+    Without a quote the service is priced per user from Settings. Raw data only."""
+
+    __tablename__ = "service_quotes"
+    __table_args__ = (UniqueConstraint("engagement_id", "service_id", name="uq_engagement_service_quote"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    engagement_id: Mapped[str] = mapped_column(ForeignKey("engagements.id"), index=True)
+    service_id: Mapped[str] = mapped_column(ForeignKey("practice_services.id"), index=True)
+    total_cost: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    cost_period: Mapped[str] = mapped_column(
+        SAEnum(*COST_PERIODS, name="cost_period"), default="Annual"
+    )
+    # The users the quote covers, as quoted. NULL = not stated: the people in the
+    # groups that get the service. Only compared, never used to scale the cost.
+    users_covered: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    engagement: Mapped[Engagement] = relationship(back_populates="service_quotes")
     service: Mapped[PracticeService] = relationship()
 
 
