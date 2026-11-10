@@ -550,4 +550,4 @@ def test_update_outcomes_is_retired_and_a_new_library_outcome_is_reviewed(client
     finally:
         # Keep the global library pristine for other tests.
         client.delete(f"/api/admin/default-outcomes/{new_default['id']}")
-        client.delete(f"/api/engagements/{eid}")
+        client.delete(f"/api/engagements/{eid}", params={"confirm_name": client.get(f"/api/engagements/{eid}").json()["customer_name"] or "delete"})

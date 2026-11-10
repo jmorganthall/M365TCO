@@ -136,9 +136,20 @@ def update_engagement(
     return eng
 
 
+def deletion_phrase(eng: models.Engagement) -> str:
+    """What a person must type to delete an engagement: its customer name, or the
+    word "delete" when it has none."""
+    return (eng.customer_name or "").strip() or "delete"
+
+
 @router.delete("/{engagement_id}", status_code=204)
-def delete_engagement(engagement_id: str, db: Session = Depends(get_db)):
+def delete_engagement(engagement_id: str, confirm_name: str = "", db: Session = Depends(get_db)):
+    """Deleting a workshop removes everything in it and can't be undone, so the
+    request must carry the customer's name exactly as stored (`confirm_name`),
+    typed by the person in the confirmation dialog. Anything else is refused."""
     eng = _get_engagement(db, engagement_id)
+    if confirm_name.strip() != deletion_phrase(eng):
+        raise HTTPException(409, "To delete this workshop, type the customer name exactly as it is shown.")
     db.delete(eng)
     db.commit()
 

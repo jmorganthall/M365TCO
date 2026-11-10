@@ -151,7 +151,7 @@ def test_recommend_a_path_prices_at_engagement_basis(client, db):
     res = client.post(f"/api/engagements/{eid}/personas/{kw['id']}/bundle-analysis").json()
     bp = next(b for b in res["bundles"] if b["sku_reference"] == "Microsoft 365 Business Premium")
     assert bp["base_price_annual"] == 264.0
-    client.delete(f"/api/engagements/{eid}")
+    client.delete(f"/api/engagements/{eid}", params={"confirm_name": client.get(f"/api/engagements/{eid}").json()["customer_name"] or "delete"})
 
 
 def test_nonprofit_segment_prices_at_the_sheets_charity_rows(client, db):
@@ -181,7 +181,7 @@ def test_nonprofit_segment_prices_at_the_sheets_charity_rows(client, db):
     # The catalog search's segment filter honours the same equivalence.
     rows = client.get("/api/catalog/skus", params={"segment": "Nonprofit"}).json()
     assert rows and all(r["segment"] == "Charity" for r in rows)
-    client.delete(f"/api/engagements/{eid}")
+    client.delete(f"/api/engagements/{eid}", params={"confirm_name": client.get(f"/api/engagements/{eid}").json()["customer_name"] or "delete"})
 
 
 def test_global_defaults_inherited_by_new_engagements(client, db):
@@ -245,7 +245,7 @@ def test_scenario_basis_change_requotes_target_and_addons(client, db):
                      json={"billing_plan": None}).json()
     assert float(s["target_unit_price_annual"]) == 491.4
     assert float(s["addons"][0]["unit_price_annual"]) == 144.0
-    client.delete(f"/api/engagements/{eid}")
+    client.delete(f"/api/engagements/{eid}", params={"confirm_name": client.get(f"/api/engagements/{eid}").json()["customer_name"] or "delete"})
 
 
 def test_basis_options_are_data_driven(client, db):

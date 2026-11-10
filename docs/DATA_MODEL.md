@@ -114,6 +114,10 @@ Each section states the contract. "Engagement-scoped" everywhere means: `engagem
 FK, UUID PK, cascade-deleted with the engagement.
 
 ### 4.1 Engagement — the aggregate root
+- **Delete:** `DELETE /api/engagements/{id}?confirm_name=…` is refused (409) unless
+  `confirm_name` is the customer name exactly as stored (the word `delete` when the
+  name is blank). The GUI asks the person to type it in a confirmation dialog; a
+  delete removes everything in the engagement and can't be undone.
 - **Identity:** `uuid`. **Scope:** root (owns everything else).
 - **Relationships:** one-to-many to all eight child sets, all `cascade="all, delete-orphan"`.
 - **Field ownership:** user-entered (`customer_name`, `market`, `currency`,
