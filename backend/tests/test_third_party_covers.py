@@ -19,11 +19,11 @@ def test_covers_derives_from_selected_personas(client):
     kw = _mk_persona(client, eid, "KW", 400)
     fl = _mk_persona(client, eid, "FL", 100)
 
-    # No personas, no override → covers 0 (and zero per-unit).
+    # No personas, no override → Org-wide: covers every persona (ENGINE_SPEC 6.0a).
     tp = client.post(f"/api/engagements/{eid}/third-party",
                      json={"name": "Okta", "raw_cost": 50000}).json()
-    assert tp["covered_count"] == 0
-    assert float(tp["per_unit_annual_cost"]) == 0.0
+    assert tp["covered_count"] == 500
+    assert float(tp["per_unit_annual_cost"]) == 100.0
 
     # Selecting a persona sets covers to its headcount.
     tp = client.patch(f"/api/engagements/{eid}/third-party/{tp['id']}",
@@ -58,10 +58,11 @@ def test_override_wins_and_clearing_reverts_to_derived(client):
     assert tp["persona_covered_count"] == 300
     assert float(tp["per_unit_annual_cost"]) == 100.0  # 60000 / 600
 
-    # Any override is allowed — including one below the persona sum.
+    # A seat count below the persona sum is kept as typed, but the cost still lands
+    # on the personas (ENGINE_SPEC 6.0a, G5): Review notes the mismatch.
     tp = client.patch(f"/api/engagements/{eid}/third-party/{tp['id']}",
                       json={"covered_count_override": 200}).json()
-    assert tp["covered_count"] == 200
+    assert tp["covered_count_override"] == 200 and tp["covered_count"] == 300
 
     # Clearing the override (explicit null) reverts to the derived sum.
     tp = client.patch(f"/api/engagements/{eid}/third-party/{tp['id']}",
@@ -137,7 +138,7 @@ def test_dropping_stored_covers_keeps_a_typed_value_as_the_override(client):
             conn.execute(text("ALTER TABLE third_party_products DROP COLUMN covered_count"))
 
     got = {t["name"]: t for t in client.get(f"/api/engagements/{eid}/third-party").json()}
-    assert got["Typed"]["covered_count_override"] == 40 and got["Typed"]["covered_count"] == 40
+    assert got["Typed"]["covered_count_override"] == 40 and got["Typed"]["covered_count"] == 100
     assert got["Untagged"]["covered_count_override"] == 70
     assert got["SameAsPersonas"]["covered_count_override"] is None
     assert got["SameAsPersonas"]["covered_count"] == 100

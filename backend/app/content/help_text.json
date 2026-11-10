@@ -135,6 +135,10 @@
       "ask": "Only if it differs from the personas' headcount: how many people does it cover?",
       "why": "Sets the cost per person. Blank uses the headcount of the personas that use it."
     },
+    "tools.extra_seats": {
+      "ask": "The tool covers more seats than the people in the groups who have it. What are the other seats?",
+      "why": "Extra seats nobody needs: the whole cost is spread over your people, so it can all go when they move. People who stay on the tool: their seats keep costing the same after the move."
+    },
     "tools.tooling_pct": {
       "ask": "For a managed service: what share of the price is the software itself?",
       "why": "Only that share can be replaced by Microsoft 365, so only that share counts."

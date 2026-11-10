@@ -121,6 +121,7 @@ def load_raw(db: Session, engagement_id: str) -> RawEngagement:
             covered_count_override=tp.covered_count_override,
             persona_ids=tuple(tp.persona_ids),
             renewal_date=tp.renewal_date.isoformat() if tp.renewal_date else None,
+            extra_seats_answer=tp.extra_seats_answer,
             override=d.override if d else "None",
             override_reason=d.override_reason if d else "",
             residual_intent=d.residual_intent if d else "None",
@@ -159,6 +160,7 @@ def load_raw(db: Session, engagement_id: str) -> RawEngagement:
         horizon_years=int(eng.modeling_horizon_years or 3),
         gap_answers={(a.persona_id, a.outcome_id): a.answer for a in eng.gap_answers},
         employee_count=eng.employee_count,
+        supported_headcount=eng.supported_headcount,
         licence_limits=_limits(db),
     )
 
@@ -224,6 +226,8 @@ def interpreted_view(db: Session, engagement_id: str) -> dict:
                        "usage": [{"persona_id": p, "seats": u} for p, u in c.usage.items()]}
                       for c, r in ((c, {f.name: getattr(c, f.name) for f in fields(c)})
                                    for c in i.seat_caps)],
+        # Each persona's all-in cost today (GUIDED_PLAN G3).
+        "baselines": rows(i.baselines),
         "findings": [{**{f.name: _plain(getattr(x, f.name)) for f in fields(x) if f.name != "facts"},
                       "facts": {k: _plain(v) for k, v in x.facts.items()}}
                      for x in i.findings],

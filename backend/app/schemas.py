@@ -186,6 +186,7 @@ class EngagementUpdate(BaseModel):
     hq_location: Optional[str] = None
     website: Optional[str] = None
     employee_count: Optional[int] = None
+    supported_headcount: Optional[int] = None
 
 
 class EngagementOut(ORMModel):
@@ -220,6 +221,7 @@ class EngagementOut(ORMModel):
     hq_location: str = ""
     website: str = ""
     employee_count: Optional[int] = None
+    supported_headcount: Optional[int] = None
 
 
 class DeliveredIn(BaseModel):
@@ -447,6 +449,7 @@ class ThirdPartyIn(BaseModel):
     renewal_date: Optional[date] = None
     is_managed: bool = False
     tooling_pct: Optional[Decimal] = None
+    extra_seats_answer: Optional[Literal["ExtraSeats", "PeopleWhoStay"]] = None
     source_tag: str = "CustomerStated"
     # Personas this product applies to (many-to-many tags).
     persona_ids: list[str] = []
@@ -462,6 +465,7 @@ class ThirdPartyOut(ORMModel):
     renewal_date: Optional[date]
     is_managed: bool
     tooling_pct: Optional[Decimal]  # as entered; NULL = inherit the engagement default
+    extra_seats_answer: Optional[str] = None
     source_tag: str
     persona_ids: list[str]
     # Derived, read-only — the interpreter's values (tco_engine/interpret.py), never
