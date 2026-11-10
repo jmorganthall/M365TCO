@@ -215,6 +215,17 @@ per_unit_annual_cost  = covered_count > 0 ? effective_annual_cost / covered_coun
 
 `tooling_pct` defaults to 0.30 and applies only when `is_managed`.
 
+**The managed share counts today (GUIDED_PLAN G14).** The interpreter reads a
+managed tool as two lines, so today's cost is what the customer pays: the tool
+itself at `annual × tooling_pct` (above), and `<tool> (managed service)` at
+`annual × (1 − tooling_pct)`, held by the same personas with the same seats. The
+managed line delivers only the "24x7 managed detection & response" outcome, and only
+when the tool delivers it; the tool's own line keeps its other outcomes. Microsoft
+never delivers that outcome, so Microsoft can retire only the software share, and
+only a managed-security practice service retires the managed line (6.2a). A managed
+line that delivers nothing is never retired. With `tooling_pct = 1` there is no
+managed line.
+
 ## Displacement test (6.6)
 
 A scenario displaces a product **iff** the product delivers at least one outcome

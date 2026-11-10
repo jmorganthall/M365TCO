@@ -817,6 +817,11 @@ class PersonaScenario(Base):
     def service_ids(self) -> list[str]:
         return [l.service_id for l in self.service_links]
 
+    @property
+    def service_prices(self) -> list[dict]:
+        """Each service's price as this future state holds it (G13)."""
+        return [{"service_id": l.service_id, "price_monthly": l.price_monthly} for l in self.service_links]
+
 
 class CoverageGapAnswer(Base):
     """The customer's answer about a capability that nothing in the inventory
@@ -923,6 +928,11 @@ class ScenarioService(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     scenario_id: Mapped[str] = mapped_column(ForeignKey("persona_scenarios.id"), index=True)
     service_id: Mapped[str] = mapped_column(ForeignKey("practice_services.id"), index=True)
+    # The service's price per user per month when it was added to this future state:
+    # the engagement keeps it, as it keeps a plan's price. A later change in Settings
+    # is offered on the Future state step ("price changed: apply?"), never applied
+    # by itself. NULL = added before prices were locked: the current price is used.
+    price_monthly: Mapped[float | None] = mapped_column(Numeric(14, 4), nullable=True)
 
     scenario: Mapped["PersonaScenario"] = relationship(back_populates="service_links")
     service: Mapped[PracticeService] = relationship()

@@ -896,8 +896,11 @@ GUIDED_PLAN G13–G15.
   used). CRUD: `GET/POST/PATCH /api/admin/practice-services`.
 - **PracticeServiceOutcome:** (`service_id`, `outcome_key`): what the service
   delivers, by library outcome key, validated against the library.
-- **ScenarioService:** (`scenario_id`, `service_id`): a service in a persona's
-  future state. Set with `PUT …/scenarios/{id}/services`; shown on the guided
+- **ScenarioService:** (`scenario_id`, `service_id`, `price_monthly`): a service in a
+  persona's future state, with its price per user per month locked when it was added
+  (NULL = added before locking; the current price is read). When Settings changes the
+  price, Review and the services card show `service_price_changed`; "Apply the new
+  price" (`POST …/practice-services/{id}/apply-price`) moves this engagement onto it. Set with `PUT …/scenarios/{id}/services`; shown on the guided
   Managed security and Calling steps and on the detail Future state step.
 - **Read by:** the interpreter (the services' outcomes join the scenario's coverage;
   their price is `services_unit_price_annual`, ENGINE_SPEC 6.2a) and the result's

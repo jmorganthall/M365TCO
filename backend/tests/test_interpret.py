@@ -106,8 +106,12 @@ def test_tool_cost_covers_and_shares():
     assert t.effective_annual_cost == D("3600.00")               # 12,000 × 0.30
     assert t.people_covered == 150 and t.covered_source == "override"
     assert t.cost_per_person == D("24")
-    # The 50 people beyond persona A are nobody's share.
-    assert i.tool_shares == {("t", "a"): D("2400")}
+    # The 50 people beyond persona A are nobody's share. The managed 70% is a line of
+    # its own (G14), so today's cost is the full price.
+    assert i.tool_shares[("t", "a")] == D("2400")
+    share = i.tool("managed-share:t")
+    assert share.annual_cost == D("8400.00") and share.managed_share_of == "t"
+    assert i.tool_shares[("managed-share:t", "a")] == D("5600")
 
 
 def test_an_untagged_tool_without_covers_covers_everyone():

@@ -30,13 +30,13 @@ just extra (the whole cost goes) or people who will stay on the tool?
 | G5 | **Fewer seats than people** (a tool covering 1,000 tagged to a group of 1,200) is not asked. The cost is spread over the group, and Review notes that the figure follows the cost-per-user method but the tool's seat count does not match the group. |
 | G6 | **A tool with no seat count** covers its personas (all personas when Org-wide). The seat count is a confirmation the AE gives, never written back by code. |
 | G7 | **No keep-or-retire decision.** Displacement is like for like. The per-tool forced retirement and intended residual (`product_dispositions`) are retired; G4 replaces the one real question they asked. A tool that does something the customer doesn't use is corrected by unticking that outcome on the tool. |
-| G8 | **Total headcount.** The walkthrough asks "how many people does IT support?" first and stores it (`engagements.supported_headcount`). Groups count down to it; a mismatch is a Review finding, never fixed by code. |
+| G8 | **Headcount from the groups.** The walkthrough asks first whether everyone gets the same licensing: yes asks how many people and creates one group; no collects the groups and shows their sum. `engagements.supported_headcount` stays as an optional cross-check on the detail view's Customer card; when set, a mismatch is a Review finding, never fixed by code. |
 | G9 | **Outcome areas.** Library outcomes carry an `area` ("Email security", "Endpoint", …) so the walkthrough asks broad questions first and the specific outcomes beneath them. |
 | G10 | **Outcome-first tool collection.** "How do you deliver *Endpoint protection* today?" Answers: Microsoft (offered when a group's current plan includes it), a tool already named, a new tool, or skip. A tool's outcomes build up as it is picked again. After the walk, a gap sweep asks about outcomes nothing was collected for: not delivered today, or covered by something not paid for separately (`coverage_gap_answers`). |
 | G11 | **Price after naming.** Tools are named during the outcome walk; cost, period, seats, renewal and managed-service yes/no are asked afterwards, one tool at a time. |
 | G12 | **Contracts and cost lines.** A vendor contract (one invoice, one renewal) can be broken down into cost lines, each with its own cost, seats, personas and outcomes. Displacement is tested per line. What the lines don't account for is kept as a "not broken down" line that carries all of the contract's outcomes. A contract that isn't broken down simply has one line. |
 | G13 | **Practice services.** The practice's own services (for example a managed detection and response service or a Teams calling service) are a library object an admin enters in Settings: a name, a kind, a price per user per month and the outcomes they deliver. **Names are runtime data and are never seeded or hard-coded (CLAUDE.md white-label rule).** A service is added to a persona's future state beside the Microsoft plan, and its outcomes count in the replacement test. |
-| G14 | **Managed security is compared on the managed share.** A managed tool counts at its tooling % against Microsoft (ENGINE_SPEC 6.5). A practice managed-security service is compared against the other share, the managed part. |
+| G14 | **Managed tools count in full today.** The software share (tooling %) is what Microsoft can replace; the rest is a line of its own that only a practice managed-security service replaces (ENGINE_SPEC 6.5). A service's price is locked into the engagement when it's added; a later change in Settings is offered with "apply the new price". |
 | G15 | **Three result sections**: Microsoft 365 consolidation, managed security, calling, each with its own number, plus a combined total. |
 | G16 | **One question per screen.** Large type, Enter to continue, Back always available, a side rail with the groups and their cost per user per month (from the backend). The existing steps stay as the detail view. Uses the practice branding record. |
 | G17 | **AI is optional.** The walkthrough works fully with AI off. |
@@ -54,8 +54,9 @@ just extra (the whole cost goes) or people who will stay on the tool?
 
 ## 4. The guided steps
 
-1. Customer: name and workshop date.
-2. Headcount: how many people IT supports (G8).
+1. Customer: name, workshop date, and how they buy (segment, term, payment; blank
+   = the install defaults in Settings, options from the loaded price list).
+2. (Removed: the headcount comes from the groups, G8.)
 3. Groups: does everyone get the same Microsoft licensing? Yes → one group. No → name
    each group and its size, counting down to the total.
 4. Microsoft licensing per group: pick the plan, confirm the seats.

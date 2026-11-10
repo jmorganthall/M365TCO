@@ -13,7 +13,8 @@ export default function ExtraSeats({ engagement, moneyUnit = 'mo' }) {
   const [err, setErr] = useState('')
   const asked = new Set(interp.findings.filter((f) => f.code === 'extra_seats_unanswered').map((f) => f.tool_id))
   // Asked, or already answered (so the answer can be changed).
-  const shown = (interp.data?.tools || []).filter((t) => t.extra_seats > 0
+  // A managed tool's managed share mirrors its tool (G14): asked once, on the tool.
+  const shown = (interp.data?.tools || []).filter((t) => !t.managed_share_of && t.extra_seats > 0
     && (asked.has(t.id) || t.extra_seats_answer))
 
   async function answer(t, value) {

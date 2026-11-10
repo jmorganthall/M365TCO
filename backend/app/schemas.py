@@ -587,8 +587,10 @@ class ScenarioOut(ORMModel):
     term_duration: Optional[str]
     billing_plan: Optional[str]
     addons: list[ScenarioAddonOut]
-    # The practice services in this future state (G13), by id.
+    # The practice services in this future state (G13), by id, and the price per
+    # user per month each was locked at (null = the current price).
     service_ids: list[str] = []
+    service_prices: list[dict] = []
 
 
 # ---- Practice services (GUIDED_PLAN G13) ----

@@ -51,7 +51,7 @@ function UsedBy({ personas, tagIds, onChange, dimmed }) {
 // (name, cost, renewal, who uses it, managed), the unusual details — vendor, the
 // managed service's software share, a covers number that differs from the
 // personas' headcount — in the expander (docs/WALKTHROUGH.md §3, step 3).
-function ProductRow({ t, it, missing, meta, personas, moneyUnit, update, remove }) {
+function ProductRow({ t, it, share: interp_share, missing, meta, personas, moneyUnit, update, remove }) {
   const [open, setOpen] = useState(false)
   const tagIds = t.persona_ids || []
   const overridden = t.covered_count_override != null
@@ -121,7 +121,9 @@ function ProductRow({ t, it, missing, meta, personas, moneyUnit, update, remove 
               )}
               <div><label>Counted · per person</label>
                 <div className="muted" style={{ paddingTop: '.35rem' }}>{it ? <>{it.people_covered} people · {money(it.effective_annual_cost, moneyUnit)} · {money(it.cost_per_person, moneyUnit)} each</> : '—'}</div>
-                <small className="src">The cost counted (after any managed-service share), split per person covered.</small></div>
+                <small className="src">The software share Microsoft could replace, split per person covered.</small>
+                {interp_share && <small className="src">The managed part, {money(interp_share.effective_annual_cost, moneyUnit)}, counts today as
+                  its own line ("{interp_share.name}"); only a managed-security service replaces it.</small>}</div>
             </div>
           </td>
         </tr>
@@ -276,7 +278,7 @@ export default function ThirdParty({ engagement, meta, moneyUnit = 'mo' }) {
         </tr></thead>
         <tbody>
           {items.map((t) => (
-            <ProductRow key={t.id} t={t} it={interp.tool[t.id]}
+            <ProductRow key={t.id} t={t} it={interp.tool[t.id]} share={interp.tool[`managed-share:${t.id}`]}
               missing={interp.findings.find((f) => f.code === 'tool_incomplete' && f.tool_id === t.id)?.facts.missing}
               meta={meta} personas={personas} moneyUnit={moneyUnit}
               update={update} remove={remove} />

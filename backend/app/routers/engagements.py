@@ -301,7 +301,8 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
                 bundle_id=ad.bundle_id, unit_price_annual=ad.unit_price_annual))
         # Practice services are install-wide, so they carry across unchanged too.
         for link in s.service_links:
-            ns.service_links.append(models.ScenarioService(service_id=link.service_id))
+            ns.service_links.append(models.ScenarioService(service_id=link.service_id,
+                                                           price_monthly=link.price_monthly))
         db.add(ns)
 
     for ans in src.gap_answers:
