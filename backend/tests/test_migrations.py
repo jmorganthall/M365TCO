@@ -230,3 +230,21 @@ def test_a_not_null_column_that_became_nullable_is_relaxed_keeping_its_values(tm
     with eng.begin() as c:
         assert float(c.execute(text("SELECT tooling_pct FROM third_party_products WHERE id='t1'")).scalar()) == 0.45
         c.execute(text("INSERT INTO third_party_products (id, name, tooling_pct) VALUES ('t2', 'New', NULL)"))
+
+
+def test_retired_tables_are_dropped(tmp_path):
+    """GUIDED_PLAN G7: product_dispositions is retired; an existing database loses it
+    at startup, and a table the model still maps is never dropped."""
+    from sqlalchemy import create_engine, inspect, text
+
+    from app.db import _RETIRED_TABLES, _drop_retired_tables
+
+    eng = create_engine(f"sqlite:///{tmp_path / 'old.db'}")
+    with eng.begin() as conn:
+        conn.execute(text("CREATE TABLE product_dispositions (id TEXT PRIMARY KEY, override TEXT)"))
+        conn.execute(text("CREATE TABLE personas (id TEXT PRIMARY KEY)"))
+    assert "product_dispositions" in _RETIRED_TABLES
+    _drop_retired_tables(eng)
+    _drop_retired_tables(eng)  # idempotent
+    names = set(inspect(eng).get_table_names())
+    assert "product_dispositions" not in names and "personas" in names

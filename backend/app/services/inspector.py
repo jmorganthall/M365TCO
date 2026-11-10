@@ -44,8 +44,7 @@ _LABELS = {
     "ai_suggested": "AI-suggested", "ratified": "Ratified", "persona_id": "Persona",
     "bundle_id": "Bundle",
     "target_sku_reference": "Target SKU", "target_unit_price_annual": "Target $/seat/yr",
-    "in_scope": "In scope", "delta_annual": "Δ TCO/yr", "override": "Override",
-    "override_reason": "Override reason", "residual_intent": "Residual intent",
+    "in_scope": "In scope", "delta_annual": "Δ TCO/yr",
     "residual_annual_cost": "Residual $/yr", "displaced_users": "Displaced users",
     "disposition": "Disposition", "residual_count": "Residual units", "headcount": "Headcount",
     "is_custom": "Custom", "seed_key": "Seed key",
@@ -113,12 +112,6 @@ def _registry():
          "desc": "One target-state plan per persona. Its spend and delta are calculated "
                  "on read, never stored.",
          "primary": ["persona_id", "target_sku_reference", "in_scope"], "extra": []},
-        {"cls": models.ProductDisposition, "type": "ProductDisposition",
-         "label": "Tool decisions",
-         "desc": "The operator's force-retire or intended-residual decision per tool. "
-                 "The tool's disposition itself is calculated on read, never stored.",
-         "primary": ["third_party_product_id", "override", "residual_intent"],
-         "extra": []},
         {"cls": models.CoverageGapAnswer, "type": "CoverageGapAnswer",
          "label": "Coverage gap answers",
          "desc": "The customer's answer for a capability nothing in the inventory delivers today: "

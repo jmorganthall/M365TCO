@@ -50,8 +50,8 @@ def _engagement(client):
     client.post(f"/api/engagements/{eid}/scenarios", json={
         "persona_id": kw["id"], "target_sku_reference": "E3",
         "target_unit_price_annual": 400})
-    client.put(f"/api/engagements/{eid}/dispositions/{okta['id']}/override",
-               json={"override": "None", "residual_intent": "IntendedOutOfScope"})
+    client.patch(f"/api/engagements/{eid}/third-party/{okta['id']}",
+                 json={"extra_seats_answer": "PeopleWhoStay"})
     return eid, kw, lic, okta
 
 
@@ -83,26 +83,6 @@ def test_an_edit_shows_on_the_next_read(client):
     again = client.get(f"/api/engagements/{eid}/result").json()
     assert again["scenarios"][0]["headcount"] == 400
     assert again["dispositions"][0]["displaced_users"] == 400
-
-
-def test_a_decision_without_effect_is_kept_as_entered(client):
-    """The move fully retires the tool, so the operator's intended-residual choice
-    has nothing to answer. The result says so; the stored choice is untouched."""
-    eid, kw, _, okta = _engagement(client)
-    client.patch(f"/api/engagements/{eid}/personas/{kw['id']}", json={"headcount": 550})
-    with _no_writes():
-        d = client.get(f"/api/engagements/{eid}/result").json()["dispositions"][0]
-    assert d["disposition"] == "FullyEliminated"
-    assert d["decision_not_applicable"] is True
-    assert d["residual_intent"] == "None"
-
-    from app import models
-    from app.db import SessionLocal
-
-    with SessionLocal() as db:
-        row = db.query(models.ProductDisposition).filter_by(
-            engagement_id=eid, third_party_product_id=okta["id"]).one()
-        assert row.residual_intent == "IntendedOutOfScope"
 
 
 def test_no_get_endpoint_writes(client):

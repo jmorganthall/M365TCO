@@ -210,7 +210,7 @@ def test_each_status():
     assert needed == {"o1": "required", "o5": "required"}
     # The move retires the tool; nothing keeps it.
     [r] = i.tool_retirements
-    assert r.retired and not r.forced and not r.quick_win
+    assert r.retired and not r.quick_win
 
     # Confirm the gap: o2 is Gained.
     g = interpret(_raw(
@@ -243,15 +243,15 @@ def test_a_tool_the_plan_does_not_cover_is_kept_and_keeps_its_outcomes():
     assert {s.tool_id for s in i.proposed_sources if s.outcome_id == "o9"} == {"t"}
 
 
-def test_forced_retirement_and_quick_win():
+def test_like_for_like_retirement_and_quick_win():
     i = interpret(_raw(
         personas=(RawPersona("a", "A", 100),),
         microsoft_coverage={"m365-e3": frozenset({"o1"}), "today": frozenset({"o1", "o9"})},
         licence_lines=(_line(linked_bundle_id="today"),),
-        tools=(_tool(override="ForceFullElimination"),), tool_coverage={"t": frozenset({"o9"})},
+        tools=(_tool(),), tool_coverage={"t": frozenset({"o9"})},
         scenarios=(_plan(),)))
     [r] = i.tool_retirements
-    assert r.retired and r.forced          # the plan doesn't cover o9; the operator forced it
+    assert not r.retired                   # like for like: the plan doesn't cover o9 (G7)
     assert r.quick_win                     # today's licence already delivers o9
 
 

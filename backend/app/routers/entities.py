@@ -1,5 +1,5 @@
 """Engagement-scoped sub-resources: personas, outcomes, current licenses,
-third-party products, coverage map, scenarios, and disposition overrides."""
+third-party products, coverage map and scenarios."""
 
 from __future__ import annotations
 
@@ -1081,37 +1081,3 @@ def delete_scenario(engagement_id: str, scenario_id: str, db: Session = Depends(
         raise HTTPException(404, "Scenario not found")
     db.delete(row)
     db.commit()
-
-
-# ---------- Disposition overrides ----------
-@router.put("/dispositions/{tp_id}/override")
-def set_disposition_override(
-    engagement_id: str, tp_id: str, payload: schemas.DispositionOverrideIn,
-    db: Session = Depends(get_db),
-):
-    """Record the operator's override / residual-intent choice (PRD 6.9 rule 2).
-
-    A ForceFullElimination requires a reason. An intended residual is recorded
-    separately and is NOT an override.
-    """
-    _require_engagement(db, engagement_id)
-    tp = db.get(models.ThirdPartyProduct, tp_id)
-    if tp is None or tp.engagement_id != engagement_id:
-        raise HTTPException(404, "Third-party product not found")
-    if payload.override == "ForceFullElimination" and not payload.override_reason.strip():
-        raise HTTPException(422, "override_reason is required for ForceFullElimination")
-
-    row = db.execute(
-        select(models.ProductDisposition).where(
-            models.ProductDisposition.engagement_id == engagement_id,
-            models.ProductDisposition.third_party_product_id == tp_id,
-        )
-    ).scalar_one_or_none()
-    if row is None:
-        row = models.ProductDisposition(engagement_id=engagement_id, third_party_product_id=tp_id)
-        db.add(row)
-    row.override = payload.override
-    row.override_reason = payload.override_reason
-    row.residual_intent = payload.residual_intent
-    db.commit()
-    return {"ok": True}

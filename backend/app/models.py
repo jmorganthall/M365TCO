@@ -34,8 +34,6 @@ PRODUCT_KINDS = ("MicrosoftSku", "ThirdParty")
 # Coverage is binary: a CoverageMapEntry existing means the outcome IS covered.
 # ("Full" is the single stored marker — there is no partial coverage.)
 COVERAGE = ("Full",)
-OVERRIDES = ("None", "ForceFullElimination")
-RESIDUAL_INTENTS = ("None", "IntendedOutOfScope")
 # How many seats a current-licensing line entitles (ENGINE_SPEC 6.10). "PerUser"
 # (the default) = a per-seat purchase entitling exactly `quantity_assigned`
 # seats; leaving such a line untagged means the operator did not attribute those
@@ -219,9 +217,6 @@ class Engagement(Base):
         back_populates="engagement", cascade="all, delete-orphan"
     )
     scenarios: Mapped[list["PersonaScenario"]] = relationship(
-        back_populates="engagement", cascade="all, delete-orphan"
-    )
-    dispositions: Mapped[list["ProductDisposition"]] = relationship(
         back_populates="engagement", cascade="all, delete-orphan"
     )
     snapshots: Mapped[list["EngagementSnapshot"]] = relationship(
@@ -846,30 +841,6 @@ class ScenarioAddon(Base):
     unit_price_annual: Mapped[float] = mapped_column(Numeric(14, 4), default=0)
 
     scenario: Mapped[PersonaScenario] = relationship(back_populates="addons")
-
-
-class ProductDisposition(Base):
-    """The operator's decision on a third-party product: a forced retirement (with
-    its reason) or an intended residual. Raw data only — the engine's disposition
-    of the product (displaced, residual, cost) is calculated on read
-    (services/results) and never stored here."""
-
-    __tablename__ = "product_dispositions"
-
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
-    engagement_id: Mapped[str] = mapped_column(ForeignKey("engagements.id"))
-    third_party_product_id: Mapped[str] = mapped_column(
-        ForeignKey("third_party_products.id")
-    )
-    override: Mapped[str] = mapped_column(
-        SAEnum(*OVERRIDES, name="override"), default="None"
-    )
-    override_reason: Mapped[str] = mapped_column(Text, default="")
-    residual_intent: Mapped[str] = mapped_column(
-        SAEnum(*RESIDUAL_INTENTS, name="residual_intent"), default="None"
-    )
-
-    engagement: Mapped[Engagement] = relationship(back_populates="dispositions")
 
 
 class EngagementSnapshot(Base):

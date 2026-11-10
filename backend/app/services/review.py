@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 
 from .. import models
-from . import library_updates, raw, results
+from . import library_updates, raw
 
 STEP_ORDER = ["customer", "groups", "tools", "future", "gaps", "review", "summary"]
 
@@ -24,8 +24,7 @@ def _plural_cap(n: int) -> tuple[str, str]:
 
 def review(db: Session, engagement_id: str) -> dict:
     """The interpreter's findings (tco_engine.interpret, TARGET_SCHEMA §6.4), worded,
-    plus the two that come from outside it: a partly replaced tool with no
-    keep-or-retire answer (an engine result) and pending library updates."""
+    plus pending library updates, which come from the shared library."""
     eng = db.get(models.Engagement, engagement_id)
     i = raw.interpreted(db, engagement_id)
     outcome_name = {o.id: o.name for o in eng.outcomes}
@@ -41,24 +40,8 @@ def review(db: Session, engagement_id: str) -> dict:
     def leave_out(what, why, step):
         left_out.append({"what": what, "why": why, "step": step})
 
-    def residual():
-        result = results.engine_result(db, engagement_id)
-        for d in result.dispositions:
-            if d.requires_residual_classification:
-                check("residual_unanswered", "future",
-                      f"{d.third_party_product_name} is only partly replaced. Keep it for the remaining "
-                      f"users, or retire it?")
-                leave_out(f"Retiring the rest of {d.third_party_product_name}",
-                          "not yet decided — assumed kept", "future")
-
-    after_future = {"license_unread", "capability_changes_unknown", "target_unmapped",
-                    "capability_dropped", "gap_unanswered"}
-    residual_done = False
     for f in i.findings:
         x = f.facts
-        if f.code in after_future and not residual_done:
-            subject = {}
-            residual(); residual_done = True
         subject = {"persona_id": f.persona_id, "licence_id": f.licence_id, "tool_id": f.tool_id,
                    "persona_ids": list(x.get("persona_ids") or ())}
         if f.code == "no_groups":
@@ -154,8 +137,6 @@ def review(db: Session, engagement_id: str) -> dict:
             leave_out(f"{n} new capabilit{y} for {x['persona_name']}",
                       "not yet confirmed as missing today", "gaps")
     subject = {}
-    if not residual_done:
-        residual()
 
     # ---- Library updates (TARGET_SCHEMA §4.7, §6.4) ---------------------------
     waiting = library_updates.pending(db, eng)

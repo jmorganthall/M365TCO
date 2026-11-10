@@ -198,6 +198,27 @@ def _preserve_manual_covers(target_engine=None) -> None:
             "  WHERE tp.third_party_product_id = third_party_products.id)"))
 
 
+# Whole tables retired with their readers. Dropped at startup, after the columns.
+_RETIRED_TABLES: tuple[str, ...] = (
+    # The operator's keep-or-retire decision per tool (force full elimination with a
+    # reason, or an intended residual). Displacement is like for like and the one
+    # real question is asked as third_party_products.extra_seats_answer
+    # (GUIDED_PLAN G7).
+    "product_dispositions",
+)
+
+
+def _drop_retired_tables(target_engine=None) -> None:
+    from sqlalchemy import inspect, text
+
+    eng = target_engine or engine
+    inspector = inspect(eng)
+    with eng.begin() as conn:
+        for table_name in _RETIRED_TABLES:
+            if inspector.has_table(table_name) and table_name not in Base.metadata.tables:
+                conn.execute(text(f'DROP TABLE "{table_name}"'))
+
+
 def _drop_retired_columns(target_engine=None) -> None:
     from sqlalchemy import inspect, text
 
@@ -266,4 +287,5 @@ def init_db() -> None:
     _auto_add_missing_columns()
     _preserve_manual_covers()
     _drop_retired_columns()
+    _drop_retired_tables()
     _relax_not_null()

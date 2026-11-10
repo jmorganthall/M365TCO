@@ -64,15 +64,14 @@ def build_xlsx(engagement: models.Engagement, result: dict, interpreted) -> byte
     wd.append(
         ["Product", "Disposition", "Covered", "Displaced", "Residual count",
          "Residual cost", "Per-unit", "Effective cost", "Managed", "Tooling %",
-         "Override", "Override reason", "Residual intent", "Renewal date"]
+         "Renewal date"]
     )
     for d in result["dispositions"]:
         wd.append([
             d["third_party_product_name"], d["disposition"], d["covered_count"],
             d["displaced_users"], d["residual_count"], d["residual_annual_cost"],
             d["per_unit_annual_cost"], d["effective_annual_cost"], d["is_managed"],
-            d["tooling_pct"], d["override"], d["override_reason"],
-            d["residual_intent"], d["renewal_date"],
+            d["tooling_pct"], d["renewal_date"],
         ])
 
     wr = wb.create_sheet("Rollup")

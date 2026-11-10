@@ -299,14 +299,6 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
                 engagement_id=dst.id, persona_id=np_id, outcome_id=no_id,
                 answer=ans.answer, source_tag=ans.source_tag))
 
-    for d in src.dispositions:
-        db.add(models.ProductDisposition(
-            engagement_id=dst.id,
-            third_party_product_id=tp_map.get(d.third_party_product_id, d.third_party_product_id),
-            override=d.override, override_reason=d.override_reason,
-            residual_intent=d.residual_intent,
-        ))
-
     for n in src.narratives:
         db.add(models.ScenarioNarrative(
             engagement_id=dst.id,

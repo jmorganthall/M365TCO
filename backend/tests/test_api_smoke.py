@@ -53,7 +53,6 @@ def test_full_workshop_flow_okta_500_vs_450(client):
     assert disp["residual_count"] == 50
     assert disp["disposition"] == "PartiallyReduced"
     assert disp["residual_annual_cost"] == 5000.0
-    assert disp["requires_residual_classification"] is True
 
     sc = result["scenarios"][0]
     assert sc["current_third_party_offset_annual"] == 45000.0
@@ -63,13 +62,13 @@ def test_full_workshop_flow_okta_500_vs_450(client):
     # partial -> renewal NOT eliminated
     assert result["rollup"]["eliminated_renewal_cycles"] == []
 
-    # 7. record an intended out-of-scope residual -> no longer forces a choice
-    client.put(
-        f"/api/engagements/{eid}/dispositions/{okta['id']}/override",
-        json={"override": "None", "residual_intent": "IntendedOutOfScope"},
-    )
-    result2 = client.post(f"/api/engagements/{eid}/compute").json()
-    assert result2["dispositions"][0]["requires_residual_classification"] is False
+    # 7. the 50 seats beyond the persona are extra seats nobody needs -> the whole
+    #    cost spreads over the persona and the move retires it (ENGINE_SPEC 6.0a)
+    client.patch(f"/api/engagements/{eid}/third-party/{okta['id']}",
+                 json={"extra_seats_answer": "ExtraSeats"})
+    result2 = client.get(f"/api/engagements/{eid}/result").json()
+    assert result2["dispositions"][0]["disposition"] == "FullyEliminated"
+    assert result2["scenarios"][0]["current_third_party_offset_annual"] == 50000.0
 
     # 8. readout + xlsx render
     assert client.get(f"/api/engagements/{eid}/readout.html").status_code == 200
@@ -506,52 +505,6 @@ def test_third_party_persona_tags_roundtrip(client):
     tpo = [o for o in data["objects"] if o["type"] == "ThirdPartyProduct"][0]
     assert "persona_ids" in {f["key"] for f in tpo["fields"]}
     assert tpo["records"][0]["cells"]["persona_ids"]["ref"]["label"] == "KW"
-
-
-def test_stale_classification_cleared_when_naturally_fully_eliminated(client):
-    """A residual classification answers for a residual. When displacement grows
-    to cover the whole product the classification has nothing to answer: the
-    result shows no decision and flags it not applicable, but the operator's
-    stored decision is kept as entered (TARGET_SCHEMA §1.2.3) and applies again
-    when a residual returns."""
-    eng = client.post("/api/engagements", json={"customer_name": "AutoClear Co"}).json()
-    eid = eng["id"]
-    outcomes = client.get(f"/api/engagements/{eid}/outcomes").json()
-    identity = next(o for o in outcomes if o["seed_key"] == "identity-sso")
-    kw = client.post(f"/api/engagements/{eid}/personas",
-                     json={"name": "KW", "headcount": 450}).json()
-    okta = client.post(f"/api/engagements/{eid}/third-party",
-                       json={"name": "Okta", "raw_cost": 50000, "covered_count_override": 500}).json()
-    client.post(f"/api/engagements/{eid}/coverage",
-                json={"outcome_id": identity["id"], "product_kind": "ThirdParty",
-                      "third_party_product_id": okta["id"], "ratified": True})
-    client.post(f"/api/engagements/{eid}/scenarios",
-                json={"persona_id": kw["id"], "target_sku_reference": "E3",
-                      "target_unit_price_annual": 0})
-
-    # Partial displacement (450/500) → classify the 50-user residual as intended.
-    client.post(f"/api/engagements/{eid}/compute")
-    client.put(f"/api/engagements/{eid}/dispositions/{okta['id']}/override",
-               json={"override": "None", "residual_intent": "IntendedOutOfScope"})
-    d = client.post(f"/api/engagements/{eid}/compute").json()["dispositions"][0]
-    assert d["residual_intent"] == "IntendedOutOfScope"
-
-    # Headcount grows past covers → naturally FullyEliminated → auto-cleared.
-    client.patch(f"/api/engagements/{eid}/personas/{kw['id']}", json={"headcount": 550})
-    d = client.post(f"/api/engagements/{eid}/compute").json()["dispositions"][0]
-    assert d["disposition"] == "FullyEliminated"
-    assert d["residual_intent"] == "None"
-    assert d["override"] == "None"
-    assert d["decision_not_applicable"] is True
-
-    # The stored decision was never erased: shrink back below covers and the
-    # residual is answered by it again, without asking the operator twice.
-    client.patch(f"/api/engagements/{eid}/personas/{kw['id']}", json={"headcount": 450})
-    d = client.get(f"/api/engagements/{eid}/result").json()["dispositions"][0]
-    assert d["disposition"] == "PartiallyReduced"
-    assert d["residual_intent"] == "IntendedOutOfScope"
-    assert d["decision_not_applicable"] is False
-    assert d["requires_residual_classification"] is False
 
 
 def test_endpoint_privilege_management_seeded_and_covered(client):
