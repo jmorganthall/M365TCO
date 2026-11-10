@@ -790,7 +790,7 @@ class _Context:
             f"<div class='legend'>{legend}</div></div>"
             "<table class='data'><thead><tr><th>Tool</th><th>Action</th><th class='num'>Seats retired</th>"
             "<th class='num'>Seats kept</th><th class='num'>Today / yr</th><th class='num'>Remains / yr</th>"
-            f"</tr></thead><tbody>{''.join(row(d) for d in self.dispositions)}</tbody></table>"
+            f"</tr></thead><tbody>{''.join(row(d) for d in self.dispositions if d['third_party_product_id'] in set(self.views.get('dispositions_shown') or []))}</tbody></table>"
             f"{retired_html}</section>"
         )
 

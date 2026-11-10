@@ -3,7 +3,8 @@ import { api, money, useDataVersion, useInterpreted, useResult, usd } from '../a
 import { RecommendPlans } from './FutureState.jsx'
 import ExtraSeats from './ExtraSeats.jsx'
 import { Sections, ServicePicker } from './PracticeServices.jsx'
-import { EngagementBasisEditor } from './basis.jsx'
+import { EngagementBasisEditor, effectiveBasis } from './basis.jsx'
+import SkuCombobox from './SkuCombobox.jsx'
 
 // The persona-guided walkthrough (docs/GUIDED_PLAN.md §4): one question per screen,
 // over the same data as the detail steps. Every number shown comes from the
@@ -269,22 +270,27 @@ function GroupsQ({ engagement, base, personas, interp, call }) {
   )
 }
 
-function MicrosoftQ({ base, personas, interp, call }) {
+function MicrosoftQ({ engagement, base, personas, interp, call }) {
   const lines = useList(`${base}/current-licenses`) || []
-  const bundles = useList('/api/catalog/bundles') || []
-  const plans = bundles.filter((b) => b.kind === 'bundle')
-  async function pick(p, line, bundleId) {
-    const plan = plans.find((b) => b.id === bundleId)
+  // The same searchable picker as the detail view: a catalog pick sends the SKU and
+  // the server sets the name and its list price; a typed name is saved as typed and
+  // priced from the catalog when it can be.
+  async function pick(p, line, sku, title) {
+    const name = (title || '').trim()
+    if (!sku && !name) return
     await call(async () => {
-      if (!plan) { if (line) await api.del(`${base}/current-licenses/${line.id}`); return }
+      const body = sku ? { catalog_sku_id: sku.id } : { sku_reference: name }
       const row = line
-        ? await api.patch(`${base}/current-licenses/${line.id}`, { sku_reference: plan.name })
+        ? await api.patch(`${base}/current-licenses/${line.id}`, body)
         : await api.post(`${base}/current-licenses`, {
-          sku_reference: plan.name, quantity_assigned: p.headcount, quantity_purchased: p.headcount,
-          unit_price_paid_annual: plan.list_price_annual || 0, persona_ids: [p.id] })
-      await api.post(`${base}/current-licenses/${row.id}/list-price`)
+          ...body, quantity_assigned: p.headcount, quantity_purchased: p.headcount, persona_ids: [p.id] })
+      if (!sku) await api.post(`${base}/current-licenses/${row.id}/list-price`)
     })
   }
+  const remove = (line) => call(() => api.del(`${base}/current-licenses/${line.id}`))
+  // "Set seats to N": the group's size changed after the seats were entered. The
+  // number comes from the finding; nothing changes without the click.
+  const seatsFix = (line) => interp.findings.find((f) => f.code === 'seats_vs_headcount' && f.licence_id === line.id)
   return (
     <Ask title="What Microsoft licensing does each group have today?"
       why="Pick the main plan each group is on. Add-ons, negotiated prices and anything unusual go in the detail view.">
@@ -298,7 +304,6 @@ function MicrosoftQ({ base, personas, interp, call }) {
         const own = mine.filter((l) => !shared.includes(l))
         const line = own[0]
         const il = line && interp.licence[line.id]
-        const planId = line ? (plans.find((b) => b.name === line.sku_reference)?.id || '') : ''
         const others = (l) => personas.filter((x) => x.id !== p.id && interp.licence[l.id]?.applies_to?.includes(x.id)).map((x) => x.name)
         return (
           <div key={p.id} className="guide-block">
@@ -311,10 +316,11 @@ function MicrosoftQ({ base, personas, interp, call }) {
               </div>
             ))}
             {(own.length > 0 || shared.length === 0) && <div className="guide-row">
-              <select value={planId} onChange={(e) => pick(p, line, e.target.value)} style={{ minWidth: 280 }}>
-                <option value="">{line && !planId ? line.sku_reference : 'No Microsoft licence'}</option>
-                {plans.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
+              <SkuCombobox value={line?.sku_reference || ''} style={{ minWidth: 320 }}
+                placeholder="Type a plan, e.g. O365 E3 or Business Premium"
+                {...(() => { const b = effectiveBasis(line, engagement); return { segment: b.segment, term: b.term, billing: b.billing } })()}
+                onChange={(v) => pick(p, line, null, v)} onSelectSku={(sku, title) => pick(p, line, sku, title)} />
+              {line && <button className="ghost sm" title="This group has no Microsoft licence" onClick={() => remove(line)}>✕</button>}
               {line && (
                 <>
                   <Field type="number" value={line.quantity_assigned} style={{ width: 110 }}
@@ -325,6 +331,13 @@ function MicrosoftQ({ base, personas, interp, call }) {
                 </>
               )}
             </div>}
+            {line && seatsFix(line) && (
+              <div className="src warn">{p.name} now has {seatsFix(line).facts.headcount.toLocaleString()} people, but this licence has{' '}
+                {seatsFix(line).facts.assigned.toLocaleString()} seats.{' '}
+                <button className="ghost sm" onClick={() => call(() => api.patch(`${base}/current-licenses/${line.id}`, {
+                  quantity_assigned: seatsFix(line).facts.headcount, quantity_purchased: seatsFix(line).facts.headcount }))}>
+                  Set seats to {seatsFix(line).facts.headcount.toLocaleString()}</button></div>
+            )}
             {line && il && Number(il.effective_price_annual) === 0 && (
               <div className="src warn">No price found for this plan. Load the price list in Settings, or enter the price in the detail view.</div>
             )}

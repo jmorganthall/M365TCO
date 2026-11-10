@@ -50,6 +50,11 @@ def review(db: Session, engagement_id: str) -> dict:
             check(f.code, f.step,
                   f"The groups add up to {x['total']:,} people, but IT supports {x['supported']:,}. "
                   f"Is a group missing, or is a size wrong?")
+        elif f.code == "two_base_plans":
+            check(f.code, f.step,
+                  f"{x['persona_name']} holds {' and '.join(x['names'])}, two full plans for the same people. "
+                  f"If some people have one and the rest the other, split the group; if they really hold "
+                  f"both, that is spend to remove.")
         elif f.code == "tagged_to_missing_group":
             check(f.code, f.step,
                   f"{x['name']} was given to a group that no longer exists, so its cost is in no "

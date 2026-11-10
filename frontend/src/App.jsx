@@ -48,6 +48,7 @@ function parseHash() {
   const parts = (window.location.hash || '').replace(/^#\/?/, '').split('/').filter(Boolean)
   if (parts[0] === 'settings') return { view: 'settings' }
   if (parts[0] === 'value') return { view: 'value' }
+  if (parts[0] === 'new') return { view: 'new' }
   if (parts[0] === 'e' && parts[1] && parts[2] === 'guide') {
     const step = GUIDE_STEPS.some(([k]) => k === parts[3]) ? parts[3] : 'customer'
     return { view: 'engagement', id: decodeURIComponent(parts[1]), tab: 'guide', step, sub: Number(parts[4]) || 0 }
@@ -143,8 +144,12 @@ export default function App() {
       <header className="topbar">
         <div className="topbar-left">
           {route.view !== 'home' && (
-            <button className="ghost sm" title="Open another engagement"
-              onClick={() => go('/')}>‹ Engagements</button>
+            <button className="ghost sm" title="Find another customer's engagement"
+              onClick={() => go('/')}>‹ All customers</button>
+          )}
+          {route.view !== 'new' && (
+            <button className="ghost sm" title="Start an engagement for a new customer"
+              onClick={() => go('/new')}>+ New customer</button>
           )}
           {logo && <img src={logo} alt="Practice logo" className="topbar-logo" />}
           <div className="topbar-brand">Microsoft 365 TCO</div>
@@ -158,6 +163,14 @@ export default function App() {
           {route.view === 'settings' && <AdminPanel onClose={closeSettings} />}
 
           {route.view === 'value' && <div className="container"><WorkshopValue /></div>}
+
+          {route.view === 'new' && (
+            <div className="container">
+              <div className="welcome"><h1>Start a new customer.</h1>
+                <p className="muted">The new engagement opens in the guided walkthrough.</p></div>
+              <NewEngagement onCreated={open} />
+            </div>
+          )}
 
           {route.view === 'home' && (
             <div className="container">

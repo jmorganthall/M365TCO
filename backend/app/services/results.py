@@ -243,7 +243,11 @@ def views(result: dict) -> dict:
             key=lambda w: -w["seats"])
 
     return {"bridge": bridge, "new_outcome_count": len(new_ids),
-            "consolidation_by_persona": consolidation, "quick_win_who": who}
+            "consolidation_by_persona": consolidation, "quick_win_who": who,
+            # The tools a disposition table lists: not a $0 line (a contract part
+            # with no amount yet says nothing; the contract's remainder carries it).
+            "dispositions_shown": [d["third_party_product_id"] for d in result.get("dispositions") or []
+                                   if float(d.get("effective_annual_cost") or 0) > 0]}
 
 
 def narratives_view(eng: models.Engagement) -> dict:
