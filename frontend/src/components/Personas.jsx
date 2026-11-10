@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api, useInterpreted } from '../api'
+import { api, usd, useInterpreted } from '../api'
 import Help from './Help.jsx'
 import { TextInput } from './CommitInput.jsx'
 
@@ -71,7 +71,8 @@ export default function Personas({ engagement, meta }) {
       <table className="resp-table">
         <thead><tr>
           <th></th><th>Persona <Help k="groups.name" /></th><th className="num">People <Help k="groups.headcount" /></th>
-          <th>Description <Help k="groups.description" /></th><th className="num">Requires</th><th></th>
+          <th>Description <Help k="groups.description" /></th><th className="num">Requires</th>
+          <th className="num" title="Derived: this persona's share of its Microsoft licences and tools, per person">Today / user / mo</th><th></th>
         </tr></thead>
         <tbody>
           {withCarveOutsUnderParents(items).map((p) => {
@@ -115,12 +116,14 @@ export default function Personas({ engagement, meta }) {
                   <td data-label="Description"><TextInput value={p.description || ''} placeholder="Who they are (optional)"
                     onCommit={(v) => update(p.id, { description: v })} /></td>
                   <td className="num" data-label="Requires">{reqs.length || <span className="muted">—</span>}</td>
+                  <td className="num muted" data-label="Today / user / mo">
+                    {interp.baseline[p.id] ? usd(interp.baseline[p.id].per_user_monthly) : '…'}</td>
                   <td className="num"><button className="danger sm" onClick={() => remove(p.id)}>Remove</button></td>
                 </tr>
                 {open[p.id] && (
                   <tr className="detail-row">
                     <td></td>
-                    <td colSpan={5} style={{ background: 'var(--panel2)' }}>
+                    <td colSpan={6} style={{ background: 'var(--panel2)' }}>
                       <div className="grid c4" style={{ padding: '.2rem 0 .5rem' }}>
                         <div><label>Source</label>
                           <select value={p.source_tag} onChange={(e) => update(p.id, { source_tag: e.target.value })}>

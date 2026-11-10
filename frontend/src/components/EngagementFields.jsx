@@ -17,7 +17,7 @@ function useEngagementFields(engagement, onUpdate) {
 
   async function commit(field, raw) {
     let value = raw
-    if (field === 'employee_count') value = raw === '' || raw == null ? null : Number(raw)
+    if (field === 'employee_count' || field === 'supported_headcount') value = raw === '' || raw == null ? null : Number(raw)
     else if (field === 'modeling_horizon_years') value = Math.min(10, Math.max(1, Number(raw) || 3))
     // Blank = inherit the install setting (stored NULL, TARGET_SCHEMA §4.1).
     else if (field === 'ecif_roi_conservative' || field === 'ecif_roi_generous')
@@ -45,6 +45,7 @@ function fromEngagement(e) {
     hq_location: e.hq_location || '',
     website: e.website || '',
     employee_count: e.employee_count ?? '',
+    supported_headcount: e.supported_headcount ?? '',
     notes: e.notes || '',
     modeling_horizon_years: e.modeling_horizon_years ?? 3,
     managed_ms_account: !!e.managed_ms_account,
@@ -153,6 +154,10 @@ export function CustomerCard({ engagement, meta, onUpdate }) {
             <input type="number" min="0" value={f.employee_count} onChange={set('employee_count')}
               onBlur={(e) => commit('employee_count', e.target.value)} />
             <small className="src">Used to check that the personas add up.</small></div>
+          <div><label>People IT supports {saved('supported_headcount')}</label>
+            <input type="number" min="0" value={f.supported_headcount} onChange={set('supported_headcount')}
+              onBlur={(e) => commit('supported_headcount', e.target.value)} />
+            <small className="src">Asked first in the guided walkthrough; the groups should add up to it.</small></div>
         </div>
         <div style={{ marginTop: '.5rem' }}>
           <label>Notes {saved('notes')}</label>

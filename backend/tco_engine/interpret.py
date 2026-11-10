@@ -94,6 +94,9 @@ class RawTool:
     covered_count_override: Optional[int]
     persona_ids: tuple[str, ...]
     renewal_date: Optional[str] = None
+    # The customer's answer about seats beyond the personas who hold the tool
+    # (GUIDED_PLAN G4): "ExtraSeats" | "PeopleWhoStay" | None (read as PeopleWhoStay).
+    extra_seats_answer: Optional[str] = None
     # The operator's decision on the tool (ProductDisposition).
     override: str = "None"
     override_reason: str = ""
@@ -158,6 +161,8 @@ class RawEngagement:
     gap_answers: dict[tuple[str, str], str] = field(default_factory=dict)
     employee_count: Optional[int] = None
     licence_limits: tuple[RawLimit, ...] = ()
+    # How many people IT supports, as asked first in the guided flow (G8).
+    supported_headcount: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -217,12 +222,33 @@ class ITool:
     tooling_source: str                 # "tool" | "engagement"
     effective_annual_cost: Decimal
     people_covered: int
-    covered_source: str                 # "override" | "personas"
+    covered_source: str                 # "override" | "personas" | "extra_seats"  (ENGINE_SPEC 6.0a)
     cost_per_person: Decimal
     applies_to: tuple[str, ...]         # persona ids, Org-wide expanded
     assumed: bool                       # untagged, read as Org-wide
     delivered_outcome_ids: frozenset[str]
-    personas_headcount: int = 0         # the tagged personas' headcount (what "covers" defaults to)
+    personas_headcount: int = 0         # the tagged personas' headcount
+    # ENGINE_SPEC 6.0a: the headcount of the personas it applies to (Org-wide = all),
+    # the seat count the customer gave (None = not given), and the seats beyond the
+    # personas that stay on the tool (their cost is in no persona's share).
+    people_held: int = 0
+    stated_seats: Optional[int] = None
+    standing_seats: int = 0
+    standing_annual: Decimal = Decimal("0")
+    extra_seats: int = 0                # stated seats beyond people_held (asked about, G4)
+
+
+@dataclass(frozen=True)
+class IPersonaBaseline:
+    """A persona's all-in cost today (GUIDED_PLAN G3, ENGINE_SPEC 6.0a): its share
+    of every in-scope licence line and every tool it holds. Needs no future state."""
+
+    persona_id: str
+    headcount: int
+    microsoft_annual: Decimal
+    tools_annual: Decimal
+    total_annual: Decimal
+    per_user_monthly: Decimal
 
 
 @dataclass(frozen=True)
@@ -376,6 +402,7 @@ class Interpreted:
     tool_retirements: tuple[IToolRetirement, ...] = ()
     seat_caps: tuple[ISeatCap, ...] = ()
     findings: tuple[IFinding, ...] = ()
+    baselines: tuple[IPersonaBaseline, ...] = ()
 
     @cached_property
     def _licence_index(self) -> dict[str, ILicenseLine]:
@@ -403,6 +430,17 @@ class Interpreted:
 # ---------------------------------------------------------------------------
 # The rules
 # ---------------------------------------------------------------------------
+
+def people_covered(held: int, stated: Optional[int], extra_seats_answer: Optional[str]) -> tuple[int, str]:
+    """ENGINE_SPEC 6.0a: the one splitting rule. A tool's cost lands on the personas
+    that hold it unless the customer says seats beyond them belong to people who stay
+    on it (or hasn't answered, which is read the cautious way)."""
+    if stated is None or stated <= held:
+        return held, "personas"
+    if extra_seats_answer == "ExtraSeats":
+        return held, "extra_seats"
+    return stated, "override"
+
 
 def _read_line(line: RawLicenseLine, coverage: dict[str, frozenset[str]]):
     ref = (line.sku_reference or "").strip()
@@ -461,13 +499,13 @@ def interpret(raw: RawEngagement) -> Interpreted:
             tooling, tooling_source = raw.default_tooling_pct, "engagement"
         effective = managed_effective_cost(annual, t.is_managed, tooling)
         tagged = tuple(p for p in t.persona_ids if p in known)
-        if t.covered_count_override is not None:
-            covered, covered_source = t.covered_count_override, "override"
-        else:
-            covered, covered_source = sum(headcount[p] for p in tagged), "personas"
-        per_person = cost_per_person(effective, covered)
         assumed = not t.persona_ids
         applies = everyone if assumed else tagged
+        held = sum(headcount[p] for p in applies)
+        covered, covered_source = people_covered(held, t.covered_count_override,
+                                                 t.extra_seats_answer)
+        per_person = cost_per_person(effective, covered)
+        standing = max(covered - held, 0)
         tools.append(ITool(
             id=t.id, name=t.name, annual_cost=annual, tooling_pct=tooling,
             tooling_source=tooling_source, effective_annual_cost=effective,
@@ -475,10 +513,13 @@ def interpret(raw: RawEngagement) -> Interpreted:
             cost_per_person=per_person, applies_to=applies, assumed=assumed,
             delivered_outcome_ids=raw.tool_coverage.get(t.id, frozenset()),
             personas_headcount=sum(headcount[p] for p in tagged),
+            people_held=held, stated_seats=t.covered_count_override,
+            standing_seats=standing, standing_annual=per_person * Decimal(standing),
+            extra_seats=max((t.covered_count_override or 0) - held, 0),
         ))
-        # Definition 7: a persona's share is cost per person × its headcount. When
-        # the tool covers more people than its personas, the remainder is spend no
-        # persona's move can retire; it is not anyone's share.
+        # Definition 7 (ENGINE_SPEC 6.0a): a persona's share is cost per person × its
+        # headcount. Only seats the customer says belong to people who stay on the
+        # tool (standing seats) are nobody's share.
         for pid in applies:
             tool_shares[(t.id, pid)] = per_person * Decimal(headcount.get(pid, 0))
 
@@ -514,13 +555,24 @@ def interpret(raw: RawEngagement) -> Interpreted:
                                       if c.parent_persona_id == p.id))
         for p in raw.personas)
 
+    baselines = []
+    for p in raw.personas:
+        ms = sum((v for (lid, pid), v in licence_shares.items() if pid == p.id), ZERO)
+        tl = sum((v for (tid, pid), v in tool_shares.items() if pid == p.id), ZERO)
+        total = ms + tl
+        monthly = (total / Decimal(p.headcount) / 12).quantize(Decimal("0.01")) if p.headcount > 0 else ZERO
+        baselines.append(IPersonaBaseline(p.id, p.headcount, ms.quantize(Decimal("0.01")),
+                                          tl.quantize(Decimal("0.01")), total.quantize(Decimal("0.01")),
+                                          monthly))
+
     tables = _outcome_tables(raw, lines, tools, scenarios)
     seat_caps = _seat_caps(raw, lines, scenarios)
     findings = _findings(raw, lines, tools, scenarios, tables, seat_caps)
     return Interpreted(
         raw=raw, personas=personas, licence_lines=tuple(lines),
         licence_shares=licence_shares, tools=tuple(tools), tool_shares=tool_shares,
-        scenarios=tuple(scenarios), seat_caps=seat_caps, findings=findings, **tables,
+        scenarios=tuple(scenarios), seat_caps=seat_caps, findings=findings,
+        baselines=tuple(baselines), **tables,
     )
 
 
@@ -605,6 +657,9 @@ def _findings(raw, lines, tools, scenarios, tables, seat_caps) -> tuple[IFinding
     # ---- Personas & licences ----
     if not raw.personas:
         f.append(IFinding("no_groups", "groups"))
+    if raw.supported_headcount is not None and raw.personas and total_hc != raw.supported_headcount:
+        f.append(IFinding("headcount_mismatch", "groups", facts={
+            "total": total_hc, "supported": raw.supported_headcount}))
     if raw.employee_count and total_hc and total_hc != raw.employee_count:
         f.append(IFinding("headcount_vs_employees", "groups", "info",
                           facts={"total": total_hc, "employees": raw.employee_count}))
@@ -632,6 +687,7 @@ def _findings(raw, lines, tools, scenarios, tables, seat_caps) -> tuple[IFinding
         f.append(IFinding("license_out_of_scope", "groups", "info", facts={"names": set_aside}))
 
     # ---- Other tools ----
+    in_scope_planned = {s.persona_id for s in scenarios if s.in_scope}
     for t in tools:
         rt = raw_tools[t.id]
         missing = []
@@ -647,6 +703,17 @@ def _findings(raw, lines, tools, scenarios, tables, seat_caps) -> tuple[IFinding
         elif not rt.renewal_date:
             f.append(IFinding("renewal_date_missing", "tools", "info", tool_id=t.id,
                               facts={"subject": "tool", "name": t.name}))
+        # ENGINE_SPEC 6.0a: the seat count doesn't match the personas who hold it.
+        if t.stated_seats is not None and t.stated_seats < t.people_held:
+            f.append(IFinding("tool_seats_short", "tools", "info", tool_id=t.id, facts={
+                "name": t.name, "seats": t.stated_seats, "held": t.people_held}))
+        if (t.stated_seats is not None and t.stated_seats > t.people_held
+                and rt.extra_seats_answer is None
+                and any(r.retired and r.tool_id == t.id and r.persona_id in in_scope_planned
+                        for r in tables["tool_retirements"])):
+            f.append(IFinding("extra_seats_unanswered", "future", tool_id=t.id, facts={
+                "name": t.name, "seats": t.stated_seats, "held": t.people_held,
+                "extra": t.stated_seats - t.people_held}))
 
     # ---- Future state ----
     planned = {s.persona_id for s in scenarios}

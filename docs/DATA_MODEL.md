@@ -126,7 +126,9 @@ FK, UUID PK, cascade-deleted with the engagement.
   `ecif_roi_conservative` / `ecif_roi_generous`, the customer's logo
   `brand_logo_data_url` (TARGET_SCHEMA `customer_logo`),
   and the Customer-Info metadata `workshop_date` / `industry` / `hq_location` /
-  `website` / `employee_count`, plus `microsoft_renewal_date` — when the customer's
+  `website` / `employee_count`, `supported_headcount` (how many people IT supports,
+  GUIDED_PLAN G8: the groups should add up to it, `headcount_mismatch` in Review;
+  edited on the Customer card), plus `microsoft_renewal_date` — when the customer's
   Microsoft agreement renews, the default renewal for every licence line, which
   times Microsoft reductions and over-licensing in the headline's ramp; NULL =
   month-to-month with no lock-in, counted from day one, and the readout says so);
@@ -675,16 +677,20 @@ Licence names.
 ### 4.6 ThirdPartyProduct — non-Microsoft spend
 - **Identity:** `uuid`. **Scope:** engagement-scoped.
 - **Field ownership:** user-entered only (`name`, `raw_cost`, `cost_period`,
-  `covered_count_override`, `is_managed`, `tooling_pct`, `renewal_date`), plus
-  provenance. Nothing derived is stored on the row (TARGET_SCHEMA §4.5).
+  `covered_count_override`, `is_managed`, `tooling_pct`, `renewal_date`,
+  `extra_seats_answer`), plus provenance. `extra_seats_answer` ∈ {`ExtraSeats`,
+  `PeopleWhoStay`} answers what the seats beyond the personas who hold the tool are
+  (GUIDED_PLAN G4); NULL reads as `PeopleWhoStay`. Edited in the tool's details,
+  shown only when the tool covers more seats than its personas hold. Nothing derived is stored on the row (TARGET_SCHEMA §4.5).
 - **`tooling_pct`:** NULL = inherit the engagement's default; code never writes the
   resolved value back. Values stored before this rule are kept as explicit values
   (TARGET_SCHEMA §12: today's data can't tell chosen from inherited); a person
   clears the field to inherit.
 - **Derived (interpreted, never stored):** annual cost (`×12` if monthly), the
   effective tooling % and its source, effective cost (`annual × tooling` when
-  managed), people covered (`covered_count_override` else the tagged personas'
-  headcount, §4.6a) and cost per person — all in `tco_engine/interpret.py`. The tool
+  managed), people covered (ENGINE_SPEC 6.0a: the personas' headcount — every
+  persona when untagged — unless the seat count is higher and the extra seats are
+  people who stay), standing and extra seats, and cost per person — all in `tco_engine/interpret.py`. The tool
   API returns them read-only beside the entered fields (`annual_cost`,
   `covered_count`, `persona_covered_count`, `effective_annual_cost`,
   `per_unit_annual_cost`, `effective_tooling_pct`, `tooling_source`). People covered

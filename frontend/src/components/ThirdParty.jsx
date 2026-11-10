@@ -105,7 +105,19 @@ function ProductRow({ t, it, missing, meta, personas, moneyUnit, update, remove 
                 <NumInput value={t.covered_count_override} allowEmpty
                   placeholder={String(t.persona_covered_count ?? 0)}
                   onCommit={(n) => update(t.id, { covered_count_override: n })} />
-                <small className="src">Blank = the personas' headcount ({t.persona_covered_count}).</small></div>
+                <small className="src">Blank = the headcount of the personas who have it.</small></div>
+              {it && it.extra_seats > 0 && (
+                <div><label>The other {it.extra_seats.toLocaleString()} seats <Help k="tools.extra_seats" /></label>
+                  <select value={t.extra_seats_answer || ''}
+                    onChange={(e) => update(t.id, { extra_seats_answer: e.target.value || null })}>
+                    <option value="">Not answered (counted as people who stay)</option>
+                    <option value="ExtraSeats">Extra seats nobody needs</option>
+                    <option value="PeopleWhoStay">People who stay on {t.name}</option>
+                  </select>
+                  <small className="src">{t.extra_seats_answer === 'ExtraSeats'
+                    ? 'The whole cost is spread over the personas, so it can all go when they move.'
+                    : `${it.standing_seats.toLocaleString()} seats stay: ${money(it.standing_annual, moneyUnit)} that no move removes.`}</small></div>
+              )}
               <div><label>Counted · per person</label>
                 <div className="muted" style={{ paddingTop: '.35rem' }}>{it ? <>{it.people_covered} people · {money(it.effective_annual_cost, moneyUnit)} · {money(it.cost_per_person, moneyUnit)} each</> : '—'}</div>
                 <small className="src">The cost counted (after any managed-service share), split per person covered.</small></div>

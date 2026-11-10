@@ -63,6 +63,22 @@ def review(db: Session, engagement_id: str) -> dict:
                    "persona_ids": list(x.get("persona_ids") or ())}
         if f.code == "no_groups":
             check(f.code, f.step, "No personas yet. Add the personas who get different licences.")
+        elif f.code == "headcount_mismatch":
+            check(f.code, f.step,
+                  f"The groups add up to {x['total']:,} people, but IT supports {x['supported']:,}. "
+                  f"Is a group missing, or is a size wrong?")
+        elif f.code == "tool_seats_short":
+            check(f.code, f.step,
+                  f"{x['name']} covers {x['seats']:,} seats, but the groups given it have {x['held']:,} people. "
+                  f"The numbers follow the cost-per-user method and are sound, but the seat count doesn't "
+                  f"match today's reality: should part of a group be split off?", "info")
+        elif f.code == "extra_seats_unanswered":
+            check(f.code, f.step,
+                  f"{x['name']} covers {x['seats']:,} seats; the groups given it have {x['held']:,} people. "
+                  f"Are the other {x['extra']:,} extra seats (the whole cost can go), or people who stay on "
+                  f"{x['name']}? Until answered they are counted as people who stay.")
+            leave_out(f"{x['extra']:,} extra {x['name']} seats",
+                      "not yet answered whether they are needed — counted as kept", "future")
         elif f.code == "headcount_vs_employees":
             check(f.code, f.step,
                   f"The personas add up to {x['total']:,} people; the customer has {x['employees']:,} "

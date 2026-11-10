@@ -165,6 +165,7 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
         # a copy that dropped them would show different numbers for the same data.
         workshop_date=src.workshop_date,
         microsoft_renewal_date=src.microsoft_renewal_date,
+        supported_headcount=src.supported_headcount,
     )
     db.add(dst)
     db.flush()
@@ -212,6 +213,7 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
             cost_period=tp.cost_period, covered_count_override=tp.covered_count_override,
             renewal_date=tp.renewal_date,
             is_managed=tp.is_managed, tooling_pct=tp.tooling_pct, source_tag=tp.source_tag,
+            extra_seats_answer=tp.extra_seats_answer,
         )
         for pid in tp.persona_ids:
             mapped = persona_map.get(pid)

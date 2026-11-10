@@ -692,6 +692,7 @@ def _tool_out(row: models.ThirdPartyProduct, interp) -> dict:
         "cost_period": row.cost_period, "covered_count_override": row.covered_count_override,
         "renewal_date": row.renewal_date, "is_managed": row.is_managed,
         "tooling_pct": row.tooling_pct, "source_tag": row.source_tag,
+        "extra_seats_answer": row.extra_seats_answer,
         "persona_ids": row.persona_ids,
         "annual_cost": it.annual_cost, "covered_count": it.people_covered,
         "persona_covered_count": it.personas_headcount,

@@ -3,6 +3,8 @@ Parity with the code it replaced is checked in test_zz_interpret_parity.py."""
 
 from decimal import Decimal as D
 
+import pytest
+
 from tco_engine.interpret import (
     RawAddon, RawEngagement, RawLicenseLine, RawPersona, RawScenario, RawTool,
     interpret, to_engine,
@@ -108,11 +110,14 @@ def test_tool_cost_covers_and_shares():
     assert i.tool_shares == {("t", "a"): D("2400")}
 
 
-def test_an_untagged_tool_without_covers_costs_nobody():
+def test_an_untagged_tool_without_covers_covers_everyone():
+    """ENGINE_SPEC 6.0a (G6): an Org-wide tool with no seat count covers every
+    persona, so its whole cost lands on them instead of on nobody."""
     i = interpret(_raw(tools=(_tool(persona_ids=()),)))
     t = i.tool("t")
-    assert t.assumed and t.applies_to == ("a", "b") and t.people_covered == 0
-    assert all(v == 0 for v in i.tool_shares.values())
+    assert t.assumed and t.applies_to == ("a", "b")
+    assert t.people_covered == t.people_held > 0 and t.standing_seats == 0
+    assert sum(i.tool_shares.values()) == pytest.approx(t.effective_annual_cost, abs=D("0.01"))
 
 
 def test_scenario_composition_and_price():

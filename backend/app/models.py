@@ -46,6 +46,9 @@ COVERAGE_SCOPES = ("PerUser", "TenantWide")
 # The customer's answer about a licence line's unused seats (purchased − assigned):
 # kept on hand on purpose, or not needed (over-licensing). NULL = not answered.
 UNUSED_SEATS_ANSWERS = ("Intended", "NotNeeded")
+# The customer's answer about a tool's seats beyond the personas who hold it
+# (GUIDED_PLAN G4, ENGINE_SPEC 6.0a).
+EXTRA_SEATS_ANSWERS = ("ExtraSeats", "PeopleWhoStay")
 # The customer's answer about a capability nothing in the inventory delivers to a
 # persona today (TARGET_SCHEMA §4.8): a confirmed gap, or covered by something the
 # engagement doesn't cost. No row = not answered (never claimed as new).
@@ -145,6 +148,9 @@ class Engagement(Base):
     hq_location: Mapped[str] = mapped_column(String, default="")
     website: Mapped[str] = mapped_column(String, default="")
     employee_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # How many people IT supports (GUIDED_PLAN G8): asked first in the guided flow.
+    # The groups count down to it; a mismatch is a Review finding. NULL = not asked.
+    supported_headcount: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Pricing basis defaults for this engagement: the middle tier of the install →
     # engagement → line chain. NULL = inherit the install settings (a customer sets
     # one only when it differs, e.g. a Nonprofit customer); a licence line or
@@ -645,6 +651,13 @@ class ThirdPartyProduct(Base):
     # The software share of a managed service. NULL = inherit the engagement's
     # default (TARGET_SCHEMA §4.5); code never writes the resolved value here.
     tooling_pct: Mapped[float | None] = mapped_column(Numeric(6, 4), nullable=True)
+    # When the tool covers more seats than the personas who hold it (GUIDED_PLAN G4):
+    # "ExtraSeats" = not needed, the cost spreads over the personas; "PeopleWhoStay"
+    # = people outside the personas who stay on the tool. NULL = not answered, read
+    # as PeopleWhoStay (ENGINE_SPEC 6.0a).
+    extra_seats_answer: Mapped[str | None] = mapped_column(
+        SAEnum(*EXTRA_SEATS_ANSWERS, name="extra_seats_answer"), nullable=True
+    )
     # Annual cost, people covered, effective cost and cost per person are not
     # stored: they are interpreted from these fields (tco_engine/interpret.py).
     source_tag: Mapped[str] = _source_tag_col()

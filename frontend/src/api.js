@@ -50,6 +50,8 @@ export function useInterpreted(eid) {
     tool: index(data?.tools),
     scenario: index(data?.scenarios),
     persona: index(data?.personas),
+    // Each persona's all-in cost today (GUIDED_PLAN G3), keyed by persona id.
+    baseline: Object.fromEntries((data?.baselines || []).map((b) => [b.persona_id, b])),
     findings: data?.findings || [],
   }
 }
