@@ -12,6 +12,7 @@ export const GUIDE_STEPS = [
   ['microsoft', 'Microsoft today'],
   ['outcomes', 'How you work today'],
   ['tools', 'Price your tools'],
+  ['review', 'Group by group'],
   ['today', 'Today'],
   ['check', 'Check the data'],
 ]
@@ -47,7 +48,7 @@ export default function Guided({ engagement, meta, step, sub, onGo, onUpdate, on
   const areas = useMemo(() => areaList(outcomes), [outcomes])
 
   const i = Math.max(0, GUIDE_STEPS.findIndex(([k]) => k === step))
-  const subCount = step === 'outcomes' ? areas.length : step === 'tools' ? priceables.length : 0
+  const subCount = step === 'outcomes' ? areas.length : step === 'tools' ? priceables.length : step === 'review' ? personas.length : 0
   const subIdx = Math.min(Number(sub) || 0, Math.max(subCount - 1, 0))
   function next() {
     setErr('')
@@ -60,7 +61,7 @@ export default function Guided({ engagement, meta, step, sub, onGo, onUpdate, on
     if (subCount && subIdx > 0) return onGo(step, subIdx - 1)
     const p = GUIDE_STEPS[i - 1]
     if (!p) return
-    const pc = p[0] === 'outcomes' ? areas.length : p[0] === 'tools' ? priceables.length : 0
+    const pc = p[0] === 'outcomes' ? areas.length : p[0] === 'tools' ? priceables.length : p[0] === 'review' ? personas.length : 0
     onGo(p[0], Math.max(pc - 1, 0))
   }
   async function call(fn) {
@@ -86,6 +87,7 @@ export default function Guided({ engagement, meta, step, sub, onGo, onUpdate, on
           {step === 'tools' && priceables[subIdx]?.kind === 'contract'
             ? <PriceContract {...ctx} contract={priceables[subIdx].contract} n={subIdx} of={priceables.length} />
             : step === 'tools' && <PriceTool {...ctx} tool={priceables[subIdx]?.tool} n={subIdx} of={priceables.length} />}
+          {step === 'review' && <GroupReview {...ctx} persona={personas[subIdx]} n={subIdx} of={personas.length} />}
           {step === 'today' && <TodayQ {...ctx} />}
           {step === 'check' && <CheckQ {...ctx} />}
           {err && <div className="err" style={{ marginTop: '1rem' }}>{err}</div>}
@@ -432,23 +434,22 @@ function OutcomeWalk({ base, area, n, of, tools, interp, personas, call }) {
   }
   return (
     <Ask title={`Let's talk about ${area.name.toLowerCase()}.`}
-      why={`How do you deliver each of these today? Name the tool you pay for, or leave it if Microsoft covers it or you don't do it. (${n + 1} of ${of})`}>
+      why={`Do you do each of these today? If you do with a tool you pay for, name it. Which groups have what is checked group by group later. (${n + 1} of ${of})`}>
       {area.items.map((o) => {
         const mine = toolRows.filter((c) => c.outcome_id === o.id)
         const ms = (interp.data?.today || []).filter((t) => t.outcome_id === o.id && t.by_microsoft).map((t) => names[t.persona_id]).filter(Boolean)
         const others = tools.filter((t) => !mine.some((c) => c.third_party_product_id === t.id))
-        // "Not delivered today": the groups nothing delivers this to, confirmed as a
-        // real gap (coverage_gap_answers NotDeliveredToday), so a plan that adds it
-        // counts it as gained. Not offered once a tool is picked for it.
+        // "We don't": every group nothing delivers this to is confirmed as not having
+        // it (coverage_gap_answers NotDeliveredToday), so a plan that adds it counts
+        // it as gained. The group-by-group review corrects any group that does.
         const lacking = personas.filter((p) => p.headcount > 0 && !delivered.has(`${p.id}|${o.id}`))
         const confirmed = stored.filter((a) => a.outcome_id === o.id && a.answer === 'NotDeliveredToday'
           && lacking.some((p) => p.id === a.persona_id))
-        const gap = mine.length || !lacking.length ? null : {
-          done: confirmed.length === lacking.length, who: lacking.map((p) => p.name),
-          confirm: () => call(async () => { for (const p of lacking) await api.put(`${base}/coverage-gap-answers`, { persona_id: p.id, outcome_id: o.id, answer: 'NotDeliveredToday' }) }),
-          undo: () => call(async () => { for (const a of confirmed) await api.del(`${base}/coverage-gap-answers/${a.id}`) }),
-        }
-        return <OutcomeRow key={o.id} o={o} mine={mine} ms={ms} others={others} tools={tools} gap={gap}
+        const dont = lacking.length > 0 && confirmed.length === lacking.length
+        return <OutcomeRow key={o.id} o={o} mine={mine} ms={ms} others={others} tools={tools}
+          dont={dont} canSayDont={lacking.length > 0 && mine.length === 0}
+          onDont={() => call(async () => { for (const p of lacking) await api.put(`${base}/coverage-gap-answers`, { persona_id: p.id, outcome_id: o.id, answer: 'NotDeliveredToday' }) })}
+          onUndo={() => call(async () => { for (const a of confirmed) await api.del(`${base}/coverage-gap-answers/${a.id}`) })}
           onAdd={(tid) => call(() => api.post(`${base}/coverage`, { outcome_id: o.id, product_kind: 'ThirdParty', third_party_product_id: tid, ratified: true }))}
           onRemove={(cid) => call(() => api.del(`${base}/coverage/${cid}`))}
           onNew={(name) => addTool(o, name)} />
@@ -457,25 +458,100 @@ function OutcomeWalk({ base, area, n, of, tools, interp, personas, call }) {
   )
 }
 
-function OutcomeRow({ o, mine, ms, others, tools, gap, onAdd, onRemove, onNew }) {
+// One capability: we do it or we don't. "We do" asks for the tool, if there is one
+// to pay for; Microsoft's share is shown from the licences entered.
+function OutcomeRow({ o, mine, ms, others, tools, dont, canSayDont, onDont, onUndo, onAdd, onRemove, onNew }) {
+  const [yes, setYes] = useState(false)
   const toolName = (id) => tools.find((t) => t.id === id)?.name || 'A tool'
+  const doing = yes || mine.length > 0
   return (
     <div className="guide-block">
       <div className="guide-block-title">{o.name}</div>
       {o.description && <div className="muted guide-desc">{o.description}</div>}
       <div className="guide-chips">
         {ms.length > 0 && <span className="badge pos" title="From the Microsoft licensing you entered">Microsoft · {ms.join(', ')}</span>}
-        {mine.map((c) => (
-          <span key={c.id} className="badge">{toolName(c.third_party_product_id)}
-            <button className="chip-x" title="Not used for this" onClick={() => onRemove(c.id)}>✕</button></span>
-        ))}
-        <ToolPicker others={others} onAdd={onAdd} onNew={onNew} />
-        {gap && (gap.done
-          ? <span className="badge" title={`Confirmed: ${gap.who.join(', ')} don't have this today`}>✓ Not delivered today
-              <button className="chip-x" title="Undo" aria-label="Undo not delivered today" onClick={gap.undo}>↺</button></span>
-          : <button className="ghost sm" title={`Confirm ${gap.who.join(', ')} don't have this today`} onClick={gap.confirm}>Not delivered today</button>)}
+        {dont
+          ? <span className="badge">✓ {ms.length ? 'Nothing beyond Microsoft' : "We don't"}
+              <button className="chip-x" title="Undo" aria-label="Undo" onClick={onUndo}>↺</button></span>
+          : <>
+              {mine.map((c) => (
+                <span key={c.id} className="badge">{toolName(c.third_party_product_id)}
+                  <button className="chip-x" title="Not used for this" onClick={() => onRemove(c.id)}>✕</button></span>
+              ))}
+              {doing
+                ? <ToolPicker others={others} onAdd={onAdd} onNew={onNew} />
+                : <button className="ghost sm" onClick={() => setYes(true)}>{ms.length ? 'Also with a tool' : 'We do'}</button>}
+              {canSayDont && <button className="ghost sm" onClick={onDont}>{ms.length ? 'Nothing beyond Microsoft' : "We don't"}</button>}
+            </>}
       </div>
     </div>
+  )
+}
+
+// Group by group (G10): what this group doesn't get today, from its Microsoft
+// licences and the tools it holds, with a way to correct each one: a tool it does
+// have, something not paid for separately, or confirm it doesn't have it.
+function GroupReview({ base, persona, n, of, tools, areas, interp, call }) {
+  const coverage = useList(`${base}/coverage`) || []
+  const stored = useList(`${base}/coverage-gap-answers`) || []
+  if (!persona) return <Ask title="No groups yet." why="Add the groups first." />
+  const rows = (interp.data?.today || []).filter((t) => t.persona_id === persona.id)
+  // Delivered by a licence or a tool; an answer ("not paid separately") is listed below.
+  const got = new Set(rows.filter((t) => t.by_microsoft || t.by_tool).map((t) => t.outcome_id))
+  const answer = Object.fromEntries(stored.filter((a) => a.persona_id === persona.id).map((a) => [a.outcome_id, a]))
+  // In walk order: area by area, as the outcome walk asked them.
+  const missing = areas.flatMap((x) => x.items).filter((o) => !got.has(o.id))
+  const open = missing.filter((o) => !answer[o.id])
+  const confirmedNo = missing.filter((o) => answer[o.id]?.answer === 'NotDeliveredToday')
+  const delivered = (o) => coverage.filter((c) => c.product_kind === 'ThirdParty' && c.ratified && c.outcome_id === o.id)
+    .map((c) => c.third_party_product_id)
+  const put = (o, a) => call(() => api.put(`${base}/coverage-gap-answers`, { persona_id: persona.id, outcome_id: o.id, answer: a }))
+  // A tool this group has for it: give the group the tool (when it's given to
+  // named groups), and tick the capability on the tool (when it isn't yet).
+  async function haveTool(o, tid) {
+    const t = tools.find((x) => x.id === tid)
+    await call(async () => {
+      if (t.persona_ids.length && !t.persona_ids.includes(persona.id)) {
+        await api.patch(`${base}/third-party/${tid}`, { persona_ids: [...t.persona_ids, persona.id] })
+      }
+      if (!delivered(o).includes(tid)) {
+        await api.post(`${base}/coverage`, { outcome_id: o.id, product_kind: 'ThirdParty', third_party_product_id: tid, ratified: true })
+      }
+    })
+  }
+  async function newTool(o, name) {
+    if (!name.trim()) return
+    await call(async () => {
+      const t = await api.post(`${base}/third-party`, { name: name.trim(), raw_cost: 0, persona_ids: [persona.id] })
+      await api.post(`${base}/coverage`, { outcome_id: o.id, product_kind: 'ThirdParty', third_party_product_id: t.id, ratified: true })
+    })
+  }
+  const label = (o) => <><b>{o.name}</b> <span className="muted">· {o.area || 'Other'}</span></>
+  return (
+    <Ask title={open.length ? `What doesn't ${persona.name} get today?` : `${persona.name}: nothing left to check.`}
+      why={`Group ${n + 1} of ${of}, ${persona.headcount.toLocaleString()} people. Nothing in their Microsoft licences or their tools delivers these. Correct any they do have, or confirm they don't. A new tool here is priced on "Price your tools".`}>
+      {open.map((o) => (
+        <div key={o.id} className="guide-block">
+          <div>{label(o)}</div>
+          <div className="guide-chips">
+            <ToolPicker others={tools} onAdd={(tid) => haveTool(o, tid)} onNew={(name) => newTool(o, name)} />
+            <button className="ghost sm" title="Delivered by something the customer doesn't pay for separately"
+              onClick={() => put(o, 'CoveredOutsideInventory')}>Have it, not paid separately</button>
+            <button className="ghost sm" onClick={() => put(o, 'NotDeliveredToday')}>They don't have it</button>
+          </div>
+        </div>
+      ))}
+      {[['Confirmed they don\'t have it', confirmedNo],
+        ['Have it, not paid for separately', missing.filter((o) => answer[o.id]?.answer === 'CoveredOutsideInventory')]]
+        .filter(([, list]) => list.length).map(([title, list]) => (
+          <details key={title} className="check-notes"><summary>{title} ({list.length})</summary>
+            {list.map((o) => (
+              <div key={o.id} className="check-row"><div>{label(o)}</div>
+                <button className="ghost sm" onClick={() => call(() => api.del(`${base}/coverage-gap-answers/${answer[o.id].id}`))}>↺ Undo</button></div>
+            ))}
+          </details>
+        ))}
+    </Ask>
   )
 }
 
