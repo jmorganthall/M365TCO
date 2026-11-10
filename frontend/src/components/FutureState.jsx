@@ -26,7 +26,7 @@ export default function FutureState({ engagement, meta, moneyUnit }) {
 // lowest-cost plan (plus add-ons) that keeps everything the persona has today; a
 // persona and its carve-outs decide each tool together (TARGET_SCHEMA D29). An
 // explicit action, never automatic — and every plan stays editable.
-function RecommendPlans({ engagement, onDone }) {
+export function RecommendPlans({ engagement, onDone }) {
   const eid = engagement.id
   const [missing, setMissing] = useState(null)
   const [busy, setBusy] = useState(false)

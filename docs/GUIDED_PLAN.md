@@ -69,7 +69,22 @@ just extra (the whole cost goes) or people who will stay on the tool?
 12. Calling (G13).
 13. Summary and PDF (G15).
 
-## 5. Build order
+## 5. As built (phase 5)
+
+- Route `#/e/<id>/guide/<step>/<n>`; opening or creating an engagement lands on the
+  guided flow, and the header's **Guided / Detail** switch moves between the two.
+- The outcome walk is **one screen per area**, with each outcome in the area as a
+  row: the Microsoft groups that already have it (from the persona × outcome
+  table), the tools named for it, a button to add a tool already named, and a field
+  for a new one. A new tool starts on **all groups**; who has it is set on the
+  pricing screen. The per-group follow-up ("And Frontline?") is the gap sweep.
+- Every number shown comes from the backend: the interpreter's `baselines` and
+  `summary` (count-down, totals, standing seats) and the result's
+  `views.personas` (today, after and change per user per month).
+- The Recommendation screen shows Review's future-state checks (for example a
+  Business seat cap) beside the plans.
+
+## 6. Build order
 
 Each phase is one pull request to `main`, with its tests.
 
@@ -79,6 +94,6 @@ Each phase is one pull request to `main`, with its tests.
 | 2 | Interpretation: one splitting rule (G2, G5, G6), the seat-mismatch answer (G4), the persona baseline (G3), total headcount (G8) | done |
 | 3 | Retire `product_dispositions` (G7) | done |
 | 4 | Outcome areas (G9) | done |
-| 5 | The guided walkthrough GUI, steps 1–10 and 13 (G10, G11, G16) | — |
+| 5 | The guided walkthrough GUI, steps 1–10 and 13 (G10, G11, G16) | done |
 | 6 | Contracts and cost lines (G12) | — |
 | 7 | Practice services and result sections, steps 11–12 (G13–G15) | — |

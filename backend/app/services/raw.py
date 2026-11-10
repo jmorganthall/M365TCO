@@ -217,6 +217,7 @@ def interpreted_view(db: Session, engagement_id: str) -> dict:
                                    for c in i.seat_caps)],
         # Each persona's all-in cost today (GUIDED_PLAN G3).
         "baselines": rows(i.baselines),
+        "summary": {k: _plain(v) for k, v in i.summary.items()},
         "findings": [{**{f.name: _plain(getattr(x, f.name)) for f in fields(x) if f.name != "facts"},
                       "facts": {k: _plain(v) for k, v in x.facts.items()}}
                      for x in i.findings],

@@ -110,3 +110,30 @@ def test_headcount_mismatch_finding():
     assert [f for f in interpret(_raw(supported_headcount=1500)).findings if f.code == "headcount_mismatch"]
     assert not [f for f in interpret(_raw(supported_headcount=1200)).findings if f.code == "headcount_mismatch"]
     assert not [f for f in interpret(_raw()).findings if f.code == "headcount_mismatch"]
+
+
+def test_summary_counts_down_and_totals_the_baseline():
+    i = interpret(_raw(tools=(_tool(extra_seats_answer="PeopleWhoStay"),), supported_headcount=1500))
+    s = i.summary
+    assert s["groups_headcount"] == 1200 and s["remaining_headcount"] == 300
+    assert s["baseline_tools_annual"] == D("120000.00") and s["standing_annual"] == D("30000.00")
+    assert s["baseline_total_annual"] == sum(b.total_annual for b in i.baselines)
+    assert interpret(_raw()).summary["remaining_headcount"] is None
+
+
+def test_persona_view_after_is_today_plus_the_delta(client):
+    eid = client.post("/api/engagements", json={"customer_name": "View Co"}).json()["id"]
+    p = client.post(f"/api/engagements/{eid}/personas", json={"name": "KW", "headcount": 100}).json()
+    q = client.post(f"/api/engagements/{eid}/personas", json={"name": "FL", "headcount": 50}).json()
+    client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "Office 365 E3", "quantity_assigned": 100, "quantity_purchased": 100,
+        "unit_price_paid_annual": 300, "persona_ids": [p["id"]]})
+    client.post(f"/api/engagements/{eid}/scenarios", json={
+        "persona_id": p["id"], "target_sku_reference": "Microsoft 365 E3",
+        "target_unit_price_annual": 480, "in_scope": True})
+    views = {v["persona_id"]: v for v in client.get(f"/api/engagements/{eid}/result").json()["views"]["personas"]}
+    kw, fl = views[p["id"]], views[q["id"]]
+    assert kw["today_per_user_monthly"] == 25.0           # 300 / 12
+    assert kw["after_per_user_monthly"] == 40.0           # 480 / 12
+    assert kw["delta_per_user_monthly"] == 15.0 and kw["has_plan"]
+    assert not fl["has_plan"] and fl["after_annual"] == fl["today_annual"]
