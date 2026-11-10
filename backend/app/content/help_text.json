@@ -135,6 +135,10 @@
       "ask": "Only if it differs from the personas' headcount: how many people does it cover?",
       "why": "Sets the cost per person. Blank uses the headcount of the personas that use it."
     },
+    "tools.contract": {
+      "ask": "Can that cost be broken down?",
+      "why": "One invoice can pay for several things. Microsoft may replace some and not others, so a saving shows only for a part with its own cost. Whatever the parts don't account for stays until everything the contract does is replaced."
+    },
     "tools.extra_seats": {
       "ask": "The tool covers more seats than the people in the groups who have it. What are the other seats?",
       "why": "Extra seats nobody needs: the whole cost is spread over your people, so it can all go when they move. People who stay on the tool: their seats keep costing the same after the move."

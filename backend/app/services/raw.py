@@ -20,6 +20,7 @@ from tco_engine.interpret import (
     RawLicenseLine,
     RawPersona,
     RawScenario,
+    RawContract,
     RawTool,
     Interpreted,
     interpret,
@@ -114,6 +115,7 @@ def load_raw(db: Session, engagement_id: str) -> RawEngagement:
             persona_ids=tuple(tp.persona_ids),
             renewal_date=tp.renewal_date.isoformat() if tp.renewal_date else None,
             extra_seats_answer=tp.extra_seats_answer,
+            contract_id=tp.contract_id,
         ))
 
     scenarios = tuple(
@@ -150,6 +152,10 @@ def load_raw(db: Session, engagement_id: str) -> RawEngagement:
         gap_answers={(a.persona_id, a.outcome_id): a.answer for a in eng.gap_answers},
         employee_count=eng.employee_count,
         supported_headcount=eng.supported_headcount,
+        contracts=tuple(RawContract(
+            id=c.id, name=c.name or "", total_cost=_dec(c.total_cost), cost_period=c.cost_period or "Annual",
+            renewal_date=c.renewal_date.isoformat() if c.renewal_date else None)
+            for c in eng.tool_contracts),
         licence_limits=_limits(db),
     )
 
@@ -200,6 +206,8 @@ def interpreted_view(db: Session, engagement_id: str) -> dict:
         "licence_shares": [{"licence_id": l, "persona_id": p, "annual": float(v)}
                            for (l, p), v in i.licence_shares.items()],
         "tools": rows(i.tools),
+        # Vendor contracts and what their lines leave "not broken down" (G12).
+        "contracts": rows(i.contracts),
         "tool_shares": [{"tool_id": t, "persona_id": p, "annual": float(v)}
                         for (t, p), v in i.tool_shares.items()],
         "scenarios": rows(i.scenarios),

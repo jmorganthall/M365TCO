@@ -213,6 +213,9 @@ class Engagement(Base):
     third_party_products: Mapped[list["ThirdPartyProduct"]] = relationship(
         back_populates="engagement", cascade="all, delete-orphan"
     )
+    tool_contracts: Mapped[list["ToolContract"]] = relationship(
+        back_populates="engagement", cascade="all, delete-orphan"
+    )
     coverage_entries: Mapped[list["CoverageMapEntry"]] = relationship(
         back_populates="engagement", cascade="all, delete-orphan"
     )
@@ -658,6 +661,11 @@ class ThirdPartyProduct(Base):
     extra_seats_answer: Mapped[str | None] = mapped_column(
         SAEnum(*EXTRA_SEATS_ANSWERS, name="extra_seats_answer"), nullable=True
     )
+    # A cost line of a vendor contract (GUIDED_PLAN G12): NULL = a standalone tool.
+    # A line without its own renewal date renews with its contract.
+    contract_id: Mapped[str | None] = mapped_column(
+        ForeignKey("tool_contracts.id"), nullable=True, index=True
+    )
     # Annual cost, people covered, effective cost and cost per person are not
     # stored: they are interpreted from these fields (tco_engine/interpret.py).
     source_tag: Mapped[str] = _source_tag_col()
@@ -672,6 +680,29 @@ class ThirdPartyProduct(Base):
         """The personas this product applies to (many-to-many tags)."""
         return [pl.persona_id for pl in self.persona_links]
 
+
+
+class ToolContract(Base):
+    """A vendor contract: one invoice and one renewal, broken down into cost lines
+    (third_party_products with this contract_id) so each line is replaced on its own
+    (GUIDED_PLAN G12, TARGET_SCHEMA §17). What the lines don't account for is
+    interpreted as a "not broken down" line that delivers every outcome of the
+    lines, so it goes away only when all of them are replaced. Raw data only."""
+
+    __tablename__ = "tool_contracts"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    engagement_id: Mapped[str] = mapped_column(ForeignKey("engagements.id"), index=True)
+    name: Mapped[str] = mapped_column(String, default="")
+    vendor: Mapped[str] = mapped_column(String, default="")
+    total_cost: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    cost_period: Mapped[str] = mapped_column(
+        SAEnum(*COST_PERIODS, name="cost_period"), default="Annual"
+    )
+    renewal_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    source_tag: Mapped[str] = _source_tag_col()
+
+    engagement: Mapped[Engagement] = relationship(back_populates="tool_contracts")
 
 
 class ThirdPartyPersona(Base):

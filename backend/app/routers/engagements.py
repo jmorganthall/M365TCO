@@ -206,6 +206,14 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
             if np_id and mapped:
                 db.add(models.PersonaRequirement(persona_id=np_id, outcome_id=mapped))
 
+    contract_map: dict[str, str] = {}
+    for c in src.tool_contracts:
+        nc = models.ToolContract(engagement_id=dst.id, name=c.name, vendor=c.vendor,
+                                 total_cost=c.total_cost, cost_period=c.cost_period,
+                                 renewal_date=c.renewal_date, source_tag=c.source_tag)
+        db.add(nc)
+        db.flush()
+        contract_map[c.id] = nc.id
     tp_map: dict[str, str] = {}
     for tp in src.third_party_products:
         ntp = models.ThirdPartyProduct(
@@ -214,6 +222,7 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
             renewal_date=tp.renewal_date,
             is_managed=tp.is_managed, tooling_pct=tp.tooling_pct, source_tag=tp.source_tag,
             extra_seats_answer=tp.extra_seats_answer,
+            contract_id=contract_map.get(tp.contract_id) if tp.contract_id else None,
         )
         for pid in tp.persona_ids:
             mapped = persona_map.get(pid)
