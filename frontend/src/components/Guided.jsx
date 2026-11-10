@@ -524,21 +524,23 @@ function GroupReview({ base, persona, n, of, tools, areas, interp, call }) {
   }
   const label = (o) => <><b>{o.name}</b> <span className="muted">· {o.area || 'Other'}</span></>
   return (
-    <Ask title={open.length ? `What doesn't ${persona.name} get today?` : `${persona.name}: nothing left to check.`}
-      why={`Group ${n + 1} of ${of}, ${persona.headcount.toLocaleString()} people. Nothing in their Microsoft licences or their tools delivers these. Correct any they do have, or confirm they don't. A new tool here is priced on "Price your tools".`}>
+    <Ask title={open.length ? `${persona.name}: what's missing?` : `${persona.name}: everything is accounted for.`}
+      why={open.length
+        ? `Group ${n + 1} of ${of} · ${persona.headcount.toLocaleString()} people. Their Microsoft licences and tools don't cover these. If they use a tool for one, add it; otherwise mark it not delivered. New tools are priced under "Price your tools".`
+        : `Group ${n + 1} of ${of} · ${persona.headcount.toLocaleString()} people.`}>
       {open.map((o) => (
         <div key={o.id} className="guide-block">
           <div>{label(o)}</div>
           <div className="guide-chips">
             <ToolPicker others={tools} onAdd={(tid) => haveTool(o, tid)} onNew={(name) => newTool(o, name)} />
-            <button className="ghost sm" title="Delivered by something the customer doesn't pay for separately"
-              onClick={() => put(o, 'CoveredOutsideInventory')}>Have it, not paid separately</button>
-            <button className="ghost sm" onClick={() => put(o, 'NotDeliveredToday')}>They don't have it</button>
+            <button className="ghost sm" title="They have it through something not paid for separately"
+              onClick={() => put(o, 'CoveredOutsideInventory')}>Covered at no extra cost</button>
+            <button className="ghost sm" onClick={() => put(o, 'NotDeliveredToday')}>Not currently delivered</button>
           </div>
         </div>
       ))}
-      {[['Confirmed they don\'t have it', confirmedNo],
-        ['Have it, not paid for separately', missing.filter((o) => answer[o.id]?.answer === 'CoveredOutsideInventory')]]
+      {[['Not currently delivered', confirmedNo],
+        ['Covered at no extra cost', missing.filter((o) => answer[o.id]?.answer === 'CoveredOutsideInventory')]]
         .filter(([, list]) => list.length).map(([title, list]) => (
           <details key={title} className="check-notes"><summary>{title} ({list.length})</summary>
             {list.map((o) => (
