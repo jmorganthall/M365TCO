@@ -293,7 +293,7 @@ function MicrosoftQ({ engagement, base, personas, interp, call }) {
   const seatsFix = (line) => interp.findings.find((f) => f.code === 'seats_vs_headcount' && f.licence_id === line.id)
   return (
     <Ask title="What Microsoft licensing does each group have today?"
-      why="Pick the main plan each group is on. Add-ons, negotiated prices and anything unusual go in the detail view.">
+      why="Pick the main plan each group is on, then add anything else they hold: add-ons such as E5 Security or Teams Phone, or products such as Visio. Negotiated prices go in the detail view.">
       {personas.map((p) => {
         // A line applies to this group when it's tagged to it, or untagged (Org-wide:
         // every group). One shared with other groups is shown, never rewritten from
@@ -302,8 +302,6 @@ function MicrosoftQ({ engagement, base, personas, interp, call }) {
         const mine = lines.filter(applies)
         const shared = mine.filter((l) => interp.licence[l.id]?.applies_to?.length > 1)
         const own = mine.filter((l) => !shared.includes(l))
-        const line = own[0]
-        const il = line && interp.licence[line.id]
         const others = (l) => personas.filter((x) => x.id !== p.id && interp.licence[l.id]?.applies_to?.includes(x.id)).map((x) => x.name)
         return (
           <div key={p.id} className="guide-block">
@@ -315,37 +313,60 @@ function MicrosoftQ({ engagement, base, personas, interp, call }) {
                   Change it in the detail view, so every group on it changes together.</span>
               </div>
             ))}
-            {(own.length > 0 || shared.length === 0) && <div className="guide-row">
-              <SkuCombobox value={line?.sku_reference || ''} style={{ minWidth: 320 }}
-                placeholder="Type a plan, e.g. O365 E3 or Business Premium"
-                {...(() => { const b = effectiveBasis(line, engagement); return { segment: b.segment, term: b.term, billing: b.billing } })()}
-                onChange={(v) => pick(p, line, null, v)} onSelectSku={(sku, title) => pick(p, line, sku, title)} />
-              {line && <button className="ghost sm" title="This group has no Microsoft licence" onClick={() => remove(line)}>✕</button>}
-              {line && (
-                <>
-                  <Field type="number" value={line.quantity_assigned} style={{ width: 110 }}
-                    onSave={(v) => call(() => api.patch(`${base}/current-licenses/${line.id}`,
-                      { quantity_assigned: num(v) || 0, quantity_purchased: num(v) || 0 }))} />
-                  <span className="muted">seats</span>
-                  {il && <span className="muted">· {money(il.effective_price_annual, 'mo')} per seat</span>}
-                </>
-              )}
-            </div>}
-            {line && seatsFix(line) && (
-              <div className="src warn">{p.name} now has {seatsFix(line).facts.headcount.toLocaleString()} people, but this licence has{' '}
-                {seatsFix(line).facts.assigned.toLocaleString()} seats.{' '}
-                <button className="ghost sm" onClick={() => call(() => api.patch(`${base}/current-licenses/${line.id}`, {
-                  quantity_assigned: seatsFix(line).facts.headcount, quantity_purchased: seatsFix(line).facts.headcount }))}>
-                  Set seats to {seatsFix(line).facts.headcount.toLocaleString()}</button></div>
+            {/* Line items: the main plan first, then anything else this group holds
+                (add-ons, standalone products). Each adds to the group's cost per user. */}
+            {own.map((l, n) => (
+              <LicenceLine key={l.id} l={l} il={interp.licence[l.id]} first={n === 0} p={p}
+                engagement={engagement} base={base} call={call} pick={pick} remove={remove} seatsFix={seatsFix(l)} />
+            ))}
+            {(own.length > 0 || shared.length === 0) && (
+              <div className="guide-row">
+                <SkuCombobox key={`add-${p.id}-${own.length}`} value="" style={{ minWidth: 320 }}
+                  placeholder={own.length || shared.length ? '+ Add another licence (add-on or product)' : 'Type a plan, e.g. O365 E3 or Business Premium'}
+                  {...(() => { const b = effectiveBasis(null, engagement); return { segment: b.segment, term: b.term, billing: b.billing } })()}
+                  onChange={(v) => pick(p, null, null, v)} onSelectSku={(sku, title) => pick(p, null, sku, title)} />
+              </div>
             )}
-            {line && il && Number(il.effective_price_annual) === 0 && (
-              <div className="src warn">No price found for this plan. Load the price list in Settings, or enter the price in the detail view.</div>
+            {interp.baseline[p.id] && (own.length > 0 || shared.length > 0) && (
+              <div className="src muted">Microsoft for {p.name}: {usd(interp.baseline[p.id].microsoft_per_user_monthly)} per user per month.</div>
             )}
-            {own.length > 1 && <div className="src muted">{own.length - 1} more licence line(s) for this group are in the detail view.</div>}
           </div>
         )
       })}
     </Ask>
+  )
+}
+
+// One Microsoft licence line on the guided step: the plan (searchable), its seats,
+// its price per seat, and the one-click seat fix when the group's size changed.
+function LicenceLine({ l, il, first, p, engagement, base, call, pick, remove, seatsFix }) {
+  const b = effectiveBasis(l, engagement)
+  return (
+    <>
+      <div className="guide-row">
+        <span className="muted" style={{ width: 70 }}>{first ? 'Main plan' : 'Also'}</span>
+        <SkuCombobox value={l.sku_reference || ''} style={{ minWidth: 320 }}
+          segment={b.segment} term={b.term} billing={b.billing}
+          onChange={(v) => pick(p, l, null, v)} onSelectSku={(sku, title) => pick(p, l, sku, title)} />
+        <Field type="number" value={l.quantity_assigned} style={{ width: 110 }}
+          onSave={(v) => call(() => api.patch(`${base}/current-licenses/${l.id}`,
+            { quantity_assigned: num(v) || 0, quantity_purchased: num(v) || 0 }))} />
+        <span className="muted">seats</span>
+        {il && <span className="muted">· {money(il.effective_price_annual, 'mo')} per seat</span>}
+        <button className="ghost sm" title="Remove this licence from the group" onClick={() => remove(l)}>✕</button>
+      </div>
+      {seatsFix && (
+        <div className={`src ${first ? 'warn' : 'muted'}`}>{p.name} has {seatsFix.facts.headcount.toLocaleString()} people and {l.sku_reference} has{' '}
+          {seatsFix.facts.assigned.toLocaleString()} seats.{' '}
+          <button className="ghost sm" onClick={() => call(() => api.patch(`${base}/current-licenses/${l.id}`, {
+            quantity_assigned: seatsFix.facts.headcount, quantity_purchased: seatsFix.facts.headcount }))}>
+            Set seats to {seatsFix.facts.headcount.toLocaleString()}</button>
+          {!first && <span className="muted"> (leave it if only some of them have it)</span>}</div>
+      )}
+      {il && Number(il.effective_price_annual) === 0 && (
+        <div className="src warn">No price found for {l.sku_reference}. Load the price list in Settings, or enter the price in the detail view.</div>
+      )}
+    </>
   )
 }
 

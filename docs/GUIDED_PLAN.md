@@ -82,7 +82,9 @@ just extra (the whole cost goes) or people who will stay on the tool?
 - Every number shown comes from the backend: the interpreter's `baselines` and
   `summary` (count-down, totals, standing seats) and the result's
   `views.personas` (today, after and change per user per month).
-- The Microsoft step uses the same searchable plan picker as the detail view (catalog
+- The Microsoft step takes line items per group: the main plan, then "+ Add another
+  licence" for add-ons and products, each with its own seats and price; each adds to
+  the group's cost per user. It uses the same searchable plan picker as the detail view (catalog
   pick = name and list price from the server). When a group's size no longer matches
   its licence's seats, the step offers "Set seats to N" (one click, never automatic).
 - Review also flags a group holding two full plans (`two_base_plans`), and skips the
