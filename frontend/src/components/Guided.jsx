@@ -40,11 +40,18 @@ export default function Guided({ engagement, step, sub, onGo, onUpdate, onDetail
   const personas = useList(`${base}/personas`) || []
   const outcomes = useList(`${base}/outcomes`) || []
   const tools = useList(`${base}/third-party`) || []
+  const contracts = useList(`${base}/contracts`) || []
+  // What the pricing step walks: each standalone tool, then each contract (its
+  // lines are priced on the contract's screen).
+  const priceables = [
+    ...tools.filter((t) => !t.contract_id).map((t) => ({ kind: 'tool', tool: t })),
+    ...contracts.map((c) => ({ kind: 'contract', contract: c })),
+  ]
   const [err, setErr] = useState('')
   const areas = useMemo(() => areaList(outcomes), [outcomes])
 
   const i = Math.max(0, GUIDE_STEPS.findIndex(([k]) => k === step))
-  const subCount = step === 'outcomes' ? areas.length : step === 'tools' ? tools.length : 0
+  const subCount = step === 'outcomes' ? areas.length : step === 'tools' ? priceables.length : 0
   const subIdx = Math.min(Number(sub) || 0, Math.max(subCount - 1, 0))
   function next() {
     setErr('')
@@ -57,7 +64,7 @@ export default function Guided({ engagement, step, sub, onGo, onUpdate, onDetail
     if (subCount && subIdx > 0) return onGo(step, subIdx - 1)
     const p = GUIDE_STEPS[i - 1]
     if (!p) return
-    const pc = p[0] === 'outcomes' ? areas.length : p[0] === 'tools' ? tools.length : 0
+    const pc = p[0] === 'outcomes' ? areas.length : p[0] === 'tools' ? priceables.length : 0
     onGo(p[0], Math.max(pc - 1, 0))
   }
   async function call(fn) {
@@ -65,7 +72,7 @@ export default function Guided({ engagement, step, sub, onGo, onUpdate, onDetail
     try { return await fn() } catch (e) { setErr(e.message) }
   }
 
-  const ctx = { eid, base, engagement, interp, result, personas, outcomes, tools, areas, call, onUpdate, onGo, onDetail }
+  const ctx = { eid, base, engagement, interp, result, personas, outcomes, tools, contracts, areas, call, onUpdate, onGo, onDetail }
   return (
     <div className="guide">
       <div className="guide-main">
@@ -81,7 +88,9 @@ export default function Guided({ engagement, step, sub, onGo, onUpdate, onDetail
           {step === 'groups' && <GroupsQ {...ctx} />}
           {step === 'microsoft' && <MicrosoftQ {...ctx} />}
           {step === 'outcomes' && <OutcomeWalk {...ctx} area={areas[subIdx]} n={subIdx} of={areas.length} />}
-          {step === 'tools' && <PriceTool {...ctx} tool={tools[subIdx]} n={subIdx} of={tools.length} />}
+          {step === 'tools' && priceables[subIdx]?.kind === 'contract'
+            ? <PriceContract {...ctx} contract={priceables[subIdx].contract} n={subIdx} of={priceables.length} />
+            : step === 'tools' && <PriceTool {...ctx} tool={priceables[subIdx]?.tool} n={subIdx} of={priceables.length} />}
           {step === 'gaps' && <GapSweep {...ctx} />}
           {step === 'today' && <TodayQ {...ctx} />}
           {step === 'plan' && <PlanQ {...ctx} />}
@@ -397,6 +406,57 @@ function PriceTool({ base, tool, n, of, interp, personas, outcomes, call, onGo }
       </div>
       {it && <p className="muted">Counted: {money(it.effective_annual_cost, 'yr')} · {money(it.cost_per_person, 'mo')} per person</p>}
       {missing && <div className="src warn">Left out of the numbers until it has: {missing.join(', ')}.</div>}
+      {uses.length > 1 && (
+        <div className="guide-block" style={{ marginTop: '1rem' }}>
+          <div className="guide-block-title">Can that be broken down?</div>
+          <div className="muted guide-desc">{tool.name} does {uses.length} things. Microsoft may replace some of them and
+            not others; a saving shows only for a part that has its own cost. Breaking it down keeps the total
+            and lets you put a cost against each part.</div>
+          <button className="ghost" onClick={() => call(() => api.post(`${base}/third-party/${tool.id}/break-down`))}>
+            Break this down</button>
+        </div>
+      )}
+    </Ask>
+  )
+}
+
+function PriceContract({ base, contract, n, of, tools, interp, outcomes, call }) {
+  const ic = (interp.data?.contracts || []).find((c) => c.id === contract.id)
+  const lines = tools.filter((t) => t.contract_id === contract.id)
+  const patch = (body) => call(() => api.patch(`${base}/contracts/${contract.id}`, body))
+  const uses = (t) => (interp.tool[t.id]?.delivered_outcome_ids || []).map((id) => outcomes.find((o) => o.id === id)?.name).filter(Boolean).join(', ')
+  return (
+    <Ask title={`What do you pay for ${contract.name}, and for each part?`}
+      why={`Contract ${n + 1} of ${of}. Put a cost against each part you can; whatever is left stays until everything it does is replaced.`}>
+      <div className="guide-row">
+        <Field big type="number" value={Number(contract.total_cost) || ''} placeholder="Total" style={{ width: 220 }}
+          onSave={(v) => patch({ total_cost: Number(v) || 0 })} />
+        <select value={contract.cost_period} onChange={(e) => patch({ cost_period: e.target.value })}>
+          <option value="Annual">per year</option>
+          <option value="Monthly">per month</option>
+        </select>
+        <span className="muted">in total</span>
+      </div>
+      <label className="guide-label">When does it renew?</label>
+      <Field type="date" value={contract.renewal_date || ''} onSave={(v) => patch({ renewal_date: v || null })} />
+      <table className="guide-table" style={{ marginTop: '1rem' }}>
+        <thead><tr><th>Part</th><th>Does</th><th className="num">Cost ({contract.cost_period === 'Monthly' ? 'per month' : 'per year'})</th></tr></thead>
+        <tbody>
+          {lines.map((t) => (
+            <tr key={t.id}>
+              <td><Field value={t.name} onSave={(v) => v.trim() && call(() => api.patch(`${base}/third-party/${t.id}`, { name: v.trim() }))} /></td>
+              <td className="muted">{uses(t)}</td>
+              <td className="num"><Field type="number" value={Number(t.raw_cost) || ''} placeholder="0" style={{ width: 130 }}
+                onSave={(v) => call(() => api.patch(`${base}/third-party/${t.id}`, { raw_cost: Number(v) || 0, cost_period: contract.cost_period }))} /></td>
+            </tr>
+          ))}
+        </tbody>
+        {ic && <tfoot><tr><td>Not broken down</td><td className="muted">everything above</td>
+          <td className="num">{money(ic.remainder_annual, 'yr')}</td></tr></tfoot>}
+      </table>
+      {interp.findings.filter((f) => f.code === 'contract_lines_exceed' && f.facts.name === contract.name).map((f, k) => (
+        <div key={k} className="src warn">The parts add up to more than the contract's total. Check the amounts.</div>
+      ))}
     </Ask>
   )
 }

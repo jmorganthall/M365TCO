@@ -694,7 +694,7 @@ def _tool_out(row: models.ThirdPartyProduct, interp) -> dict:
         "cost_period": row.cost_period, "covered_count_override": row.covered_count_override,
         "renewal_date": row.renewal_date, "is_managed": row.is_managed,
         "tooling_pct": row.tooling_pct, "source_tag": row.source_tag,
-        "extra_seats_answer": row.extra_seats_answer,
+        "extra_seats_answer": row.extra_seats_answer, "contract_id": row.contract_id,
         "persona_ids": row.persona_ids,
         "annual_cost": it.annual_cost, "covered_count": it.people_covered,
         "persona_covered_count": it.personas_headcount,
@@ -702,6 +702,104 @@ def _tool_out(row: models.ThirdPartyProduct, interp) -> dict:
         "effective_annual_cost": it.effective_annual_cost,
         "effective_tooling_pct": it.tooling_pct, "tooling_source": it.tooling_source,
     }
+
+
+def _delete_tool(db: Session, row: models.ThirdPartyProduct) -> None:
+    """A tool and what hangs off it: its coverage rows (its persona tags cascade)."""
+    for c in db.execute(select(models.CoverageMapEntry).where(
+            models.CoverageMapEntry.third_party_product_id == row.id)).scalars():
+        db.delete(c)
+    db.delete(row)
+
+
+# ---------- Vendor contracts (GUIDED_PLAN G12) ----------
+def _contract(db: Session, engagement_id: str, contract_id: str) -> models.ToolContract:
+    row = db.get(models.ToolContract, contract_id)
+    if row is None or row.engagement_id != engagement_id:
+        raise HTTPException(404, "Contract not found")
+    return row
+
+
+@router.get("/contracts", response_model=list[schemas.ContractOut])
+def list_contracts(engagement_id: str, db: Session = Depends(get_db)):
+    return _require_engagement(db, engagement_id).tool_contracts
+
+
+@router.post("/contracts", response_model=schemas.ContractOut, status_code=201)
+def create_contract(engagement_id: str, payload: schemas.ContractIn, db: Session = Depends(get_db)):
+    _require_engagement(db, engagement_id)
+    if not payload.name.strip():
+        raise HTTPException(422, "Contract name is required.")
+    row = models.ToolContract(engagement_id=engagement_id, **payload.model_dump())
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.patch("/contracts/{contract_id}", response_model=schemas.ContractOut)
+def update_contract(engagement_id: str, contract_id: str, payload: schemas.ContractIn,
+                    db: Session = Depends(get_db)):
+    row = _contract(db, engagement_id, contract_id)
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(row, k, v)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.delete("/contracts/{contract_id}", status_code=204)
+def delete_contract(engagement_id: str, contract_id: str, db: Session = Depends(get_db)):
+    """Remove a contract and its cost lines (their coverage and tags with them)."""
+    row = _contract(db, engagement_id, contract_id)
+    for line in db.execute(select(models.ThirdPartyProduct).where(
+            models.ThirdPartyProduct.contract_id == contract_id)).scalars():
+        _delete_tool(db, line)
+    db.delete(row)
+    db.commit()
+
+
+@router.post("/third-party/{tp_id}/break-down", response_model=schemas.ContractOut, status_code=201)
+def break_down_tool(engagement_id: str, tp_id: str, db: Session = Depends(get_db)):
+    """"Can we break that down?" (G12): the tool becomes a contract with its cost,
+    period and renewal, and one $0 cost line per outcome it delivers, each held by
+    the same personas with the same seat count. Until amounts are typed the
+    contract's remainder line carries the whole cost, so no number changes."""
+    _require_engagement(db, engagement_id)
+    tool = db.get(models.ThirdPartyProduct, tp_id)
+    if tool is None or tool.engagement_id != engagement_id:
+        raise HTTPException(404, "Third-party product not found")
+    if tool.contract_id:
+        raise HTTPException(409, "This is already a line of a contract.")
+    rows = db.execute(select(models.CoverageMapEntry).where(
+        models.CoverageMapEntry.third_party_product_id == tp_id,
+        models.CoverageMapEntry.ratified.is_(True))).scalars().all()
+    if len(rows) < 2:
+        raise HTTPException(422, "Only a tool used for two or more things can be broken down.")
+    contract = models.ToolContract(
+        engagement_id=engagement_id, name=tool.name, vendor=tool.vendor, total_cost=tool.raw_cost,
+        cost_period=tool.cost_period, renewal_date=tool.renewal_date, source_tag=tool.source_tag)
+    db.add(contract)
+    db.flush()
+    names = {o.id: o.name for o in db.execute(select(models.Outcome).where(
+        models.Outcome.engagement_id == engagement_id)).scalars()}
+    for r in rows:
+        line = models.ThirdPartyProduct(
+            engagement_id=engagement_id, name=f"{tool.name}: {names.get(r.outcome_id, 'line')}",
+            vendor=tool.vendor, raw_cost=0, cost_period=tool.cost_period,
+            covered_count_override=tool.covered_count_override, is_managed=tool.is_managed,
+            tooling_pct=tool.tooling_pct, extra_seats_answer=tool.extra_seats_answer,
+            contract_id=contract.id, source_tag=tool.source_tag)
+        _set_tp_persona_tags(line, tool.persona_ids)
+        db.add(line)
+        db.flush()
+        db.add(models.CoverageMapEntry(
+            engagement_id=engagement_id, outcome_id=r.outcome_id, product_kind="ThirdParty",
+            third_party_product_id=line.id, coverage="Full", ai_suggested=False, ratified=True))
+    _delete_tool(db, tool)
+    db.commit()
+    db.refresh(contract)
+    return contract
 
 
 @router.get("/third-party", response_model=list[schemas.ThirdPartyOut])
@@ -759,7 +857,7 @@ def delete_third_party(engagement_id: str, tp_id: str, db: Session = Depends(get
     row = db.get(models.ThirdPartyProduct, tp_id)
     if row is None or row.engagement_id != engagement_id:
         raise HTTPException(404, "Third-party product not found")
-    db.delete(row)
+    _delete_tool(db, row)
     db.commit()
 
 

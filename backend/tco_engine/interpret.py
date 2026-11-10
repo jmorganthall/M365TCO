@@ -24,7 +24,7 @@ as a raw fact, so this module stays portable with the engine.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import cached_property
 from datetime import date
 from decimal import Decimal
@@ -95,6 +95,18 @@ class RawTool:
     # The customer's answer about seats beyond the personas who hold the tool
     # (GUIDED_PLAN G4): "ExtraSeats" | "PeopleWhoStay" | None (read as PeopleWhoStay).
     extra_seats_answer: Optional[str] = None
+    # The vendor contract this tool is a cost line of (G12), or None.
+    contract_id: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class RawContract:
+    """A vendor contract broken into cost lines (GUIDED_PLAN G12)."""
+    id: str
+    name: str
+    total_cost: Decimal
+    cost_period: str                    # "Annual" | "Monthly"
+    renewal_date: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -157,6 +169,7 @@ class RawEngagement:
     licence_limits: tuple[RawLimit, ...] = ()
     # How many people IT supports, as asked first in the guided flow (G8).
     supported_headcount: Optional[int] = None
+    contracts: tuple[RawContract, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +244,22 @@ class ITool:
     standing_annual: Decimal = Decimal("0")
     extra_seats: int = 0                # stated seats beyond people_held (asked about, G4)
     extra_seats_answer: Optional[str] = None   # the customer's answer, as entered
+    contract_id: Optional[str] = None          # a cost line of this contract (G12)
+    renewal_date: Optional[str] = None         # its own, else its contract's
+
+
+@dataclass(frozen=True)
+class IContract:
+    """A contract read through G12: its annual total, what its lines account for,
+    and the "not broken down" remainder (a line of its own, `remainder_tool_id`)."""
+
+    id: str
+    name: str
+    annual_cost: Decimal
+    lines_annual: Decimal
+    remainder_annual: Decimal
+    line_ids: tuple[str, ...]
+    remainder_tool_id: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -399,6 +428,7 @@ class Interpreted:
     findings: tuple[IFinding, ...] = ()
     baselines: tuple[IPersonaBaseline, ...] = ()
     summary: dict = field(default_factory=dict)
+    contracts: tuple[IContract, ...] = ()
 
     @cached_property
     def _licence_index(self) -> dict[str, ILicenseLine]:
@@ -455,7 +485,55 @@ def _read_line(line: RawLicenseLine, coverage: dict[str, frozenset[str]]):
     return ("resolved" if outs else "unread"), outs, resolved
 
 
+def _annual(cost: Decimal, period: str) -> Decimal:
+    return cost * 12 if period == "Monthly" else cost
+
+
+def remainder_id(contract_id: str) -> str:
+    return f"contract-rest:{contract_id}"
+
+
+def _expand_contracts(raw: RawEngagement) -> tuple[RawEngagement, tuple[IContract, ...]]:
+    """GUIDED_PLAN G12. A contract line renews with its contract unless it has its
+    own date. What the lines don't account for becomes one more line, "<contract>
+    (not broken down)": it delivers every outcome the lines deliver and is held by
+    every persona any line is held by (Org-wide if any line is), so it goes away only
+    when every one of those outcomes is replaced. The stated total stays the truth."""
+    if not raw.contracts:
+        return raw, ()
+    by_id = {c.id: c for c in raw.contracts}
+    tools = []
+    for t in raw.tools:
+        c = by_id.get(t.contract_id) if t.contract_id else None
+        if c is not None and not t.renewal_date and c.renewal_date:
+            t = replace(t, renewal_date=c.renewal_date)
+        tools.append(t)
+    coverage = dict(raw.tool_coverage)
+    out: list[IContract] = []
+    for c in raw.contracts:
+        lines = [t for t in tools if t.contract_id == c.id]
+        total = _annual(c.total_cost, c.cost_period)
+        lines_annual = sum((_annual(t.raw_cost, t.cost_period) for t in lines), ZERO)
+        rest = total - lines_annual
+        rest_id = None
+        if rest > 0:
+            rest_id = remainder_id(c.id)
+            untagged = (not lines) or any(not t.persona_ids for t in lines)
+            persona_ids = () if untagged else tuple(dict.fromkeys(p for t in lines for p in t.persona_ids))
+            tools.append(RawTool(
+                id=rest_id, name=f"{c.name} (not broken down)", raw_cost=rest, cost_period="Annual",
+                is_managed=any(t.is_managed for t in lines),
+                tooling_pct=next((t.tooling_pct for t in lines if t.tooling_pct is not None), None),
+                covered_count_override=None, persona_ids=persona_ids,
+                renewal_date=c.renewal_date, contract_id=c.id))
+            coverage[rest_id] = frozenset(o for t in lines for o in raw.tool_coverage.get(t.id, frozenset()))
+        out.append(IContract(c.id, c.name, total, lines_annual, max(rest, ZERO),
+                             tuple(t.id for t in lines), rest_id))
+    return replace(raw, tools=tuple(tools), tool_coverage=coverage), tuple(out)
+
+
 def interpret(raw: RawEngagement) -> Interpreted:
+    raw, contracts = _expand_contracts(raw)
     everyone = tuple(p.id for p in raw.personas)
     known = set(everyone)
     headcount = {p.id: p.headcount for p in raw.personas}
@@ -513,6 +591,7 @@ def interpret(raw: RawEngagement) -> Interpreted:
             standing_seats=standing, standing_annual=per_person * Decimal(standing),
             extra_seats=max((t.covered_count_override or 0) - held, 0),
             extra_seats_answer=t.extra_seats_answer,
+            contract_id=t.contract_id, renewal_date=t.renewal_date,
         ))
         # Definition 7 (ENGINE_SPEC 6.0a): a persona's share is cost per person × its
         # headcount. Only seats the customer says belong to people who stay on the
@@ -583,12 +662,12 @@ def interpret(raw: RawEngagement) -> Interpreted:
 
     tables = _outcome_tables(raw, lines, tools, scenarios)
     seat_caps = _seat_caps(raw, lines, scenarios)
-    findings = _findings(raw, lines, tools, scenarios, tables, seat_caps)
+    findings = _findings(raw, lines, tools, scenarios, tables, seat_caps, contracts)
     return Interpreted(
         raw=raw, personas=personas, licence_lines=tuple(lines),
         licence_shares=licence_shares, tools=tuple(tools), tool_shares=tool_shares,
         scenarios=tuple(scenarios), seat_caps=seat_caps, findings=findings,
-        baselines=tuple(baselines), summary=summary, **tables,
+        baselines=tuple(baselines), summary=summary, contracts=contracts, **tables,
     )
 
 
@@ -658,7 +737,7 @@ def _seat_caps(raw: RawEngagement, lines: list[ILicenseLine],
     return tuple(out)
 
 
-def _findings(raw, lines, tools, scenarios, tables, seat_caps) -> tuple[IFinding, ...]:
+def _findings(raw, lines, tools, scenarios, tables, seat_caps, contracts=()) -> tuple[IFinding, ...]:
     """Every check that works without AI (TARGET_SCHEMA §6.4, WALKTHROUGH §6), in
     walkthrough order. One more comes from outside the interpreter and is added by
     the Review step: pending library updates (the shared library)."""
@@ -702,11 +781,17 @@ def _findings(raw, lines, tools, scenarios, tables, seat_caps) -> tuple[IFinding
         f.append(IFinding("license_out_of_scope", "groups", "info", facts={"names": set_aside}))
 
     # ---- Other tools ----
+    for c in contracts:
+        if c.lines_annual > c.annual_cost:
+            f.append(IFinding("contract_lines_exceed", "tools", facts={
+                "name": c.name, "total": c.annual_cost, "lines": c.lines_annual}))
     in_scope_planned = {s.persona_id for s in scenarios if s.in_scope}
     for t in tools:
         rt = raw_tools[t.id]
         missing = []
-        if not rt.raw_cost or rt.raw_cost <= 0:
+        # A contract line may be $0 until its share is typed: the contract's
+        # remainder line carries the money meanwhile.
+        if (not rt.raw_cost or rt.raw_cost <= 0) and not rt.contract_id:
             missing.append("no cost")
         if not t.people_covered:
             missing.append("no users")

@@ -1129,10 +1129,10 @@ the phase named there.
 - `outcomes.area` and `default_outcomes.area` (text, nullable) (G9). Copied with the
   library on engagement creation. Read by the guided outcome walk.
 - **`tool_contracts`** (G12): `id`, `engagement_id`, `name`, `vendor`, `total_cost`
-  (CHECK ≥ 0), `cost_period`, `renewal_date`, `is_managed`. A
-  `third_party_products.contract_id` (nullable) makes a tool a cost line of a
-  contract. A line inherits the contract's renewal date and managed flag when its own
-  is not set. The contract's total less the sum of its lines is interpreted as a
+  (CHECK ≥ 0), `cost_period`, `renewal_date`. A `third_party_products.contract_id`
+  (nullable) makes a tool a cost line of a contract. A line inherits the contract's
+  renewal date when its own is not set; each line keeps its own managed flag (the
+  remainder line is managed if any line is). The contract's total less the sum of its lines is interpreted as a
   "not broken down" line delivering every outcome of the contract's lines, held by
   every persona any line is given to.
 - **`practice_services`** (G13), install-wide, entered by an admin, **never seeded**:

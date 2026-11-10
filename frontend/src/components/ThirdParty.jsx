@@ -60,6 +60,7 @@ function ProductRow({ t, it, missing, meta, personas, moneyUnit, update, remove 
       <tr>
         <td><button className="ghost sm" title="Details" onClick={() => setOpen(!open)}>{open ? '▾' : '▸'}</button></td>
         <td data-label="Tool"><TextInput value={t.name} style={{ minWidth: 120 }} onCommit={(v) => update(t.id, { name: v })} />
+          {t.contract_id && <div className="src" style={{ fontSize: '.72rem' }}>a part of a contract (below)</div>}
           {missing && <div><span className="badge warn" title="Left out of the numbers until it has a cost, people and at least one use (Review lists it too)">
             left out — {missing.join(', ')}</span></div>}</td>
         <td className="num" data-label="Cost"><NumInput value={t.raw_cost} style={{ width: 90 }}
@@ -283,6 +284,7 @@ export default function ThirdParty({ engagement, meta, moneyUnit = 'mo' }) {
         </tbody>
       </table>
       <small className="src">What each tool is used for is ticked below, under <b>What each tool is used for</b>.</small>
+      <Contracts engagement={engagement} items={items} interp={interp} moneyUnit={moneyUnit} meta={meta} />
 
       <div className="grid c4" style={{ marginTop: '.8rem' }}>
         <div><label>Tool</label>
@@ -307,6 +309,54 @@ export default function ThirdParty({ engagement, meta, moneyUnit = 'mo' }) {
         <div style={{ display: 'flex', alignItems: 'flex-end' }}>
           <button onClick={add}>Add tool</button></div>
       </div>
+    </div>
+  )
+}
+
+// Vendor contracts (GUIDED_PLAN G12): one invoice and one renewal, broken into the
+// cost lines above. What the lines don't account for is shown as "not broken
+// down" (derived) and stays until everything the contract does is replaced.
+function Contracts({ engagement, items, interp, moneyUnit, meta }) {
+  const base = `/api/engagements/${engagement.id}/contracts`
+  const [rows, setRows] = useState([])
+  const [err, setErr] = useState('')
+  const version = items.length + ':' + items.map((t) => t.contract_id || '').join(',')
+  useEffect(() => { api.get(base).then(setRows).catch((e) => setErr(e.message)) }, [engagement.id, version])
+  const patch = async (id, body) => {
+    try { const r = await api.patch(`${base}/${id}`, body); setRows((rs) => rs.map((x) => (x.id === id ? r : x))) }
+    catch (e) { setErr(e.message) }
+  }
+  const remove = async (c) => {
+    if (!confirm(`Remove the ${c.name} contract and all its parts?`)) return
+    try { await api.del(`${base}/${c.id}`); setRows((rs) => rs.filter((x) => x.id !== c.id)) } catch (e) { setErr(e.message) }
+  }
+  if (rows.length === 0) return null
+  return (
+    <div style={{ marginTop: '1rem' }}>
+      <h3 style={{ margin: '0 0 .3rem' }}>Contracts <Help k="tools.contract" /></h3>
+      {err && <div className="err">{err}</div>}
+      <table className="resp-table">
+        <thead><tr><th>Contract</th><th className="num">Total</th><th>Per</th><th>Renews</th>
+          <th className="num">Parts</th><th className="num">Not broken down</th><th></th></tr></thead>
+        <tbody>
+          {rows.map((c) => {
+            const ic = (interp.data?.contracts || []).find((x) => x.id === c.id)
+            return (
+              <tr key={c.id}>
+                <td><TextInput value={c.name} onCommit={(v) => v.trim() && patch(c.id, { name: v.trim() })} /></td>
+                <td className="num"><NumInput value={Number(c.total_cost)} style={{ width: 110 }}
+                  onCommit={(n) => patch(c.id, { total_cost: n || 0 })} /></td>
+                <td><select value={c.cost_period} onChange={(e) => patch(c.id, { cost_period: e.target.value })}>
+                  {(meta?.cost_periods || ['Annual', 'Monthly']).map((s) => <option key={s}>{s}</option>)}</select></td>
+                <td><DateInput value={c.renewal_date} style={{ width: 140 }} onCommit={(d) => patch(c.id, { renewal_date: d })} /></td>
+                <td className="num">{ic ? ic.line_ids.length : '…'}</td>
+                <td className="num muted" title="Derived: the total less the parts">{ic ? money(ic.remainder_annual, moneyUnit) : '…'}</td>
+                <td className="num"><button className="danger sm" onClick={() => remove(c)}>Remove</button></td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }

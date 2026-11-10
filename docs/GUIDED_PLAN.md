@@ -95,5 +95,5 @@ Each phase is one pull request to `main`, with its tests.
 | 3 | Retire `product_dispositions` (G7) | done |
 | 4 | Outcome areas (G9) | done |
 | 5 | The guided walkthrough GUI, steps 1–10 and 13 (G10, G11, G16) | done |
-| 6 | Contracts and cost lines (G12) | — |
+| 6 | Contracts and cost lines (G12) | done |
 | 7 | Practice services and result sections, steps 11–12 (G13–G15) | — |

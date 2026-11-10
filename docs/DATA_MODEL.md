@@ -860,6 +860,26 @@ retired via `_RETIRED_COLUMNS` and physically dropped; `services/swap.py` and th
 a carve-out's seats like any other scenario — no swap-specific branch in
 `services/limits`.
 
+### 4.8c ToolContract — a vendor contract broken into cost lines
+GUIDED_PLAN G12. One invoice and one renewal; its cost lines are
+`third_party_products` rows with `contract_id` set.
+- **Identity:** `uuid`. **Scope:** engagement-scoped (cascades with the engagement).
+- **User-entered:** `name`, `vendor`, `total_cost`, `cost_period`, `renewal_date`.
+- **Derived (interpreted, never stored):** the contract's annual total, what its
+  lines account for, and the remainder. A positive remainder is read as one more
+  line, "<contract> (not broken down)", delivering every outcome of the lines and
+  held by every persona any line is held by, so it goes away only when all of them
+  are replaced. A line with no renewal date renews with its contract. A $0 line is
+  not "left out" (the remainder carries the money). Lines above the total raise
+  `contract_lines_exceed`.
+- **CRUD:** `GET/POST/PATCH/DELETE …/contracts` (delete removes its lines and their
+  coverage). `POST …/third-party/{id}/break-down` turns a tool used for two or more
+  things into a contract with the tool's cost, period and renewal, and one $0 line
+  per outcome with the tool's personas and seats; no number changes until amounts
+  are typed.
+- **GUI:** the guided pricing step (a contract screen, and "Break this down" on a
+  tool) and the Contracts table under the tools in the detail view.
+
 ### 4.9 ProductDisposition — retired
 The operator's keep-or-retire decision (forced full elimination, intended
 residual) is retired (GUIDED_PLAN G7): displacement is like for like, and the one

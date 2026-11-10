@@ -543,3 +543,4 @@ button.badge.licence-flag { background: transparent; padding: .12rem .45rem; fon
 .guide-rail-row { display: flex; justify-content: space-between; gap: .5rem; padding: .45rem 0; border-top: 1px solid var(--border); font-size: .88rem; }
 .guide-rail-row .muted { font-size: .75rem; }
 .guide-rail-row.total { border-top: 2px solid var(--accent); }
+.guide-card input[type=date] { max-width: 16rem; }

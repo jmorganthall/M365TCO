@@ -455,9 +455,27 @@ class ThirdPartyIn(BaseModel):
     is_managed: bool = False
     tooling_pct: Optional[Decimal] = None
     extra_seats_answer: Optional[Literal["ExtraSeats", "PeopleWhoStay"]] = None
+    contract_id: Optional[str] = None
     source_tag: str = "CustomerStated"
     # Personas this product applies to (many-to-many tags).
     persona_ids: list[str] = []
+
+
+class ContractIn(BaseModel):
+    name: str = ""
+    vendor: str = ""
+    total_cost: Decimal = Decimal("0")
+    cost_period: Literal["Annual", "Monthly"] = "Annual"
+    renewal_date: Optional[date] = None
+
+
+class ContractOut(ORMModel):
+    id: str
+    name: str
+    vendor: str
+    total_cost: Decimal
+    cost_period: str
+    renewal_date: Optional[date]
 
 
 class ThirdPartyOut(ORMModel):
@@ -471,6 +489,7 @@ class ThirdPartyOut(ORMModel):
     is_managed: bool
     tooling_pct: Optional[Decimal]  # as entered; NULL = inherit the engagement default
     extra_seats_answer: Optional[str] = None
+    contract_id: Optional[str] = None
     source_tag: str
     persona_ids: list[str]
     # Derived, read-only — the interpreter's values (tco_engine/interpret.py), never

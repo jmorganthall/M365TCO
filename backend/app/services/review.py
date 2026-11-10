@@ -50,6 +50,10 @@ def review(db: Session, engagement_id: str) -> dict:
             check(f.code, f.step,
                   f"The groups add up to {x['total']:,} people, but IT supports {x['supported']:,}. "
                   f"Is a group missing, or is a size wrong?")
+        elif f.code == "contract_lines_exceed":
+            check(f.code, f.step,
+                  f"{x['name']}: the lines add up to ${x['lines']:,.0f} a year, more than the contract's "
+                  f"${x['total']:,.0f}. Check the amounts.")
         elif f.code == "tool_seats_short":
             check(f.code, f.step,
                   f"{x['name']} covers {x['seats']:,} seats, but the groups given it have {x['held']:,} people. "
