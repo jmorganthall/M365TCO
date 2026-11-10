@@ -41,7 +41,8 @@ just extra (the whole cost goes) or people who will stay on the tool?
 | G16 | **One question per screen.** Large type, Enter to continue, Back always available, a side rail with the groups and their cost per user per month (from the backend). The existing steps stay as the detail view. Uses the practice branding record. |
 | G17 | **AI is optional.** The walkthrough works fully with AI off. |
 | G18 | **Recommendations at list price.** The recommender prices plans from the catalog at list; the existing scenario discount and price override stay available in the detail view. |
-| G19 | **Later**: a phased recommendation driven by tool renewal dates; customer self-service; a session file the customer downloads and uploads; custom outcomes in the walk. |
+| G20 | **A licence covers the whole group.** In the guided flow every Microsoft licence line is for all of the group's people (seats = headcount); people who get something extra are a separate group. The detail view still takes a typed seat count (bought but unassigned seats, or an Org-wide line), and Review flags any mismatch. |
+| G19 | **Later**: a carve-out linked to its parent that inherits everything except what it adds ("this sub-group gets Visio too"), so shared licensing is entered once; a phased recommendation driven by tool renewal dates; customer self-service; a session file the customer downloads and uploads; custom outcomes in the walk. |
 
 ## 3. Changes to the agreed walkthrough
 
@@ -84,7 +85,7 @@ just extra (the whole cost goes) or people who will stay on the tool?
   `views.personas` (today, after and change per user per month).
 - The Microsoft step takes line items per group: the main plan, then "+ Add another
   licence" for add-ons and products, each with its own seats and price; each adds to
-  the group's cost per user. It uses the same searchable plan picker as the detail view (catalog
+  the group's cost per user; every line covers the whole group (G20). It uses the same searchable plan picker as the detail view (catalog
   pick = name and list price from the server). When a group's size no longer matches
   its licence's seats, the step offers "Set seats to N" (one click, never automatic).
 - Review also flags a group holding two full plans (`two_base_plans`), and skips the

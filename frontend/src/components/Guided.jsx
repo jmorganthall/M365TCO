@@ -293,7 +293,7 @@ function MicrosoftQ({ engagement, base, personas, interp, call }) {
   const seatsFix = (line) => interp.findings.find((f) => f.code === 'seats_vs_headcount' && f.licence_id === line.id)
   return (
     <Ask title="What Microsoft licensing does each group have today?"
-      why="Pick the main plan each group is on, then add anything else they hold: add-ons such as E5 Security or Teams Phone, or products such as Visio. Negotiated prices go in the detail view.">
+      why="Pick the main plan each group is on, then add anything else they all hold: add-ons such as E5 Security or Teams Phone, or products such as Visio. Every licence here covers the whole group; people who get something extra are a group of their own. Negotiated prices go in the detail view.">
       {personas.map((p) => {
         // A line applies to this group when it's tagged to it, or untagged (Org-wide:
         // every group). One shared with other groups is shown, never rewritten from
@@ -348,20 +348,20 @@ function LicenceLine({ l, il, first, p, engagement, base, call, pick, remove, se
         <SkuCombobox value={l.sku_reference || ''} style={{ minWidth: 320 }}
           segment={b.segment} term={b.term} billing={b.billing}
           onChange={(v) => pick(p, l, null, v)} onSelectSku={(sku, title) => pick(p, l, sku, title)} />
-        <Field type="number" value={l.quantity_assigned} style={{ width: 110 }}
-          onSave={(v) => call(() => api.patch(`${base}/current-licenses/${l.id}`,
-            { quantity_assigned: num(v) || 0, quantity_purchased: num(v) || 0 }))} />
-        <span className="muted">seats</span>
-        {il && <span className="muted">· {money(il.effective_price_annual, 'mo')} per seat</span>}
+        {/* The whole group, always: a group is the people who get the same licences
+            (W5). Someone with something extra is a different group. */}
+        <span className="muted">for all {p.headcount.toLocaleString()}</span>
+        {il && <span className="muted">· {money(il.effective_price_annual, 'mo')} per person</span>}
         <button className="ghost sm" title="Remove this licence from the group" onClick={() => remove(l)}>✕</button>
       </div>
       {seatsFix && (
-        <div className={`src ${first ? 'warn' : 'muted'}`}>{p.name} has {seatsFix.facts.headcount.toLocaleString()} people and {l.sku_reference} has{' '}
-          {seatsFix.facts.assigned.toLocaleString()} seats.{' '}
+        <div className="src warn">{l.sku_reference} is entered for {seatsFix.facts.assigned.toLocaleString()} people, but a
+          licence here covers the whole group ({seatsFix.facts.headcount.toLocaleString()}).{' '}
           <button className="ghost sm" onClick={() => call(() => api.patch(`${base}/current-licenses/${l.id}`, {
             quantity_assigned: seatsFix.facts.headcount, quantity_purchased: seatsFix.facts.headcount }))}>
-            Set seats to {seatsFix.facts.headcount.toLocaleString()}</button>
-          {!first && <span className="muted"> (leave it if only some of them have it)</span>}</div>
+            Make it the whole group</button>
+          <span className="muted"> If only some of them have it, they are a separate group: add it on the Groups step,
+            or split this group in the detail view.</span></div>
       )}
       {il && Number(il.effective_price_annual) === 0 && (
         <div className="src warn">No price found for {l.sku_reference}. Load the price list in Settings, or enter the price in the detail view.</div>
