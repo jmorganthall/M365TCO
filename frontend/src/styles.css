@@ -603,3 +603,9 @@ button.badge.licence-flag { background: transparent; padding: .12rem .45rem; fon
 button.destructive { background: #b42323; color: #fff; }
 button.destructive:disabled { background: var(--panel2); color: var(--muted); opacity: 1; }
 @media (max-width: 600px) { .modal-backdrop { align-items: flex-end; } .modal { border-radius: 16px 16px 0 0; } }
+
+/* Guided "Check the data" step: one row per thing to fix, its button on the right. */
+.check-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 8px 0; border-top: 1px solid var(--border); }
+.check-notes { margin-top: 16px; }
+.check-notes summary { cursor: pointer; color: var(--muted); }
+.check-note { font-size: .85rem; padding: 4px 0; }

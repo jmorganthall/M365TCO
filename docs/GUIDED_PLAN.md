@@ -42,6 +42,7 @@ just extra (the whole cost goes) or people who will stay on the tool?
 | G17 | **AI is optional.** The walkthrough works fully with AI off. |
 | G18 | **Recommendations at list price.** The recommender prices plans from the catalog at list; the existing scenario discount and price override stay available in the detail view. |
 | G20 | **A licence covers the whole group.** In the guided flow every Microsoft licence line is for all of the group's people (seats = headcount); people who get something extra are a separate group. The detail view still takes a typed seat count (bought but unassigned seats, or an Org-wide line), and Review flags any mismatch. |
+| G21 | **The guided flow only collects data.** It ends with "Check the data": Review's checks for groups, licences and tools, each with a button back to the step that fixes it, then "Continue to recommendations". The recommendation, "What's new", the seats question, practice services and the summary live in the detail view (Future state, Summary & PDF). |
 | G19 | **Later**: a carve-out linked to its parent that inherits everything except what it adds ("this sub-group gets Visio too"), so shared licensing is entered once; a phased recommendation driven by tool renewal dates; customer self-service; a session file the customer downloads and uploads; custom outcomes in the walk. |
 
 ## 3. Changes to the agreed walkthrough
@@ -64,14 +65,10 @@ just extra (the whole cost goes) or people who will stay on the tool?
 5. Outcome walk, area by area (G10).
 6. Price your tools, with "Break this down" for contracts (G11, G12).
 7. Today: each group's people × cost per user per month (G3).
-8. Recommendation: each group's Microsoft plan, its cost per user, per year and over
-   the horizon.
-9. What's new: per group, what its plan adds that nothing delivers today; confirm it
-   as new (G10).
-10. Seat mismatches, only when needed (G4).
-11. Managed security (G13, G14).
-12. Calling (G13).
-13. Summary and PDF (G15).
+8. Check the data: what's missing or doesn't line up, with a way back to fix it (G21).
+
+The recommendation and everything after it (per-group change, what's new, seat
+mismatches, managed security, calling, summary and PDF) are on the detail view.
 
 ## 5. As built (phase 5)
 
@@ -85,6 +82,10 @@ just extra (the whole cost goes) or people who will stay on the tool?
 - Every number shown comes from the backend: the interpreter's `baselines` and
   `summary` (count-down, totals, standing seats) and the result's
   `views.personas` (today, after and change per user per month).
+- Each capability in the outcome walk has a small "Not delivered today" button: it
+  confirms, for every group nothing delivers it to, that they don't have it
+  (`coverage_gap_answers` NotDeliveredToday), so a plan that adds it counts it as
+  gained. Hidden once a tool is picked or when Microsoft covers every group; ↺ undoes.
 - The Groups step asks what each group needs whatever plan it's on: Full-Size Mailbox,
   Full-Size Cloud Storage and Desktop Software (library outcomes by key, saved as the
   persona's required outcomes). A new group starts with all three ticked; untick one
