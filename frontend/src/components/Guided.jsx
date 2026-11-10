@@ -213,8 +213,11 @@ function GroupsQ({ engagement, base, personas, interp, call }) {
   const [size, setSize] = useState('')
   const s = interp.data?.summary
   const supported = engagement.supported_headcount
-  async function everyone() {
-    await call(() => api.post(`${base}/personas`, { name: 'Everyone', headcount: supported || 0 }))
+  const [oneGroup, setOneGroup] = useState(false)
+  const [everyoneSize, setEveryoneSize] = useState('')
+  async function everyone(size) {
+    if (!size) return
+    await call(() => api.post(`${base}/personas`, { name: 'Everyone', headcount: size }))
   }
   async function add() {
     if (!name.trim()) return
@@ -226,11 +229,20 @@ function GroupsQ({ engagement, base, personas, interp, call }) {
       <Ask title="Does everyone get the same Microsoft licensing?"
         why="A group is a set of people who get the same Microsoft licences. Everything after this is answered group by group.">
         <div className="guide-choices">
-          <button className="guide-choice" onClick={everyone}>Yes — one group
+          <button className="guide-choice" onClick={() => (supported ? everyone(supported) : setOneGroup(true))}>Yes — one group
             <small>{supported ? `Everyone: ${supported.toLocaleString()} people` : 'Everyone'}</small></button>
           <button className="guide-choice" onClick={() => setSplit(true)}>No — some get different licences
             <small>Name each group and its size</small></button>
         </div>
+        {oneGroup && (
+          <div className="guide-row" style={{ marginTop: '1rem' }}>
+            <span>How many people are in it?</span>
+            <input type="number" min="1" value={everyoneSize} style={{ width: 140 }} autoFocus
+              onChange={(e) => setEveryoneSize(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && everyone(num(everyoneSize))} />
+            <button disabled={!num(everyoneSize)} onClick={() => everyone(num(everyoneSize))}>Create the group</button>
+          </div>
+        )}
       </Ask>
     )
   }
@@ -285,14 +297,28 @@ function MicrosoftQ({ base, personas, interp, call }) {
     <Ask title="What Microsoft licensing does each group have today?"
       why="Pick the main plan each group is on. Add-ons, negotiated prices and anything unusual go in the detail view.">
       {personas.map((p) => {
-        const mine = lines.filter((l) => (l.persona_ids || []).includes(p.id))
-        const line = mine[0]
+        // A line applies to this group when it's tagged to it, or untagged (Org-wide:
+        // every group). One shared with other groups is shown, never rewritten from
+        // this row: changing it here would change every group on it.
+        const applies = (l) => (l.persona_ids || []).length === 0 || l.persona_ids.includes(p.id)
+        const mine = lines.filter(applies)
+        const shared = mine.filter((l) => interp.licence[l.id]?.applies_to?.length > 1)
+        const own = mine.filter((l) => !shared.includes(l))
+        const line = own[0]
         const il = line && interp.licence[line.id]
         const planId = line ? (plans.find((b) => b.name === line.sku_reference)?.id || '') : ''
+        const others = (l) => personas.filter((x) => x.id !== p.id && interp.licence[l.id]?.applies_to?.includes(x.id)).map((x) => x.name)
         return (
           <div key={p.id} className="guide-block">
             <div className="guide-block-title">{p.name} <span className="muted">· {p.headcount.toLocaleString()} people</span></div>
-            <div className="guide-row">
+            {shared.map((l) => (
+              <div key={l.id} className="guide-row">
+                <span className="badge">{l.sku_reference || 'A licence'}</span>
+                <span className="muted">shared with {others(l).join(', ') || 'every group'} · {l.quantity_assigned.toLocaleString()} seats in all.
+                  Change it in the detail view, so every group on it changes together.</span>
+              </div>
+            ))}
+            {(own.length > 0 || shared.length === 0) && <div className="guide-row">
               <select value={planId} onChange={(e) => pick(p, line, e.target.value)} style={{ minWidth: 280 }}>
                 <option value="">{line && !planId ? line.sku_reference : 'No Microsoft licence'}</option>
                 {plans.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -306,11 +332,11 @@ function MicrosoftQ({ base, personas, interp, call }) {
                   {il && <span className="muted">· {money(il.effective_price_annual, 'mo')} per seat</span>}
                 </>
               )}
-            </div>
+            </div>}
             {line && il && Number(il.effective_price_annual) === 0 && (
               <div className="src warn">No price found for this plan. Load the price list in Settings, or enter the price in the detail view.</div>
             )}
-            {mine.length > 1 && <div className="src muted">{mine.length - 1} more licence line(s) for this group are in the detail view.</div>}
+            {own.length > 1 && <div className="src muted">{own.length - 1} more licence line(s) for this group are in the detail view.</div>}
           </div>
         )
       })}
@@ -542,7 +568,7 @@ function PlanQ({ engagement, base, personas, result, onDetail }) {
   // Review's checks for the future state (seat caps, plans that drop a capability),
   // worded by the backend; shown here so nothing waits until the end.
   const review = useList(`${base}/review`)
-  const checks = (review?.checks || []).filter((c) => c.step === 'future')
+  const checks = (review?.checks || []).filter((c) => c.step === 'future' || c.code === 'current_over_cap')
   return (
     <Ask title="Here's the Microsoft plan we'd recommend for each group."
       why="The lowest-cost plan that keeps everything each group has today. A tool's share goes away only where the plan does everything that tool does.">

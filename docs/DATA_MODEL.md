@@ -239,6 +239,13 @@ FK, UUID PK, cascade-deleted with the engagement.
   how many seats now sit in carve-outs. The Scenarios tab tints and labels the same
   rows, so the split is legible wherever its money appears.
 
+- **Delete:** refused (409) while a licence line or tool is held by this persona
+  alone, because clearing its only tag would make it Org-wide and move its cost onto
+  everyone. Otherwise the persona's tags on shared lines and tools, its scenario
+  (add-ons and services with it) and its gap answers go with it. A line or tool still
+  tagged only to a deleted persona (a database from before this rule) is flagged in
+  Review as `tagged_to_missing_group` and left out until a person retags it.
+
 ### 4.2b Carve-out — modelling a PARTIAL move
 The licensing unit in this model is the persona: one persona, one scenario, one
 target. So "300 of these 2,518 people move to Business Premium" cannot be said

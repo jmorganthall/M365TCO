@@ -50,6 +50,16 @@ def review(db: Session, engagement_id: str) -> dict:
             check(f.code, f.step,
                   f"The groups add up to {x['total']:,} people, but IT supports {x['supported']:,}. "
                   f"Is a group missing, or is a size wrong?")
+        elif f.code == "tagged_to_missing_group":
+            check(f.code, f.step,
+                  f"{x['name']} was given to a group that no longer exists, so its cost is in no "
+                  f"group's numbers. Say which groups have it.")
+            leave_out(x["name"], "given to a group that no longer exists", f.step)
+        elif f.code == "current_over_cap":
+            check(f.code, f.step,
+                  f"Today's licences put {x['seats']:,} people on {x['cap_name']}, which allows "
+                  f"{x['cap']:,}. Check the seat counts. If they are right, the recommendation can't keep "
+                  f"everyone on that family, so some groups move to a plan outside it and may cost more.")
         elif f.code == "contract_lines_exceed":
             check(f.code, f.step,
                   f"{x['name']}: the lines add up to ${x['lines']:,.0f} a year, more than the contract's "

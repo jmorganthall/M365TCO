@@ -799,6 +799,21 @@ def _findings(raw, lines, tools, scenarios, tables, seat_caps, contracts=()) -> 
     if in_scope and not raw.microsoft_renewal_date and any(
             not raw_lines[l.id].renewal_date for l in in_scope):
         f.append(IFinding("renewal_date_missing", "groups", "info", facts={"subject": "agreement"}))
+    # A licence given only to groups that no longer exist (a database from before a
+    # group's deletion cleaned up its tags): it applies to nobody, so its cost is in
+    # no number. A person says who has it.
+    known = set(headcount)
+    for l in in_scope:
+        rl = raw_lines[l.id]
+        if rl.persona_ids and not any(p in known for p in rl.persona_ids):
+            f.append(IFinding("tagged_to_missing_group", "groups", "left_out", licence_id=l.id,
+                              facts={"name": rl.sku_reference or "A licence line", "kind": "licence"}))
+    # Licensing limits already broken by today's licences (e.g. more than 300
+    # Business seats): the future state can't keep everyone on that family.
+    for c in seat_caps:
+        if c.limit_type == "max_total_seats" and c.current_seats > c.max_quantity:
+            f.append(IFinding("current_over_cap", "groups", facts={
+                "cap_name": c.name, "cap": c.max_quantity, "seats": c.current_seats}))
     set_aside = [raw_lines[l.id].sku_reference or "A licence line" for l in lines if not l.in_scope]
     if set_aside:
         f.append(IFinding("license_out_of_scope", "groups", "info", facts={"names": set_aside}))
@@ -816,8 +831,14 @@ def _findings(raw, lines, tools, scenarios, tables, seat_caps, contracts=()) -> 
         # remainder line carries the money meanwhile.
         if (not rt.raw_cost or rt.raw_cost <= 0) and not rt.contract_id:
             missing.append("no cost")
+        tagged = [p for p in rt.persona_ids if p in headcount]
+        if rt.persona_ids and not tagged:
+            f.append(IFinding("tagged_to_missing_group", "tools", "left_out", tool_id=t.id,
+                              facts={"name": t.name or "A tool", "kind": "tool"}))
+            continue
         if not t.people_covered:
-            missing.append("no users")
+            # Given only to groups with no people yet: say which, so the fix is clear.
+            missing.append(f"no people in {', '.join(names[p] for p in tagged)}" if tagged else "no users")
         if not t.delivered_outcome_ids:
             missing.append("no uses ticked")
         if missing:

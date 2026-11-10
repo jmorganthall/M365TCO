@@ -403,6 +403,34 @@ def delete_persona(engagement_id: str, persona_id: str, db: Session = Depends(ge
     row = db.get(models.Persona, persona_id)
     if row is None or row.engagement_id != engagement_id:
         raise HTTPException(404, "Persona not found")
+    # Licences and tools held ONLY by this persona would become untagged — read as
+    # Org-wide (D12) — and their cost would silently move onto everyone else. A
+    # person decides where they go first (code never rewrites what was entered).
+    only_lines = [l.sku_reference or "A licence line" for l in db.execute(
+        select(models.CurrentMicrosoftLicense).where(
+            models.CurrentMicrosoftLicense.engagement_id == engagement_id)).scalars()
+        if l.persona_ids == [persona_id]]
+    only_tools = [t.name or "A tool" for t in db.execute(
+        select(models.ThirdPartyProduct).where(
+            models.ThirdPartyProduct.engagement_id == engagement_id)).scalars()
+        if t.persona_ids == [persona_id]]
+    if only_lines or only_tools:
+        raise HTTPException(409, f"{row.name} is the only group with "
+                            f"{', '.join(only_lines + only_tools)}. Give "
+                            f"{'it' if len(only_lines + only_tools) == 1 else 'them'} to another group, "
+                            f"or remove {'it' if len(only_lines + only_tools) == 1 else 'them'}, first.")
+    # Everything that hangs off the persona goes with it: its tags on shared
+    # licences and tools, its plan (add-ons and services cascade) and its gap
+    # answers. A stored narrative keeps its snapshotted name.
+    for model in (models.CurrentLicensePersona, models.ThirdPartyPersona):
+        for link in db.execute(select(model).where(model.persona_id == persona_id)).scalars():
+            db.delete(link)
+    for sc in db.execute(select(models.PersonaScenario).where(
+            models.PersonaScenario.persona_id == persona_id)).scalars():
+        db.delete(sc)
+    for n in db.execute(select(models.ScenarioNarrative).where(
+            models.ScenarioNarrative.persona_id == persona_id)).scalars():
+        n.persona_id = None
     # Deleting a carve-out returns its seats to the persona they came from —
     # otherwise undoing a split would quietly shrink the customer's population.
     if row.parent_persona_id:
