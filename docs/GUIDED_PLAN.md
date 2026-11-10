@@ -58,14 +58,16 @@ just extra (the whole cost goes) or people who will stay on the tool?
 1. Customer: name, workshop date, and how they buy (segment, term, payment; blank
    = the install defaults in Settings, options from the loaded price list).
 2. (Removed: the headcount comes from the groups, G8.)
-3. Groups: does everyone get the same Microsoft licensing? Yes → one group. No → name
-   each group and its size, counting down to the total.
+3. Groups: does everyone get the same Microsoft licensing? Yes → one group and its
+   size. No → name each group and its size; the screen shows their sum.
 4. Microsoft licensing per group: pick the plan, confirm the seats.
 5. Outcome walk, area by area (G10).
 6. Price your tools, with "Break this down" for contracts (G11, G12).
-7. Gap sweep (G10).
-8. Today: each group's people × cost per user per month (G3).
-9. Recommendation: each group's Microsoft plan, its cost per user and what changes.
+7. Today: each group's people × cost per user per month (G3).
+8. Recommendation: each group's Microsoft plan, its cost per user, per year and over
+   the horizon.
+9. What's new: per group, what its plan adds that nothing delivers today; confirm it
+   as new (G10).
 10. Seat mismatches, only when needed (G4).
 11. Managed security (G13, G14).
 12. Calling (G13).
@@ -92,6 +94,13 @@ just extra (the whole cost goes) or people who will stay on the tool?
   "not confirmed" question for out-of-scope plans and empty groups. Disposition
   tables leave out $0 lines (`views.dispositions_shown`).
 - "+ New customer" in the top bar opens `#/new`; "‹ All customers" goes to the search.
+- "What's new" comes after the Recommendation (not before Today): one block per group
+  listing only what its new plan adds that nothing delivers today, with "These are all
+  new for <group>" and a ✕ for one they already have another way. Only these answers
+  change a number (a confirmed one counts as gained).
+- The Recommendation table shows each group's change per user per month, per year and
+  over the engagement's modelling horizon (full yearly rate), with a total row from
+  the backend (`views.persona_totals`).
 - The Recommendation screen shows Review's future-state checks (for example a
   Business seat cap) beside the plans.
 
