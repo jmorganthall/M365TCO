@@ -137,3 +137,20 @@ def test_persona_view_after_is_today_plus_the_delta(client):
     assert kw["after_per_user_monthly"] == 40.0           # 480 / 12
     assert kw["delta_per_user_monthly"] == 15.0 and kw["has_plan"]
     assert not fl["has_plan"] and fl["after_annual"] == fl["today_annual"]
+
+
+def test_persona_view_has_yearly_and_horizon_change_and_a_total(client):
+    eid = client.post("/api/engagements", json={"customer_name": "Horizon Co"}).json()["id"]
+    client.patch(f"/api/engagements/{eid}", json={"modeling_horizon_years": 5})
+    p = client.post(f"/api/engagements/{eid}/personas", json={"name": "KW", "headcount": 100}).json()
+    q = client.post(f"/api/engagements/{eid}/personas", json={"name": "FL", "headcount": 10}).json()
+    for pid, price in ((p["id"], 300), (q["id"], 300)):
+        client.post(f"/api/engagements/{eid}/current-licenses", json={
+            "sku_reference": "Office 365 E3", "quantity_assigned": 100 if pid == p["id"] else 10,
+            "unit_price_paid_annual": price, "persona_ids": [pid]})
+    client.post(f"/api/engagements/{eid}/scenarios", json={
+        "persona_id": p["id"], "target_sku_reference": "Microsoft 365 E3", "target_unit_price_annual": 480, "in_scope": True})
+    views = client.get(f"/api/engagements/{eid}/result").json()["views"]
+    kw = next(v for v in views["personas"] if v["persona_id"] == p["id"])
+    assert kw["delta_annual"] == 18000 and kw["horizon_years"] == 5 and kw["delta_horizon"] == 90000
+    assert views["persona_totals"] == {"delta_annual": 18000, "delta_horizon": 90000, "horizon_years": 5}

@@ -72,6 +72,7 @@ def current_result(db: Session, engagement_id: str) -> dict:
     result["views"] = views(result)
     interp = raw.interpreted(db, engagement_id)
     result["views"]["personas"] = persona_view(interp, result)
+    result["views"]["persona_totals"] = persona_totals(result["views"]["personas"])
     result["views"]["sections"] = sections_view(interp, result)
     return result
 
@@ -150,6 +151,7 @@ def persona_view(i, result: dict) -> list[dict]:
     from decimal import Decimal
 
     by_persona = {s["persona_id"]: s for s in result.get("scenarios") or [] if s.get("in_scope")}
+    years = int(i.raw.horizon_years or 3)
     out = []
     for b in i.baselines:
         s = by_persona.get(b.persona_id)
@@ -163,8 +165,19 @@ def persona_view(i, result: dict) -> list[dict]:
             "today_annual": float(b.total_annual), "after_annual": float(after), "delta_annual": float(delta),
             "today_per_user_monthly": float(b.per_user_monthly),
             "after_per_user_monthly": per(after), "delta_per_user_monthly": per(delta),
+            # Over the engagement's modelling horizon at the full yearly rate (the
+            # headline times each saving from its renewal; this doesn't).
+            "horizon_years": years, "delta_horizon": float(delta * years),
         })
     return out
+
+
+def persona_totals(rows: list[dict]) -> dict:
+    """The per-group table's total row, added here so no screen adds it up."""
+    from decimal import Decimal
+    total = lambda k: float(sum((Decimal(str(r[k])) for r in rows), Decimal("0")))
+    return {"delta_annual": total("delta_annual"), "delta_horizon": total("delta_horizon"),
+            "horizon_years": rows[0]["horizon_years"] if rows else 3}
 
 
 # The bridge's third-party groups: which products each draws on, and which of their

@@ -15,9 +15,9 @@ export const GUIDE_STEPS = [
   ['microsoft', 'Microsoft today'],
   ['outcomes', 'How you work today'],
   ['tools', 'Price your tools'],
-  ['gaps', 'Anything missing?'],
   ['today', 'Today'],
   ['plan', 'Recommendation'],
+  ['gaps', "What's new"],
   ['seats', 'Seats'],
   ['security', 'Managed security'],
   ['calling', 'Calling'],
@@ -570,31 +570,53 @@ function PriceContract({ base, contract, n, of, tools, interp, outcomes, call })
   )
 }
 
-function GapSweep({ base, outcomes, personas, interp, call }) {
-  const answers = useList(`${base}/coverage-gap-answers`) || []
-  const delivered = new Set((interp.data?.today || []).filter((t) => t.delivered_today).map((t) => `${t.persona_id}|${t.outcome_id}`))
-  const answered = new Set(answers.map((a) => `${a.persona_id}|${a.outcome_id}`))
-  const rows = outcomes.map((o) => ({
-    o, lacking: personas.filter((p) => !delivered.has(`${p.id}|${o.id}`) && !answered.has(`${p.id}|${o.id}`)),
-  })).filter((r) => r.lacking.length > 0)
-  const put = (r, answer) => call(async () => {
-    for (const p of r.lacking) {
-      await api.put(`${base}/coverage-gap-answers`, { persona_id: p.id, outcome_id: r.o.id, answer })
-    }
+// What each group's new plan adds that nothing delivers today (asked after the
+// recommendation, GUIDED_PLAN G10): the only time the answer changes a number,
+// because a capability counts as gained once it's confirmed missing today. One
+// block per group; one click confirms them all; an exception is one link.
+function GapSweep({ base, outcomes, personas, interp, result, call }) {
+  const name = Object.fromEntries(outcomes.map((o) => [o.id, o.name]))
+  const answers = Object.fromEntries((useList(`${base}/coverage-gap-answers`) || []).map((a) => [`${a.persona_id}|${a.outcome_id}`, a.answer]))
+  const plan = Object.fromEntries((result?.views?.personas || []).map((v) => [v.persona_id, v.plan]))
+  const groups = personas.filter((p) => p.headcount > 0).map((p) => ({
+    p,
+    items: (interp.data?.proposed || []).filter((r) => r.persona_id === p.id && r.in_scope && r.by_target
+      && (!r.delivered_today || answers[`${p.id}|${r.outcome_id}`] === 'CoveredOutsideInventory'))
+      .map((r) => ({ id: r.outcome_id, answer: answers[`${p.id}|${r.outcome_id}`] || null })),
+  })).filter((g) => g.items.length > 0)
+  const put = (p, ids, answer) => call(async () => {
+    for (const id of ids) await api.put(`${base}/coverage-gap-answers`, { persona_id: p.id, outcome_id: id, answer })
   })
   return (
-    <Ask title="Nothing was collected for these. Do those groups not have them?"
-      why="A capability Microsoft would add counts as gained only once you confirm it isn't there today.">
-      {rows.length === 0 && <p className="pos">Every capability is accounted for.</p>}
-      {rows.map((r) => (
-        <div key={r.o.id} className="guide-block">
-          <div className="guide-block-title">{r.o.name} <span className="muted">· {r.lacking.map((p) => p.name).join(', ')}</span></div>
-          <div className="guide-chips">
-            <button className="ghost sm" onClick={() => put(r, 'NotDeliveredToday')}>They don't have it</button>
-            <button className="ghost sm" onClick={() => put(r, 'CoveredOutsideInventory')}>Covered by something not paid for separately</button>
+    <Ask title="Here's what's new for each group."
+      why="What each group's new plan adds that nothing gives them today. Confirm it's new and it counts as gained; if they already get one some other way, say so.">
+      {groups.length === 0 && <p className="pos">Nothing to confirm: no group's plan adds anything they don't have today.</p>}
+      {groups.map(({ p, items }) => {
+        const open = items.filter((i) => !i.answer).map((i) => i.id)
+        return (
+          <div key={p.id} className="guide-block">
+            <div className="guide-block-title">{p.name}{plan[p.id] && <span className="muted"> · {plan[p.id]} adds</span>}</div>
+            <div className="guide-chips">
+              {items.map((i) => (
+                <span key={i.id} className={`badge ${i.answer === 'NotDeliveredToday' ? 'pos' : ''}`}
+                  style={i.answer === 'CoveredOutsideInventory' ? { textDecoration: 'line-through', opacity: .6 } : undefined}
+                  title={i.answer === 'CoveredOutsideInventory' ? 'They already have this another way' : i.answer ? 'Confirmed new' : 'Not confirmed yet'}>
+                  {name[i.id] || 'A capability'}
+                  {i.answer === 'CoveredOutsideInventory'
+                    ? <button className="chip-x" title="Actually new for them" onClick={() => put(p, [i.id], 'NotDeliveredToday')}>↺</button>
+                    : <button className="chip-x" title="They already have this another way" onClick={() => put(p, [i.id], 'CoveredOutsideInventory')}>✕</button>}
+                </span>
+              ))}
+            </div>
+            <div className="guide-chips">
+              {open.length > 0
+                ? <button className="sm" onClick={() => put(p, open, 'NotDeliveredToday')}>These are all new for {p.name}</button>
+                : <span className="src pos">Confirmed.</span>}
+              <span className="muted" style={{ fontSize: '.8rem' }}>✕ on one they already have another way.</span>
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </Ask>
   )
 }
@@ -631,6 +653,8 @@ function TodayQ({ personas, interp }) {
 
 function PlanQ({ engagement, base, personas, result, onDetail }) {
   const view = Object.fromEntries((result?.views?.personas || []).map((v) => [v.persona_id, v]))
+  const totals = result?.views?.persona_totals
+  const years = totals?.horizon_years || engagement.modeling_horizon_years || 3
   // Review's checks for the future state (seat caps, plans that drop a capability),
   // worded by the backend; shown here so nothing waits until the end.
   const review = useList(`${base}/review`)
@@ -641,7 +665,8 @@ function PlanQ({ engagement, base, personas, result, onDetail }) {
       <RecommendPlans engagement={engagement} />
       <table className="guide-table">
         <thead><tr><th>Group</th><th>Plan</th><th className="num">Today / user / mo</th>
-          <th className="num">After / user / mo</th><th className="num">Change</th></tr></thead>
+          <th className="num">After / user / mo</th><th className="num">Change / user / mo</th>
+          <th className="num">Per year</th><th className="num">Over {years} years</th></tr></thead>
         <tbody>
           {personas.map((p) => {
             const v = view[p.id]
@@ -649,11 +674,18 @@ function PlanQ({ engagement, base, personas, result, onDetail }) {
               <tr key={p.id}><td>{p.name}</td><td>{v?.plan || <span className="muted">no plan yet</span>}</td>
                 <td className="num">{v ? usd(v.today_per_user_monthly) : '…'}</td>
                 <td className="num">{v ? usd(v.after_per_user_monthly) : '…'}</td>
-                <td className={`num ${v && v.delta_per_user_monthly < 0 ? 'pos' : ''}`}>{v ? usd(v.delta_per_user_monthly) : '…'}</td></tr>
+                <td className={`num ${v && v.delta_per_user_monthly < 0 ? 'pos' : ''}`}>{v ? usd(v.delta_per_user_monthly) : '…'}</td>
+                <td className={`num ${v && v.delta_annual < 0 ? 'pos' : ''}`}>{v ? usd(v.delta_annual) : '…'}</td>
+                <td className={`num ${v && v.delta_horizon < 0 ? 'pos' : ''}`}>{v ? usd(v.delta_horizon) : '…'}</td></tr>
             )
           })}
         </tbody>
+        {totals && <tfoot><tr><td>All groups</td><td /><td /><td /><td />
+          <td className={`num ${totals.delta_annual < 0 ? 'pos' : ''}`}>{usd(totals.delta_annual)}</td>
+          <td className={`num ${totals.delta_horizon < 0 ? 'pos' : ''}`}>{usd(totals.delta_horizon)}</td></tr></tfoot>}
       </table>
+      <p className="muted" style={{ fontSize: '.8rem' }}>Negative is a saving. Over {years} years is at the full yearly rate; the
+        summary's headline times each saving from the renewal that unlocks it.</p>
       {checks.map((c, n) => <div key={n} className={`src ${c.severity === 'info' ? 'muted' : 'warn'}`}>{c.message}</div>)}
       <button className="ghost" style={{ marginTop: '.8rem' }} onClick={() => onDetail('future')}>Change a plan in the detail view ›</button>
     </Ask>
