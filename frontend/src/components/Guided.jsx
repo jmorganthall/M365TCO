@@ -1,0 +1,525 @@
+import React, { useEffect, useMemo, useState } from 'react'
+import { api, money, useDataVersion, useInterpreted, useResult, usd } from '../api'
+import { RecommendPlans } from './FutureState.jsx'
+import ExtraSeats from './ExtraSeats.jsx'
+
+// The persona-guided walkthrough (docs/GUIDED_PLAN.md §4): one question per screen,
+// over the same data as the detail steps. Every number shown comes from the
+// backend (useInterpreted / useResult); this file formats, never calculates.
+export const GUIDE_STEPS = [
+  ['customer', 'Customer'],
+  ['headcount', 'People'],
+  ['groups', 'Groups'],
+  ['microsoft', 'Microsoft today'],
+  ['outcomes', 'How you work today'],
+  ['tools', 'Price your tools'],
+  ['gaps', 'Anything missing?'],
+  ['today', 'Today'],
+  ['plan', 'Recommendation'],
+  ['seats', 'Seats'],
+  ['summary', 'Summary'],
+]
+
+// A list endpoint, refetched after every write (like useResult).
+function useList(path) {
+  const version = useDataVersion()
+  const [rows, setRows] = useState(null)
+  useEffect(() => {
+    let live = true
+    api.get(path).then((r) => { if (live) setRows(r) }).catch(() => {})
+    return () => { live = false }
+  }, [path, version])
+  return rows
+}
+
+export default function Guided({ engagement, step, sub, onGo, onUpdate, onDetail }) {
+  const eid = engagement.id
+  const base = `/api/engagements/${eid}`
+  const interp = useInterpreted(eid)
+  const { result } = useResult(eid)
+  const personas = useList(`${base}/personas`) || []
+  const outcomes = useList(`${base}/outcomes`) || []
+  const tools = useList(`${base}/third-party`) || []
+  const [err, setErr] = useState('')
+  const areas = useMemo(() => areaList(outcomes), [outcomes])
+
+  const i = Math.max(0, GUIDE_STEPS.findIndex(([k]) => k === step))
+  const subCount = step === 'outcomes' ? areas.length : step === 'tools' ? tools.length : 0
+  const subIdx = Math.min(Number(sub) || 0, Math.max(subCount - 1, 0))
+  function next() {
+    setErr('')
+    if (subCount && subIdx < subCount - 1) return onGo(step, subIdx + 1)
+    const n = GUIDE_STEPS[i + 1]
+    if (n) onGo(n[0], 0)
+  }
+  function back() {
+    setErr('')
+    if (subCount && subIdx > 0) return onGo(step, subIdx - 1)
+    const p = GUIDE_STEPS[i - 1]
+    if (!p) return
+    const pc = p[0] === 'outcomes' ? areas.length : p[0] === 'tools' ? tools.length : 0
+    onGo(p[0], Math.max(pc - 1, 0))
+  }
+  async function call(fn) {
+    setErr('')
+    try { return await fn() } catch (e) { setErr(e.message) }
+  }
+
+  const ctx = { eid, base, engagement, interp, result, personas, outcomes, tools, areas, call, onUpdate, onGo, onDetail }
+  return (
+    <div className="guide">
+      <div className="guide-main">
+        <div className="guide-progress">
+          {GUIDE_STEPS.map(([k, label], n) => (
+            <button key={k} className={`guide-dot ${n === i ? 'on' : n < i ? 'done' : ''}`} title={label}
+              onClick={() => onGo(k, 0)}><span>{label}</span></button>
+          ))}
+        </div>
+        <div className="guide-card">
+          {step === 'customer' && <CustomerQ {...ctx} />}
+          {step === 'headcount' && <HeadcountQ {...ctx} />}
+          {step === 'groups' && <GroupsQ {...ctx} />}
+          {step === 'microsoft' && <MicrosoftQ {...ctx} />}
+          {step === 'outcomes' && <OutcomeWalk {...ctx} area={areas[subIdx]} n={subIdx} of={areas.length} />}
+          {step === 'tools' && <PriceTool {...ctx} tool={tools[subIdx]} n={subIdx} of={tools.length} />}
+          {step === 'gaps' && <GapSweep {...ctx} />}
+          {step === 'today' && <TodayQ {...ctx} />}
+          {step === 'plan' && <PlanQ {...ctx} />}
+          {step === 'seats' && <SeatsQ {...ctx} />}
+          {step === 'summary' && <SummaryQ {...ctx} />}
+          {err && <div className="err" style={{ marginTop: '1rem' }}>{err}</div>}
+          <div className="guide-nav">
+            {i > 0 || subIdx > 0 ? <button className="ghost" onClick={back}>‹ Back</button> : <span />}
+            {i < GUIDE_STEPS.length - 1 && <button onClick={next}>Continue ›</button>}
+          </div>
+        </div>
+      </div>
+      <Rail interp={interp} personas={personas} />
+    </div>
+  )
+}
+
+// Areas in library order; outcomes with no area last, as "Other".
+function areaList(outcomes) {
+  const seen = new Map()
+  for (const o of outcomes) {
+    const a = o.area || 'Other'
+    if (!seen.has(a)) seen.set(a, [])
+    seen.get(a).push(o)
+  }
+  const list = [...seen.entries()].map(([name, items]) => ({ name, items }))
+  return [...list.filter((a) => a.name !== 'Other'), ...list.filter((a) => a.name === 'Other')]
+}
+
+// The side rail: each group, its people and its cost per user per month today.
+function Rail({ interp, personas }) {
+  const s = interp.data?.summary
+  return (
+    <aside className="guide-rail">
+      <div className="guide-rail-title">Your groups</div>
+      {personas.length === 0 && <div className="muted">None yet.</div>}
+      {personas.map((p) => (
+        <div key={p.id} className="guide-rail-row">
+          <div><b>{p.name}</b><div className="muted">{p.headcount.toLocaleString()} people</div></div>
+          <div className="num">{interp.baseline[p.id] ? usd(interp.baseline[p.id].per_user_monthly) : '…'}
+            <div className="muted">per user / mo</div></div>
+        </div>
+      ))}
+      {s && personas.length > 0 && (
+        <div className="guide-rail-row total">
+          <div><b>Everyone</b><div className="muted">{s.groups_headcount.toLocaleString()} people</div></div>
+          <div className="num">{usd(s.baseline_per_user_monthly)}<div className="muted">{money(s.baseline_total_annual, 'yr')}</div></div>
+        </div>
+      )}
+    </aside>
+  )
+}
+
+function Ask({ title, why, children }) {
+  return (
+    <>
+      <h1 className="guide-q">{title}</h1>
+      {why && <p className="guide-why">{why}</p>}
+      {children}
+    </>
+  )
+}
+
+// A field that saves on Enter or blur, never per keystroke.
+function Field({ value, onSave, type = 'text', placeholder, big, style }) {
+  const [v, setV] = useState(value ?? '')
+  useEffect(() => { setV(value ?? '') }, [value])
+  const save = () => { if (String(v) !== String(value ?? '')) onSave(v) }
+  return (
+    <input className={big ? 'guide-big' : ''} type={type} value={v} placeholder={placeholder} style={style}
+      onChange={(e) => setV(e.target.value)} onBlur={save}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }} />
+  )
+}
+
+const num = (v) => (v === '' || v == null ? null : Math.max(0, Math.round(Number(v)) || 0))
+
+function CustomerQ({ engagement, base, call, onUpdate }) {
+  const patch = (body) => call(async () => onUpdate(await api.patch(base, body)))
+  return (
+    <Ask title="Who is the customer?">
+      <Field big value={engagement.customer_name} placeholder="Customer name"
+        onSave={(v) => patch({ customer_name: v })} />
+      <label className="guide-label">Workshop date</label>
+      <Field type="date" value={engagement.workshop_date || ''} onSave={(v) => patch({ workshop_date: v || null })} />
+    </Ask>
+  )
+}
+
+function HeadcountQ({ engagement, base, call, onUpdate }) {
+  return (
+    <Ask title="How many people does IT support today?"
+      why="Everyone who gets a Microsoft 365 account or any of the tools we'll talk about. The groups you define next should add up to this.">
+      <Field big type="number" value={engagement.supported_headcount ?? ''} placeholder="e.g. 1500"
+        onSave={(v) => call(async () => onUpdate(await api.patch(base, { supported_headcount: num(v) })))} />
+    </Ask>
+  )
+}
+
+function GroupsQ({ engagement, base, personas, interp, call }) {
+  const [split, setSplit] = useState(personas.length > 1)
+  const [name, setName] = useState('')
+  const [size, setSize] = useState('')
+  const s = interp.data?.summary
+  const supported = engagement.supported_headcount
+  async function everyone() {
+    await call(() => api.post(`${base}/personas`, { name: 'Everyone', headcount: supported || 0 }))
+  }
+  async function add() {
+    if (!name.trim()) return
+    await call(() => api.post(`${base}/personas`, { name: name.trim(), headcount: num(size) || 0 }))
+    setName(''); setSize('')
+  }
+  if (personas.length === 0 && !split) {
+    return (
+      <Ask title="Does everyone get the same Microsoft licensing?"
+        why="A group is a set of people who get the same Microsoft licences. Everything after this is answered group by group.">
+        <div className="guide-choices">
+          <button className="guide-choice" onClick={everyone}>Yes — one group
+            <small>{supported ? `Everyone: ${supported.toLocaleString()} people` : 'Everyone'}</small></button>
+          <button className="guide-choice" onClick={() => setSplit(true)}>No — some get different licences
+            <small>Name each group and its size</small></button>
+        </div>
+      </Ask>
+    )
+  }
+  return (
+    <Ask title="Who gets different licensing?"
+      why="Name each group and how many people are in it, for example Office staff and Frontline.">
+      {personas.map((p) => (
+        <div key={p.id} className="guide-row">
+          <Field value={p.name} onSave={(v) => v.trim() && call(() => api.patch(`${base}/personas/${p.id}`, { name: v.trim() }))} />
+          <Field type="number" value={p.headcount} style={{ width: 120 }}
+            onSave={(v) => call(() => api.patch(`${base}/personas/${p.id}`, { headcount: num(v) || 0 }))} />
+          <span className="muted">people</span>
+          <button className="ghost sm" title="Remove this group"
+            onClick={() => confirm(`Remove ${p.name}?`) && call(() => api.del(`${base}/personas/${p.id}`))}>✕</button>
+        </div>
+      ))}
+      <div className="guide-row">
+        <input value={name} placeholder="Group name" onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && add()} />
+        <input type="number" value={size} placeholder="People" style={{ width: 120 }}
+          onChange={(e) => setSize(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
+        <button onClick={add}>Add group</button>
+      </div>
+      {s && s.remaining_headcount != null && (
+        <p className={`guide-count ${s.remaining_headcount === 0 ? 'pos' : 'warn'}`}>
+          {s.remaining_headcount === 0 ? `All ${s.supported_headcount.toLocaleString()} people are in a group.`
+            : s.remaining_headcount > 0 ? `${s.remaining_headcount.toLocaleString()} of ${s.supported_headcount.toLocaleString()} people are not in a group yet.`
+              : `The groups add up to ${s.groups_headcount.toLocaleString()}, more than the ${s.supported_headcount.toLocaleString()} IT supports.`}
+        </p>
+      )}
+    </Ask>
+  )
+}
+
+function MicrosoftQ({ base, personas, interp, call }) {
+  const lines = useList(`${base}/current-licenses`) || []
+  const bundles = useList('/api/catalog/bundles') || []
+  const plans = bundles.filter((b) => b.kind === 'bundle')
+  async function pick(p, line, bundleId) {
+    const plan = plans.find((b) => b.id === bundleId)
+    await call(async () => {
+      if (!plan) { if (line) await api.del(`${base}/current-licenses/${line.id}`); return }
+      const row = line
+        ? await api.patch(`${base}/current-licenses/${line.id}`, { sku_reference: plan.name })
+        : await api.post(`${base}/current-licenses`, {
+          sku_reference: plan.name, quantity_assigned: p.headcount, quantity_purchased: p.headcount,
+          unit_price_paid_annual: plan.list_price_annual || 0, persona_ids: [p.id] })
+      await api.post(`${base}/current-licenses/${row.id}/list-price`)
+    })
+  }
+  return (
+    <Ask title="What Microsoft licensing does each group have today?"
+      why="Pick the main plan each group is on. Add-ons, negotiated prices and anything unusual go in the detail view.">
+      {personas.map((p) => {
+        const mine = lines.filter((l) => (l.persona_ids || []).includes(p.id))
+        const line = mine[0]
+        const il = line && interp.licence[line.id]
+        const planId = line ? (plans.find((b) => b.name === line.sku_reference)?.id || '') : ''
+        return (
+          <div key={p.id} className="guide-block">
+            <div className="guide-block-title">{p.name} <span className="muted">· {p.headcount.toLocaleString()} people</span></div>
+            <div className="guide-row">
+              <select value={planId} onChange={(e) => pick(p, line, e.target.value)} style={{ minWidth: 280 }}>
+                <option value="">{line && !planId ? line.sku_reference : 'No Microsoft licence'}</option>
+                {plans.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+              {line && (
+                <>
+                  <Field type="number" value={line.quantity_assigned} style={{ width: 110 }}
+                    onSave={(v) => call(() => api.patch(`${base}/current-licenses/${line.id}`,
+                      { quantity_assigned: num(v) || 0, quantity_purchased: num(v) || 0 }))} />
+                  <span className="muted">seats</span>
+                  {il && <span className="muted">· {money(il.effective_price_annual, 'mo')} per seat</span>}
+                </>
+              )}
+            </div>
+            {line && il && Number(il.effective_price_annual) === 0 && (
+              <div className="src warn">No price found for this plan. Load the price list in Settings, or enter the price in the detail view.</div>
+            )}
+            {mine.length > 1 && <div className="src muted">{mine.length - 1} more licence line(s) for this group are in the detail view.</div>}
+          </div>
+        )
+      })}
+    </Ask>
+  )
+}
+
+function OutcomeWalk({ base, area, n, of, tools, interp, personas, call }) {
+  const coverage = useList(`${base}/coverage`) || []
+  if (!area) return <Ask title="No capabilities in this engagement's library yet." />
+  const toolRows = coverage.filter((c) => c.product_kind === 'ThirdParty' && c.ratified)
+  const names = Object.fromEntries(personas.map((p) => [p.id, p.name]))
+  async function addTool(o, name) {
+    if (!name.trim()) return
+    await call(async () => {
+      const t = await api.post(`${base}/third-party`, { name: name.trim(), raw_cost: 0 })
+      await api.post(`${base}/coverage`, { outcome_id: o.id, product_kind: 'ThirdParty', third_party_product_id: t.id, ratified: true })
+    })
+  }
+  return (
+    <Ask title={`Let's talk about ${area.name.toLowerCase()}.`}
+      why={`How do you deliver each of these today? Name the tool you pay for, or leave it if Microsoft covers it or you don't do it. (${n + 1} of ${of})`}>
+      {area.items.map((o) => {
+        const mine = toolRows.filter((c) => c.outcome_id === o.id)
+        const ms = (interp.data?.today || []).filter((t) => t.outcome_id === o.id && t.by_microsoft).map((t) => names[t.persona_id]).filter(Boolean)
+        const others = tools.filter((t) => !mine.some((c) => c.third_party_product_id === t.id))
+        return <OutcomeRow key={o.id} o={o} mine={mine} ms={ms} others={others} tools={tools}
+          onAdd={(tid) => call(() => api.post(`${base}/coverage`, { outcome_id: o.id, product_kind: 'ThirdParty', third_party_product_id: tid, ratified: true }))}
+          onRemove={(cid) => call(() => api.del(`${base}/coverage/${cid}`))}
+          onNew={(name) => addTool(o, name)} />
+      })}
+    </Ask>
+  )
+}
+
+function OutcomeRow({ o, mine, ms, others, tools, onAdd, onRemove, onNew }) {
+  const [name, setName] = useState('')
+  const toolName = (id) => tools.find((t) => t.id === id)?.name || 'A tool'
+  return (
+    <div className="guide-block">
+      <div className="guide-block-title">{o.name}</div>
+      {o.description && <div className="muted guide-desc">{o.description}</div>}
+      <div className="guide-chips">
+        {ms.length > 0 && <span className="badge pos" title="From the Microsoft licensing you entered">Microsoft · {ms.join(', ')}</span>}
+        {mine.map((c) => (
+          <span key={c.id} className="badge">{toolName(c.third_party_product_id)}
+            <button className="chip-x" title="Not used for this" onClick={() => onRemove(c.id)}>✕</button></span>
+        ))}
+        {others.map((t) => <button key={t.id} className="ghost sm" onClick={() => onAdd(t.id)}>+ {t.name}</button>)}
+        <input value={name} placeholder="+ A tool you pay for" style={{ width: 200 }}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { onNew(name); setName('') } }}
+          onBlur={() => { if (name.trim()) { onNew(name); setName('') } }} />
+      </div>
+    </div>
+  )
+}
+
+function PriceTool({ base, tool, n, of, interp, personas, outcomes, call, onGo }) {
+  if (!tool) {
+    return (
+      <Ask title="No tools named yet."
+        why="Tools are collected while walking through how you work today. Go back and name any tool you pay for, or continue.">
+        <button className="ghost" onClick={() => onGo('outcomes', 0)}>‹ How you work today</button>
+      </Ask>
+    )
+  }
+  const it = interp.tool[tool.id]
+  const patch = (body) => call(() => api.patch(`${base}/third-party/${tool.id}`, body))
+  const all = (tool.persona_ids || []).length === 0
+  const toggle = (pid) => {
+    const ids = new Set(tool.persona_ids || [])
+    ids.has(pid) ? ids.delete(pid) : ids.add(pid)
+    patch({ persona_ids: [...ids] })
+  }
+  const uses = (it?.delivered_outcome_ids || []).map((id) => outcomes.find((o) => o.id === id)?.name).filter(Boolean)
+  const missing = interp.findings.find((f) => f.code === 'tool_incomplete' && f.tool_id === tool.id)?.facts.missing
+  return (
+    <Ask title={`What do you pay for ${tool.name}?`} why={`Tool ${n + 1} of ${of}. Used for: ${uses.join(', ') || 'nothing yet'}.`}>
+      <div className="guide-row">
+        <Field big type="number" value={Number(tool.raw_cost) || ''} placeholder="Cost" style={{ width: 220 }}
+          onSave={(v) => patch({ raw_cost: Number(v) || 0 })} />
+        <select value={tool.cost_period} onChange={(e) => patch({ cost_period: e.target.value })}>
+          <option value="Annual">per year</option>
+          <option value="Monthly">per month</option>
+        </select>
+      </div>
+      <label className="guide-label">Who has it?</label>
+      <div className="guide-chips">
+        <button className={all ? '' : 'ghost'} onClick={() => patch({ persona_ids: [] })}>All groups</button>
+        {personas.map((p) => (
+          <button key={p.id} className={!all && tool.persona_ids.includes(p.id) ? '' : 'ghost'}
+            onClick={() => toggle(p.id)}>{p.name}</button>
+        ))}
+      </div>
+      <label className="guide-label">How many seats does it cover?</label>
+      <div className="guide-row">
+        <Field type="number" value={tool.covered_count_override ?? ''} style={{ width: 160 }}
+          placeholder={it ? String(it.people_held) : ''}
+          onSave={(v) => patch({ covered_count_override: num(v) })} />
+        <span className="muted">Blank = the people in those groups{it ? ` (${it.people_held.toLocaleString()})` : ''}.</span>
+      </div>
+      {it && it.extra_seats > 0 && <div className="src">That's {it.extra_seats.toLocaleString()} more seats than people in those groups. We'll ask about them if a move replaces {tool.name}.</div>}
+      <div className="guide-row" style={{ marginTop: '1rem', gap: '1.5rem' }}>
+        <div><label className="guide-label">When does it renew?</label>
+          <Field type="date" value={tool.renewal_date || ''} onSave={(v) => patch({ renewal_date: v || null })} /></div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '.4rem', marginTop: '1.4rem' }}>
+          <input type="checkbox" style={{ width: 'auto' }} checked={tool.is_managed}
+            onChange={(e) => patch({ is_managed: e.target.checked })} /> Bought as a managed service</label>
+      </div>
+      {it && <p className="muted">Counted: {money(it.effective_annual_cost, 'yr')} · {money(it.cost_per_person, 'mo')} per person</p>}
+      {missing && <div className="src warn">Left out of the numbers until it has: {missing.join(', ')}.</div>}
+    </Ask>
+  )
+}
+
+function GapSweep({ base, outcomes, personas, interp, call }) {
+  const answers = useList(`${base}/coverage-gap-answers`) || []
+  const delivered = new Set((interp.data?.today || []).filter((t) => t.delivered_today).map((t) => `${t.persona_id}|${t.outcome_id}`))
+  const answered = new Set(answers.map((a) => `${a.persona_id}|${a.outcome_id}`))
+  const rows = outcomes.map((o) => ({
+    o, lacking: personas.filter((p) => !delivered.has(`${p.id}|${o.id}`) && !answered.has(`${p.id}|${o.id}`)),
+  })).filter((r) => r.lacking.length > 0)
+  const put = (r, answer) => call(async () => {
+    for (const p of r.lacking) {
+      await api.put(`${base}/coverage-gap-answers`, { persona_id: p.id, outcome_id: r.o.id, answer })
+    }
+  })
+  return (
+    <Ask title="Nothing was collected for these. Do those groups not have them?"
+      why="A capability Microsoft would add counts as gained only once you confirm it isn't there today.">
+      {rows.length === 0 && <p className="pos">Every capability is accounted for.</p>}
+      {rows.map((r) => (
+        <div key={r.o.id} className="guide-block">
+          <div className="guide-block-title">{r.o.name} <span className="muted">· {r.lacking.map((p) => p.name).join(', ')}</span></div>
+          <div className="guide-chips">
+            <button className="ghost sm" onClick={() => put(r, 'NotDeliveredToday')}>They don't have it</button>
+            <button className="ghost sm" onClick={() => put(r, 'CoveredOutsideInventory')}>Covered by something not paid for separately</button>
+          </div>
+        </div>
+      ))}
+    </Ask>
+  )
+}
+
+function TodayQ({ personas, interp }) {
+  const s = interp.data?.summary
+  return (
+    <Ask title="Here's what each person costs you today."
+      why="Each group's share of its Microsoft licences and of every tool it has, per person per month.">
+      <table className="guide-table">
+        <thead><tr><th>Group</th><th className="num">People</th><th className="num">Microsoft</th>
+          <th className="num">Other tools</th><th className="num">Per user / mo</th></tr></thead>
+        <tbody>
+          {personas.map((p) => {
+            const b = interp.baseline[p.id]
+            return (
+              <tr key={p.id}><td>{p.name}</td><td className="num">{p.headcount.toLocaleString()}</td>
+                <td className="num">{b ? usd(b.microsoft_per_user_monthly) : '…'}</td>
+                <td className="num">{b ? usd(b.tools_per_user_monthly) : '…'}</td>
+                <td className="num"><b>{b ? usd(b.per_user_monthly) : '…'}</b></td></tr>
+            )
+          })}
+        </tbody>
+        {s && <tfoot><tr><td>Everyone</td><td className="num">{s.groups_headcount.toLocaleString()}</td>
+          <td className="num">{money(s.baseline_microsoft_annual, 'yr')}</td><td className="num">{money(s.baseline_tools_annual, 'yr')}</td>
+          <td className="num"><b>{usd(s.baseline_per_user_monthly)}</b></td></tr></tfoot>}
+      </table>
+      {s && Number(s.standing_annual) > 0 && (
+        <p className="muted">Plus {money(s.standing_annual, 'yr')} for tool seats held by people outside these groups.</p>
+      )}
+    </Ask>
+  )
+}
+
+function PlanQ({ engagement, base, personas, result, onDetail }) {
+  const view = Object.fromEntries((result?.views?.personas || []).map((v) => [v.persona_id, v]))
+  // Review's checks for the future state (seat caps, plans that drop a capability),
+  // worded by the backend; shown here so nothing waits until the end.
+  const review = useList(`${base}/review`)
+  const checks = (review?.checks || []).filter((c) => c.step === 'future')
+  return (
+    <Ask title="Here's the Microsoft plan we'd recommend for each group."
+      why="The lowest-cost plan that keeps everything each group has today. A tool's share goes away only where the plan does everything that tool does.">
+      <RecommendPlans engagement={engagement} />
+      <table className="guide-table">
+        <thead><tr><th>Group</th><th>Plan</th><th className="num">Today / user / mo</th>
+          <th className="num">After / user / mo</th><th className="num">Change</th></tr></thead>
+        <tbody>
+          {personas.map((p) => {
+            const v = view[p.id]
+            return (
+              <tr key={p.id}><td>{p.name}</td><td>{v?.plan || <span className="muted">no plan yet</span>}</td>
+                <td className="num">{v ? usd(v.today_per_user_monthly) : '…'}</td>
+                <td className="num">{v ? usd(v.after_per_user_monthly) : '…'}</td>
+                <td className={`num ${v && v.delta_per_user_monthly < 0 ? 'pos' : ''}`}>{v ? usd(v.delta_per_user_monthly) : '…'}</td></tr>
+            )
+          })}
+        </tbody>
+      </table>
+      {checks.map((c, n) => <div key={n} className={`src ${c.severity === 'info' ? 'muted' : 'warn'}`}>{c.message}</div>)}
+      <button className="ghost" style={{ marginTop: '.8rem' }} onClick={() => onDetail('future')}>Change a plan in the detail view ›</button>
+    </Ask>
+  )
+}
+
+function SeatsQ({ engagement, interp }) {
+  const asked = interp.findings.some((f) => f.code === 'extra_seats_unanswered')
+    || (interp.data?.tools || []).some((t) => t.extra_seats > 0 && t.extra_seats_answer)
+  return (
+    <Ask title={asked ? "A few tools have more seats than people." : 'Every replaced tool lines up.'}
+      why={asked ? "If the extra seats aren't needed, we'll show the whole cost going away. If they belong to people who stay on the tool, that part stays." : 'Nothing to ask here.'}>
+      <ExtraSeats engagement={engagement} moneyUnit="yr" />
+    </Ask>
+  )
+}
+
+function SummaryQ({ interp, result, onDetail }) {
+  const s = interp.data?.summary
+  const r = result?.rollup
+  const open = interp.findings.filter((f) => f.severity !== 'info').length
+  return (
+    <Ask title="The picture so far.">
+      {s && r && (
+        <div className="guide-stats">
+          <div><div className="muted">Today, per year</div><div className="guide-stat">{usd(s.baseline_total_annual)}</div></div>
+          <div><div className="muted">Change per year</div>
+            <div className={`guide-stat ${r.net_tco_delta_annual < 0 ? 'pos' : ''}`}>{usd(r.net_tco_delta_annual)}</div></div>
+        </div>
+      )}
+      <p className="muted">{open ? `${open} item${open === 1 ? '' : 's'} still to check on Review.` : 'Nothing left to check.'}</p>
+      <div className="guide-chips">
+        <button className="ghost" onClick={() => onDetail('review')}>Review ›</button>
+        <button onClick={() => onDetail('summary')}>Summary and PDF ›</button>
+      </div>
+    </Ask>
+  )
+}

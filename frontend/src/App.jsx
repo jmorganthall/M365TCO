@@ -20,6 +20,7 @@ import DataInspector from './components/DataInspector.jsx'
 import AdminPanel from './components/AdminPanel.jsx'
 import WorkshopValue from './components/WorkshopValue.jsx'
 import { StepIntro } from './components/Help.jsx'
+import Guided, { GUIDE_STEPS } from './components/Guided.jsx'
 
 // The guided walkthrough (docs/WALKTHROUGH.md §3): seven steps an account
 // executive runs with the customer, in order. "Data" is NOT a step; it's an
@@ -47,6 +48,10 @@ function parseHash() {
   const parts = (window.location.hash || '').replace(/^#\/?/, '').split('/').filter(Boolean)
   if (parts[0] === 'settings') return { view: 'settings' }
   if (parts[0] === 'value') return { view: 'value' }
+  if (parts[0] === 'e' && parts[1] && parts[2] === 'guide') {
+    const step = GUIDE_STEPS.some(([k]) => k === parts[3]) ? parts[3] : 'customer'
+    return { view: 'engagement', id: decodeURIComponent(parts[1]), tab: 'guide', step, sub: Number(parts[4]) || 0 }
+  }
   if (parts[0] === 'e' && parts[1]) {
     const tab = TABS.has(parts[2]) ? parts[2] : (OLD_TABS[parts[2]] || 'customer')
     return { view: 'engagement', id: decodeURIComponent(parts[1]), tab }
@@ -55,6 +60,9 @@ function parseHash() {
 }
 const go = (path) => { window.location.hash = path }
 const engagementPath = (id, tab = 'customer') => `/e/${encodeURIComponent(id)}/${tab}`
+// The guided walkthrough (docs/GUIDED_PLAN.md): #/e/<id>/guide/<step>/<n>
+const guidePath = (id, step = 'customer', sub = 0) =>
+  `/e/${encodeURIComponent(id)}/guide/${step}${sub ? `/${sub}` : ''}`
 
 export default function App() {
   const [route, setRoute] = useState(parseHash)
@@ -118,7 +126,7 @@ export default function App() {
     api.get('/api/meta').then(setMeta).catch(() => {})
   }
 
-  function open(e) { setActive(null); go(engagementPath(e.id)) }
+  function open(e) { setActive(null); go(guidePath(e.id)) }
   async function duplicate(id) {
     const copy = await api.post(`/api/engagements/${id}/duplicate`)
     open(copy)
@@ -189,11 +197,21 @@ export default function App() {
                     <button className={moneyUnit === 'mo' ? 'on' : ''} onClick={() => switchMoneyUnit('mo')}>$/mo</button>
                     <button className={moneyUnit === 'yr' ? 'on' : ''} onClick={() => switchMoneyUnit('yr')}>$/yr</button>
                   </div>
+                  <div className="unit-toggle" title="The guided walkthrough asks one question at a time; the detail view has every field">
+                    <button className={tab === 'guide' ? 'on' : ''} onClick={() => go(guidePath(active.id))}>Guided</button>
+                    <button className={tab !== 'guide' ? 'on' : ''} onClick={() => setTab('customer')}>Detail</button>
+                  </div>
                   <EngagementTools active={tab === 'data'} onData={() => setTab('data')}
                     onDuplicate={() => duplicate(active.id)} onDelete={() => remove(active)} />
                 </div>
               </div>
 
+              {tab === 'guide' && (
+                <Guided engagement={active} step={route.step} sub={route.sub} onUpdate={setActive}
+                  onGo={(step, sub) => { go(guidePath(active.id, step, sub)); toTop() }}
+                  onDetail={(k) => setTab(k)} />
+              )}
+              {tab !== 'guide' && <>
               <div className="stepper">
                 {STEPS.map(([k, label], i) => {
                   const activeIdx = STEPS.findIndex(([sk]) => sk === tab)
@@ -253,6 +271,7 @@ export default function App() {
               )}
               {tab === 'data' && <DataInspector engagement={active} meta={meta} />}
               <StepNav tab={tab} onGo={setTab} />
+              </>}
             </div>
           )}
         </main>

@@ -244,6 +244,8 @@ class IPersonaBaseline:
     tools_annual: Decimal
     total_annual: Decimal
     per_user_monthly: Decimal
+    microsoft_per_user_monthly: Decimal = Decimal("0")
+    tools_per_user_monthly: Decimal = Decimal("0")
 
 
 @dataclass(frozen=True)
@@ -396,6 +398,7 @@ class Interpreted:
     seat_caps: tuple[ISeatCap, ...] = ()
     findings: tuple[IFinding, ...] = ()
     baselines: tuple[IPersonaBaseline, ...] = ()
+    summary: dict = field(default_factory=dict)
 
     @cached_property
     def _licence_index(self) -> dict[str, ILicenseLine]:
@@ -554,10 +557,29 @@ def interpret(raw: RawEngagement) -> Interpreted:
         ms = sum((v for (lid, pid), v in licence_shares.items() if pid == p.id), ZERO)
         tl = sum((v for (tid, pid), v in tool_shares.items() if pid == p.id), ZERO)
         total = ms + tl
-        monthly = (total / Decimal(p.headcount) / 12).quantize(Decimal("0.01")) if p.headcount > 0 else ZERO
+
+        def per_user(v):
+            return (v / Decimal(p.headcount) / 12).quantize(Decimal("0.01")) if p.headcount > 0 else ZERO
         baselines.append(IPersonaBaseline(p.id, p.headcount, ms.quantize(Decimal("0.01")),
                                           tl.quantize(Decimal("0.01")), total.quantize(Decimal("0.01")),
-                                          monthly))
+                                          per_user(total), per_user(ms), per_user(tl)))
+
+    groups_hc = sum(p.headcount for p in raw.personas)
+    total_annual = sum((b.total_annual for b in baselines), ZERO)
+    summary = {
+        # GUIDED_PLAN G8: the groups count down to the headcount IT supports.
+        "supported_headcount": raw.supported_headcount,
+        "groups_headcount": groups_hc,
+        "remaining_headcount": (raw.supported_headcount - groups_hc
+                                if raw.supported_headcount is not None else None),
+        # G3: everyone's all-in cost today, and seats outside the personas that stay.
+        "baseline_microsoft_annual": sum((b.microsoft_annual for b in baselines), ZERO),
+        "baseline_tools_annual": sum((b.tools_annual for b in baselines), ZERO),
+        "baseline_total_annual": total_annual,
+        "baseline_per_user_monthly": ((total_annual / Decimal(groups_hc) / 12).quantize(Decimal("0.01"))
+                                      if groups_hc > 0 else ZERO),
+        "standing_annual": sum((t.standing_annual for t in tools), ZERO).quantize(Decimal("0.01")),
+    }
 
     tables = _outcome_tables(raw, lines, tools, scenarios)
     seat_caps = _seat_caps(raw, lines, scenarios)
@@ -566,7 +588,7 @@ def interpret(raw: RawEngagement) -> Interpreted:
         raw=raw, personas=personas, licence_lines=tuple(lines),
         licence_shares=licence_shares, tools=tuple(tools), tool_shares=tool_shares,
         scenarios=tuple(scenarios), seat_caps=seat_caps, findings=findings,
-        baselines=tuple(baselines), **tables,
+        baselines=tuple(baselines), summary=summary, **tables,
     )
 
 

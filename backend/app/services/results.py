@@ -22,7 +22,7 @@ from tco_engine.engine import EngineResult
 from tco_engine.engine import compute as engine_compute
 
 from .. import models
-from . import compute, limits
+from . import compute, limits, raw
 from . import personas as persona_order
 from .serialize import result_to_dict
 
@@ -70,7 +70,33 @@ def current_result(db: Session, engagement_id: str) -> dict:
     for lim in result["license_limits"]:
         lim["over_by"] = max(lim["current_over_by"], lim["target_over_by"])
     result["views"] = views(result)
+    result["views"]["personas"] = persona_view(raw.interpreted(db, engagement_id), result)
     return result
+
+
+def persona_view(i, result: dict) -> list[dict]:
+    """Each persona today and after its move, per user per month (GUIDED_PLAN G3).
+    Today is the interpreter's baseline. After = today + the scenario's delta: a
+    kept tool sits on both sides and cancels (ENGINE_SPEC 6.0a), so the engine's
+    delta is exactly the change in the persona's all-in cost. No plan = no change."""
+    from decimal import Decimal
+
+    by_persona = {s["persona_id"]: s for s in result.get("scenarios") or [] if s.get("in_scope")}
+    out = []
+    for b in i.baselines:
+        s = by_persona.get(b.persona_id)
+        delta = Decimal(str(s["delta_annual"])) if s else Decimal("0")
+        after = b.total_annual + delta
+        hc = Decimal(b.headcount) if b.headcount > 0 else None
+        per = (lambda v: float((v / hc / 12).quantize(Decimal("0.01"))) if hc else 0.0)
+        out.append({
+            "persona_id": b.persona_id, "headcount": b.headcount,
+            "has_plan": s is not None, "plan": (s or {}).get("target_label") or (s or {}).get("target_sku_reference"),
+            "today_annual": float(b.total_annual), "after_annual": float(after), "delta_annual": float(delta),
+            "today_per_user_monthly": float(b.per_user_monthly),
+            "after_per_user_monthly": per(after), "delta_per_user_monthly": per(delta),
+        })
+    return out
 
 
 # The bridge's third-party groups: which products each draws on, and which of their
