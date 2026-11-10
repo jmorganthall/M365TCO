@@ -96,7 +96,11 @@ def test_deleting_a_persona_or_outcome_removes_its_answers(client):
         client.put(url, json={"persona_id": pid, "outcome_id": oid, "answer": "NotDeliveredToday"})
     client.delete(f"/api/engagements/{eid}/outcomes/{edr}")
     assert [r["outcome_id"] for r in client.get(url).json()] == [epp]
-    client.delete(f"/api/engagements/{eid}/personas/{pid}")
+    # The persona is the only holder of its E3 line: that is removed first (a
+    # sole holder can't be deleted while its licence would become everyone's).
+    for line in client.get(f"/api/engagements/{eid}/current-licenses").json():
+        client.delete(f"/api/engagements/{eid}/current-licenses/{line['id']}")
+    assert client.delete(f"/api/engagements/{eid}/personas/{pid}").status_code == 204
     assert client.get(url).json() == []
 
 
