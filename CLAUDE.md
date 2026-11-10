@@ -94,6 +94,25 @@ tracks the remaining work. These rules hold for all new work:
   (`frontend/src/api.js`), which refetch after every write. Typed fields save
   on Enter or blur, never per keystroke.
 
+## UI conventions
+
+GUI work follows the "UI dos and don'ts" rules (typography, interface, spacing,
+colour, mobile, dark mode, dashboards). In this codebase that means:
+
+- **Colour tokens** (`frontend/src/styles.css` `:root`): `--accent` is the fill for
+  buttons and selected states (white text on it is ≥ 4.5:1); `--accent-text` is the
+  accent used as text, e.g. links. Never put white text on a lighter accent, or
+  accent-coloured text on a panel below 4.5:1. Red (`--neg`) is for errors and
+  destructive actions only.
+- **One filled button per view**; other actions are `ghost`. Buttons say what happens.
+- **Every field has a visible label**; placeholders are examples ("e.g. 300").
+- **Errors** use `.err` (icon + words), never colour alone. Links are underlined.
+- **Body text** is 1.5 line height; long help text is capped at `65ch`.
+- **Spacing** in new CSS comes from 4, 8, 16, 24, 32 px.
+- **Touch**: on coarse pointers or narrow screens, inputs are 16px and tap targets
+  44px (a media query in `styles.css`); don't undo it per component.
+- **Numbers** in tables are right-aligned with tabular figures (`td.num`).
+
 ## Engine
 
 The calculation engine (`backend/tco_engine/`) is pure and I/O-free. It

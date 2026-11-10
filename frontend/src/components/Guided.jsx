@@ -256,12 +256,15 @@ function GroupsQ({ engagement, base, personas, interp, call }) {
             onClick={() => confirm(`Remove ${p.name}?`) && call(() => api.del(`${base}/personas/${p.id}`))}>✕</button>
         </div>
       ))}
-      <div className="guide-row">
-        <input value={name} placeholder="Group name" onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && add()} />
-        <input type="number" value={size} placeholder="People" style={{ width: 120 }}
-          onChange={(e) => setSize(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
-        <button onClick={add}>Add group</button>
+      {/* UI3: visible labels; the placeholders are examples. MO4: a number pad for size. */}
+      <div className="guide-row" style={{ alignItems: 'flex-end' }}>
+        <div className="guide-field"><label htmlFor="new-group-name">New group</label>
+          <input id="new-group-name" value={name} placeholder="e.g. Frontline" onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && add()} /></div>
+        <div className="guide-field"><label htmlFor="new-group-size">People</label>
+          <input id="new-group-size" type="number" inputMode="numeric" value={size} placeholder="e.g. 300" style={{ width: 120 }}
+            onChange={(e) => setSize(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} /></div>
+        <button className="ghost" onClick={add}>Add group</button>
       </div>
       {s && personas.length > 0 && (
         <p className="guide-count">These groups add up to <b>{s.groups_headcount.toLocaleString()}</b> people.</p>
@@ -610,7 +613,7 @@ function GapSweep({ base, outcomes, personas, interp, result, call }) {
             </div>
             <div className="guide-chips">
               {open.length > 0
-                ? <button className="sm" onClick={() => put(p, open, 'NotDeliveredToday')}>These are all new for {p.name}</button>
+                ? <button className="ghost sm" onClick={() => put(p, open, 'NotDeliveredToday')}>These are all new for {p.name}</button>
                 : <span className="src pos">Confirmed.</span>}
               <span className="muted" style={{ fontSize: '.8rem' }}>✕ on one they already have another way.</span>
             </div>
