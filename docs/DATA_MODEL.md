@@ -305,6 +305,13 @@ linked to the first by `parent_persona_id`:
   outcome list; the add form takes a description too) — `description` is
   customer-facing content: it prints as hover text on the readout's
   New-outcomes chips.
+- **`area`** (GUIDED_PLAN G9): the broad area the outcome sits in ("Email security",
+  "Endpoint", …), copied from `DefaultOutcome.area`. NULL = not grouped ("Other").
+  Editable on the engagement's outcome list (grouped by it) and, for the template,
+  in Settings → Outcomes. An engagement created before areas existed gets them only
+  through the Library updates item `outcome_areas`; an area set for the customer is
+  never overwritten. The seed file carries the areas; `_backfill_outcome_areas`
+  fills them on an already-seeded global library.
 - **CRUD:** `GET/POST/PATCH/DELETE …/outcomes`. `OutcomeOut` exposes the
   system-derived **`seed_key`** (the stable library identifier, null for custom
   outcomes) so consumers — the AI coverage-suggest prompt, Coverage Check, tests —

@@ -311,6 +311,11 @@ class Outcome(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     is_custom: Mapped[bool] = mapped_column(Boolean, default=False)
     seed_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    # The broad area the outcome sits in ("Email security", "Endpoint", …): the
+    # guided walkthrough asks area by area (GUIDED_PLAN G9). Copied with the
+    # library; NULL = not grouped (an engagement from before areas, or a custom
+    # outcome), shown under "Other".
+    area: Mapped[str | None] = mapped_column(String, nullable=True)
 
     engagement: Mapped[Engagement] = relationship(back_populates="outcomes")
 
@@ -972,7 +977,8 @@ class LibraryUpdateDecision(Base):
     removes a library coverage row by hand — the current code deletes rather than
     archives, so the removal is recorded as the engagement's answer.
 
-    kind ∈ coverage_added | coverage_removed | outcome_added | licence_in_library.
+    kind ∈ coverage_added | coverage_removed | outcome_added | licence_in_library |
+    outcome_areas.
     Subject: `bundle_id` + `outcome_key` (the library outcome's stable key) for the
     coverage kinds, `outcome_key` for outcome_added, `license_id` for
     licence_in_library."""
@@ -1005,6 +1011,8 @@ class DefaultOutcome(Base):
     name: Mapped[str] = mapped_column(String)
     description: Mapped[str] = mapped_column(Text, default="")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    # The outcome's broad area (GUIDED_PLAN G9), copied into each new engagement.
+    area: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class DefaultBundleCoverage(Base):

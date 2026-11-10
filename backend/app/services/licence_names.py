@@ -165,7 +165,7 @@ def adopt_library_plan(db: Session, eng: models.Engagement, bundle: models.Bundl
             continue
         d = defaults[dc.outcome_key]
         row = models.Outcome(engagement_id=eng.id, name=d.name, description=d.description,
-                             is_custom=False, seed_key=d.key)
+                             is_custom=False, seed_key=d.key, area=d.area)
         db.add(row)
         db.flush()
         by_seed[d.key] = row

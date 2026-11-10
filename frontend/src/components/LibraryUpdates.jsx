@@ -77,6 +77,7 @@ export default function LibraryUpdates({ engagement, onChange }) {
 
 const BADGE = {
   outcome_added: 'new outcome',
+  outcome_areas: 'areas',
   coverage_added: 'plan',
   coverage_removed: 'removed',
   licence_in_library: 'licence',
@@ -108,6 +109,9 @@ function describe(i) {
       return <>The library now knows <b>{i.sku_reference}</b> as <b>{i.bundle_name}</b>.
         <div className="muted" style={{ fontSize: '.8rem' }}>Answered in this workshop: {list(i.line_outcomes) || 'nothing'}.
           The plan delivers: {list(i.plan_outcomes) || 'nothing yet'}. Apply links the licence to the plan.</div></>
+    case 'outcome_areas':
+      return <>The library now groups capabilities into areas ({list(i.areas)}). Apply groups this
+        engagement's {i.count} library capabilities the same way; the guided walkthrough asks area by area.</>
     default:
       return i.kind
   }

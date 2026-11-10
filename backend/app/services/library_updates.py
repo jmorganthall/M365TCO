@@ -17,6 +17,10 @@ Kinds, each one item per plan, outcome or licence name:
   licence_in_library  a licence name answered with outcomes that the library now
                       reads as a plan
                       Apply: link the lines to the plan (the answer "same as")
+  outcome_areas       library outcomes this engagement has with no area, where the
+                      library now groups them (GUIDED_PLAN G9). One item for all.
+                      Apply: copy the library's areas onto those outcomes; an area
+                      set for this customer is never changed
 """
 
 from __future__ import annotations
@@ -27,7 +31,7 @@ from sqlalchemy.orm import Session
 from .. import models
 from . import bundles, licence_names, raw
 
-KINDS = ("outcome_added", "coverage_added", "coverage_removed", "licence_in_library")
+KINDS = ("outcome_added", "coverage_added", "coverage_removed", "licence_in_library", "outcome_areas")
 
 
 def _library_pairs(db: Session) -> set[tuple[str, str]]:
@@ -126,6 +130,14 @@ def pending(db: Session, eng: models.Engagement) -> list[dict]:
             "outcome_keys": sorted({outcome_by_id[r.outcome_id].seed_key for r in gone}),
         })
 
+    library_area = {d.key: d.area for d in defaults if d.area}
+    ungrouped = [o for o in eng.outcomes if o.seed_key in library_area and not o.area]
+    if ungrouped and ("outcome_areas", None, None, None) not in declined:
+        items.append({
+            "kind": "outcome_areas", "key": "outcome_areas",
+            "count": len(ungrouped), "areas": sorted({library_area[o.seed_key] for o in ungrouped}),
+        })
+
     # How each line is read, and the engagement's coverage, are the interpreter's.
     interp = raw.interpreted(db, eng.id)
     sku_outcomes = interp.raw.microsoft_coverage
@@ -167,6 +179,7 @@ def declined(eng: models.Engagement, db: Session) -> list[dict]:
             "coverage_added": f"{plan} includes {outcome}",
             "coverage_removed": f"The library no longer lists {outcome} for {plan}",
             "licence_in_library": f"Link {lines.get(d.license_id) or 'a licence line'} to the library's plan",
+            "outcome_areas": "Group capabilities into the library's areas",
         }.get(d.kind, d.kind)
         out.append({"id": d.id, "kind": d.kind, "label": label, "reason": d.reason,
                     "decided_at": d.decided_at.isoformat() if d.decided_at else None})
@@ -181,6 +194,8 @@ def _find(db: Session, eng: models.Engagement, kind: str, subject: dict) -> dict
             return item
         if kind in ("coverage_added", "coverage_removed") and item["bundle_id"] == subject.get("bundle_id"):
             return item
+        if kind == "outcome_areas":
+            return item
         if kind == "licence_in_library" and licence_names.name_key(item["sku_reference"]) \
                 == licence_names.name_key(subject.get("sku_reference")):
             return item
@@ -191,7 +206,7 @@ def _add_outcome(db: Session, eng: models.Engagement, key: str) -> models.Outcom
     """Add a library outcome, with the library's coverage of it on every plan."""
     d = db.execute(select(models.DefaultOutcome).where(models.DefaultOutcome.key == key)).scalar_one()
     row = models.Outcome(engagement_id=eng.id, name=d.name, description=d.description,
-                         is_custom=False, seed_key=d.key)
+                         is_custom=False, seed_key=d.key, area=d.area)
     db.add(row)
     db.flush()
     plan_by_key = {b.key: b for b in bundles.list_bundles(db)}
@@ -221,6 +236,11 @@ def _apply(db: Session, eng: models.Engagement, item: dict) -> None:
     elif kind == "coverage_removed":
         for rid in item["row_ids"]:
             db.delete(db.get(models.CoverageMapEntry, rid))
+    elif kind == "outcome_areas":
+        library_area = {d.key: d.area for d in db.execute(select(models.DefaultOutcome)).scalars() if d.area}
+        for o in eng.outcomes:
+            if not o.area and o.seed_key in library_area:
+                o.area = library_area[o.seed_key]
     elif kind == "licence_in_library":
         # The "same as" answer: links every line of the name and clears its ticks.
         licence_names.answer(db, eng, item["sku_reference"], "same_as", item["bundle_id"])
@@ -273,6 +293,8 @@ def decline(db: Session, eng: models.Engagement, kind: str, subject: dict) -> No
     elif kind == "licence_in_library":
         for lid in item["line_ids"]:
             _decide(db, eng, kind, license_id=lid, reason=NOT_FOR_THIS_CUSTOMER)
+    elif kind == "outcome_areas":
+        _decide(db, eng, kind, reason=NOT_FOR_THIS_CUSTOMER)
     db.commit()
 
 

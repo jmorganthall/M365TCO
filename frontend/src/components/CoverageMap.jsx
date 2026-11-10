@@ -145,15 +145,23 @@ export default function CoverageMap({ engagement, meta, section }) {
         <p className="hint" style={{ margin: '.2rem 0 .4rem' }}>Name and description are this
           engagement's own copy and editable here — the description prints on the readout's
           <b> New outcomes</b> chips (and their hover text). Commits on blur.</p>
-        {[...outcomes].sort((a, b) => a.name.localeCompare(b.name)).map((o) => (
-          <div key={o.id} className="toolbar" style={{ gap: '.4rem', margin: '.25rem 0', alignItems: 'center' }}>
+        {[...outcomes].sort((a, b) => (a.area || '~').localeCompare(b.area || '~') || a.name.localeCompare(b.name)).map((o, i, all) => (
+          <React.Fragment key={o.id}>
+          {(i === 0 || (all[i - 1].area || '') !== (o.area || '')) && (
+            <div className="muted" style={{ fontWeight: 600, marginTop: '.6rem' }}>{o.area || 'Other'}</div>
+          )}
+          <div className="toolbar" style={{ gap: '.4rem', margin: '.25rem 0', alignItems: 'center' }}>
             <input style={{ flex: 1 }} defaultValue={o.name}
               onBlur={(e) => patchOutcome(o.id, { name: e.target.value })} />
+            <input style={{ flex: '0 0 11rem' }} defaultValue={o.area || ''} placeholder="Area"
+              title="The broad area the guided walkthrough asks about first"
+              onBlur={(e) => patchOutcome(o.id, { area: e.target.value.trim() })} />
             <input style={{ flex: 2 }} defaultValue={o.description || ''}
               placeholder="Description (customer-facing — shown on the readout)"
               onBlur={(e) => patchOutcome(o.id, { description: e.target.value })} />
             {o.is_custom && <span className="badge warn">custom</span>}
           </div>
+          </React.Fragment>
         ))}
         {outcomes.length === 0 && <span className="muted">No outcomes yet.</span>}
       </details>}

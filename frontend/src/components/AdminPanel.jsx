@@ -514,13 +514,18 @@ function DefaultOutcomes({ onMsg, onErr }) {
         are never changed. Outcomes drive the coverage map and the best-bundle analysis.</p>
 
       <table>
-        <thead><tr><th>Outcome</th><th>Description</th><th></th></tr></thead>
+        <thead><tr><th>Outcome</th><th>Area</th><th>Description</th><th></th></tr></thead>
         <tbody>
           {items.map((o) => (
             <tr key={o.id}>
               <td style={{ width: '32%' }}>
                 <input defaultValue={o.name}
                   onBlur={(e) => update(o.id, { name: e.target.value }, o)} />
+              </td>
+              <td style={{ width: '18%' }}>
+                <input defaultValue={o.area || ''} placeholder="e.g. Email security"
+                  title="The broad area the guided walkthrough asks about first"
+                  onBlur={(e) => (e.target.value !== (o.area || '')) && update(o.id, { area: e.target.value }, o)} />
               </td>
               <td>
                 <input defaultValue={o.description}

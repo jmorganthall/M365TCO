@@ -142,7 +142,8 @@ def create_default_outcome(payload: schemas.DefaultOutcomeIn, db: Session = Depe
     else:
         sort_order = payload.sort_order
     row = models.DefaultOutcome(
-        key=key, name=payload.name, description=payload.description, sort_order=sort_order
+        key=key, name=payload.name, description=payload.description, sort_order=sort_order,
+        area=(payload.area or "").strip() or None,
     )
     db.add(row)
     db.commit()
@@ -160,6 +161,8 @@ def update_default_outcome(
     # key is immutable (coverage references it); only name/description/order edit.
     row.name = payload.name
     row.description = payload.description
+    if "area" in payload.model_fields_set:
+        row.area = (payload.area or "").strip() or None
     if payload.sort_order is not None:
         row.sort_order = payload.sort_order
     db.commit()
