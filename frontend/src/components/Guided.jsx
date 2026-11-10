@@ -399,7 +399,6 @@ function OutcomeWalk({ base, area, n, of, tools, interp, personas, call }) {
 }
 
 function OutcomeRow({ o, mine, ms, others, tools, onAdd, onRemove, onNew }) {
-  const [name, setName] = useState('')
   const toolName = (id) => tools.find((t) => t.id === id)?.name || 'A tool'
   return (
     <div className="guide-block">
@@ -411,12 +410,53 @@ function OutcomeRow({ o, mine, ms, others, tools, onAdd, onRemove, onNew }) {
           <span key={c.id} className="badge">{toolName(c.third_party_product_id)}
             <button className="chip-x" title="Not used for this" onClick={() => onRemove(c.id)}>✕</button></span>
         ))}
-        {others.map((t) => <button key={t.id} className="ghost sm" onClick={() => onAdd(t.id)}>+ {t.name}</button>)}
-        <input value={name} placeholder="+ A tool you pay for" style={{ width: 200 }}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { onNew(name); setName('') } }}
-          onBlur={() => { if (name.trim()) { onNew(name); setName('') } }} />
+        <ToolPicker others={others} onAdd={onAdd} onNew={onNew} />
       </div>
+    </div>
+  )
+}
+
+// One box to add a tool to a capability: the tools already named for other
+// capabilities are in its dropdown (filtered as you type), and anything else typed
+// is added as a new tool. Only the tools picked for this capability are shown above.
+function ToolPicker({ others, onAdd, onNew }) {
+  const [text, setText] = useState('')
+  const [open, setOpen] = useState(false)
+  const [sel, setSel] = useState(0)
+  const q = text.trim().toLowerCase()
+  const matches = others.filter((t) => !q || t.name.toLowerCase().includes(q))
+  const exact = others.find((t) => t.name.trim().toLowerCase() === q)
+  const options = [...matches.map((t) => ({ kind: 'tool', t })),
+    ...(q && !exact ? [{ kind: 'new', name: text.trim() }] : [])]
+  function choose(opt) {
+    if (!opt) return
+    if (opt.kind === 'tool') onAdd(opt.t.id)
+    else onNew(opt.name)
+    setText(''); setSel(0); setOpen(false)
+  }
+  return (
+    <div className="combo" style={{ width: 260 }}>
+      <input value={text} placeholder="+ Add a tool" style={{ width: '100%' }}
+        onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onChange={(e) => { setText(e.target.value); setSel(0); setOpen(true) }}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown') { e.preventDefault(); setSel((n) => Math.min(n + 1, options.length - 1)) }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setSel((n) => Math.max(n - 1, 0)) }
+          else if (e.key === 'Enter') { e.preventDefault(); choose(exact ? { kind: 'tool', t: exact } : options[sel]) }
+          else if (e.key === 'Escape') setOpen(false)
+        }} />
+      {open && options.length > 0 && (
+        <div className="combo-list">
+          {options.map((opt, n) => (
+            <div key={opt.kind === 'tool' ? opt.t.id : 'new'} className={`combo-item ${n === sel ? 'sel' : ''}`}
+              onMouseDown={(e) => { e.preventDefault(); choose(opt) }} onMouseEnter={() => setSel(n)}>
+              {opt.kind === 'tool'
+                ? <><div className="combo-id">{opt.t.name}</div><div className="combo-name">already named</div></>
+                : <><div className="combo-id">Add “{opt.name}”</div><div className="combo-name">as a new tool</div></>}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
