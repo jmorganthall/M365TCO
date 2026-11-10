@@ -130,6 +130,20 @@ class RawScenario:
     resolved_bundle_id: Optional[str] = None
     # The plan a person picked (TARGET_SCHEMA §5.2); wins over the name.
     linked_bundle_id: Optional[str] = None
+    # The practice's services in this future state (G13).
+    services: tuple["RawService", ...] = ()
+
+
+@dataclass(frozen=True)
+class RawService:
+    """A practice service as the loader reads it (GUIDED_PLAN G13): its kind, its
+    price per user per year, and the engagement's outcome ids it delivers (the
+    library keys mapped to this engagement's outcomes)."""
+    id: str
+    name: str
+    kind: str                           # "ManagedSecurity" | "Calling" | "Other"
+    price_annual: Decimal
+    outcome_ids: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -293,6 +307,10 @@ class IScenario:
     discounted_net_annual: Decimal = ZERO   # composed list × (1 − discount), before any override
     pct_off_list: Decimal = ZERO            # how far below the composed list the net is (≥ 0)
     plan_source: Optional[str] = None       # "picked" | "name" | None (no plan)
+    # G13: what the Microsoft plan alone delivers, and the practice services added.
+    microsoft_outcome_ids: frozenset[str] = frozenset()
+    service_ids: tuple[str, ...] = ()
+    services_annual: Decimal = ZERO         # per user per year
 
 
 @dataclass(frozen=True)
@@ -607,6 +625,9 @@ def interpret(raw: RawEngagement) -> Interpreted:
         covered = set(raw.microsoft_coverage.get(key, frozenset()))
         for a in s.addons:
             covered |= raw.microsoft_coverage.get(a.bundle_id, frozenset())
+        microsoft = frozenset(covered)
+        for sv in s.services:
+            covered |= sv.outcome_ids
         composed = s.list_price_annual + sum((a.list_price_annual for a in s.addons), ZERO)
         overridden = s.price_override and s.overridden_price_annual is not None
         discounted = composed * (ONE - (s.discount_pct or ZERO))
@@ -621,6 +642,8 @@ def interpret(raw: RawEngagement) -> Interpreted:
             complete=bool((s.target_sku_reference or "").strip()) and (overridden or net > 0),
             discounted_net_annual=discounted, pct_off_list=_pct_off(composed, net),
             plan_source="picked" if s.linked_bundle_id else "name" if s.resolved_bundle_id else None,
+            microsoft_outcome_ids=microsoft, service_ids=tuple(sv.id for sv in s.services),
+            services_annual=sum((sv.price_annual for sv in s.services), ZERO),
         ))
 
     personas = tuple(
@@ -1052,6 +1075,7 @@ def to_engine(i: Interpreted) -> Engagement:
             id=s.id, persona_id=s.persona_id, target_sku_reference=s.target_sku_reference,
             target_unit_price_annual=s.net_annual, in_scope=s.in_scope,
             target_covered_outcome_ids=s.covered_outcome_ids,
+            services_unit_price_annual=s.services_annual,
         ) for s in i.scenarios],
         current_licenses=current,
         ecif_roi_conservative=raw.ecif_roi_conservative,

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { api, money, useDataVersion, useInterpreted, useResult, usd } from '../api'
 import { RecommendPlans } from './FutureState.jsx'
 import ExtraSeats from './ExtraSeats.jsx'
+import { Sections, ServicePicker } from './PracticeServices.jsx'
 
 // The persona-guided walkthrough (docs/GUIDED_PLAN.md §4): one question per screen,
 // over the same data as the detail steps. Every number shown comes from the
@@ -17,6 +18,8 @@ export const GUIDE_STEPS = [
   ['today', 'Today'],
   ['plan', 'Recommendation'],
   ['seats', 'Seats'],
+  ['security', 'Managed security'],
+  ['calling', 'Calling'],
   ['summary', 'Summary'],
 ]
 
@@ -95,6 +98,20 @@ export default function Guided({ engagement, step, sub, onGo, onUpdate, onDetail
           {step === 'today' && <TodayQ {...ctx} />}
           {step === 'plan' && <PlanQ {...ctx} />}
           {step === 'seats' && <SeatsQ {...ctx} />}
+          {step === 'security' && (
+            <Ask title="Who should we watch over?"
+              why="Our managed security service watches alerts around the clock. Add it to a group and it replaces the managed part of what you pay a provider today, as well as the tooling.">
+              <ServicePicker engagement={engagement} kind="ManagedSecurity" />
+              <Sections engagement={engagement} only="ManagedSecurity" />
+            </Ask>
+          )}
+          {step === 'calling' && (
+            <Ask title="Who needs a phone number?"
+              why="Teams Phone is the phone system; our calling service is the phone line. A phone system you pay for today goes away only when a group has both.">
+              <ServicePicker engagement={engagement} kind="Calling" />
+              <Sections engagement={engagement} only="Calling" />
+            </Ask>
+          )}
           {step === 'summary' && <SummaryQ {...ctx} />}
           {err && <div className="err" style={{ marginTop: '1rem' }}>{err}</div>}
           <div className="guide-nav">
@@ -562,7 +579,7 @@ function SeatsQ({ engagement, interp }) {
   )
 }
 
-function SummaryQ({ interp, result, onDetail }) {
+function SummaryQ({ engagement, interp, result, onDetail }) {
   const s = interp.data?.summary
   const r = result?.rollup
   const open = interp.findings.filter((f) => f.severity !== 'info').length
@@ -575,6 +592,7 @@ function SummaryQ({ interp, result, onDetail }) {
             <div className={`guide-stat ${r.net_tco_delta_annual < 0 ? 'pos' : ''}`}>{usd(r.net_tco_delta_annual)}</div></div>
         </div>
       )}
+      <Sections engagement={engagement} />
       <p className="muted">{open ? `${open} item${open === 1 ? '' : 's'} still to check on Review.` : 'Nothing left to check.'}</p>
       <div className="guide-chips">
         <button className="ghost" onClick={() => onDetail('review')}>Review ›</button>

@@ -70,6 +70,8 @@ class ScenarioResult:
     # licensing contributes beyond savings available with no move at all.
     move_incremental_delta_annual: Decimal = Decimal("0")
     offsets: list[OffsetDetail] = field(default_factory=list)
+    # The practice services part of target_spend_annual (G13); the rest is Microsoft.
+    target_services_annual: Decimal = Decimal("0")
 
 
 @dataclass
@@ -224,6 +226,9 @@ class RollupResult:
     #   ecif_funding_low   = max(uplift, 0) / conservative_ratio   # e.g. 1/10 (less)
     #   ecif_funding_high  = max(uplift, 0) / generous_ratio       # e.g. 1/5  (more)
     msft_uplift_annual: Decimal = Decimal("0")
+    # The practice services in the in-scope future state (G13). With them the bridge
+    # reads: net = target_microsoft + target_services − existing_microsoft − existing_third_party.
+    target_services_annual: Decimal = Decimal("0")
     ecif_funding_low: Decimal = Decimal("0")
     ecif_funding_high: Decimal = Decimal("0")
     # The headline (Section 6.11): duplicate spend today + consolidation +
@@ -581,9 +586,10 @@ def compute(engagement: Engagement) -> EngineResult:
                 )
 
         current_spend = _money(current_ms + offset_total)
+        target_services = _money(Decimal(persona.headcount) * scenario.services_unit_price_annual)
         target_spend = _money(
             Decimal(persona.headcount) * scenario.target_unit_price_annual
-        )
+        ) + target_services
         # Cost-change convention (Section 6.7): delta = new − old.
         #   delta > 0  → spending MORE (a cost increase)
         #   delta < 0  → spending LESS (a hard-dollar saving)
@@ -607,6 +613,7 @@ def compute(engagement: Engagement) -> EngineResult:
                     delta + sum((o.redundant_today_annual for o in offsets), Decimal("0"))
                 ),
                 offsets=offsets,
+                target_services_annual=target_services,
             )
         )
 
@@ -670,9 +677,12 @@ def compute(engagement: Engagement) -> EngineResult:
     existing_third_party = _money(
         sum((r.current_third_party_offset_annual for r in in_scope_results), Decimal("0"))
     )
+    target_services = _money(
+        sum((r.target_services_annual for r in in_scope_results), Decimal("0"))
+    )
     target_microsoft = _money(
         sum((r.target_spend_annual for r in in_scope_results), Decimal("0"))
-    )
+    ) - target_services
 
     # Aggregate the per-scenario offsets by product so the readout can name each
     # freed-up tool and its credited savings (summing to existing_third_party).
@@ -744,6 +754,7 @@ def compute(engagement: Engagement) -> EngineResult:
             + sum((f.redundant_today_annual for f in freed_third_party), Decimal("0"))
         ),
         msft_uplift_annual=msft_uplift,
+        target_services_annual=target_services,
         ecif_funding_low=ecif_low,
         ecif_funding_high=ecif_high,
         headline=timed_headline(engagement, scenario_results, quick_wins),

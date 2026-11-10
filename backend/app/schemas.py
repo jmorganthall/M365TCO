@@ -587,6 +587,34 @@ class ScenarioOut(ORMModel):
     term_duration: Optional[str]
     billing_plan: Optional[str]
     addons: list[ScenarioAddonOut]
+    # The practice services in this future state (G13), by id.
+    service_ids: list[str] = []
+
+
+# ---- Practice services (GUIDED_PLAN G13) ----
+class PracticeServiceIn(BaseModel):
+    name: str = ""
+    kind: Literal["ManagedSecurity", "Calling", "Other"] = "Other"
+    price_monthly: Decimal = Decimal("0")
+    description: str = ""
+    sort_order: Optional[int] = None
+    archived: bool = False
+    outcome_keys: Optional[list[str]] = None
+
+
+class PracticeServiceOut(ORMModel):
+    id: str
+    name: str
+    kind: str
+    price_monthly: Decimal
+    description: str
+    sort_order: int
+    archived: bool
+    outcome_keys: list[str]
+
+
+class ScenarioServicesIn(BaseModel):
+    service_ids: list[str]
 
 
 

@@ -21,6 +21,7 @@ from tco_engine.interpret import (
     RawPersona,
     RawScenario,
     RawContract,
+    RawService,
     RawTool,
     Interpreted,
     interpret,
@@ -59,6 +60,15 @@ def _coverage(db: Session, engagement_id: str, kind: str) -> dict[str, frozenset
     return {k: frozenset(v) for k, v in out.items()}
 
 
+def _service(sv: models.PracticeService, by_key: dict[str, str]) -> RawService:
+    """A practice service, its library outcome keys mapped to this engagement's
+    outcomes (a key the engagement doesn't have delivers nothing here)."""
+    return RawService(
+        id=sv.id, name=sv.name, kind=sv.kind or "Other",
+        price_annual=_dec(sv.price_monthly) * 12,
+        outcome_ids=frozenset(by_key[k] for k in sv.outcome_keys if k in by_key))
+
+
 def load_raw(db: Session, engagement_id: str) -> RawEngagement:
     eng = db.get(models.Engagement, engagement_id)
     if eng is None:
@@ -66,6 +76,7 @@ def load_raw(db: Session, engagement_id: str) -> RawEngagement:
 
     settings = eng.effective_settings  # inheritable settings, resolved once
     cache: dict[str, str | None] = {}
+    by_key = {o.seed_key: o.id for o in eng.outcomes if o.seed_key}
 
     def resolve(ref: str | None) -> str | None:
         ref = (ref or "").strip()
@@ -131,6 +142,7 @@ def load_raw(db: Session, engagement_id: str) -> RawEngagement:
                          for a in s.addons),
             resolved_bundle_id=resolve(s.target_sku_reference),
             linked_bundle_id=s.bundle_id,
+            services=tuple(_service(link.service, by_key) for link in s.service_links),
         )
         for s in eng.scenarios
     )

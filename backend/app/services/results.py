@@ -70,8 +70,77 @@ def current_result(db: Session, engagement_id: str) -> dict:
     for lim in result["license_limits"]:
         lim["over_by"] = max(lim["current_over_by"], lim["target_over_by"])
     result["views"] = views(result)
-    result["views"]["personas"] = persona_view(raw.interpreted(db, engagement_id), result)
+    interp = raw.interpreted(db, engagement_id)
+    result["views"]["personas"] = persona_view(interp, result)
+    result["views"]["sections"] = sections_view(interp, result)
     return result
+
+
+SECTION_ORDER = ("Microsoft", "ManagedSecurity", "Calling", "Other")
+
+
+def sections_view(i, result: dict) -> dict:
+    """The result in sections (GUIDED_PLAN G15): Microsoft 365, and one per kind of
+    practice service, each with its own cost after, what it retires and its change
+    per year, plus the combined total.
+
+    A tool a move retires is credited to Microsoft when the Microsoft plan alone
+    delivers everything it does; otherwise to the kind of the practice service that
+    delivers what Microsoft doesn't. G14: when a managed tool is retired by a
+    managed-security service, the managed share of its price (the part the engine
+    never counts, ENGINE_SPEC 6.5) is replaced too and credited to that section.
+    Without that share the sections add up exactly to the engine's net change."""
+    from decimal import Decimal
+
+    from tco_engine.rules import covers_tool
+
+    zero = Decimal("0")
+    raw_sc = {s.id: s for s in i.raw.scenarios}
+    isc = {s.id: s for s in i.scenarios}
+    tools = {t.id: t for t in i.tools}
+    sec = {k: {"key": k, "cost_after": zero, "cost_today": zero, "retired": zero,
+               "managed_share_retired": zero, "services": []} for k in SECTION_ORDER}
+    named: dict[str, set] = {k: set() for k in SECTION_ORDER}
+    for s in result.get("scenarios") or []:
+        if not s.get("in_scope") or s["scenario_id"] not in isc:
+            continue
+        sc, rs = isc[s["scenario_id"]], raw_sc[s["scenario_id"]]
+        hc = Decimal(s["headcount"])
+        services = Decimal(str(s.get("target_services_annual") or 0))
+        sec["Microsoft"]["cost_after"] += Decimal(str(s["target_spend_annual"])) - services
+        sec["Microsoft"]["cost_today"] += Decimal(str(s["current_microsoft_annual"]))
+        for sv in rs.services:
+            kind = sv.kind if sv.kind in sec else "Other"
+            sec[kind]["cost_after"] += hc * sv.price_annual
+            if sv.name not in named[kind]:
+                named[kind].add(sv.name)
+                sec[kind]["services"].append(sv.name)
+        for o in s.get("offsets") or []:
+            t = tools.get(o["third_party_product_id"])
+            credit = Decimal(str(o["credited_offset_annual"]))
+            if t is None or covers_tool(t.delivered_outcome_ids, sc.microsoft_outcome_ids):
+                sec["Microsoft"]["retired"] += credit
+                continue
+            missing = set(t.delivered_outcome_ids) - set(sc.microsoft_outcome_ids)
+            kind = next((sv.kind for sv in rs.services if sv.outcome_ids & missing), "Other")
+            kind = kind if kind in sec else "Other"
+            sec[kind]["retired"] += credit
+            if kind == "ManagedSecurity" and t.tooling_pct < 1 and t.people_covered:
+                share = t.annual_cost * (1 - t.tooling_pct) / Decimal(t.people_covered)
+                sec[kind]["managed_share_retired"] += Decimal(str(o["credited_units"])) * share
+    out = []
+    for k in SECTION_ORDER:
+        x = sec[k]
+        if k != "Microsoft" and not x["services"]:
+            continue
+        change = x["cost_after"] - x["cost_today"] - x["retired"] - x["managed_share_retired"]
+        out.append({**{f: (float(v.quantize(Decimal("0.01"))) if isinstance(v, Decimal) else v)
+                       for f, v in x.items()},
+                    "retired_total": float((x["retired"] + x["managed_share_retired"]).quantize(Decimal("0.01"))),
+                    "change_annual": float(change.quantize(Decimal("0.01")))})
+    return {"sections": out,
+            "combined_change_annual": round(sum(x["change_annual"] for x in out), 2),
+            "managed_share_retired_annual": round(sum(x["managed_share_retired"] for x in out), 2)}
 
 
 def persona_view(i, result: dict) -> list[dict]:

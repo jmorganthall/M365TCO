@@ -184,7 +184,7 @@ def build_html(eng: models.Engagement, result: dict, gaps: list[dict],
     ctx = _Context(eng, result, gaps, brand, prepared, interpreted)
     body = "".join([
         ctx.footer("running-footer"), ctx.cover(), ctx.opportunity(), ctx.quick_wins(),
-        ctx.persona_pages(), ctx.bridge(), ctx.third_party(), ctx.assumptions(),
+        ctx.persona_pages(), ctx.bridge(), ctx.sections(), ctx.third_party(), ctx.assumptions(),
         ctx.next_steps(), ctx.footer("screen-footer"),
     ])
     title = f"{eng.customer_name or 'Customer'} — Microsoft 365 TCO"
@@ -699,6 +699,32 @@ class _Context:
         )
 
     # ---- 6. Third-party tools --------------------------------------------------
+    def sections(self) -> str:
+        """The result in sections (GUIDED_PLAN G15): Microsoft 365 and each kind of
+        practice service, as `views.sections` computes them. Shown only when a
+        practice service is in the future state."""
+        v = self.views.get("sections") or {}
+        rows = v.get("sections") or []
+        if len(rows) < 2:
+            return ""
+        label = {"Microsoft": "Microsoft 365", "ManagedSecurity": "Managed security",
+                 "Calling": "Calling", "Other": "Other services"}
+        body = "".join(
+            f"<tr><td><b>{E(label.get(x['key'], x['key']))}</b>"
+            + (f"<div class='muted small'>{E(', '.join(x['services']))}</div>" if x["services"] else "")
+            + f"</td><td class='num'>{_usd0(x['cost_after'])}</td><td class='num'>{_usd0(x['retired_total'])}</td>"
+            f"<td class='num'>{_amt(-x['change_annual'])}</td></tr>" for x in rows)
+        managed = _f(v.get("managed_share_retired_annual"))
+        note = (f"<p class='muted small'>Managed security includes {_usd0(managed)} a year of the managed part of "
+                "today's provider price, which the Microsoft comparison never counts.</p>") if managed else ""
+        return (
+            "<section class='block keep'><div class='eyebrow'>By section</div><h1>Microsoft 365 and Our Services</h1>"
+            "<table class='data'><thead><tr><th>Section</th><th class='num'>Cost after / yr</th>"
+            "<th class='num'>Retires / yr</th><th class='num'>Saving / yr</th></tr></thead>"
+            f"<tbody>{body}</tbody><tfoot><tr><td><b>Combined</b></td><td></td><td></td>"
+            f"<td class='num'><b>{_amt(-_f(v.get('combined_change_annual')))}</b></td></tr></tfoot></table>"
+            f"{note}</section>")
+
     def third_party(self) -> str:
         if not self.dispositions:
             return ""

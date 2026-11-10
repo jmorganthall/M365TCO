@@ -47,6 +47,9 @@ UNUSED_SEATS_ANSWERS = ("Intended", "NotNeeded")
 # The customer's answer about a tool's seats beyond the personas who hold it
 # (GUIDED_PLAN G4, ENGINE_SPEC 6.0a).
 EXTRA_SEATS_ANSWERS = ("ExtraSeats", "PeopleWhoStay")
+# The kinds of service the practice sells (GUIDED_PLAN G13): each has its own
+# result section. Generic types only; the services' names are runtime data.
+PRACTICE_SERVICE_KINDS = ("ManagedSecurity", "Calling", "Other")
 # The customer's answer about a capability nothing in the inventory delivers to a
 # persona today (TARGET_SCHEMA §4.8): a confirmed gap, or covered by something the
 # engagement doesn't cost. No row = not answered (never claimed as new).
@@ -806,6 +809,13 @@ class PersonaScenario(Base):
     addons: Mapped[list["ScenarioAddon"]] = relationship(
         cascade="all, delete-orphan", back_populates="scenario"
     )
+    service_links: Mapped[list["ScenarioService"]] = relationship(
+        cascade="all, delete-orphan", back_populates="scenario"
+    )
+
+    @property
+    def service_ids(self) -> list[str]:
+        return [l.service_id for l in self.service_links]
 
 
 class CoverageGapAnswer(Base):
@@ -862,6 +872,60 @@ class ScenarioNarrative(Base):
     source_tag: Mapped[str] = _source_tag_col(default="AISuggestedUnconfirmed")
 
     engagement: Mapped[Engagement] = relationship(back_populates="narratives")
+
+
+class PracticeService(Base):
+    """One of the practice's own services (GUIDED_PLAN G13), e.g. a managed
+    detection and response service or a Teams calling service. Install-wide and
+    entered by an admin in Settings: names are runtime data, never seeded or
+    hard-coded (CLAUDE.md white-label rule). Priced per user per month; what it
+    delivers is a set of library outcome keys (PracticeServiceOutcome)."""
+
+    __tablename__ = "practice_services"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String)
+    kind: Mapped[str] = mapped_column(SAEnum(*PRACTICE_SERVICE_KINDS, name="practice_service_kind"),
+                                      default="Other")
+    price_monthly: Mapped[float] = mapped_column(Numeric(14, 4), default=0)
+    description: Mapped[str] = mapped_column(Text, default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    outcome_links: Mapped[list["PracticeServiceOutcome"]] = relationship(
+        cascade="all, delete-orphan", back_populates="service"
+    )
+
+    @property
+    def outcome_keys(self) -> list[str]:
+        return sorted(l.outcome_key for l in self.outcome_links)
+
+
+class PracticeServiceOutcome(Base):
+    """Association: a practice service delivers a library outcome (by its key)."""
+
+    __tablename__ = "practice_service_outcomes"
+    __table_args__ = (UniqueConstraint("service_id", "outcome_key", name="uq_service_outcome"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    service_id: Mapped[str] = mapped_column(ForeignKey("practice_services.id"), index=True)
+    outcome_key: Mapped[str] = mapped_column(String)
+
+    service: Mapped[PracticeService] = relationship(back_populates="outcome_links")
+
+
+class ScenarioService(Base):
+    """Association: a practice service in a persona's future state (G13)."""
+
+    __tablename__ = "scenario_services"
+    __table_args__ = (UniqueConstraint("scenario_id", "service_id", name="uq_scenario_service"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    scenario_id: Mapped[str] = mapped_column(ForeignKey("persona_scenarios.id"), index=True)
+    service_id: Mapped[str] = mapped_column(ForeignKey("practice_services.id"), index=True)
+
+    scenario: Mapped["PersonaScenario"] = relationship(back_populates="service_links")
+    service: Mapped[PracticeService] = relationship()
 
 
 class ScenarioAddon(Base):

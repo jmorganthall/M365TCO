@@ -3,6 +3,7 @@ import { api, pct, usd } from '../api'
 import { VersionInfo } from './UpdateBanner.jsx'
 import { BasisSelect } from './basis.jsx'
 import ReadoutBranding from './ReadoutBranding.jsx'
+import { PracticeServicesAdmin } from './PracticeServices.jsx'
 
 export default function AdminPanel({ onClose }) {
   const [secrets, setSecrets] = useState(null)
@@ -27,6 +28,7 @@ export default function AdminPanel({ onClose }) {
     ['licence-names', '🏷 Licence names'],
     ['limits', '🚦 License limits'],
     ['outcomes', '🎯 Default outcomes'],
+    ['services', '🧩 Practice services'],
     ['secrets', '🔑 Secrets'],
   ]
 
@@ -137,6 +139,7 @@ export default function AdminPanel({ onClose }) {
         </>}
 
         {section === 'outcomes' && <DefaultOutcomes onMsg={setMsg} onErr={setErr} />}
+        {section === 'services' && <PracticeServicesAdmin onMsg={setMsg} onErr={setErr} />}
         {section === 'branding' && <ReadoutBranding onMsg={setMsg} onErr={setErr} />}
 
         {section === 'coverage' && <DefaultCoverage onMsg={setMsg} onErr={setErr} />}

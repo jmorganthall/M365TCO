@@ -645,3 +645,63 @@ def reset_ai_prompt(key: str, db: Session = Depends(get_db)):
     if row is None:
         raise HTTPException(404, "AI prompt not found")
     return _prompt_payload(row)
+
+
+# ---------- Practice services (GUIDED_PLAN G13) ----------
+# The practice's own services. Entered here by an admin; names are runtime data and
+# never seeded (CLAUDE.md white-label rule).
+def _set_service_outcomes(db: Session, row: models.PracticeService, keys: list[str]) -> None:
+    known = set(db.execute(select(models.DefaultOutcome.key)).scalars())
+    unknown = [k for k in keys if k not in known]
+    if unknown:
+        raise HTTPException(422, f"Not in the outcome library: {', '.join(unknown)}")
+    wanted = set(keys)
+    for link in list(row.outcome_links):
+        if link.outcome_key not in wanted:
+            row.outcome_links.remove(link)
+    have = {l.outcome_key for l in row.outcome_links}
+    for k in sorted(wanted - have):
+        row.outcome_links.append(models.PracticeServiceOutcome(outcome_key=k))
+
+
+@router.get("/practice-services", response_model=list[schemas.PracticeServiceOut])
+def list_practice_services(include_archived: bool = False, db: Session = Depends(get_db)):
+    q = select(models.PracticeService).order_by(models.PracticeService.sort_order, models.PracticeService.name)
+    if not include_archived:
+        q = q.where(models.PracticeService.archived.is_(False))
+    return db.execute(q).scalars().all()
+
+
+@router.post("/practice-services", response_model=schemas.PracticeServiceOut, status_code=201)
+def create_practice_service(payload: schemas.PracticeServiceIn, db: Session = Depends(get_db)):
+    if not payload.name.strip():
+        raise HTTPException(422, "A service needs a name.")
+    data = payload.model_dump(exclude={"outcome_keys"})
+    if data["sort_order"] is None:
+        data["sort_order"] = (db.execute(select(func.max(models.PracticeService.sort_order))).scalar() or 0) + 1
+    data["name"] = data["name"].strip()
+    row = models.PracticeService(**data)
+    db.add(row)
+    _set_service_outcomes(db, row, payload.outcome_keys or [])
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.patch("/practice-services/{service_id}", response_model=schemas.PracticeServiceOut)
+def update_practice_service(service_id: str, payload: schemas.PracticeServiceIn, db: Session = Depends(get_db)):
+    row = db.get(models.PracticeService, service_id)
+    if row is None:
+        raise HTTPException(404, "Service not found")
+    data = payload.model_dump(exclude_unset=True)
+    keys = data.pop("outcome_keys", None)
+    if "name" in data and not (data["name"] or "").strip():
+        raise HTTPException(422, "A service needs a name.")
+    for k, v in data.items():
+        if v is not None or k == "sort_order":
+            setattr(row, k, v)
+    if keys is not None:
+        _set_service_outcomes(db, row, keys)
+    db.commit()
+    db.refresh(row)
+    return row

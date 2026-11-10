@@ -1560,3 +1560,19 @@ def test_population_summary_for_the_keep_or_retire_question():
     assert d.uncovered_count == 50 and d.uncovered_annual == D("5000.00")   # 50 × $100
     assert d.replaced_count == 450 and d.remaining_persona_count == 0
     assert d.held_count == 450 and d.over_licensed_only
+
+
+def test_practice_services_are_target_cost_but_never_microsoft():
+    """ENGINE_SPEC 6.2 / GUIDED_PLAN G13."""
+    e = Engagement(id="e", personas=[Persona(id="p", name="P", headcount=10)], scenarios=[
+        PersonaScenario(id="s", persona_id="p", target_sku_reference="E5",
+                        target_unit_price_annual=D("100"), services_unit_price_annual=D("50"))])
+    r = compute(e)
+    s = r.scenarios[0]
+    assert s.target_spend_annual == D("1500.00") and s.target_services_annual == D("500.00")
+    assert r.rollup.target_microsoft_annual == D("1000.00")
+    assert r.rollup.target_services_annual == D("500.00")
+    assert r.rollup.msft_uplift_annual == D("1000.00")
+    assert r.rollup.net_tco_delta_annual == (r.rollup.target_microsoft_annual + r.rollup.target_services_annual
+                                             - r.rollup.existing_microsoft_annual
+                                             - r.rollup.existing_third_party_annual)

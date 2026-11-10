@@ -1026,6 +1026,30 @@ def delete_gap_answer(engagement_id: str, answer_id: str, db: Session = Depends(
 
 
 # ---------- Persona scenarios ----------
+@router.put("/scenarios/{scenario_id}/services", response_model=schemas.ScenarioOut)
+def set_scenario_services(engagement_id: str, scenario_id: str, payload: schemas.ScenarioServicesIn,
+                          db: Session = Depends(get_db)):
+    """The practice services in a persona's future state (GUIDED_PLAN G13)."""
+    row = db.get(models.PersonaScenario, scenario_id)
+    if row is None or row.engagement_id != engagement_id:
+        raise HTTPException(404, "Scenario not found")
+    wanted = list(dict.fromkeys(payload.service_ids))
+    for sid in wanted:
+        sv = db.get(models.PracticeService, sid)
+        if sv is None:
+            raise HTTPException(422, "Unknown practice service.")
+    for link in list(row.service_links):
+        if link.service_id not in wanted:
+            row.service_links.remove(link)
+    have = {l.service_id for l in row.service_links}
+    for sid in wanted:
+        if sid not in have:
+            row.service_links.append(models.ScenarioService(service_id=sid))
+    db.commit()
+    db.refresh(row)
+    return row
+
+
 @router.get("/scenarios", response_model=list[schemas.ScenarioOut])
 def list_scenarios(engagement_id: str, db: Session = Depends(get_db)):
     _require_engagement(db, engagement_id)
