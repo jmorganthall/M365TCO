@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api, money, usd, useDataVersion, useResult } from '../api'
+import { api, money, usd, useDataVersion, useInterpreted, useResult } from '../api'
 
 // The practice's own services in each group's future state (docs/GUIDED_PLAN.md
 // G13): add one to a group's plan and its outcomes count in what the move
@@ -21,6 +21,15 @@ export function ServicePicker({ engagement, kind, moneyUnit = 'mo' }) {
   const [personas, setPersonas] = useState([])
   const [scenarios, setScenarios] = useState([])
   const [err, setErr] = useState('')
+  const interp = useInterpreted(eid)
+  // A service whose price in Settings changed after it was added here (G13): the
+  // engagement keeps the price it was given until a person applies the new one.
+  const changed = interp.findings.filter((f) => f.code === 'service_price_changed'
+    && (!kind || services.some((s) => s.id === f.facts.service_id)))
+  async function applyPrice(sid) {
+    setErr('')
+    try { await api.post(`/api/engagements/${eid}/practice-services/${sid}/apply-price`) } catch (e) { setErr(e.message) }
+  }
   useEffect(() => {
     api.get(`/api/engagements/${eid}/personas`).then(setPersonas).catch(() => {})
     api.get(`/api/engagements/${eid}/scenarios`).then(setScenarios).catch(() => {})
@@ -41,10 +50,17 @@ export function ServicePicker({ engagement, kind, moneyUnit = 'mo' }) {
   return (
     <div>
       {err && <div className="err">{err}</div>}
+      {changed.map((f) => (
+        <div key={f.facts.service_id} className="library-notice">
+          <span>{f.facts.name}'s price changed to {usd(f.facts.current_monthly)} per user per month. This engagement
+            uses {usd(f.facts.locked_monthly)}, the price when it was added.</span>
+          <button className="ghost sm" onClick={() => applyPrice(f.facts.service_id)}>Apply the new price</button>
+        </div>
+      ))}
       <table className="guide-table">
         <thead><tr><th>Group</th>{services.map((s) => (
           <th key={s.id} title={s.description}>{s.name}<div className="muted" style={{ fontWeight: 400 }}>
-            {usd(s.price_monthly)} per user / mo</div></th>
+            {usd(s.price_monthly)} per user / mo now</div></th>
         ))}</tr></thead>
         <tbody>
           {personas.map((p) => {
@@ -82,7 +98,7 @@ export function Sections({ engagement, moneyUnit = 'yr', only }) {
           <tr key={s.key}><td>{label(s.key)}{s.services.length > 0 && <div className="muted">{s.services.join(', ')}</div>}</td>
             <td className="num">{money(s.cost_after, moneyUnit)}</td>
             <td className="num">{money(s.retired_total, moneyUnit)}
-              {s.managed_share_retired > 0 && <div className="muted" title="The managed part of a managed tool's price, which the Microsoft comparison never counts">
+              {s.managed_share_retired > 0 && <div className="muted" title="The managed part of a managed tool's price, which only a managed service replaces">
                 incl. {money(s.managed_share_retired, moneyUnit)} managed share</div>}</td>
             <td className={`num ${s.change_annual < 0 ? 'pos' : ''}`}>{money(s.change_annual, moneyUnit)}</td></tr>
         ))}

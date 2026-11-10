@@ -716,7 +716,7 @@ class _Context:
             f"<td class='num'>{_amt(-x['change_annual'])}</td></tr>" for x in rows)
         managed = _f(v.get("managed_share_retired_annual"))
         note = (f"<p class='muted small'>Managed security includes {_usd0(managed)} a year of the managed part of "
-                "today's provider price, which the Microsoft comparison never counts.</p>") if managed else ""
+                "today's provider price, which only a managed service can replace.</p>") if managed else ""
         return (
             "<section class='block keep'><div class='eyebrow'>By section</div><h1>Microsoft 365 and Our Services</h1>"
             "<table class='data'><thead><tr><th>Section</th><th class='num'>Cost after / yr</th>"

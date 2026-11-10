@@ -142,8 +142,9 @@ class RawService:
     id: str
     name: str
     kind: str                           # "ManagedSecurity" | "Calling" | "Other"
-    price_annual: Decimal
+    price_annual: Decimal                # as locked in this future state
     outcome_ids: frozenset[str] = frozenset()
+    current_price_annual: Optional[Decimal] = None   # the price in Settings now
 
 
 @dataclass(frozen=True)
@@ -184,6 +185,9 @@ class RawEngagement:
     # How many people IT supports, as asked first in the guided flow (G8).
     supported_headcount: Optional[int] = None
     contracts: tuple[RawContract, ...] = ()
+    # The engagement's outcome id(s) for "24x7 managed detection & response": what
+    # the managed share of a managed tool delivers (G14).
+    managed_outcome_ids: frozenset[str] = frozenset()
 
 
 # ---------------------------------------------------------------------------
@@ -259,6 +263,7 @@ class ITool:
     extra_seats: int = 0                # stated seats beyond people_held (asked about, G4)
     extra_seats_answer: Optional[str] = None   # the customer's answer, as entered
     contract_id: Optional[str] = None          # a cost line of this contract (G12)
+    managed_share_of: Optional[str] = None     # the managed share of this managed tool (G14)
     renewal_date: Optional[str] = None         # its own, else its contract's
 
 
@@ -550,8 +555,41 @@ def _expand_contracts(raw: RawEngagement) -> tuple[RawEngagement, tuple[IContrac
     return replace(raw, tools=tuple(tools), tool_coverage=coverage), tuple(out)
 
 
+MANAGED_PREFIX = "managed-share:"
+
+
+def _expand_managed(raw: RawEngagement) -> RawEngagement:
+    """GUIDED_PLAN G14 / ENGINE_SPEC 6.5. Today's cost is what the customer pays, so
+    a managed tool counts in full: its software share (tooling %) as the tool itself,
+    and the rest as one more line, "<tool> (managed service)", held by the same
+    people. Microsoft replaces only software, so that line delivers only the
+    managed outcome (24x7 managed detection & response) when the tool delivers it:
+    a managed-security service that delivers it replaces it, and nothing else
+    does. The tool's own line keeps its other outcomes, so Microsoft can still
+    replace the software share."""
+    tools, coverage = [], dict(raw.tool_coverage)
+    for t in raw.tools:
+        tools.append(t)
+        if not t.is_managed:
+            continue
+        tooling = t.tooling_pct if t.tooling_pct is not None else raw.default_tooling_pct
+        if tooling >= 1:
+            continue
+        share_id = MANAGED_PREFIX + t.id
+        delivered = raw.tool_coverage.get(t.id, frozenset())
+        managed = delivered & raw.managed_outcome_ids
+        if managed and delivered - managed:
+            coverage[t.id] = delivered - managed
+        coverage[share_id] = managed
+        tools.append(replace(t, id=share_id, name=f"{t.name} (managed service)",
+                             raw_cost=_annual(t.raw_cost, t.cost_period) * (1 - tooling),
+                             cost_period="Annual", is_managed=False, tooling_pct=None))
+    return replace(raw, tools=tuple(tools), tool_coverage=coverage)
+
+
 def interpret(raw: RawEngagement) -> Interpreted:
     raw, contracts = _expand_contracts(raw)
+    raw = _expand_managed(raw)
     everyone = tuple(p.id for p in raw.personas)
     known = set(everyone)
     headcount = {p.id: p.headcount for p in raw.personas}
@@ -610,6 +648,7 @@ def interpret(raw: RawEngagement) -> Interpreted:
             extra_seats=max((t.covered_count_override or 0) - held, 0),
             extra_seats_answer=t.extra_seats_answer,
             contract_id=t.contract_id, renewal_date=t.renewal_date,
+            managed_share_of=t.id[len(MANAGED_PREFIX):] if t.id.startswith(MANAGED_PREFIX) else None,
         ))
         # Definition 7 (ENGINE_SPEC 6.0a): a persona's share is cost per person × its
         # headcount. Only seats the customer says belong to people who stay on the
@@ -825,6 +864,8 @@ def _findings(raw, lines, tools, scenarios, tables, seat_caps, contracts=()) -> 
                 "name": c.name, "total": c.annual_cost, "lines": c.lines_annual}))
     in_scope_planned = {s.persona_id for s in scenarios if s.in_scope}
     for t in tools:
+        if t.managed_share_of:          # mirrors its tool; the tool's findings cover it
+            continue
         rt = raw_tools[t.id]
         missing = []
         # A contract line may be $0 until its share is typed: the contract's
@@ -892,6 +933,17 @@ def _findings(raw, lines, tools, scenarios, tables, seat_caps, contracts=()) -> 
             "kind": kind, "persona_name": p.name, "headcount": p.headcount,
             "plan": s.target_sku_reference, "cap_key": c.key, "cap_name": c.name, "cap": c.max_quantity,
             "used_elsewhere": c.used_by_others(p.id), "seats_left": left}))
+
+    # A practice service whose price in Settings changed after it was added here.
+    changed: dict[str, IFinding] = {}
+    for rs in raw.scenarios:
+        for sv in rs.services:
+            if sv.current_price_annual is not None and sv.current_price_annual != sv.price_annual \
+                    and sv.id not in changed:
+                changed[sv.id] = IFinding("service_price_changed", "future", "info", facts={
+                    "service_id": sv.id, "name": sv.name,
+                    "locked_monthly": sv.price_annual / 12, "current_monthly": sv.current_price_annual / 12})
+    f.extend(changed.values())
 
     # ---- Capability comparison ----
     # A licence nobody can read (D23): one question per licence name.

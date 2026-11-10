@@ -3,13 +3,13 @@ import { api, money, useDataVersion, useInterpreted, useResult, usd } from '../a
 import { RecommendPlans } from './FutureState.jsx'
 import ExtraSeats from './ExtraSeats.jsx'
 import { Sections, ServicePicker } from './PracticeServices.jsx'
+import { EngagementBasisEditor } from './basis.jsx'
 
 // The persona-guided walkthrough (docs/GUIDED_PLAN.md §4): one question per screen,
 // over the same data as the detail steps. Every number shown comes from the
 // backend (useInterpreted / useResult); this file formats, never calculates.
 export const GUIDE_STEPS = [
   ['customer', 'Customer'],
-  ['headcount', 'People'],
   ['groups', 'Groups'],
   ['microsoft', 'Microsoft today'],
   ['outcomes', 'How you work today'],
@@ -35,7 +35,7 @@ function useList(path) {
   return rows
 }
 
-export default function Guided({ engagement, step, sub, onGo, onUpdate, onDetail }) {
+export default function Guided({ engagement, meta, step, sub, onGo, onUpdate, onDetail }) {
   const eid = engagement.id
   const base = `/api/engagements/${eid}`
   const interp = useInterpreted(eid)
@@ -75,7 +75,7 @@ export default function Guided({ engagement, step, sub, onGo, onUpdate, onDetail
     try { return await fn() } catch (e) { setErr(e.message) }
   }
 
-  const ctx = { eid, base, engagement, interp, result, personas, outcomes, tools, contracts, areas, call, onUpdate, onGo, onDetail }
+  const ctx = { eid, base, engagement, meta, interp, result, personas, outcomes, tools, contracts, areas, call, onUpdate, onGo, onDetail }
   return (
     <div className="guide">
       <div className="guide-main">
@@ -87,7 +87,6 @@ export default function Guided({ engagement, step, sub, onGo, onUpdate, onDetail
         </div>
         <div className="guide-card">
           {step === 'customer' && <CustomerQ {...ctx} />}
-          {step === 'headcount' && <HeadcountQ {...ctx} />}
           {step === 'groups' && <GroupsQ {...ctx} />}
           {step === 'microsoft' && <MicrosoftQ {...ctx} />}
           {step === 'outcomes' && <OutcomeWalk {...ctx} area={areas[subIdx]} n={subIdx} of={areas.length} />}
@@ -100,7 +99,7 @@ export default function Guided({ engagement, step, sub, onGo, onUpdate, onDetail
           {step === 'seats' && <SeatsQ {...ctx} />}
           {step === 'security' && (
             <Ask title="Who should we watch over?"
-              why="Our managed security service watches alerts around the clock. Add it to a group and it replaces the managed part of what you pay a provider today, as well as the tooling.">
+              why="Our managed security service watches alerts around the clock. Add it to a group and it replaces the managed part of what you pay a provider today; Microsoft's security replaces the tooling.">
               <ServicePicker engagement={engagement} kind="ManagedSecurity" />
               <Sections engagement={engagement} only="ManagedSecurity" />
             </Ask>
@@ -185,24 +184,21 @@ function Field({ value, onSave, type = 'text', placeholder, big, style }) {
 
 const num = (v) => (v === '' || v == null ? null : Math.max(0, Math.round(Number(v)) || 0))
 
-function CustomerQ({ engagement, base, call, onUpdate }) {
+function CustomerQ({ engagement, meta, base, call, onUpdate }) {
   const patch = (body) => call(async () => onUpdate(await api.patch(base, body)))
+  const [err, setErr] = useState('')
   return (
     <Ask title="Who is the customer?">
       <Field big value={engagement.customer_name} placeholder="Customer name"
         onSave={(v) => patch({ customer_name: v })} />
       <label className="guide-label">Workshop date</label>
       <Field type="date" value={engagement.workshop_date || ''} onSave={(v) => patch({ workshop_date: v || null })} />
-    </Ask>
-  )
-}
-
-function HeadcountQ({ engagement, base, call, onUpdate }) {
-  return (
-    <Ask title="How many people does IT support today?"
-      why="Everyone who gets a Microsoft 365 account or any of the tools we'll talk about. The groups you define next should add up to this.">
-      <Field big type="number" value={engagement.supported_headcount ?? ''} placeholder="e.g. 1500"
-        onSave={(v) => call(async () => onUpdate(await api.patch(base, { supported_headcount: num(v) })))} />
+      {/* How they buy: the segment (commercial, nonprofit, …) and the default term and
+          payment every plan is priced at. Options come from the loaded price list;
+          "Default (…)" keeps the install setting from Settings (stored as not set). */}
+      <label className="guide-label">How do they buy Microsoft 365?</label>
+      <EngagementBasisEditor engagement={engagement} meta={meta} onUpdate={onUpdate} onError={setErr} />
+      {err && <div className="err">{err}</div>}
     </Ask>
   )
 }
@@ -229,8 +225,8 @@ function GroupsQ({ engagement, base, personas, interp, call }) {
       <Ask title="Does everyone get the same Microsoft licensing?"
         why="A group is a set of people who get the same Microsoft licences. Everything after this is answered group by group.">
         <div className="guide-choices">
-          <button className="guide-choice" onClick={() => (supported ? everyone(supported) : setOneGroup(true))}>Yes — one group
-            <small>{supported ? `Everyone: ${supported.toLocaleString()} people` : 'Everyone'}</small></button>
+          <button className="guide-choice" onClick={() => { setOneGroup(true); if (supported && !everyoneSize) setEveryoneSize(String(supported)) }}>Yes — one group
+            <small>Everyone gets the same licences</small></button>
           <button className="guide-choice" onClick={() => setSplit(true)}>No — some get different licences
             <small>Name each group and its size</small></button>
         </div>
@@ -266,12 +262,8 @@ function GroupsQ({ engagement, base, personas, interp, call }) {
           onChange={(e) => setSize(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
         <button onClick={add}>Add group</button>
       </div>
-      {s && s.remaining_headcount != null && (
-        <p className={`guide-count ${s.remaining_headcount === 0 ? 'pos' : 'warn'}`}>
-          {s.remaining_headcount === 0 ? `All ${s.supported_headcount.toLocaleString()} people are in a group.`
-            : s.remaining_headcount > 0 ? `${s.remaining_headcount.toLocaleString()} of ${s.supported_headcount.toLocaleString()} people are not in a group yet.`
-              : `The groups add up to ${s.groups_headcount.toLocaleString()}, more than the ${s.supported_headcount.toLocaleString()} IT supports.`}
-        </p>
+      {s && personas.length > 0 && (
+        <p className="guide-count">These groups add up to <b>{s.groups_headcount.toLocaleString()}</b> people.</p>
       )}
     </Ask>
   )

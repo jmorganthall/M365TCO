@@ -60,6 +60,11 @@ def review(db: Session, engagement_id: str) -> dict:
                   f"Today's licences put {x['seats']:,} people on {x['cap_name']}, which allows "
                   f"{x['cap']:,}. Check the seat counts. If they are right, the recommendation can't keep "
                   f"everyone on that family, so some groups move to a plan outside it and may cost more.")
+        elif f.code == "service_price_changed":
+            check(f.code, f.step,
+                  f"{x['name']} now costs ${x['current_monthly']:,.2f} per user per month; this engagement "
+                  f"uses ${x['locked_monthly']:,.2f}, the price when it was added. Apply the new price on "
+                  f"Future state if it should.", "info")
         elif f.code == "contract_lines_exceed":
             check(f.code, f.step,
                   f"{x['name']}: the lines add up to ${x['lines']:,.0f} a year, more than the contract's "

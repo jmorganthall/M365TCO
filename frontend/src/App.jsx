@@ -207,7 +207,7 @@ export default function App() {
               </div>
 
               {tab === 'guide' && (
-                <Guided engagement={active} step={route.step} sub={route.sub} onUpdate={setActive}
+                <Guided engagement={active} meta={meta} step={route.step} sub={route.sub} onUpdate={setActive}
                   onGo={(step, sub) => { go(guidePath(active.id, step, sub)); toTop() }}
                   onDetail={(k) => setTab(k)} />
               )}

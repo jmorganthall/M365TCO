@@ -1072,10 +1072,27 @@ def set_scenario_services(engagement_id: str, scenario_id: str, payload: schemas
     have = {l.service_id for l in row.service_links}
     for sid in wanted:
         if sid not in have:
-            row.service_links.append(models.ScenarioService(service_id=sid))
+            # The price is locked when the service is added (G13).
+            sv = db.get(models.PracticeService, sid)
+            row.service_links.append(models.ScenarioService(service_id=sid, price_monthly=sv.price_monthly))
     db.commit()
     db.refresh(row)
     return row
+
+
+@router.post("/practice-services/{service_id}/apply-price", status_code=204)
+def apply_service_price(engagement_id: str, service_id: str, db: Session = Depends(get_db)):
+    """"Price changed: apply?" — move every future state in this engagement that
+    holds the service onto its current price. A person's click, never automatic."""
+    _require_engagement(db, engagement_id)
+    sv = db.get(models.PracticeService, service_id)
+    if sv is None:
+        raise HTTPException(404, "Service not found")
+    for link in db.execute(select(models.ScenarioService).join(models.PersonaScenario).where(
+            models.PersonaScenario.engagement_id == engagement_id,
+            models.ScenarioService.service_id == service_id)).scalars():
+        link.price_monthly = sv.price_monthly
+    db.commit()
 
 
 @router.get("/scenarios", response_model=list[schemas.ScenarioOut])

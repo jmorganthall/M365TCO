@@ -60,12 +60,17 @@ def _coverage(db: Session, engagement_id: str, kind: str) -> dict[str, frozenset
     return {k: frozenset(v) for k, v in out.items()}
 
 
-def _service(sv: models.PracticeService, by_key: dict[str, str]) -> RawService:
-    """A practice service, its library outcome keys mapped to this engagement's
-    outcomes (a key the engagement doesn't have delivers nothing here)."""
+def _service(link: models.ScenarioService, by_key: dict[str, str]) -> RawService:
+    """A practice service in a future state: the price it was locked at (the current
+    price when not locked), the current price, and its library outcome keys mapped
+    to this engagement's outcomes (a key the engagement doesn't have delivers
+    nothing here)."""
+    sv = link.service
+    current = _dec(sv.price_monthly) * 12
+    locked = _dec(link.price_monthly) * 12 if link.price_monthly is not None else current
     return RawService(
-        id=sv.id, name=sv.name, kind=sv.kind or "Other",
-        price_annual=_dec(sv.price_monthly) * 12,
+        id=sv.id, name=sv.name, kind=sv.kind or "Other", price_annual=locked,
+        current_price_annual=current,
         outcome_ids=frozenset(by_key[k] for k in sv.outcome_keys if k in by_key))
 
 
@@ -142,7 +147,7 @@ def load_raw(db: Session, engagement_id: str) -> RawEngagement:
                          for a in s.addons),
             resolved_bundle_id=resolve(s.target_sku_reference),
             linked_bundle_id=s.bundle_id,
-            services=tuple(_service(link.service, by_key) for link in s.service_links),
+            services=tuple(_service(link, by_key) for link in s.service_links),
         )
         for s in eng.scenarios
     )
@@ -164,6 +169,7 @@ def load_raw(db: Session, engagement_id: str) -> RawEngagement:
         gap_answers={(a.persona_id, a.outcome_id): a.answer for a in eng.gap_answers},
         employee_count=eng.employee_count,
         supported_headcount=eng.supported_headcount,
+        managed_outcome_ids=frozenset(o.id for o in eng.outcomes if o.seed_key == "managed-detection-response"),
         contracts=tuple(RawContract(
             id=c.id, name=c.name or "", total_cost=_dec(c.total_cost), cost_period=c.cost_period or "Annual",
             renewal_date=c.renewal_date.isoformat() if c.renewal_date else None)

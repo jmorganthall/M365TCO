@@ -86,10 +86,10 @@ def sections_view(i, result: dict) -> dict:
 
     A tool a move retires is credited to Microsoft when the Microsoft plan alone
     delivers everything it does; otherwise to the kind of the practice service that
-    delivers what Microsoft doesn't. G14: when a managed tool is retired by a
-    managed-security service, the managed share of its price (the part the engine
-    never counts, ENGINE_SPEC 6.5) is replaced too and credited to that section.
-    Without that share the sections add up exactly to the engine's net change."""
+    delivers what Microsoft doesn't. G14: the managed share of a managed tool is a
+    line of its own (ENGINE_SPEC 6.5) that only a managed-security service replaces;
+    `managed_share_retired` is the part of `retired` that came from such lines. The
+    sections add up exactly to the engine's net change."""
     from decimal import Decimal
 
     from tco_engine.rules import covers_tool
@@ -125,18 +125,17 @@ def sections_view(i, result: dict) -> dict:
             kind = next((sv.kind for sv in rs.services if sv.outcome_ids & missing), "Other")
             kind = kind if kind in sec else "Other"
             sec[kind]["retired"] += credit
-            if kind == "ManagedSecurity" and t.tooling_pct < 1 and t.people_covered:
-                share = t.annual_cost * (1 - t.tooling_pct) / Decimal(t.people_covered)
-                sec[kind]["managed_share_retired"] += Decimal(str(o["credited_units"])) * share
+            if t.managed_share_of:
+                sec[kind]["managed_share_retired"] += credit
     out = []
     for k in SECTION_ORDER:
         x = sec[k]
         if k != "Microsoft" and not x["services"]:
             continue
-        change = x["cost_after"] - x["cost_today"] - x["retired"] - x["managed_share_retired"]
+        change = x["cost_after"] - x["cost_today"] - x["retired"]
         out.append({**{f: (float(v.quantize(Decimal("0.01"))) if isinstance(v, Decimal) else v)
                        for f, v in x.items()},
-                    "retired_total": float((x["retired"] + x["managed_share_retired"]).quantize(Decimal("0.01"))),
+                    "retired_total": float(x["retired"].quantize(Decimal("0.01"))),
                     "change_annual": float(change.quantize(Decimal("0.01")))})
     return {"sections": out,
             "combined_change_annual": round(sum(x["change_annual"] for x in out), 2),

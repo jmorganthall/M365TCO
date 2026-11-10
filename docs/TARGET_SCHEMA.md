@@ -1140,7 +1140,9 @@ the phase named there.
   (per user), `description`, `sort_order`, `archived` (hidden from pickers, kept on
   futures that use it). **`practice_service_outcomes`**
   (`service_id`, `outcome_key`): what it delivers, by library outcome key.
-  **`scenario_services`** (`scenario_id`, `service_id`): a service in a persona's
+  **`scenario_services`** (`scenario_id`, `service_id`, `price_monthly` — the
+  price locked when added; NULL = rows from before locking, read at the current
+  price): a service in a persona's
   future state.
 
 **Retired**
