@@ -434,7 +434,7 @@ function OutcomeWalk({ base, area, n, of, tools, interp, personas, call }) {
   }
   return (
     <Ask title={`Let's talk about ${area.name.toLowerCase()}.`}
-      why={`Do you do each of these today? If you do with a tool you pay for, name it. Which groups have what is checked group by group later. (${n + 1} of ${of})`}>
+      why={`How do you deliver each of these today? Add the tool you pay for, or mark it not currently delivered. Which groups have what is checked group by group later. (${n + 1} of ${of})`}>
       {area.items.map((o) => {
         const mine = toolRows.filter((c) => c.outcome_id === o.id)
         const ms = (interp.data?.today || []).filter((t) => t.outcome_id === o.id && t.by_microsoft).map((t) => names[t.persona_id]).filter(Boolean)
@@ -458,12 +458,10 @@ function OutcomeWalk({ base, area, n, of, tools, interp, personas, call }) {
   )
 }
 
-// One capability: we do it or we don't. "We do" asks for the tool, if there is one
-// to pay for; Microsoft's share is shown from the licences entered.
+// One capability: the tools named for it, a box to add one, and — only when no
+// Microsoft licence entered delivers it — "Not currently delivered".
 function OutcomeRow({ o, mine, ms, others, tools, dont, canSayDont, onDont, onUndo, onAdd, onRemove, onNew }) {
-  const [yes, setYes] = useState(false)
   const toolName = (id) => tools.find((t) => t.id === id)?.name || 'A tool'
-  const doing = yes || mine.length > 0
   return (
     <div className="guide-block">
       <div className="guide-block-title">{o.name}</div>
@@ -471,17 +469,15 @@ function OutcomeRow({ o, mine, ms, others, tools, dont, canSayDont, onDont, onUn
       <div className="guide-chips">
         {ms.length > 0 && <span className="badge pos" title="From the Microsoft licensing you entered">Microsoft · {ms.join(', ')}</span>}
         {dont
-          ? <span className="badge">✓ {ms.length ? 'Nothing beyond Microsoft' : "We don't"}
-              <button className="chip-x" title="Undo" aria-label="Undo" onClick={onUndo}>↺</button></span>
+          ? <span className="badge">✓ Not currently delivered
+              <button className="chip-x" title="Undo" aria-label="Undo not currently delivered" onClick={onUndo}>↺</button></span>
           : <>
               {mine.map((c) => (
                 <span key={c.id} className="badge">{toolName(c.third_party_product_id)}
                   <button className="chip-x" title="Not used for this" onClick={() => onRemove(c.id)}>✕</button></span>
               ))}
-              {doing
-                ? <ToolPicker others={others} onAdd={onAdd} onNew={onNew} />
-                : <button className="ghost sm" onClick={() => setYes(true)}>{ms.length ? 'Also with a tool' : 'We do'}</button>}
-              {canSayDont && <button className="ghost sm" onClick={onDont}>{ms.length ? 'Nothing beyond Microsoft' : "We don't"}</button>}
+              <ToolPicker others={others} onAdd={onAdd} onNew={onNew} />
+              {canSayDont && ms.length === 0 && <button className="ghost sm" onClick={onDont}>Not currently delivered</button>}
             </>}
       </div>
     </div>

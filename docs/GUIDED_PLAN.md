@@ -32,7 +32,7 @@ just extra (the whole cost goes) or people who will stay on the tool?
 | G7 | **No keep-or-retire decision.** Displacement is like for like. The per-tool forced retirement and intended residual (`product_dispositions`) are retired; G4 replaces the one real question they asked. A tool that does something the customer doesn't use is corrected by unticking that outcome on the tool. |
 | G8 | **Headcount from the groups.** The walkthrough asks first whether everyone gets the same licensing: yes asks how many people and creates one group; no collects the groups and shows their sum. `engagements.supported_headcount` stays as an optional cross-check on the detail view's Customer card; when set, a mismatch is a Review finding, never fixed by code. |
 | G9 | **Outcome areas.** Library outcomes carry an `area` ("Email security", "Endpoint", …) so the walkthrough asks broad questions first and the specific outcomes beneath them. |
-| G10 | **Outcome-first tool collection, then group by group.** The walk asks, per outcome, "Do you do this today?" — *we do* (name the tool you pay for, if any; Microsoft's share is shown from the licences entered) or *we don't* (every group nothing delivers it to is confirmed as not having it, `coverage_gap_answers` NotDeliveredToday). A tool's outcomes build up as it is picked again. After pricing (which sets who holds each tool), a **group-by-group review** lists, per group, the outcomes neither its Microsoft licences nor its tools deliver, each with: a tool it does have (gives the group the tool and ticks the outcome on it), a new tool, *have it, not paid separately* (CoveredOutsideInventory), or *they don't have it*; answers can be undone. |
+| G10 | **Outcome-first tool collection, then group by group.** The walk shows, per outcome, the Microsoft groups that have it (from the licences entered), the tools named for it and a box to add one; when no Microsoft licence delivers it, *Not currently delivered* confirms every group nothing delivers it to as not having it (`coverage_gap_answers` NotDeliveredToday). A tool's outcomes build up as it is picked again. After pricing (which sets who holds each tool), a **group-by-group review** lists, per group, the outcomes neither its Microsoft licences nor its tools deliver, each with: a tool it does have (gives the group the tool and ticks the outcome on it), a new tool, *have it, not paid separately* (CoveredOutsideInventory), or *they don't have it*; answers can be undone. |
 | G11 | **Price after naming.** Tools are named during the outcome walk; cost, period, seats, renewal and managed-service yes/no are asked afterwards, one tool at a time. |
 | G12 | **Contracts and cost lines.** A vendor contract (one invoice, one renewal) can be broken down into cost lines, each with its own cost, seats, personas and outcomes. Displacement is tested per line. What the lines don't account for is kept as a "not broken down" line that carries all of the contract's outcomes. A contract that isn't broken down simply has one line. |
 | G13 | **Practice services.** The practice's own services (for example a managed detection and response service or a Teams calling service) are a library object an admin enters in Settings: a name, a kind, a price per user per month and the outcomes they deliver. **Names are runtime data and are never seeded or hard-coded (CLAUDE.md white-label rule).** A service is added to a persona's future state beside the Microsoft plan, and its outcomes count in the replacement test. |
@@ -84,11 +84,11 @@ mismatches, managed security, calling, summary and PDF) are on the detail view.
 - Every number shown comes from the backend: the interpreter's `baselines` and
   `summary` (count-down, totals, standing seats) and the result's
   `views.personas` (today, after and change per user per month).
-- Each capability in the outcome walk is answered *we do* (then the tool, if one is
-  paid for) or *we don't* ("Nothing beyond Microsoft" when Microsoft covers some
-  groups): it confirms, for every group nothing delivers it to, that they don't
-  have it (`coverage_gap_answers` NotDeliveredToday), so a plan that adds it counts
-  it as gained; ↺ undoes. Groups that differ are corrected on the group-by-group
+- Each capability in the outcome walk has the "+ Add a tool" box and, only when no
+  Microsoft licence entered delivers it, a "Not currently delivered" button: it
+  confirms, for every group nothing delivers it to, that they don't have it
+  (`coverage_gap_answers` NotDeliveredToday), so a plan that adds it counts it as
+  gained; ↺ undoes. Hidden once a tool is picked. Groups that differ are corrected on the group-by-group
   review, one screen per group, after pricing.
 - The Groups step asks what each group needs whatever plan it's on: Full-Size Mailbox,
   Full-Size Cloud Storage and Desktop Software (library outcomes by key, saved as the
