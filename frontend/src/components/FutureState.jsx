@@ -2,12 +2,12 @@ import React, { useEffect, useState } from 'react'
 import { api, useDataVersion, useInterpreted } from '../api'
 import Help from './Help.jsx'
 import Scenarios from './Scenarios.jsx'
-import PartlyReplaced from './PartlyReplaced.jsx'
+import ExtraSeats from './ExtraSeats.jsx'
 import CarveOutDrift from './CarveOutDrift.jsx'
 
 // Step 4 — Future state per persona (docs/WALKTHROUGH.md §3): fill in the
 // recommended plan for every persona without one, adjust plans, and answer the
-// keep-or-retire question for tools only partly replaced.
+// seat-mismatch question for tools the plans replace (GUIDED_PLAN G4).
 export default function FutureState({ engagement, meta, moneyUnit }) {
   // Every card refreshes after any write (api.js data version) — no card has to
   // tell another that something changed.
@@ -17,7 +17,7 @@ export default function FutureState({ engagement, meta, moneyUnit }) {
       <CarveOutDrift engagement={engagement} refreshKey={changed} />
       <RecommendPlans engagement={engagement} />
       <Scenarios engagement={engagement} meta={meta} moneyUnit={moneyUnit} />
-      <PartlyReplaced engagement={engagement} />
+      <ExtraSeats engagement={engagement} moneyUnit={moneyUnit} />
     </>
   )
 }

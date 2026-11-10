@@ -59,11 +59,7 @@ def result_to_dict(result: EngineResult) -> dict:
                 "effective_annual_cost": _num(d.effective_annual_cost),
                 "is_managed": d.is_managed,
                 "tooling_pct": _num(d.tooling_pct),
-                "override": d.override.value,
-                "override_reason": d.override_reason,
-                "residual_intent": d.residual_intent.value,
                 "renewal_date": d.renewal_date,
-                "requires_residual_classification": d.requires_residual_classification,
                 "population": [
                     {"persona_id": p.persona_id, "persona_name": p.persona_name,
                      "headcount": p.headcount, "status": p.status,
@@ -71,7 +67,6 @@ def result_to_dict(result: EngineResult) -> dict:
                     for p in d.population
                 ],
                 "unassigned_count": d.unassigned_count,
-                "decision_not_applicable": d.decision_not_applicable,
                 "uncovered_count": d.uncovered_count,
                 "uncovered_annual": _num(d.uncovered_annual),
                 "remaining_persona_count": d.remaining_persona_count,

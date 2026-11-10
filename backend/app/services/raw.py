@@ -74,13 +74,6 @@ def load_raw(db: Session, engagement_id: str) -> RawEngagement:
             cache[ref] = bundles.resolve_bundle(db, ref)
         return cache[ref]
 
-    decisions = {
-        d.third_party_product_id: d
-        for d in db.execute(
-            select(models.ProductDisposition).where(
-                models.ProductDisposition.engagement_id == engagement_id)
-        ).scalars()
-    }
 
     personas = tuple(
         RawPersona(id=p.id, name=p.name, headcount=p.headcount or 0,
@@ -112,7 +105,6 @@ def load_raw(db: Session, engagement_id: str) -> RawEngagement:
 
     tools = []
     for tp in eng.third_party_products:
-        d = decisions.get(tp.id)
         tools.append(RawTool(
             id=tp.id, name=tp.name or "",
             raw_cost=_dec(tp.raw_cost), cost_period=tp.cost_period or "Annual",
@@ -122,9 +114,6 @@ def load_raw(db: Session, engagement_id: str) -> RawEngagement:
             persona_ids=tuple(tp.persona_ids),
             renewal_date=tp.renewal_date.isoformat() if tp.renewal_date else None,
             extra_seats_answer=tp.extra_seats_answer,
-            override=d.override if d else "None",
-            override_reason=d.override_reason if d else "",
-            residual_intent=d.residual_intent if d else "None",
         ))
 
     scenarios = tuple(

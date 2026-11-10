@@ -18,10 +18,8 @@ from .models import (
     CoverageScope,
     Disposition,
     Engagement,
-    Override,
     Persona,
     PersonaScenario,
-    ResidualIntent,
     ThirdPartyProduct,
 )
 from .timing import Headline, timed_headline
@@ -103,13 +101,7 @@ class ProductDispositionResult:
     effective_annual_cost: Decimal
     is_managed: bool
     tooling_pct: Decimal
-    override: Override
-    override_reason: str
-    residual_intent: ResidualIntent
     renewal_date: Optional[str]
-    # True when a residual exists but the user has not classified it as either
-    # an override or an intended out-of-scope residual (Section 6.9 rule 2).
-    requires_residual_classification: bool
     # Who the covered population is (Section 6.4a): each persona that holds the
     # tool, and the people the tool counts beyond them (negative when it counts
     # fewer). Σ non-Replaced headcount + unassigned_count = covered − displaced.
@@ -126,10 +118,6 @@ class ProductDispositionResult:
     replaced_count: int = 0
     held_count: int = 0
     over_licensed_only: bool = False
-    # Set by the reader, not the engine: the operator's stored decision currently
-    # has no effect because the move alone fully retires the tool (TARGET_SCHEMA
-    # §1.2.3). The decision is shown as none and kept as entered.
-    decision_not_applicable: bool = False
 
 
 @dataclass
@@ -394,15 +382,11 @@ def compute(engagement: Engagement) -> EngineResult:
         remaining_persona_count = sum(p.headcount for p in population if p.status != "Replaced")
         replaced_count = sum(p.headcount for p in population if p.status == "Replaced")
 
-        override = product.override
+        # Like for like (GUIDED_PLAN G7): no operator decision changes a tool's
+        # disposition. What stays is the seats no move retires.
         residual_count = max(product.covered_count - displaced_users, 0)
-        requires_classification = False
 
-        if override == Override.FORCE_FULL_ELIMINATION:
-            disposition = Disposition.FULLY_ELIMINATED
-            residual_count = 0
-            residual_annual_cost = Decimal("0")
-        elif displaced_users == 0:
+        if displaced_users == 0:
             # The move doesn't touch this tool — the customer keeps paying it.
             # Its carrying cost is real residual spend (Section 6.4): $0 here
             # would understate what remains and inflate the savings story.
@@ -414,10 +398,6 @@ def compute(engagement: Engagement) -> EngineResult:
         else:
             disposition = Disposition.PARTIALLY_REDUCED
             residual_annual_cost = _money(Decimal(residual_count) * per_unit)
-            # A residual exists. Section 6.9 rule 2: the user must classify it as
-            # either an override (ForceFullElimination) or an intended residual.
-            if product.residual_intent == ResidualIntent.NONE:
-                requires_classification = True
 
         dispositions.append(
             ProductDispositionResult(
@@ -432,11 +412,7 @@ def compute(engagement: Engagement) -> EngineResult:
                 effective_annual_cost=product.effective_annual_cost,
                 is_managed=product.is_managed,
                 tooling_pct=product.tooling_pct,
-                override=override,
-                override_reason=product.override_reason,
-                residual_intent=product.residual_intent,
                 renewal_date=product.renewal_date,
-                requires_residual_classification=requires_classification,
                 population=population,
                 unassigned_count=unassigned_count,
                 uncovered_count=uncovered_count,

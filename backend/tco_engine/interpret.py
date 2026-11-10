@@ -36,10 +36,8 @@ from .models import (
     CoverageScope,
     CurrentLicenseLine,
     Engagement,
-    Override,
     Persona,
     PersonaScenario,
-    ResidualIntent,
     ThirdPartyProduct,
     UnusedSeatsAnswer,
 )
@@ -97,10 +95,6 @@ class RawTool:
     # The customer's answer about seats beyond the personas who hold the tool
     # (GUIDED_PLAN G4): "ExtraSeats" | "PeopleWhoStay" | None (read as PeopleWhoStay).
     extra_seats_answer: Optional[str] = None
-    # The operator's decision on the tool (ProductDisposition).
-    override: str = "None"
-    override_reason: str = ""
-    residual_intent: str = "None"
 
 
 @dataclass(frozen=True)
@@ -236,6 +230,7 @@ class ITool:
     standing_seats: int = 0
     standing_annual: Decimal = Decimal("0")
     extra_seats: int = 0                # stated seats beyond people_held (asked about, G4)
+    extra_seats_answer: Optional[str] = None   # the customer's answer, as entered
 
 
 @dataclass(frozen=True)
@@ -326,14 +321,12 @@ class IProposed:
 class IToolRetirement:
     """A tool that applies to a persona, and whether that persona's move retires it
     (`i_tool_retirements`). `retired`: the persona's plan covers every outcome the
-    tool delivers (the engine's displacement rule, ENGINE_SPEC 6.6) or the operator
-    forced it. `quick_win`: the persona's current Microsoft licences already deliver
+    tool delivers (the engine's displacement rule, ENGINE_SPEC 6.6). `quick_win`: the persona's current Microsoft licences already deliver
     every outcome the tool delivers."""
 
     persona_id: str
     tool_id: str
     retired: bool
-    forced: bool
     quick_win: bool
 
 
@@ -516,6 +509,7 @@ def interpret(raw: RawEngagement) -> Interpreted:
             people_held=held, stated_seats=t.covered_count_override,
             standing_seats=standing, standing_annual=per_person * Decimal(standing),
             extra_seats=max((t.covered_count_override or 0) - held, 0),
+            extra_seats_answer=t.extra_seats_answer,
         ))
         # Definition 7 (ENGINE_SPEC 6.0a): a persona's share is cost per person × its
         # headcount. Only seats the customer says belong to people who stay on the
@@ -644,9 +638,8 @@ def _seat_caps(raw: RawEngagement, lines: list[ILicenseLine],
 
 def _findings(raw, lines, tools, scenarios, tables, seat_caps) -> tuple[IFinding, ...]:
     """Every check that works without AI (TARGET_SCHEMA §6.4, WALKTHROUGH §6), in
-    walkthrough order. Two more come from outside the interpreter and are added by
-    the Review step: a partly replaced tool with no keep-or-retire answer (an engine
-    result) and pending library updates (the shared library)."""
+    walkthrough order. One more comes from outside the interpreter and is added by
+    the Review step: pending library updates (the shared library)."""
     f: list[IFinding] = []
     raw_lines = {l.id: l for l in raw.licence_lines}
     raw_tools = {t.id: t for t in raw.tools}
@@ -808,7 +801,6 @@ def _outcome_tables(raw: RawEngagement, lines: list[ILicenseLine], tools: list[I
     """The persona × outcome tables (TARGET_SCHEMA §6.3): the single model of what
     each persona has today and after its move, and which tools each move retires."""
     plan_of = plans_by_persona(scenarios)
-    forced = {t.id for t in raw.tools if t.override == "ForceFullElimination"}
     today: list[IToday] = []
     today_src: list[ISource] = []
     proposed: list[IProposed] = []
@@ -850,12 +842,10 @@ def _outcome_tables(raw: RawEngagement, lines: list[ILicenseLine], tools: list[I
         retired: set[str] = set()
         for t in my_tools:
             covers = plan is not None and covers_tool(t.delivered_outcome_ids, plan.covered_outcome_ids)
-            is_forced = plan is not None and t.id in forced
-            if covers or is_forced:
+            if covers:
                 retired.add(t.id)
             retirements.append(IToolRetirement(
-                persona_id=p.id, tool_id=t.id, retired=covers or is_forced,
-                forced=is_forced and not covers,
+                persona_id=p.id, tool_id=t.id, retired=covers,
                 quick_win=covers_tool(t.delivered_outcome_ids, ms_today)))
         if plan is None:
             # No plan: the persona keeps what it has today.
@@ -945,9 +935,6 @@ def to_engine(i: Interpreted) -> Engagement:
             tooling_pct=it.tooling_pct, renewal_date=rt.renewal_date,
             delivered_outcome_ids=it.delivered_outcome_ids,
             persona_ids=frozenset(rt.persona_ids),
-            override=Override(rt.override or "None"),
-            override_reason=rt.override_reason or "",
-            residual_intent=ResidualIntent(rt.residual_intent or "None"),
         ))
 
     return Engagement(

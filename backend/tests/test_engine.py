@@ -19,10 +19,8 @@ from tco_engine import (
     CurrentLicenseLine,
     Disposition,
     Engagement,
-    Override,
     Persona,
     PersonaScenario,
-    ResidualIntent,
     ThirdPartyProduct,
     analyze_bundles,
     compute,
@@ -178,8 +176,6 @@ def test_okta_500_vs_450_partial_displacement():
     # per-unit = 50000 / 500 = 100/yr; residual = 50 * 100 = 5000
     assert disp.per_unit_annual_cost == D("100")
     assert disp.residual_annual_cost == D("5000.00")
-    # residual exists and is unclassified -> must force a choice
-    assert disp.requires_residual_classification is True
 
     # offset credited to the persona = 450 * 100 = 45000
     sc = res.scenarios[0]
@@ -241,62 +237,6 @@ def test_renewal_gating_partial_does_not_eliminate_cycle():
     res = compute(_engagement([kw], [tool], [scenario]))
     assert res.dispositions[0].disposition == Disposition.PARTIALLY_REDUCED
     assert res.rollup.eliminated_renewal_cycles == []
-
-
-def test_override_force_full_elimination_requires_reason_and_zeros_residual():
-    """Section 6.9 rule 2 + 6.4 override branch."""
-    kw = Persona(id="kw", name="KW", headcount=100)
-    tool = ThirdPartyProduct(
-        id="t",
-        name="Tool",
-        annual_cost=D("20000"),
-        covered_count=200,
-        delivered_outcome_ids=frozenset({EMAIL_SEC}),
-        renewal_date="2026-12-01",
-        override=Override.FORCE_FULL_ELIMINATION,
-        override_reason="Customer confirmed remaining 100 are decommissioned.",
-    )
-    scenario = PersonaScenario(
-        id="s",
-        persona_id="kw",
-        target_sku_reference="E5",
-        target_unit_price_annual=D("0"),
-        target_covered_outcome_ids=frozenset({EMAIL_SEC}),
-    )
-    res = compute(_engagement([kw], [tool], [scenario]))
-    disp = res.dispositions[0]
-    assert disp.disposition == Disposition.FULLY_ELIMINATED
-    assert disp.residual_count == 0
-    assert disp.residual_annual_cost == D("0")
-    assert disp.override == Override.FORCE_FULL_ELIMINATION
-    assert disp.override_reason  # prints on the readout
-    # override forces elimination -> renewal now eligible
-    assert len(res.rollup.eliminated_renewal_cycles) == 1
-
-
-def test_intended_out_of_scope_residual_is_not_an_override():
-    kw = Persona(id="kw", name="KW", headcount=450)
-    okta = ThirdPartyProduct(
-        id="okta",
-        name="Okta",
-        annual_cost=D("50000"),
-        covered_count=500,
-        delivered_outcome_ids=frozenset({IDENTITY}),
-        residual_intent=ResidualIntent.INTENDED_OUT_OF_SCOPE,
-    )
-    scenario = PersonaScenario(
-        id="s",
-        persona_id="kw",
-        target_sku_reference="E3",
-        target_unit_price_annual=D("0"),
-        target_covered_outcome_ids=frozenset({IDENTITY}),
-    )
-    res = compute(_engagement([kw], [okta], [scenario]))
-    disp = res.dispositions[0]
-    assert disp.disposition == Disposition.PARTIALLY_REDUCED
-    assert disp.residual_intent == ResidualIntent.INTENDED_OUT_OF_SCOPE
-    # classified -> no longer forces a choice
-    assert disp.requires_residual_classification is False
 
 
 def test_managed_split_uses_tooling_pct():
@@ -844,8 +784,6 @@ def test_unchanged_tool_carries_its_full_cost_as_residual():
     assert d.disposition == Disposition.UNCHANGED
     assert d.residual_annual_cost == D("50000.00")
     assert res.rollup.residual_third_party_cost_annual == D("50000.00")
-    # And it must NOT demand residual classification — it's simply untouched.
-    assert d.requires_residual_classification is False
 
 
 def test_headline_decomposition_never_double_counts_quick_wins():

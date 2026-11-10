@@ -565,11 +565,6 @@ class ScenarioOut(ORMModel):
     addons: list[ScenarioAddonOut]
 
 
-# ---- Disposition override ----
-class DispositionOverrideIn(BaseModel):
-    override: str = "None"  # None | ForceFullElimination
-    override_reason: str = ""
-    residual_intent: str = "None"  # None | IntendedOutOfScope
 
 
 # ---- Secrets ----

@@ -26,8 +26,7 @@ the data layer on input, never inside the engine.
 - **Engagement timing**: `{workshop_date, microsoft_renewal_date, horizon_years}`,
   read only by the timed headline (6.11).
 - **ThirdPartyProducts**: `{id, name, annual_cost, covered_count, is_managed,
-  tooling_pct, renewal_date, delivered_outcome_ids, override, override_reason,
-  residual_intent}`. `delivered_outcome_ids` are **ratified** coverage outcomes
+  tooling_pct, renewal_date, delivered_outcome_ids}`. `delivered_outcome_ids` are **ratified** coverage outcomes
   only.
 - **PersonaScenarios**: `{id, persona_id, target_sku_reference,
   target_unit_price_annual, in_scope, target_covered_outcome_ids}`.
@@ -238,17 +237,15 @@ displacing = in-scope scenarios s where displaces_for(s, product)   # persona-sc
 displaced_users = Σ headcount(persona(s)) for s in displacing
 residual_count  = max(covered_count - displaced_users, 0)
 
-if override == ForceFullElimination:
-    disposition = FullyEliminated;  residual_count = 0;  residual_cost = 0
-    (override_reason is required and prints on the readout)
-elif displaced_users == 0:
+# Like for like (GUIDED_PLAN G7): no operator override. Seats beyond the personas
+# are answered once as the tool's extra_seats_answer, which sets covered_count (6.0a).
+if displaced_users == 0:
     disposition = Unchanged;        residual_cost = residual_count * per_unit  # carrying cost — the customer keeps paying it
 elif residual_count == 0:
     disposition = FullyEliminated;  residual_cost = 0
 else:
     disposition = PartiallyReduced
     residual_cost = residual_count * per_unit_annual_cost
-    if residual_intent == None: requires_residual_classification = true
 ```
 
 ### Who the covered population is (6.4a)
@@ -496,12 +493,10 @@ ecif_funding_high   = fundable / ecif_roi_generous       # e.g.  5:1 → 1/5  (m
 # with the Microsoft account team.
 ```
 
-> Rule 2 — override disclosure: a ForceFullElimination override asserts savings
-> on users the data did not displace; it is permitted, requires a reason, and the
-> reason prints on the readout. An intended residual (e.g. Okta users who are not
-> M365 users) is recorded as `residual_intent = IntendedOutOfScope` and is **not**
-> an override. When a residual exists the tool must force the operator to choose
-> which case applies (`requires_residual_classification`).
+> Rule 2 (retired, GUIDED_PLAN G7) — there is no override. A saving is claimed
+> only where a persona's plan delivers every outcome a tool delivers. Seats beyond
+> the personas are answered once per tool (`extra_seats_answer`, 6.0a); unanswered
+> they stay, and Review asks (`extra_seats_unanswered`).
 
 ## Quick wins — duplicates the current licensing already covers (6.10)
 

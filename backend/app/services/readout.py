@@ -736,8 +736,7 @@ class _Context:
             kept_n = "—" if unset else f"{d['residual_count']:,}"
             basis = (f"Managed service · {_pct(d['tooling_pct'])} software share"
                      if d["is_managed"] else "Direct licence")
-            note = ("Users not set — seats and savings can't be counted" if unset else
-                    E(d["override_reason"]) if d.get("override") not in (None, "None") else "")
+            note = "Users not set — seats and savings can't be counted" if unset else ""
             return (f"<tr><td><b>{E(d['third_party_product_name'])}</b><div class='muted small'>{basis}"
                     + (f" · {note}" if note else "") + "</div></td>"
                     f"<td><span class='tag {cls}'>{label}</span></td>"
@@ -825,10 +824,6 @@ class _Context:
         for d in managed:
             notes.append(f"<b>{E(d['third_party_product_name'])}</b> is bought as a managed service; "
                          f"{_pct(d['tooling_pct'])} of its price is counted as replaceable software.")
-        for d in self.dispositions:
-            if d.get("override") == "ForceFullElimination":
-                notes.append(f"<b>{E(d['third_party_product_name'])}</b> is assumed fully retired: "
-                             f"{E(d.get('override_reason') or '')}")
         no_dates = sorted({i["label"] for i in self.items if i.get("date_missing")})
         if no_dates:
             notes.append("<b>No renewal date given</b>, so treated as month-to-month and counted from "

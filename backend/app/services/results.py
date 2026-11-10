@@ -20,7 +20,6 @@ from sqlalchemy.orm import Session
 
 from tco_engine.engine import EngineResult
 from tco_engine.engine import compute as engine_compute
-from tco_engine.models import Override, ResidualIntent
 
 from .. import models
 from . import compute, limits
@@ -36,13 +35,6 @@ def engine_result(db: Session, engagement_id: str) -> EngineResult:
     * **Order.** Every carve-out directly after its parent, and the headline's
       timed items grouped by sub-line in that persona order (the engine itself is
       order-free).
-    * **Decisions that currently have no effect** (TARGET_SCHEMA §1.2.3). An
-      operator's force-retire or intended-residual choice answers a residual. When
-      the move alone fully retires the tool there is no residual, so the choice
-      does nothing right now. The stored choice is kept as entered; the result
-      shows the tool as having no decision and flags it `decision_not_applicable`.
-      If coverage later shrinks and a residual returns, the stored choice applies
-      again.
     """
     eng = db.get(models.Engagement, engagement_id)
     if eng is None:
@@ -58,14 +50,6 @@ def engine_result(db: Session, engagement_id: str) -> EngineResult:
             group.setdefault(i.sub_line, len(group))
         items.sort(key=lambda i: (group[i.sub_line], order.get(i.persona_id, -1)))
 
-    for dr in result.dispositions:
-        naturally_full = dr.displaced_users > 0 and dr.displaced_users >= dr.covered_count
-        has_decision = dr.override != Override.NONE or dr.residual_intent != ResidualIntent.NONE
-        dr.decision_not_applicable = bool(naturally_full and has_decision)
-        if dr.decision_not_applicable:
-            dr.override = Override.NONE
-            dr.override_reason = ""
-            dr.residual_intent = ResidualIntent.NONE
     return result
 
 

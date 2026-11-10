@@ -701,8 +701,7 @@ Licence names.
   headcount, no override) is kept as `covered_count_override` (`db._preserve_manual_covers`).
 - **CRUD:** `GET/POST/PATCH/DELETE …/third-party`; `persona_ids` on the body
   reconciles the tag set.
-- **Relationships:** target of `CoverageMapEntry` (third-party) and of exactly one
-  `ProductDisposition`; **many-to-many** to `Persona` via `ThirdPartyPersona`
+- **Relationships:** target of `CoverageMapEntry` (third-party); **many-to-many** to `Persona` via `ThirdPartyPersona`
   (§4.6a), mirroring current licensing.
 - **GUI:** the Other tools step puts the walkthrough's questions on the row —
   cost and period, renewal date, who uses it (persona tags), managed — and vendor,
@@ -854,19 +853,11 @@ retired via `_RETIRED_COLUMNS` and physically dropped; `services/swap.py` and th
 a carve-out's seats like any other scenario — no swap-specific branch in
 `services/limits`.
 
-### 4.9 ProductDisposition — the operator's decision on a tool
-Holds only what a person decides; the engine's disposition of the tool is
-calculated on read and never stored here.
-- **Identity:** `uuid`. **Scope:** engagement-scoped. At most one per third-party product.
-- **Operator-owned:** `override`, `override_reason`, `residual_intent`. Code never
-  rewrites them. When the move alone fully retires the tool, the decision has no
-  residual to answer: the result shows the tool with no decision and flags it
-  `decision_not_applicable` (TARGET_SCHEMA §1.2.3). The stored decision is kept and
-  applies again if a residual returns.
-- **Calculated (in the result, not on this row):** `displaced_users`,
-  `disposition`, `residual_count`, `residual_annual_cost`.
-- **CRUD:** created and set only by `PUT …/dispositions/{tp_id}/override` (which
-  enforces "reason required for ForceFullElimination").
+### 4.9 ProductDisposition — retired
+The operator's keep-or-retire decision (forced full elimination, intended
+residual) is retired (GUIDED_PLAN G7): displacement is like for like, and the one
+real question is `third_party_products.extra_seats_answer`. The table is dropped at
+startup (`db._RETIRED_TABLES`). The tool's disposition is still calculated on read.
 
 ### 4.10 EngagementSnapshot — reproducible readout
 - **Identity:** `uuid`. **Scope:** engagement-scoped (now cascades with the

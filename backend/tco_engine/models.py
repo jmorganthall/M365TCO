@@ -45,16 +45,6 @@ class Disposition(str, Enum):
     UNCHANGED = "Unchanged"
 
 
-class Override(str, Enum):
-    NONE = "None"
-    FORCE_FULL_ELIMINATION = "ForceFullElimination"
-
-
-class ResidualIntent(str, Enum):
-    NONE = "None"
-    INTENDED_OUT_OF_SCOPE = "IntendedOutOfScope"
-
-
 class UnusedSeatsAnswer(str, Enum):
     """The customer's answer about a licence line's unused seats (purchased −
     assigned). INTENDED: kept on hand on purpose (e.g. quick onboarding) — noted,
@@ -128,10 +118,6 @@ class ThirdPartyProduct:
     # scoped to these (Section 6.3a). Empty = untagged / org-wide (applies to
     # everyone), preserving the pre-tag headcount spread.
     persona_ids: frozenset[str] = field(default_factory=frozenset)
-    # Engine-output overrides (persisted on ProductDisposition, fed back in):
-    override: Override = Override.NONE
-    override_reason: str = ""
-    residual_intent: ResidualIntent = ResidualIntent.NONE
 
     @property
     def effective_annual_cost(self) -> Decimal:

@@ -68,10 +68,9 @@ def _build_engagement(client) -> dict:
     s_fl = client.post(f"{base}/scenarios", json={
         "persona_id": fl["id"], "target_sku_reference": "Microsoft 365 F3",
         "target_unit_price_annual": 96}).json()
-    # The operator viewed the readout once and classified a residual.
+    # The operator viewed the readout once and answered the tool's extra seats.
     assert client.post(f"{base}/compute").status_code == 200
-    client.put(f"{base}/dispositions/{edr['id']}/override",
-               json={"override": "None", "residual_intent": "IntendedOutOfScope"})
+    client.patch(f"{base}/third-party/{edr['id']}", json={"extra_seats_answer": "PeopleWhoStay"})
     return {"id": eid, "kw": kw, "fl": fl, "sso": sso, "edr": edr,
             "s_kw": s_kw, "s_fl": s_fl}
 
@@ -125,7 +124,7 @@ def test_export_is_complete_and_deterministic(engagement, tmp_path):
     assert kw_scenario["target_unit_price_annual"] == "518.4"  # (432 + 144) × 0.9
     assert kw_scenario["target_covered_outcome_ids"] == sorted(kw_scenario["target_covered_outcome_ids"])
     edr_in = next(p for p in inputs["third_party_products"] if p["id"] == engagement["edr"]["id"])
-    assert edr_in["residual_intent"] == "IntendedOutOfScope" and edr_in["annual_cost"] == "24000"
+    assert edr_in["annual_cost"] == "24000"
     # Outputs: every engine field, Decimals as strings, lists sorted by id.
     assert set(outputs) == {"scenarios", "dispositions", "rollup"}
     assert [s["scenario_id"] for s in outputs["scenarios"]] == sorted(
