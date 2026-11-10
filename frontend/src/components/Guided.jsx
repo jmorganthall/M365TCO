@@ -204,22 +204,50 @@ function CustomerQ({ engagement, meta, base, call, onUpdate }) {
   )
 }
 
-function GroupsQ({ engagement, base, personas, interp, call }) {
+// What a group needs whatever plan it's on (the persona's required outcomes): a full
+// mailbox, full cloud storage, desktop Office. The recommender keeps them, so a
+// group that needs desktop apps is never moved to a plan without them. Taken from
+// the engagement's outcome library by key; a new group starts with all ticked.
+const NEED_KEYS = ['mailbox-full', 'cloud-storage-full', 'desktop-software']
+
+function Needs({ needs, selected, onToggle }) {
+  if (!needs.length) return null
+  return (
+    <div className="needs" role="group" aria-label="Needs">
+      {needs.map((o) => (
+        <label key={o.id} className="check needs-item">
+          <input type="checkbox" checked={selected.includes(o.id)} onChange={() => onToggle(o.id)} /> {o.name}
+        </label>
+      ))}
+    </div>
+  )
+}
+
+function GroupsQ({ engagement, base, personas, outcomes, interp, call }) {
   const [split, setSplit] = useState(personas.length > 1)
   const [name, setName] = useState('')
   const [size, setSize] = useState('')
+  const needs = NEED_KEYS.map((k) => outcomes.find((o) => o.seed_key === k)).filter(Boolean)
+  const [newNeeds, setNewNeeds] = useState(null)
+  const fresh = newNeeds ?? needs.map((o) => o.id)
+  const toggleNew = (id) => setNewNeeds(fresh.includes(id) ? fresh.filter((x) => x !== id) : [...fresh, id])
+  const toggleFor = (p, id) => {
+    const cur = p.required_outcome_ids || []
+    const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]
+    call(() => api.patch(`${base}/personas/${p.id}`, { required_outcome_ids: next }))
+  }
   const s = interp.data?.summary
   const supported = engagement.supported_headcount
   const [oneGroup, setOneGroup] = useState(false)
   const [everyoneSize, setEveryoneSize] = useState('')
   async function everyone(size) {
     if (!size) return
-    await call(() => api.post(`${base}/personas`, { name: 'Everyone', headcount: size }))
+    await call(() => api.post(`${base}/personas`, { name: 'Everyone', headcount: size, required_outcome_ids: fresh }))
   }
   async function add() {
     if (!name.trim()) return
-    await call(() => api.post(`${base}/personas`, { name: name.trim(), headcount: num(size) || 0 }))
-    setName(''); setSize('')
+    await call(() => api.post(`${base}/personas`, { name: name.trim(), headcount: num(size) || 0, required_outcome_ids: fresh }))
+    setName(''); setSize(''); setNewNeeds(null)
   }
   if (personas.length === 0 && !split) {
     return (
@@ -240,20 +268,27 @@ function GroupsQ({ engagement, base, personas, interp, call }) {
             <button disabled={!num(everyoneSize)} onClick={() => everyone(num(everyoneSize))}>Create the group</button>
           </div>
         )}
+        {oneGroup && needs.length > 0 && (
+          <div style={{ marginTop: 8 }}><span className="muted">They need:</span>
+            <Needs needs={needs} selected={fresh} onToggle={toggleNew} /></div>
+        )}
       </Ask>
     )
   }
   return (
     <Ask title="Who gets different licensing?"
-      why="Name each group and how many people are in it, for example Office staff and Frontline.">
+      why="Name each group, how many people are in it, and what they need whatever plan they're on. Untick one only if that group really doesn't need it.">
       {personas.map((p) => (
-        <div key={p.id} className="guide-row">
-          <Field value={p.name} onSave={(v) => v.trim() && call(() => api.patch(`${base}/personas/${p.id}`, { name: v.trim() }))} />
-          <Field type="number" value={p.headcount} style={{ width: 120 }}
-            onSave={(v) => call(() => api.patch(`${base}/personas/${p.id}`, { headcount: num(v) || 0 }))} />
-          <span className="muted">people</span>
-          <button className="ghost sm" title="Remove this group"
-            onClick={() => confirm(`Remove ${p.name}?`) && call(() => api.del(`${base}/personas/${p.id}`))}>✕</button>
+        <div key={p.id} className="group-item">
+          <div className="guide-row" style={{ margin: 0 }}>
+            <Field value={p.name} onSave={(v) => v.trim() && call(() => api.patch(`${base}/personas/${p.id}`, { name: v.trim() }))} />
+            <Field type="number" value={p.headcount} style={{ width: 120 }}
+              onSave={(v) => call(() => api.patch(`${base}/personas/${p.id}`, { headcount: num(v) || 0 }))} />
+            <span className="muted">people</span>
+            <button className="ghost sm" aria-label={`Remove ${p.name}`} title="Remove this group"
+              onClick={() => confirm(`Remove ${p.name}?`) && call(() => api.del(`${base}/personas/${p.id}`))}>✕</button>
+          </div>
+          <Needs needs={needs} selected={p.required_outcome_ids || []} onToggle={(id) => toggleFor(p, id)} />
         </div>
       ))}
       {/* UI3: visible labels; the placeholders are examples. MO4: a number pad for size. */}
@@ -266,6 +301,7 @@ function GroupsQ({ engagement, base, personas, interp, call }) {
             onChange={(e) => setSize(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} /></div>
         <button className="ghost" onClick={add}>Add group</button>
       </div>
+      <Needs needs={needs} selected={fresh} onToggle={toggleNew} />
       {s && personas.length > 0 && (
         <p className="guide-count">These groups add up to <b>{s.groups_headcount.toLocaleString()}</b> people.</p>
       )}

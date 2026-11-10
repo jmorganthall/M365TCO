@@ -85,6 +85,10 @@ just extra (the whole cost goes) or people who will stay on the tool?
 - Every number shown comes from the backend: the interpreter's `baselines` and
   `summary` (count-down, totals, standing seats) and the result's
   `views.personas` (today, after and change per user per month).
+- The Groups step asks what each group needs whatever plan it's on: Full-Size Mailbox,
+  Full-Size Cloud Storage and Desktop Software (library outcomes by key, saved as the
+  persona's required outcomes). A new group starts with all three ticked; untick one
+  only if the group doesn't need it. The recommender keeps them.
 - The Microsoft step takes line items per group: the main plan, then "+ Add another
   licence" for add-ons and products, each with its own seats and price; each adds to
   the group's cost per user; every line covers the whole group (G20). It uses the same searchable plan picker as the detail view (catalog

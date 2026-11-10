@@ -582,3 +582,8 @@ button.badge.licence-flag { background: transparent; padding: .12rem .45rem; fon
 .lic-add { margin-top: 8px; }
 .lic-adding { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
 .lic-adding label { margin: 0; }
+
+/* Guided Groups step: each group with what it needs (required outcomes). */
+.group-item { padding: 8px 0 16px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+.needs { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; }
+.needs-item { font-size: .85rem; }
