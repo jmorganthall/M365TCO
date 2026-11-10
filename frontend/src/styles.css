@@ -564,3 +564,21 @@ button.badge.licence-flag { background: transparent; padding: .12rem .45rem; fon
      move, so its segments stay thin (a deliberate exception to MO1). */
   .guide-dot { min-height: 0; height: 8px; }
 }
+
+/* Guided Microsoft step: one compact card per group (name, size and its cost per
+   user up top; one row per licence: what, price, remove). */
+.lic-group { border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin: 0 0 16px; background: var(--panel2); }
+.lic-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 8px; }
+.lic-name { font-weight: 650; font-size: 1.1rem; }
+.lic-total { text-align: right; }
+.lic-total-n { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.lic-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 32px; gap: 16px; align-items: center;
+  padding: 8px 0; border-top: 1px solid var(--border); }
+.lic-row .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lic-tag { display: inline-block; font-size: .72rem; color: var(--muted); border: 1px solid var(--border);
+  border-radius: 999px; padding: 0 8px; margin-right: 8px; min-width: 72px; text-align: center; }
+.lic-note { font-size: .8rem; margin: 4px 0 8px; }
+.lic-x { padding: 4px 8px; }
+.lic-add { margin-top: 8px; }
+.lic-adding { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.lic-adding label { margin: 0; }
