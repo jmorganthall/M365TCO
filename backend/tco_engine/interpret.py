@@ -148,6 +148,18 @@ class RawService:
 
 
 @dataclass(frozen=True)
+class RawQuote:
+    """A practice service's quote for this customer (GUIDED_PLAN G13a): a total
+    cost for a number of users, from the practice that delivers it."""
+    service_id: str
+    total_cost: Decimal
+    cost_period: str                    # "Annual" | "Monthly"
+    users_covered: Optional[int] = None
+    name: str = ""
+    kind: str = "Other"
+
+
+@dataclass(frozen=True)
 class RawLimit:
     """A licensing limit from the catalog (e.g. the Business family's 300-seat
     tenant cap): its key, the plans it counts, and the ceiling."""
@@ -185,6 +197,7 @@ class RawEngagement:
     # How many people IT supports, as asked first in the guided flow (G8).
     supported_headcount: Optional[int] = None
     contracts: tuple[RawContract, ...] = ()
+    service_quotes: tuple[RawQuote, ...] = ()
     # The engagement's outcome id(s) for "24x7 managed detection & response": what
     # the managed share of a managed tool delivers (G14).
     managed_outcome_ids: frozenset[str] = frozenset()
@@ -318,7 +331,26 @@ class IScenario:
     # G13: what the Microsoft plan alone delivers, and the practice services added.
     microsoft_outcome_ids: frozenset[str] = frozenset()
     service_ids: tuple[str, ...] = ()
+    # Each service's price per user per year here, in service_ids order: its quote
+    # spread over the people who get it (G13a), else the price locked from Settings.
+    service_prices_annual: tuple[Decimal, ...] = ()
     services_annual: Decimal = ZERO         # per user per year
+
+
+@dataclass(frozen=True)
+class IServiceQuote:
+    """A practice service's quote read through the splitting rule (ENGINE_SPEC
+    6.2a): its yearly cost spread over the people in the groups whose future state
+    includes it, so the groups together carry exactly the quote."""
+    service_id: str
+    name: str
+    kind: str
+    annual_cost: Decimal
+    users_covered: Optional[int]        # as quoted; NULL = not stated
+    people: int                         # in the groups that get it (in-scope futures)
+    persona_ids: tuple[str, ...]
+    per_user_annual: Decimal            # annual_cost / people (0 when nobody gets it)
+    per_user_monthly: Decimal
 
 
 @dataclass(frozen=True)
@@ -455,6 +487,7 @@ class Interpreted:
     baselines: tuple[IPersonaBaseline, ...] = ()
     summary: dict = field(default_factory=dict)
     contracts: tuple[IContract, ...] = ()
+    service_quotes: tuple[IServiceQuote, ...] = ()
 
     @cached_property
     def _licence_index(self) -> dict[str, ILicenseLine]:
@@ -659,6 +692,23 @@ def interpret(raw: RawEngagement) -> Interpreted:
         for pid in applies:
             tool_shares[(t.id, pid)] = per_person * Decimal(headcount.get(pid, 0))
 
+    # ---- Practice service quotes (G13a) --------------------------------------
+    # One splitting rule: a quote's cost lands on the groups that get the service,
+    # by headcount, so they carry exactly the quote whatever the users it covers.
+    quotes: list[IServiceQuote] = []
+    quote_rate: dict[str, Decimal] = {}
+    for q in raw.service_quotes:
+        holders = [s for s in raw.scenarios if s.in_scope and any(sv.id == q.service_id for sv in s.services)]
+        people = sum(headcount.get(s.persona_id, 0) for s in holders)
+        annual = _annual(q.total_cost, q.cost_period)
+        rate = annual / Decimal(people) if people else ZERO
+        quote_rate[q.service_id] = rate
+        quotes.append(IServiceQuote(
+            service_id=q.service_id, name=q.name, kind=q.kind,
+            annual_cost=annual, users_covered=q.users_covered, people=people,
+            persona_ids=tuple(dict.fromkeys(s.persona_id for s in holders)),
+            per_user_annual=rate, per_user_monthly=rate / 12))
+
     # ---- Scenarios ----------------------------------------------------------
     scenarios: list[IScenario] = []
     for s in raw.scenarios:
@@ -670,6 +720,7 @@ def interpret(raw: RawEngagement) -> Interpreted:
         microsoft = frozenset(covered)
         for sv in s.services:
             covered |= sv.outcome_ids
+        prices = tuple(quote_rate.get(sv.id, sv.price_annual) for sv in s.services)
         composed = s.list_price_annual + sum((a.list_price_annual for a in s.addons), ZERO)
         overridden = s.price_override and s.overridden_price_annual is not None
         discounted = composed * (ONE - (s.discount_pct or ZERO))
@@ -685,7 +736,8 @@ def interpret(raw: RawEngagement) -> Interpreted:
             discounted_net_annual=discounted, pct_off_list=_pct_off(composed, net),
             plan_source="picked" if s.linked_bundle_id else "name" if s.resolved_bundle_id else None,
             microsoft_outcome_ids=microsoft, service_ids=tuple(sv.id for sv in s.services),
-            services_annual=sum((sv.price_annual for sv in s.services), ZERO),
+            service_prices_annual=prices,
+            services_annual=sum(prices, ZERO),
         ))
 
     personas = tuple(
@@ -727,12 +779,13 @@ def interpret(raw: RawEngagement) -> Interpreted:
 
     tables = _outcome_tables(raw, lines, tools, scenarios)
     seat_caps = _seat_caps(raw, lines, scenarios)
-    findings = _findings(raw, lines, tools, scenarios, tables, seat_caps, contracts)
+    findings = _findings(raw, lines, tools, scenarios, tables, seat_caps, contracts, tuple(quotes))
     return Interpreted(
         raw=raw, personas=personas, licence_lines=tuple(lines),
         licence_shares=licence_shares, tools=tuple(tools), tool_shares=tool_shares,
         scenarios=tuple(scenarios), seat_caps=seat_caps, findings=findings,
-        baselines=tuple(baselines), summary=summary, contracts=contracts, **tables,
+        baselines=tuple(baselines), summary=summary, contracts=contracts,
+        service_quotes=tuple(quotes), **tables,
     )
 
 
@@ -802,7 +855,7 @@ def _seat_caps(raw: RawEngagement, lines: list[ILicenseLine],
     return tuple(out)
 
 
-def _findings(raw, lines, tools, scenarios, tables, seat_caps, contracts=()) -> tuple[IFinding, ...]:
+def _findings(raw, lines, tools, scenarios, tables, seat_caps, contracts=(), quotes=()) -> tuple[IFinding, ...]:
     """Every check that works without AI (TARGET_SCHEMA §6.4, WALKTHROUGH §6), in
     walkthrough order. One more comes from outside the interpreter and is added by
     the Review step: pending library updates (the shared library)."""
@@ -872,7 +925,7 @@ def _findings(raw, lines, tools, scenarios, tables, seat_caps, contracts=()) -> 
     for c in contracts:
         if c.lines_annual > c.annual_cost:
             f.append(IFinding("contract_lines_exceed", "tools", facts={
-                "name": c.name, "total": c.annual_cost, "lines": c.lines_annual}))
+                "contract_id": c.id, "name": c.name, "total": c.annual_cost, "lines": c.lines_annual}))
     in_scope_planned = {s.persona_id for s in scenarios if s.in_scope}
     for t in tools:
         if t.managed_share_of:          # mirrors its tool; the tool's findings cover it
@@ -945,16 +998,27 @@ def _findings(raw, lines, tools, scenarios, tables, seat_caps, contracts=()) -> 
             "plan": s.target_sku_reference, "cap_key": c.key, "cap_name": c.name, "cap": c.max_quantity,
             "used_elsewhere": c.used_by_others(p.id), "seats_left": left}))
 
-    # A practice service whose price in Settings changed after it was added here.
+    # A practice service whose price in Settings changed after it was added here
+    # (a quoted service doesn't use the Settings price).
+    quoted = {q.service_id for q in quotes}
     changed: dict[str, IFinding] = {}
     for rs in raw.scenarios:
         for sv in rs.services:
-            if sv.current_price_annual is not None and sv.current_price_annual != sv.price_annual \
+            if sv.id not in quoted and sv.current_price_annual is not None and sv.current_price_annual != sv.price_annual \
                     and sv.id not in changed:
                 changed[sv.id] = IFinding("service_price_changed", "future", "info", facts={
                     "service_id": sv.id, "name": sv.name,
                     "locked_monthly": sv.price_annual / 12, "current_monthly": sv.current_price_annual / 12})
     f.extend(changed.values())
+    # A quote nobody gets is in no number; a quote for a different number of users
+    # than the groups that get it is spread over those groups all the same (G13a).
+    for q in quotes:
+        facts = {"service_id": q.service_id, "name": q.name, "users_covered": q.users_covered,
+                 "people": q.people, "annual": q.annual_cost}
+        if q.people == 0:
+            f.append(IFinding("service_quote_unused", "future", facts=facts))
+        elif q.users_covered is not None and q.users_covered != q.people:
+            f.append(IFinding("service_quote_seats", "future", "info", facts=facts))
 
     # ---- Capability comparison ----
     # A licence nobody can read (D23): one question per licence name.

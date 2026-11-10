@@ -386,9 +386,11 @@ export default function Readout({ engagement }) {
           <thead><tr><th>Product</th><th>Disposition</th><th className="num">Displaced/Covered</th>
             <th className="num">Residual</th><th className="num">Residual $/yr</th></tr></thead>
           <tbody>
-            {result.dispositions.filter((d) => (result.views?.dispositions_shown || []).includes(d.third_party_product_id)).map((d) => (
+            {(result.views?.dispositions_shown || []).map((id) => result.dispositions.find((d) => d.third_party_product_id === id)).filter(Boolean).map((d) => (
               <tr key={d.third_party_product_id}>
-                <td>{d.third_party_product_name}</td>
+                <td>{d.third_party_product_id.startsWith('managed-share:')
+                  ? <span style={{ paddingLeft: 16 }} title="The managed part of the tool above, which only a managed security service replaces">↳ managed part</span>
+                  : d.third_party_product_name}</td>
                 <td>
                   <span className={`badge ${d.disposition === 'FullyEliminated' ? 'pos' : d.disposition === 'PartiallyReduced' ? 'warn' : 'muted'}`}>
                     {d.disposition}

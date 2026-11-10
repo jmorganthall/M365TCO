@@ -1053,6 +1053,65 @@ def delete_gap_answer(engagement_id: str, answer_id: str, db: Session = Depends(
     db.commit()
 
 
+# ---------- Practice service quotes (GUIDED_PLAN G13a) ----------
+def _quote(db: Session, engagement_id: str, quote_id: str) -> models.ServiceQuote:
+    row = db.get(models.ServiceQuote, quote_id)
+    if row is None or row.engagement_id != engagement_id:
+        raise HTTPException(404, "Quote not found")
+    return row
+
+
+def _check_quote(total_cost, users_covered) -> None:
+    if total_cost is not None and total_cost < 0:
+        raise HTTPException(422, "A quote can't be negative.")
+    if users_covered is not None and users_covered < 0:
+        raise HTTPException(422, "Users covered can't be negative.")
+
+
+@router.get("/service-quotes", response_model=list[schemas.ServiceQuoteOut])
+def list_service_quotes(engagement_id: str, db: Session = Depends(get_db)):
+    return _require_engagement(db, engagement_id).service_quotes
+
+
+@router.post("/service-quotes", response_model=schemas.ServiceQuoteOut, status_code=201)
+def create_service_quote(engagement_id: str, payload: schemas.ServiceQuoteIn, db: Session = Depends(get_db)):
+    """What the practice delivering a service quoted this customer: a total cost
+    for a number of users. The interpreter spreads it over the groups that get it."""
+    eng = _require_engagement(db, engagement_id)
+    if db.get(models.PracticeService, payload.service_id) is None:
+        raise HTTPException(422, "Unknown practice service.")
+    if any(q.service_id == payload.service_id for q in eng.service_quotes):
+        raise HTTPException(409, "This service already has a quote; change that one.")
+    _check_quote(payload.total_cost, payload.users_covered)
+    row = models.ServiceQuote(engagement_id=engagement_id, **payload.model_dump())
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.patch("/service-quotes/{quote_id}", response_model=schemas.ServiceQuoteOut)
+def update_service_quote(engagement_id: str, quote_id: str, payload: schemas.ServiceQuotePatch,
+                         db: Session = Depends(get_db)):
+    row = _quote(db, engagement_id, quote_id)
+    body = payload.model_dump(exclude_unset=True)
+    _check_quote(body.get("total_cost"), body.get("users_covered"))
+    for k, v in body.items():
+        if k in ("total_cost", "cost_period") and v is None:
+            continue
+        setattr(row, k, v)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.delete("/service-quotes/{quote_id}", status_code=204)
+def delete_service_quote(engagement_id: str, quote_id: str, db: Session = Depends(get_db)):
+    """Back to the price per user in Settings."""
+    db.delete(_quote(db, engagement_id, quote_id))
+    db.commit()
+
+
 # ---------- Persona scenarios ----------
 @router.put("/scenarios/{scenario_id}/services", response_model=schemas.ScenarioOut)
 def set_scenario_services(engagement_id: str, scenario_id: str, payload: schemas.ScenarioServicesIn,

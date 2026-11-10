@@ -74,6 +74,7 @@ def current_result(db: Session, engagement_id: str) -> dict:
     result["views"]["personas"] = persona_view(interp, result)
     result["views"]["persona_totals"] = persona_totals(result["views"]["personas"])
     result["views"]["sections"] = sections_view(interp, result)
+    result["views"]["mdr"] = mdr_view(interp, result)
     return result
 
 
@@ -110,9 +111,9 @@ def sections_view(i, result: dict) -> dict:
         services = Decimal(str(s.get("target_services_annual") or 0))
         sec["Microsoft"]["cost_after"] += Decimal(str(s["target_spend_annual"])) - services
         sec["Microsoft"]["cost_today"] += Decimal(str(s["current_microsoft_annual"]))
-        for sv in rs.services:
+        for sv, price in zip(rs.services, sc.service_prices_annual):
             kind = sv.kind if sv.kind in sec else "Other"
-            sec[kind]["cost_after"] += hc * sv.price_annual
+            sec[kind]["cost_after"] += hc * price
             if sv.name not in named[kind]:
                 named[kind].add(sv.name)
                 sec[kind]["services"].append(sv.name)
@@ -141,6 +142,76 @@ def sections_view(i, result: dict) -> dict:
     return {"sections": out,
             "combined_change_annual": round(sum(x["change_annual"] for x in out), 2),
             "managed_share_retired_annual": round(sum(x["managed_share_retired"] for x in out), 2)}
+
+
+def mdr_view(i, result: dict) -> dict | None:
+    """"Replacing your MDR" (GUIDED_PLAN G14, G13a): the managed tools whose managed
+    share a managed-security service retires, what of each the move retires (the
+    software share by Microsoft or a service, the managed share by the service),
+    and what the managed-security services cost after. None when no managed share
+    is retired, i.e. no managed-security service replaces a managed tool."""
+    from decimal import Decimal
+
+    from tco_engine.interpret import MANAGED_PREFIX
+    from tco_engine.rules import covers_tool
+
+    zero = Decimal("0")
+    q2 = lambda v: float(Decimal(v).quantize(Decimal("0.01")))  # noqa: E731
+    isc = {s.id: s for s in i.scenarios}
+    raw_sc = {s.id: s for s in i.raw.scenarios}
+    tools = {t.id: t for t in i.tools}
+    quotes = {q.service_id: q for q in i.service_quotes}
+    by_tool: dict[str, dict] = {}
+    services: dict[str, dict] = {}
+    for s in result.get("scenarios") or []:
+        if not s.get("in_scope") or s["scenario_id"] not in isc:
+            continue
+        sc, rs = isc[s["scenario_id"]], raw_sc[s["scenario_id"]]
+        hc = Decimal(s["headcount"])
+        for sv, price in zip(rs.services, sc.service_prices_annual):
+            if sv.kind != "ManagedSecurity":
+                continue
+            row = services.setdefault(sv.id, {"service_id": sv.id, "name": sv.name, "annual": zero,
+                                              "quoted": sv.id in quotes, "people": 0})
+            row["annual"] += hc * price
+            row["people"] += int(hc)
+        for o in s.get("offsets") or []:
+            t = tools.get(o["third_party_product_id"])
+            if t is None:
+                continue
+            parent = t.managed_share_of or t.id
+            row = by_tool.setdefault(parent, {"tool_id": parent, "software_retired": zero,
+                                              "managed_retired": zero, "software_by_microsoft": True})
+            credit = Decimal(str(o["credited_offset_annual"]))
+            if t.managed_share_of:
+                row["managed_retired"] += credit
+            else:
+                row["software_retired"] += credit
+                if not covers_tool(t.delivered_outcome_ids, sc.microsoft_outcome_ids):
+                    row["software_by_microsoft"] = False
+    rows = []
+    for tid, row in by_tool.items():
+        if row["managed_retired"] <= 0:
+            continue
+        t, share = tools.get(tid), tools.get(MANAGED_PREFIX + tid)
+        today = (t.effective_annual_cost if t else zero) + (share.effective_annual_cost if share else zero)
+        outcomes = set(t.delivered_outcome_ids if t else ()) | set(share.delivered_outcome_ids if share else ())
+        rows.append({"tool_id": tid, "name": t.name if t else "", "today_annual": q2(today),
+                     "software_retired": q2(row["software_retired"]),
+                     "software_by_microsoft": row["software_by_microsoft"],
+                     "managed_retired": q2(row["managed_retired"]),
+                     "retired_annual": q2(row["software_retired"] + row["managed_retired"]),
+                     "outcome_ids": sorted(outcomes)})
+    if not rows:
+        return None
+    svc = [{**x, "annual": q2(x["annual"]),
+            "users_covered": quotes[x["service_id"]].users_covered if x["quoted"] else None,
+            "per_user_monthly": q2(x["annual"] / x["people"] / 12) if x["people"] else 0.0}
+           for x in services.values()]
+    retired = sum(Decimal(str(r["retired_annual"])) for r in rows)
+    after = sum(Decimal(str(x["annual"])) for x in svc)
+    return {"tools": rows, "services": svc, "retired_annual": q2(retired),
+            "services_annual": q2(after), "change_annual": q2(after - retired)}
 
 
 def persona_view(i, result: dict) -> list[dict]:
@@ -259,8 +330,24 @@ def views(result: dict) -> dict:
             "consolidation_by_persona": consolidation, "quick_win_who": who,
             # The tools a disposition table lists: not a $0 line (a contract part
             # with no amount yet says nothing; the contract's remainder carries it).
-            "dispositions_shown": [d["third_party_product_id"] for d in result.get("dispositions") or []
-                                   if float(d.get("effective_annual_cost") or 0) > 0]}
+            "dispositions_shown": dispositions_shown(result)}
+
+
+def dispositions_shown(result: dict) -> list[str]:
+    """The tools a disposition table lists, in order: not a $0 line (a contract part
+    with no amount yet says nothing; the contract's remainder carries it), and a
+    managed tool's "(managed service)" line straight under its tool (G14)."""
+    from tco_engine.interpret import MANAGED_PREFIX
+
+    shown = [d["third_party_product_id"] for d in result.get("dispositions") or []
+             if float(d.get("effective_annual_cost") or 0) > 0]
+    parents = [t for t in shown if not t.startswith(MANAGED_PREFIX)]
+    out = []
+    for t in parents:
+        out.append(t)
+        if MANAGED_PREFIX + t in shown:
+            out.append(MANAGED_PREFIX + t)
+    return out + [t for t in shown if t not in out]
 
 
 def narratives_view(eng: models.Engagement) -> dict:

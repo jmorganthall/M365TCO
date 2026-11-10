@@ -619,6 +619,28 @@ class ScenarioServicesIn(BaseModel):
     service_ids: list[str]
 
 
+class ServiceQuoteIn(BaseModel):
+    """A practice service's quote for this customer (GUIDED_PLAN G13a)."""
+    service_id: str
+    total_cost: Decimal = Decimal("0")
+    cost_period: Literal["Annual", "Monthly"] = "Annual"
+    users_covered: Optional[int] = None
+
+
+class ServiceQuotePatch(BaseModel):
+    total_cost: Optional[Decimal] = None
+    cost_period: Optional[Literal["Annual", "Monthly"]] = None
+    users_covered: Optional[int] = None
+
+
+class ServiceQuoteOut(ORMModel):
+    id: str
+    service_id: str
+    total_cost: Decimal
+    cost_period: str
+    users_covered: Optional[int]
+
+
 
 
 # ---- Secrets ----

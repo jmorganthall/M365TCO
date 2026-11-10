@@ -68,7 +68,7 @@ export default function Guided({ engagement, meta, step, sub, onGo, onUpdate, on
     try { return await fn() } catch (e) { setErr(e.message) }
   }
 
-  const ctx = { eid, base, engagement, meta, interp, result, personas, outcomes, tools, contracts, areas, call, onUpdate, onGo, onDetail }
+  const ctx = { eid, base, engagement, meta, interp, result, personas, outcomes, tools, contracts, priceables, areas, call, onUpdate, onGo, onDetail }
   return (
     <div className="guide">
       <div className="guide-main">
@@ -541,7 +541,14 @@ function PriceTool({ base, tool, n, of, interp, personas, outcomes, call, onGo }
     ids.has(pid) ? ids.delete(pid) : ids.add(pid)
     patch({ persona_ids: [...ids] })
   }
-  const uses = (it?.delivered_outcome_ids || []).map((id) => outcomes.find((o) => o.id === id)?.name).filter(Boolean)
+  // A managed tool's 24x7 MDR sits on its managed part (G14): count both lines.
+  const share = interp.tool[`managed-share:${tool.id}`]
+  const delivered = new Set([...(it?.delivered_outcome_ids || []), ...(share?.delivered_outcome_ids || [])])
+  const uses = [...delivered].map((id) => outcomes.find((o) => o.id === id)?.name).filter(Boolean)
+  // What can be broken down is the tool's own line; its managed part is already apart.
+  const ownUses = (it?.delivered_outcome_ids || []).length
+  const mdr = outcomes.find((o) => o.seed_key === 'managed-detection-response')
+  const askMdr = tool.is_managed && mdr && !delivered.has(mdr.id)
   const missing = interp.findings.find((f) => f.code === 'tool_incomplete' && f.tool_id === tool.id)?.facts.missing
   return (
     <Ask title={`What do you pay for ${tool.name}?`} why={`Tool ${n + 1} of ${of}. Used for: ${uses.join(', ') || 'nothing yet'}.`}>
@@ -576,12 +583,24 @@ function PriceTool({ base, tool, n, of, interp, personas, outcomes, call, onGo }
           <input type="checkbox" style={{ width: 'auto' }} checked={tool.is_managed}
             onChange={(e) => patch({ is_managed: e.target.checked })} /> Bought as a managed service</label>
       </div>
-      {it && <p className="muted">Counted: {money(it.effective_annual_cost, 'yr')} · {money(it.cost_per_person, 'mo')} per person</p>}
+      {askMdr && (
+        <div className="guide-block" style={{ marginTop: '1rem' }}>
+          <div className="guide-block-title">Does the provider watch and respond around the clock?</div>
+          <div className="muted guide-desc">If {tool.name} includes {mdr.name}, tick it. Microsoft 365 can replace the
+            software; only a managed security service replaces the people who watch and respond, so the managed part
+            of the price stays until one is proposed.</div>
+          <button className="ghost" onClick={() => call(() => api.post(`${base}/coverage`, {
+            outcome_id: mdr.id, product_kind: 'ThirdParty', third_party_product_id: tool.id, ratified: true }))}>
+            Yes, it includes {mdr.name}</button>
+        </div>
+      )}
+      {it && <p className="muted">Counted: {money(it.effective_annual_cost, 'yr')} · {money(it.cost_per_person, 'mo')} per person
+        {share && <> (the software share), plus {money(share.effective_annual_cost, 'yr')} for the managed part</>}</p>}
       {missing && <div className="src warn">Left out of the numbers until it has: {missing.join(', ')}.</div>}
-      {uses.length > 1 && (
+      {ownUses > 1 && (
         <div className="guide-block" style={{ marginTop: '1rem' }}>
           <div className="guide-block-title">Can that be broken down?</div>
-          <div className="muted guide-desc">{tool.name} does {uses.length} things. Microsoft may replace some of them and
+          <div className="muted guide-desc">{tool.name} does {ownUses} things. Microsoft may replace some of them and
             not others; a saving shows only for a part that has its own cost. Breaking it down keeps the total
             and lets you put a cost against each part.</div>
           <button className="ghost" onClick={() => call(() => api.post(`${base}/third-party/${tool.id}/break-down`))}>
@@ -671,17 +690,30 @@ function TodayQ({ personas, interp }) {
 // The last step: does the data line up, and is everything collected? Review's
 // checks for the data steps (groups, licences, tools), each with a button back to
 // the step that fixes it. Recommendations live in the detail view, not here.
-const FIX_STEP = {
-  no_groups: 'groups', headcount_mismatch: 'groups', headcount_vs_employees: 'groups',
-  tool_incomplete: 'tools', tool_seats_short: 'tools', contract_lines_exceed: 'tools',
+// The guided flow collects what only the customer can tell us (G21). A check
+// about reading the data — what a licence includes, what's set aside — is for
+// the SA team on the detail view's Review, not a question for the customer.
+const SA_ONLY = new Set(['license_unread', 'license_out_of_scope', 'capability_changes_unknown'])
+// Where each check is fixed: the step, and for a tool the screen that prices it.
+const GROUP_CHECKS = new Set(['no_groups', 'headcount_mismatch', 'headcount_vs_employees'])
+function fixTarget(c, priceables, tools) {
+  if (GROUP_CHECKS.has(c.code)) return ['groups', 0]
+  if (c.step === 'groups') return ['microsoft', 0]
+  const id = c.tool_id || ''
+  const tool = tools.find((t) => t.id === id)
+  const contractId = c.contract_id || (id.startsWith('contract-rest:') ? id.slice('contract-rest:'.length) : tool?.contract_id)
+  const n = priceables.findIndex((p) => (contractId ? p.kind === 'contract' && p.contract.id === contractId
+    : p.kind === 'tool' && p.tool.id === id))
+  return ['tools', Math.max(n, 0)]
 }
-function CheckQ({ base, interp, personas, tools, onGo, onDetail }) {
+function CheckQ({ base, interp, personas, tools, priceables, onGo, onDetail }) {
   const review = useList(`${base}/review`)
-  const checks = (review?.checks || []).filter((c) => c.step === 'groups' || c.step === 'tools')
+  const all = (review?.checks || []).filter((c) => c.step === 'groups' || c.step === 'tools')
+  const checks = all.filter((c) => !SA_ONLY.has(c.code))
+  const forSa = all.length - checks.length
   const fixes = checks.filter((c) => c.severity !== 'info')
   const notes = checks.filter((c) => c.severity === 'info')
   const s = interp.data?.summary
-  const target = (c) => FIX_STEP[c.code] || (c.tool_id ? 'tools' : c.step === 'tools' ? 'microsoft' : 'microsoft')
   return (
     <Ask title={fixes.length ? 'A few things to sort out before the recommendation.' : 'Everything we need is collected.'}
       why="This checks that the groups, licences and tools line up. Fix what's listed, then go on to the recommendation.">
@@ -696,7 +728,7 @@ function CheckQ({ base, interp, personas, tools, onGo, onDetail }) {
       {fixes.map((c, n) => (
         <div key={n} className="check-row">
           <div className="err" style={{ margin: 0 }}>{c.message}</div>
-          <button className="ghost sm" onClick={() => onGo(target(c), 0)}>Fix ›</button>
+          <button className="ghost sm" onClick={() => onGo(...fixTarget(c, priceables, tools))}>Fix ›</button>
         </div>
       ))}
       {notes.length > 0 && (
@@ -704,6 +736,8 @@ function CheckQ({ base, interp, personas, tools, onGo, onDetail }) {
           {notes.map((c, n) => <div key={n} className="muted check-note">{c.message}</div>)}
         </details>
       )}
+      {forSa > 0 && <p className="muted">{forSa} more check{forSa === 1 ? ' is' : 's are'} for the SA team, not the
+        customer (for example what a licence includes). They're on the detail view's Review.</p>}
       <div className="guide-chips" style={{ marginTop: 24 }}>
         <button className={fixes.length ? 'ghost' : ''} onClick={() => onDetail('future')}>Continue to recommendations ›</button>
       </div>

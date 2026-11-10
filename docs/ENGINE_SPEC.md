@@ -199,6 +199,20 @@ net_tco_delta    = target_microsoft + target_services − existing_microsoft −
 msft_uplift      = target_microsoft − existing_microsoft                # ECIF excludes services
 ```
 
+**A service's quote (G13a).** When the practice delivering a service quoted this
+customer (`service_quotes`: a cost for a number of users), its price per user per
+year is the quote spread over the people who get it, by the same splitting rule as
+a tool (6.0a):
+
+```
+people(service)     = Σ headcount of personas whose in-scope scenario includes it
+quote_rate(service) = annual(quote) / people(service)        # 0 when people = 0
+```
+
+`services_unit_price_annual` uses `quote_rate` for a quoted service and the locked
+Settings price otherwise, so the groups together carry exactly the quote. The
+quote's users covered is only compared with `people` (a Review finding).
+
 **Sections (a result view, `views.sections`).** A retired tool's credit belongs to
 Microsoft when the Microsoft plan alone delivers everything the tool does, else to
 the kind of service that delivers what Microsoft doesn't. When a managed tool is

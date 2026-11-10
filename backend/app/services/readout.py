@@ -184,7 +184,7 @@ def build_html(eng: models.Engagement, result: dict, gaps: list[dict],
     ctx = _Context(eng, result, gaps, brand, prepared, interpreted)
     body = "".join([
         ctx.footer("running-footer"), ctx.cover(), ctx.opportunity(), ctx.quick_wins(),
-        ctx.persona_pages(), ctx.bridge(), ctx.sections(), ctx.third_party(), ctx.assumptions(),
+        ctx.persona_pages(), ctx.bridge(), ctx.sections(), ctx.mdr(), ctx.third_party(), ctx.assumptions(),
         ctx.next_steps(), ctx.footer("screen-footer"),
     ])
     title = f"{eng.customer_name or 'Customer'} — Microsoft 365 TCO"
@@ -725,6 +725,35 @@ class _Context:
             f"<td class='num'><b>{_amt(-_f(v.get('combined_change_annual')))}</b></td></tr></tfoot></table>"
             f"{note}</section>")
 
+    def mdr(self) -> str:
+        """"Replacing your MDR" (G14, G13a), as `views.mdr` computes it: today's
+        managed tools and what the move retires of each, then the managed security
+        services that replace them and what they cost."""
+        v = self.views.get("mdr")
+        if not v:
+            return ""
+        names = {o.id: o.name for o in self.eng.outcomes}
+        tools = "".join(
+            f"<tr><td><b>{E(t['name'])}</b><div class='muted small'>Delivers "
+            f"{E(', '.join(names[o] for o in t['outcome_ids'] if o in names))}</div></td>"
+            f"<td class='num'>{_usd0(t['today_annual'])}</td><td class='num'>{_usd0(t['retired_annual'])}</td></tr>"
+            for t in v["tools"])
+        svcs = "".join(
+            f"<tr><td><b>{E(x['name'])}</b><div class='muted small'>"
+            + (f"Quoted for {x['users_covered']:,} users; " if x.get("users_covered") is not None else "")
+            + f"{x['people']:,} people get it · {_usd(x['per_user_monthly'])} per user per month</div></td>"
+            f"<td></td><td class='num'>{_usd0(x['annual'])}</td></tr>" for x in v["services"])
+        return (
+            "<section class='block keep'><div class='eyebrow'>Managed security</div><h1>Replacing Your MDR</h1>"
+            "<p class='lede'>Microsoft 365 replaces the software; the managed service replaces the people who "
+            "watch and respond around the clock.</p>"
+            "<table class='data'><thead><tr><th>Today</th><th class='num'>Costs today / yr</th>"
+            f"<th class='num'>Retired / yr</th></tr></thead><tbody>{tools}</tbody>"
+            "<thead><tr><th>After, with Microsoft 365</th><th></th><th class='num'>Costs / yr</th></tr></thead>"
+            f"<tbody>{svcs}</tbody><tfoot><tr><td><b>Saving</b> <span class='muted small'>(the Microsoft 365 "
+            f"plans are in their own section)</span></td><td></td><td class='num'><b>{_amt(-_f(v['change_annual']))}</b></td></tr>"
+            "</tfoot></table></section>")
+
     def third_party(self) -> str:
         if not self.dispositions:
             return ""
@@ -755,6 +784,8 @@ class _Context:
             f"<div class='muted small'>{E(label)}</div></div></div>"
             for k, label, v in segs if v > 0)
 
+        by_id = {d["third_party_product_id"]: d for d in self.dispositions}
+
         def row(d):
             label, cls = ACTION.get(d["disposition"], (d["disposition"], "keep"))
             unset = not d["covered_count"]
@@ -763,6 +794,14 @@ class _Context:
             basis = (f"Managed service · {_pct(d['tooling_pct'])} software share"
                      if d["is_managed"] else "Direct licence")
             note = "Users not set — seats and savings can't be counted" if unset else ""
+            if d["third_party_product_id"].startswith("managed-share:"):
+                # The managed part of the tool above (G14), shown under it.
+                return (f"<tr><td style='padding-left:16px'>↳ managed part<div class='muted small'>"
+                        "Replaced only by a managed security service</div></td>"
+                        f"<td><span class='tag {cls}'>{label}</span></td>"
+                        f"<td class='num'>{retired}</td><td class='num'>{kept_n}</td>"
+                        f"<td class='num'>{_usd0(d['effective_annual_cost'])}</td>"
+                        f"<td class='num'>{_usd0(d['residual_annual_cost'])}</td></tr>")
             return (f"<tr><td><b>{E(d['third_party_product_name'])}</b><div class='muted small'>{basis}"
                     + (f" · {note}" if note else "") + "</div></td>"
                     f"<td><span class='tag {cls}'>{label}</span></td>"
@@ -790,7 +829,7 @@ class _Context:
             f"<div class='legend'>{legend}</div></div>"
             "<table class='data'><thead><tr><th>Tool</th><th>Action</th><th class='num'>Seats retired</th>"
             "<th class='num'>Seats kept</th><th class='num'>Today / yr</th><th class='num'>Remains / yr</th>"
-            f"</tr></thead><tbody>{''.join(row(d) for d in self.dispositions if d['third_party_product_id'] in set(self.views.get('dispositions_shown') or []))}</tbody></table>"
+            f"</tr></thead><tbody>{''.join(row(by_id[t]) for t in self.views.get('dispositions_shown') or [] if t in by_id)}</tbody></table>"
             f"{retired_html}</section>"
         )
 
