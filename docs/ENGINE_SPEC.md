@@ -145,6 +145,45 @@ The 6.2 headcount split and the "applies to" rule are likewise one function each
 (`tco_engine/rules.py`: `headcount_shares`, `applies_to`), used by the interpreter,
 the engine's per-scenario math and the headline timing.
 
+## People covered by a tool — the one splitting rule (6.0a)
+
+Agreed in `GUIDED_PLAN.md` (G2, G4–G6). It replaces the tool's `people_covered`
+line in 6.0. A tool's cost lands on the personas that hold it, by headcount, the
+same way a licence line's does, unless the customer says its extra seats belong to
+people who stay on it.
+
+```
+people_held     = Σ headcount(p) for p in applies_to        (every persona when untagged)
+stated_seats    = covered_count_override                     (NULL = not given)
+people_covered  = people_held     if stated_seats is NULL                 (source "personas")
+                | people_held     if stated_seats < people_held           (source "personas"; finding tool_seats_short)
+                | people_held     if stated_seats > people_held
+                                     and extra_seats_answer = ExtraSeats  (source "extra_seats")
+                | stated_seats    otherwise                               (source "override")
+standing_seats  = people_covered − people_held                (≥ 0: seats outside the personas that stay)
+cost_per_person = effective_cost / people_covered
+share(tool, p)  = cost_per_person × headcount(p)
+```
+
+So Σ shares + standing_seats × cost_per_person = effective_cost: the cost is never
+lost. The engine's `covered_count` is `people_covered`; nothing else in 6.3–6.4
+changes. `extra_seats_unanswered` is raised when stated_seats > people_held, the
+answer is NULL and at least one in-scope scenario retires the tool for a persona.
+
+**The persona baseline (G3).** For every persona, with or without a scenario:
+
+```
+microsoft_annual = Σ share(line, p) over in-scope licence lines
+tools_annual     = Σ share(tool, p)
+total_annual     = microsoft_annual + tools_annual
+per_user_monthly = total_annual / headcount(p) / 12      (0 when headcount is 0)
+```
+
+The baseline needs no future state. A scenario's current spend (6.2) is unchanged:
+a tool the persona keeps would appear on both sides of a baseline comparison and
+cancel, so `target − (microsoft + displaced tools)` equals
+`(target + kept tools) − baseline`.
+
 ## Derived per-product cost (6.5 managed split)
 
 ```
