@@ -51,3 +51,60 @@ def test_version_endpoint_is_silent_on_dev(client, monkeypatch):
     r = client.get("/api/version")
     assert r.status_code == 200
     assert r.json()["update"] is None and r.json()["running"]["known"] is False
+
+
+def test_published_sha_waits_for_latest_image():
+    # :latest is still the running build's image: neither trunk commit is
+    # published yet, so nothing is reported.
+    assert updatecheck.published_sha("sha256:old", [("ccc", None), ("bbb", "sha256:b")]) is None
+    # The newest commit is still building but :latest already moved to the one
+    # before it: that one is the update.
+    assert updatecheck.published_sha("sha256:b", [("ccc", None), ("bbb", "sha256:b")]) == "bbb"
+    # The newest commit's image is :latest.
+    assert updatecheck.published_sha("sha256:c", [("ccc", "sha256:c"), ("bbb", "sha256:b")]) == "ccc"
+    # No :latest digest (registry unreachable or empty) → nothing.
+    assert updatecheck.published_sha(None, [("ccc", "sha256:c")]) is None
+
+
+def _known_build(monkeypatch):
+    monkeypatch.setattr(updatecheck.settings, "build_sha", "a" * 40)
+    monkeypatch.setattr(updatecheck.settings, "build_version", "")
+    monkeypatch.setattr(updatecheck, "_cache", {"at": 0.0, "value": None, "ttl": None})
+
+
+def test_check_pending_is_rechecked_soon(monkeypatch):
+    _known_build(monkeypatch)
+    calls = []
+
+    def fake_fetch(run):
+        calls.append(1)
+        return None, True
+
+    monkeypatch.setattr(updatecheck, "_fetch_update", fake_fetch)
+    clock = [1000.0]
+    monkeypatch.setattr(updatecheck.time, "time", lambda: clock[0])
+    assert updatecheck.check()["update"] is None
+    assert updatecheck.check()["update"] is None
+    assert len(calls) == 1  # pending result is cached briefly
+    clock[0] += updatecheck._PENDING_TTL_SECONDS + 1
+    updatecheck.check()
+    assert len(calls) == 2  # and re-checked after the short TTL, not the full one
+
+
+def test_check_up_to_date_is_not_cached(monkeypatch):
+    _known_build(monkeypatch)
+    calls = []
+    monkeypatch.setattr(updatecheck, "_fetch_update", lambda run: (calls.append(1), (None, False))[1])
+    updatecheck.check()
+    updatecheck.check()
+    assert len(calls) == 2
+
+
+def test_check_found_update_is_cached(monkeypatch):
+    _known_build(monkeypatch)
+    calls = []
+    found = {"available": True, "kind": "commit", "latest": "bbbbbbb", "url": None}
+    monkeypatch.setattr(updatecheck, "_fetch_update", lambda run: (calls.append(1), (found, False))[1])
+    assert updatecheck.check()["update"] == found
+    assert updatecheck.check()["update"] == found
+    assert len(calls) == 1
