@@ -253,30 +253,50 @@ function GroupsQ({ engagement, base, personas, outcomes, interp, call }) {
   return (
     <Ask title="Who gets different licensing?"
       why="Name each group, how many people are in it, and what they need whatever plan they're on. Untick one only if that group really doesn't need it.">
-      {personas.map((p) => (
-        <div key={p.id} className="group-item">
-          <div className="guide-row" style={{ margin: 0 }}>
-            <Field value={p.name} onSave={(v) => v.trim() && call(() => api.patch(`${base}/personas/${p.id}`, { name: v.trim() }))} />
-            <Field type="number" value={p.headcount} style={{ width: 120 }}
-              onSave={(v) => call(() => api.patch(`${base}/personas/${p.id}`, { headcount: num(v) || 0 }))} />
-            <span className="muted">people</span>
-            <button className="ghost sm" aria-label={`Remove ${p.name}`} title="Remove this group"
-              onClick={() => confirm(`Remove ${p.name}?`) && call(() => api.del(`${base}/personas/${p.id}`))}>✕</button>
+      {/* The groups entered so far, one line each: name, people, then a checkbox per
+          need in its own column (headed by the outcome's name), then remove. */}
+      {personas.length > 0 && (
+        <div className="groups-grid" style={{ '--needs': needs.length }} role="table" aria-label="Groups">
+          <div className="groups-head" role="row">
+            <span role="columnheader">Group</span><span role="columnheader" className="num">People</span>
+            {needs.map((o) => <span key={o.id} role="columnheader" className="need-col">{o.name}</span>)}
+            <span />
           </div>
-          <Needs needs={needs} selected={p.required_outcome_ids || []} onToggle={(id) => toggleFor(p, id)} />
+          {personas.map((p) => {
+            const sel = p.required_outcome_ids || []
+            return (
+              <div key={p.id} className="groups-row" role="row">
+                <Field value={p.name} onSave={(v) => v.trim() && call(() => api.patch(`${base}/personas/${p.id}`, { name: v.trim() }))} />
+                <Field type="number" value={p.headcount}
+                  onSave={(v) => call(() => api.patch(`${base}/personas/${p.id}`, { headcount: num(v) || 0 }))} />
+                {needs.map((o) => (
+                  <span key={o.id} className="need-col">
+                    <input type="checkbox" aria-label={`${p.name} needs ${o.name}`} checked={sel.includes(o.id)}
+                      onChange={() => toggleFor(p, o.id)} /></span>
+                ))}
+                <button className="ghost sm" aria-label={`Remove ${p.name}`} title="Remove this group"
+                  onClick={() => confirm(`Remove ${p.name}?`) && call(() => api.del(`${base}/personas/${p.id}`))}>✕</button>
+              </div>
+            )
+          })}
         </div>
-      ))}
-      {/* UI3: visible labels; the placeholders are examples. MO4: a number pad for size. */}
-      <div className="guide-row" style={{ alignItems: 'flex-end' }}>
-        <div className="guide-field"><label htmlFor="new-group-name">New group</label>
-          <input id="new-group-name" value={name} placeholder="e.g. Frontline" onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && add()} /></div>
-        <div className="guide-field"><label htmlFor="new-group-size">People</label>
-          <input id="new-group-size" type="number" inputMode="numeric" value={size} placeholder="e.g. 300" style={{ width: 120 }}
-            onChange={(e) => setSize(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} /></div>
-        <button className="ghost" onClick={add}>Add group</button>
+      )}
+      {/* Adding a group is its own panel, so it reads as an action, not another row.
+          UI3: visible labels; placeholders are examples. MO4: a number pad for size. */}
+      <div className="group-add">
+        <div className="group-add-title">Add a group</div>
+        <div className="guide-row" style={{ alignItems: 'flex-end', margin: 0 }}>
+          <div className="guide-field"><label htmlFor="new-group-name">Group name</label>
+            <input id="new-group-name" value={name} placeholder="e.g. Frontline" onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && add()} /></div>
+          <div className="guide-field"><label htmlFor="new-group-size">People</label>
+            <input id="new-group-size" type="number" inputMode="numeric" value={size} placeholder="e.g. 300" style={{ width: 120 }}
+              onChange={(e) => setSize(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} /></div>
+          <button className="ghost" onClick={add}>Add group</button>
+        </div>
+        {needs.length > 0 && <div className="muted group-add-needs">They need:</div>}
+        <Needs needs={needs} selected={fresh} onToggle={toggleNew} />
       </div>
-      <Needs needs={needs} selected={fresh} onToggle={toggleNew} />
       {s && personas.length > 0 && (
         <p className="guide-count">These groups add up to <b>{s.groups_headcount.toLocaleString()}</b> people.</p>
       )}
