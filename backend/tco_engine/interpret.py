@@ -79,6 +79,9 @@ class RawLicenseLine:
     # Catalog fact from the loader: the plan the typed name resolves to (aliases
     # included), or None. Retires when lines carry a key (TARGET_SCHEMA §12).
     resolved_bundle_id: Optional[str] = None
+    # Its price came from the price list (source_tag ListPrice), so $0 is a real
+    # price (a free or donated plan), not a missing one.
+    price_from_catalog: bool = False
 
 
 @dataclass(frozen=True)
@@ -248,6 +251,9 @@ class ILicenseLine:
     pct_off_list: Decimal = ZERO        # how far below list the effective price is (≥ 0)
     unused_seats: int = 0               # purchased − assigned (≥ 0)
     unused_annual: Decimal = ZERO       # unused seats × effective price
+    # False when it costs $0 only because no price was found: not from the price
+    # list, not negotiated, nothing typed. A $0 price-list plan is known (free).
+    price_known: bool = True
 
     @property
     def in_scope(self) -> bool:
@@ -648,6 +654,7 @@ def interpret(raw: RawEngagement) -> Interpreted:
             annual_cost=Decimal(line.quantity_assigned) * effective,
             pct_off_list=_pct_off(line.list_price_annual, effective),
             unused_seats=unused, unused_annual=Decimal(unused) * effective,
+            price_known=bool(overridden or effective > 0 or line.price_from_catalog),
         )
         lines.append(il)
         if il.in_scope:
@@ -917,6 +924,10 @@ def _findings(raw, lines, tools, scenarios, tables, seat_caps, contracts=(), quo
         if c.limit_type == "max_total_seats" and c.current_seats > c.max_quantity:
             f.append(IFinding("current_over_cap", "groups", facts={
                 "cap_name": c.name, "cap": c.max_quantity, "seats": c.current_seats}))
+    for l in lines:
+        if l.in_scope and not l.price_known:
+            f.append(IFinding("licence_price_missing", "groups", licence_id=l.id,
+                              facts={"name": raw_lines[l.id].sku_reference or "A licence line"}))
     set_aside = [raw_lines[l.id].sku_reference or "A licence line" for l in lines if not l.in_scope]
     if set_aside:
         f.append(IFinding("license_out_of_scope", "groups", "info", facts={"names": set_aside}))

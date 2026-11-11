@@ -588,14 +588,14 @@ def _licence_basis(eng: models.Engagement, row: models.CurrentMicrosoftLicense) 
 
 def _requote_licence(db: Session, eng: models.Engagement, row: models.CurrentMicrosoftLicense) -> None:
     """Re-pull the line's list price from the catalog at its basis (the licence twin
-    of _requote_scenario). Only a price the catalog finds (> 0) is written, so a
-    hand-entered price on an uncatalogued licence survives."""
+    of _requote_scenario). Only a price the catalog finds is written (a free plan's
+    $0 included), so a hand-entered price on an uncatalogued licence survives."""
     if not (row.sku_reference or "").strip():
         return
-    price = bundles.catalog_annual_erp(db, row.sku_reference, bundle_id=row.bundle_id,
-                                       **_licence_basis(eng, row))
-    if price > 0:
-        row.unit_price_paid_annual = price
+    found = bundles.catalog_price_row(db, row.sku_reference, bundle_id=row.bundle_id,
+                                      **_licence_basis(eng, row))
+    if found is not None:
+        row.unit_price_paid_annual = Decimal(str(found.annual_erp_price or 0))
         row.source_tag = "ListPrice"
 
 
