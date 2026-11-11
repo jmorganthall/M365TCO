@@ -618,6 +618,14 @@ button.destructive:disabled { background: var(--panel2); color: var(--muted); op
 .groups-row > * { margin: 8px 0; }
 .groups-row input[type=number] { width: 100%; text-align: right; }
 .need-col { text-align: center; }
+/* A sub-group (carve-out) sits indented under its parent, with an └ connector. */
+.group-name { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.group-name-field { flex: 1; min-width: 0; }
+.groups-row.is-child .group-name { padding-left: 16px; }
+.child-mark { color: var(--muted); line-height: 2.2; }
+.child-note { font-size: .8rem; margin-top: 4px; }
+.guide-rail-row.is-child > div:first-child { padding-left: 16px; }
+.guide-rail-row > .num { white-space: nowrap; }
 .groups-head .num { text-align: right; }
 .group-add { border: 1px dashed var(--border); border-radius: 12px; padding: 16px; margin-top: 8px; }
 .group-add-title { font-weight: 600; margin-bottom: 8px; }

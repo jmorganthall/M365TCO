@@ -122,8 +122,10 @@ function Rail({ interp, personas }) {
       <div className="guide-rail-title">Your groups</div>
       {personas.length === 0 && <div className="muted">None yet.</div>}
       {personas.map((p) => (
-        <div key={p.id} className="guide-rail-row">
-          <div><b>{p.name}</b><div className="muted">{p.headcount.toLocaleString()} people</div></div>
+        <div key={p.id} className={`guide-rail-row${p.parent_persona_id ? ' is-child' : ''}`}>
+          <div>{p.parent_persona_id && <span className="child-mark" aria-hidden="true">└ </span>}<b>{p.name}</b>
+            <div className="muted">{p.headcount.toLocaleString()} people
+              {p.parent_persona_id && ` · part of ${personas.find((x) => x.id === p.parent_persona_id)?.name || 'another group'}`}</div></div>
           <div className="num">{interp.baseline[p.id] ? usd(interp.baseline[p.id].per_user_monthly) : '…'}
             <div className="muted">per user / mo</div></div>
         </div>
@@ -215,6 +217,8 @@ function GroupsQ({ engagement, base, personas, outcomes, interp, call }) {
   }
   const s = interp.data?.summary
   const supported = engagement.supported_headcount
+  // A sub-group (carve-out) sits under its parent; the list comes in that order.
+  const parentOf = (p) => (p.parent_persona_id ? personas.find((x) => x.id === p.parent_persona_id) : null)
   const [oneGroup, setOneGroup] = useState(false)
   const [everyoneSize, setEveryoneSize] = useState('')
   async function everyone(size) {
@@ -267,8 +271,14 @@ function GroupsQ({ engagement, base, personas, outcomes, interp, call }) {
           {personas.map((p) => {
             const sel = p.required_outcome_ids || []
             return (
-              <div key={p.id} className="groups-row" role="row">
-                <Field value={p.name} onSave={(v) => v.trim() && call(() => api.patch(`${base}/personas/${p.id}`, { name: v.trim() }))} />
+              <div key={p.id} className={`groups-row${parentOf(p) ? ' is-child' : ''}`} role="row">
+                <div className="group-name">
+                  {parentOf(p) && <span className="child-mark" aria-hidden="true">└</span>}
+                  <div className="group-name-field">
+                    <Field value={p.name} onSave={(v) => v.trim() && call(() => api.patch(`${base}/personas/${p.id}`, { name: v.trim() }))} />
+                    {parentOf(p) && <div className="muted child-note">Part of {parentOf(p).name} · split off with its licences and tools</div>}
+                  </div>
+                </div>
                 <Field type="number" value={p.headcount}
                   onSave={(v) => call(() => api.patch(`${base}/personas/${p.id}`, { headcount: num(v) || 0 }))} />
                 {needs.map((o) => (
