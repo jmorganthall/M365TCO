@@ -623,7 +623,6 @@ button.destructive:disabled { background: var(--panel2); color: var(--muted); op
 .group-name-field { flex: 1; min-width: 0; }
 .groups-row.is-child .group-name { padding-left: 16px; }
 .child-mark { color: var(--muted); line-height: 2.2; }
-.child-note { font-size: .8rem; margin-top: 4px; }
 .guide-rail-row.is-child > div:first-child { padding-left: 16px; }
 .guide-rail-row > .num { white-space: nowrap; }
 .groups-head .num { text-align: right; }

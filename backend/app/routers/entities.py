@@ -101,6 +101,8 @@ def update_persona(engagement_id: str, persona_id: str, payload: schemas.Persona
         raise HTTPException(404, "Persona not found")
     data = payload.model_dump(exclude_unset=True)
     if "required_outcome_ids" in data:
+        if row.parent_persona_id:
+            raise HTTPException(422, "A sub-group needs what its parent needs; change it on the parent.")
         _set_persona_requirements(db, row, data.pop("required_outcome_ids") or [])
     for k, v in data.items():
         setattr(row, k, v)
@@ -235,8 +237,7 @@ def _carve(db: Session, engagement_id: str, parent: models.Persona, seats: int,
     # Inherit what these people already have. Tags are per-persona associations, so
     # the child needs its own rows; a current-licence line's cost then splits across
     # parent + child by headcount exactly as it did across the whole group before.
-    for link in parent.requirement_links:
-        db.add(models.PersonaRequirement(persona_id=child.id, outcome_id=link.outcome_id))
+    # Its needs are not copied: a carve-out reads its parent's (models.Persona).
     # The customer's coverage-gap answers describe these people's current state too.
     for ans in parent.gap_answers:
         db.add(models.CoverageGapAnswer(
@@ -443,6 +444,8 @@ def delete_persona(engagement_id: str, persona_id: str, db: Session = Depends(ge
     for child in db.execute(
         select(models.Persona).where(models.Persona.parent_persona_id == row.id)
     ).scalars().all():
+        # It read its needs from the parent; it keeps them as its own.
+        _set_persona_requirements(db, child, [l.outcome_id for l in row.requirement_links])
         child.parent_persona_id = None
     db.delete(row)
     db.commit()

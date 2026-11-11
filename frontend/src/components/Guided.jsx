@@ -124,8 +124,7 @@ function Rail({ interp, personas }) {
       {personas.map((p) => (
         <div key={p.id} className={`guide-rail-row${p.parent_persona_id ? ' is-child' : ''}`}>
           <div>{p.parent_persona_id && <span className="child-mark" aria-hidden="true">└ </span>}<b>{p.name}</b>
-            <div className="muted">{p.headcount.toLocaleString()} people
-              {p.parent_persona_id && ` · part of ${personas.find((x) => x.id === p.parent_persona_id)?.name || 'another group'}`}</div></div>
+            <div className="muted">{p.headcount.toLocaleString()} people</div></div>
           <div className="num">{interp.baseline[p.id] ? usd(interp.baseline[p.id].per_user_monthly) : '…'}
             <div className="muted">per user / mo</div></div>
         </div>
@@ -276,7 +275,6 @@ function GroupsQ({ engagement, base, personas, outcomes, interp, call }) {
                   {parentOf(p) && <span className="child-mark" aria-hidden="true">└</span>}
                   <div className="group-name-field">
                     <Field value={p.name} onSave={(v) => v.trim() && call(() => api.patch(`${base}/personas/${p.id}`, { name: v.trim() }))} />
-                    {parentOf(p) && <div className="muted child-note">Part of {parentOf(p).name} · split off with its licences and tools</div>}
                   </div>
                 </div>
                 <Field type="number" value={p.headcount}
@@ -284,6 +282,7 @@ function GroupsQ({ engagement, base, personas, outcomes, interp, call }) {
                 {needs.map((o) => (
                   <span key={o.id} className="need-col">
                     <input type="checkbox" aria-label={`${p.name} needs ${o.name}`} checked={sel.includes(o.id)}
+                      disabled={!!parentOf(p)} title={parentOf(p) ? `Set on ${parentOf(p).name}` : undefined}
                       onChange={() => toggleFor(p, o.id)} /></span>
                 ))}
                 <button className="ghost sm" aria-label={`Remove ${p.name}`} title="Remove this group"
