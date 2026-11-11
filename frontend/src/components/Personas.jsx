@@ -134,7 +134,8 @@ export default function Personas({ engagement, meta }) {
                       <label style={{ display: 'block', marginBottom: '.3rem' }}>Must also include <Help k="groups.required_capabilities" /></label>
                       <div className="pill-list">
                         {outcomes.map((o) => (
-                          <button key={o.id} type="button"
+                          <button key={o.id} type="button" disabled={!!parent}
+                            title={parent ? `Set on ${parent.name}` : undefined}
                             className={`tag-toggle ${reqs.includes(o.id) ? 'on' : ''}`}
                             onClick={() => toggleRequirement(p, o.id)}>{o.name}</button>
                         ))}

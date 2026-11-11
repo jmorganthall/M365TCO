@@ -273,3 +273,25 @@ def test_a_carve_out_sits_directly_under_its_parent_everywhere(client):
     html = client.get(f"/api/engagements/{eid}/readout.html").text
     assert (html.index("<h1>Property Ops</h1>") < html.index("<h1>Property Ops (small sites)</h1>")
             < html.index("<h1>Shared Device</h1>"))
+
+
+def test_a_carve_out_reads_its_parents_needs_live(client):
+    """A sub-group is the same people as its parent: its needs are the parent's,
+    read at the time, not a copy. Set on the parent, they reach the child; the
+    child can't set its own; deleting the parent leaves the child keeping them."""
+    eid, parent = _setup(client)
+    base = f"/api/engagements/{eid}"
+    out = {o["seed_key"]: o["id"] for o in client.get(f"{base}/outcomes").json()}
+    child = client.post(f"{base}/personas/{parent['id']}/carve", json={"seats": 300}).json()
+    kid = lambda: next(p for p in client.get(f"{base}/personas").json() if p["id"] == child["id"])  # noqa: E731
+    assert kid()["required_outcome_ids"] == []
+    client.patch(f"{base}/personas/{parent['id']}", json={"required_outcome_ids": [out["desktop-software"]]})
+    assert kid()["required_outcome_ids"] == [out["desktop-software"]]
+    i = client.get(f"{base}/interpreted").json()
+    assert any(t["persona_id"] == child["id"] and t["outcome_id"] == out["desktop-software"] and t["needed"]
+               for t in i["today"])
+    r = client.patch(f"{base}/personas/{child['id']}", json={"required_outcome_ids": []})
+    assert r.status_code == 422
+    client.delete(f"{base}/personas/{parent['id']}")
+    left = kid()
+    assert left["parent_persona_id"] is None and left["required_outcome_ids"] == [out["desktop-software"]]

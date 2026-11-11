@@ -262,8 +262,11 @@ linked to the first by `parent_persona_id`:
   deleting a *parent* leaves its carve-outs standing as ordinary personas (their
   seats are real people, not an artifact of the link).
 - **The child inherits what those people already hold** — the parent's
-  current-licence tags, third-party tags and `PersonaRequirement`s — because a
-  moment ago they were the same population. Only the future target differs. A line's
+  current-licence tags and third-party tags are copied — because a moment ago they
+  were the same population. **Its needs (`PersonaRequirement`s) are not copied: a
+  carve-out reads its parent's, live** (`Persona.required_outcome_ids`), so a change
+  on the parent reaches the child and the child can't set its own (422). Deleting
+  the parent gives each carve-out the parent's needs as its own. Only the future target differs. A line's
   cost therefore splits across parent + child by headcount (§6.2), so today's bill is
   unchanged and the carved seats never read as a population holding nothing. The
   parent's price *override* is deliberately not copied: it was a negotiated rate for

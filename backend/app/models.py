@@ -283,10 +283,16 @@ class Persona(Base):
         back_populates="persona", cascade="all, delete-orphan"
     )
 
+    parent: Mapped["Persona | None"] = relationship(remote_side="Persona.id", viewonly=True)
+
     @property
     def required_outcome_ids(self) -> list[str]:
         """Outcomes this persona is declared to REQUIRE (Personas tab). Feeds
-        recommend-a-path gap detection: a target bundle that misses one is a gap."""
+        recommend-a-path gap detection: a target bundle that misses one is a gap.
+        A carve-out is the same people as its parent, so it reads its parent's
+        (DATA_MODEL §4.2b): set on the parent, they reach the child."""
+        if self.parent is not None:
+            return self.parent.required_outcome_ids
         return [link.outcome_id for link in self.requirement_links]
 
 
