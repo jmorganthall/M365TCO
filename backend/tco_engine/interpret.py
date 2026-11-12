@@ -204,9 +204,9 @@ class RawEngagement:
     # The engagement's outcome id(s) for "24x7 managed detection & response": what
     # the managed share of a managed tool delivers (G14).
     managed_outcome_ids: frozenset[str] = frozenset()
-    # Catalog fact: the library plans that are full plans (kind "bundle"), not
-    # add-ons — two of them on one group is likely double licensing.
-    base_bundle_ids: frozenset[str] = frozenset()
+    # The engagement's outcome id(s) for a full-size mailbox: two licences that
+    # each give the same people one is double licensing.
+    mailbox_outcome_ids: frozenset[str] = frozenset()
 
 
 # ---------------------------------------------------------------------------
@@ -910,14 +910,29 @@ def _findings(raw, lines, tools, scenarios, tables, seat_caps, contracts=(), quo
         if rl.persona_ids and not any(p in known for p in rl.persona_ids):
             f.append(IFinding("tagged_to_missing_group", "groups", "left_out", licence_id=l.id,
                               facts={"name": rl.sku_reference or "A licence line", "kind": "licence"}))
-    # Two or more full plans for the same people (e.g. Office 365 E3 and Business
-    # Standard): either double licensing, or a group that should be split.
+    # Double licensing: a group holding a licence that adds nothing another of its
+    # licences doesn't already give them (e.g. Office 365 E1 beside E3), or two
+    # licences that each give them a full mailbox (e.g. Office 365 E3 and Business
+    # Standard). Plans that complement each other (Office 365 E1 + Microsoft 365
+    # Apps for enterprise) are normal and not flagged. Only lines whose contents
+    # are known are compared.
     for p in raw.personas:
-        mine = [l for l in in_scope if p.id in l.applies_to
-                and (raw_lines[l.id].linked_bundle_id or raw_lines[l.id].resolved_bundle_id) in raw.base_bundle_ids]
-        if len(mine) > 1:
-            f.append(IFinding("two_base_plans", "groups", persona_id=p.id, facts={
-                "persona_name": p.name, "names": [raw_lines[l.id].sku_reference for l in mine]}))
+        mine = [l for l in in_scope if p.id in l.applies_to and l.outcomes]
+        flagged: set[str] = set()
+        for a in mine:
+            for b in mine:
+                if a.id == b.id or a.id in flagged or b.id in flagged:
+                    continue
+                name_a, name_b = raw_lines[a.id].sku_reference, raw_lines[b.id].sku_reference
+                if a.outcomes <= b.outcomes and (a.outcomes < b.outcomes or a.id < b.id):
+                    flagged.add(a.id)
+                    f.append(IFinding("double_licensing", "groups", persona_id=p.id, licence_id=a.id, facts={
+                        "persona_name": p.name, "kind": "adds_nothing", "name": name_a, "other": name_b}))
+                elif a.id < b.id and a.outcomes & b.outcomes & raw.mailbox_outcome_ids \
+                        and not b.outcomes <= a.outcomes:
+                    flagged.update((a.id, b.id))
+                    f.append(IFinding("double_licensing", "groups", persona_id=p.id, licence_id=a.id, facts={
+                        "persona_name": p.name, "kind": "two_mailboxes", "name": name_a, "other": name_b}))
     # Licensing limits already broken by today's licences (e.g. more than 300
     # Business seats): the future state can't keep everyone on that family.
     for c in seat_caps:

@@ -171,8 +171,7 @@ def load_raw(db: Session, engagement_id: str) -> RawEngagement:
         gap_answers={(a.persona_id, a.outcome_id): a.answer for a in eng.gap_answers},
         employee_count=eng.employee_count,
         supported_headcount=eng.supported_headcount,
-        base_bundle_ids=frozenset(b.id for b in db.execute(
-            select(models.Bundle).where(models.Bundle.kind == "bundle")).scalars()),
+        mailbox_outcome_ids=frozenset(o.id for o in eng.outcomes if o.seed_key == "mailbox-full"),
         managed_outcome_ids=frozenset(o.id for o in eng.outcomes if o.seed_key == "managed-detection-response"),
         contracts=tuple(RawContract(
             id=c.id, name=c.name or "", total_cost=_dec(c.total_cost), cost_period=c.cost_period or "Annual",

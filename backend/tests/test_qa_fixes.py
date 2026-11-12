@@ -73,9 +73,28 @@ def test_two_full_plans_on_one_group_are_flagged(client):
                                                    "unit_price_paid_annual": 100, "persona_ids": [g["id"]]})
     client.post(f"{b}/current-licenses", json={"sku_reference": "Microsoft 365 E5 Security", "quantity_assigned": 300,
                                                "unit_price_paid_annual": 100, "persona_ids": [g["id"]]})
-    [c] = [c for c in client.get(f"{b}/review").json()["checks"] if c["code"] == "two_base_plans"]
+    [c] = [c for c in client.get(f"{b}/review").json()["checks"] if c["code"] == "double_licensing"]
     assert "Office 365 E3" in c["message"] and "Business Standard" in c["message"]
     assert "E5 Security" not in c["message"]          # an add-on is not a second plan
+
+
+def test_complementary_plans_are_not_double_licensing(client):
+    """Office 365 E1 + Microsoft 365 Apps for enterprise is a normal combination:
+    each adds something the other doesn't. E1 beside E3 adds nothing."""
+    b = _eng(client, "Combo Co")
+    g = client.post(f"{b}/personas", json={"name": "Staff", "headcount": 100}).json()
+    for name in ("Office 365 E1", "Microsoft 365 Apps for enterprise"):
+        client.post(f"{b}/current-licenses", json={"sku_reference": name, "quantity_assigned": 100,
+                                                   "unit_price_paid_annual": 100, "persona_ids": [g["id"]]})
+    codes = lambda: [c for c in client.get(f"{b}/review").json()["checks"] if c["code"] == "double_licensing"]  # noqa: E731
+    assert codes() == []
+    client.post(f"{b}/current-licenses", json={"sku_reference": "Office 365 E3", "quantity_assigned": 100,
+                                               "unit_price_paid_annual": 100, "persona_ids": [g["id"]]})
+    msgs = sorted(c["message"] for c in codes())
+    # E3 already gives them everything E1 does, and everything the desktop apps do.
+    assert len(msgs) == 2
+    assert any("Office 365 E1 gives them nothing that Office 365 E3 doesn't already" in m for m in msgs)
+    assert any("Apps for enterprise gives them nothing that Office 365 E3" in m for m in msgs)
 
 
 def test_m365_shorthand_reads_as_the_plan(client):

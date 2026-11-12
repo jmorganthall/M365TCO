@@ -99,7 +99,7 @@ mismatches, managed security, calling, summary and PDF) are on the detail view.
   the group's cost per user; every line covers the whole group (G20). It uses the same searchable plan picker as the detail view (catalog
   pick = name and list price from the server). When a group's size no longer matches
   its licence's seats, the step offers "Set seats to N" (one click, never automatic).
-- Review also flags a group holding two full plans (`two_base_plans`), and skips the
+- Review also flags double licensing (`double_licensing`): a licence that gives a group nothing another of its licences doesn't, or two licences that each give it a full mailbox. Plans that complement each other (Office 365 E1 + Apps for enterprise) aren't flagged. It skips the
   "not confirmed" question for out-of-scope plans and empty groups. Disposition
   tables leave out $0 lines (`views.dispositions_shown`).
 - "+ New customer" in the top bar opens `#/new`; "‹ All customers" goes to the search.
