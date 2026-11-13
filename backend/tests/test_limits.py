@@ -188,61 +188,6 @@ def test_no_business_seats_left_recommends_the_next_best_plan(client):
     assert by["Microsoft 365 E3"]["recommended"] is True
 
 
-def test_split_offer_larger_capped_side_is_the_parent(client):
-    """400 on Business Premium with 300 seats left: Office keeps 300 on Business
-    Premium; the 100 over the cap are carved onto the best uncapped plan (E3)."""
-    eid, p = _cap_engagement(client, "Split Co", 400)
-    _plan(client, eid, p["id"], "Microsoft 365 Business Premium", 264)
-    offers = client.get(f"/api/engagements/{eid}/seat-cap-splits").json()
-    assert len(offers) == 1
-    o = offers[0]
-    assert (o["kind"], o["capped_seats"], o["other_seats"], o["parent_side"]) == ("split", 300, 100, "capped")
-    assert o["other_plan"] == "Microsoft 365 E3"
-    assert o["carve_out_name"] == "Office (Over Business User Cap)"
-    review = client.get(f"/api/engagements/{eid}/review").json()["checks"]
-    assert any(c["code"] == "seat_cap_exceeded" and "Split it on Future state" in c["message"]
-               for c in review)
-
-    child = client.post(f"/api/engagements/{eid}/personas/{p['id']}/seat-cap-split", json={}).json()
-    assert child["name"] == "Office (Over Business User Cap)" and child["headcount"] == 100
-    personas = {x["id"]: x for x in client.get(f"/api/engagements/{eid}/personas").json()}
-    assert personas[p["id"]]["name"] == "Office" and personas[p["id"]]["headcount"] == 300
-    plans = {s["persona_id"]: s["target_sku_reference"]
-             for s in client.get(f"/api/engagements/{eid}/scenarios").json()}
-    assert plans == {p["id"]: "Microsoft 365 Business Premium", child["id"]: "Microsoft 365 E3"}
-    # Resolved: no offer, no Review check.
-    assert client.get(f"/api/engagements/{eid}/seat-cap-splits").json() == []
-    review = client.get(f"/api/engagements/{eid}/review").json()["checks"]
-    assert not any(c["code"] == "seat_cap_exceeded" for c in review)
-
-
-def test_split_offer_larger_uncapped_side_is_the_parent(client):
-    """2,500 on Business Premium: the parent (2,200) moves to E3 and keeps its name;
-    the 300 who fit are carved onto Business Premium as "(Up to 300 Business User
-    Cap)". A custom name is honoured."""
-    eid, p = _cap_engagement(client, "Big Split", 2500)
-    _plan(client, eid, p["id"], "Microsoft 365 Business Premium", 264)
-    o = client.get(f"/api/engagements/{eid}/seat-cap-splits").json()[0]
-    assert (o["capped_seats"], o["other_seats"], o["parent_side"]) == (300, 2200, "other")
-    assert o["carve_out_name"] == "Office (Up to 300 Business User Cap)"
-    child = client.post(f"/api/engagements/{eid}/personas/{p['id']}/seat-cap-split",
-                        json={"name": "Office small sites"}).json()
-    assert child["name"] == "Office small sites" and child["headcount"] == 300
-    plans = {s["persona_id"]: (s["target_sku_reference"], float(s["target_unit_price_annual"]))
-             for s in client.get(f"/api/engagements/{eid}/scenarios").json()}
-    assert plans[p["id"]] == ("Microsoft 365 E3", 432.0)
-    assert plans[child["id"]] == ("Microsoft 365 Business Premium", 264.0)
-    assert client.get(f"/api/engagements/{eid}/seat-cap-splits").json() == []
-
-
-def test_a_persona_that_fits_gets_no_offer(client):
-    eid, p = _cap_engagement(client, "Fits Co", 250)
-    _plan(client, eid, p["id"], "Microsoft 365 Business Premium", 264)
-    assert client.get(f"/api/engagements/{eid}/seat-cap-splits").json() == []
-    r = client.post(f"/api/engagements/{eid}/personas/{p['id']}/seat-cap-split", json={})
-    assert r.status_code == 409
-
-
 # Adds Intune Plan 1 to the price sheet so device management can be bought on its own.
 _INTUNE_CSV = _PRICED_CSV + (
     "Office 365 E3,P3,003,O365 E3,P1Y,Annual,US,USD,276,2026-01-01,2026-12-31,276,Commercial\n"
@@ -285,21 +230,6 @@ def test_an_add_on_retires_a_tool_only_when_it_is_cheaper(client):
     eid, p, dm = _with_mdm_tool(client, "Keep Co", 120, per_seat=50)
     res, e3 = _o365e3(client, eid, p["id"])
     assert e3["addons"] == [] and e3["kept_products"] == ["MDM"]
-
-
-def test_split_rest_retires_the_tool_when_that_is_cheaper(client):
-    """The people over the cap get the cheapest plan that keeps what they have:
-    here Office 365 E3 + Intune, retiring their share of the 120-a-seat MDM tool,
-    like their colleagues on Business Premium."""
-    eid, p, dm = _with_mdm_tool(client, "Tool Split", 326, per_seat=120)
-    _plan(client, eid, p["id"], "Microsoft 365 Business Premium", 264)
-    o = client.get(f"/api/engagements/{eid}/seat-cap-splits").json()[0]
-    assert (o["capped_seats"], o["other_seats"]) == (300, 26)
-    assert o["other_plan"] == "Office 365 E3"
-    assert [a["name"] for a in o["other_addons"]] == ["Microsoft Intune Plan 1"]
-    child = client.post(f"/api/engagements/{eid}/personas/{p['id']}/seat-cap-split", json={}).json()
-    rows = {r["persona_id"]: r for r in client.post(f"/api/engagements/{eid}/compute").json()["scenarios"]}
-    assert rows[child["id"]]["current_third_party_offset_annual"] == 26 * 120  # MDM retired here too
 
 
 def test_a_tool_no_plan_can_replace_is_kept(client):
@@ -423,18 +353,6 @@ def test_a_persona_with_no_carve_outs_is_unchanged(client):
     assert not any(b["family_choice"] or b["cheaper_alone"] for b in res["bundles"])
 
 
-def test_split_rest_follows_the_capped_side_even_when_keeping_is_cheaper(client):
-    """The over-cap side follows the plan a person chose for the capped side: Business
-    Premium retires the MDM tool, so the rest gets Intune even though keeping a
-    50-a-seat tool would be cheaper for them alone."""
-    client.post("/api/catalog/import-csv", files={"file": ("p.csv", _INTUNE_CSV, "text/csv")})
-    eid, p, dm = _with_mdm_tool(client, "Follow Split", 326, per_seat=50)
-    _plan(client, eid, p["id"], "Microsoft 365 Business Premium", 264)
-    o = client.get(f"/api/engagements/{eid}/seat-cap-splits").json()[0]
-    assert o["other_plan"] == "Office 365 E3"
-    assert [a["name"] for a in o["other_addons"]] == ["Microsoft Intune Plan 1"]
-
-
 def test_chosen_plans_that_decide_a_tool_differently_are_flagged(client):
     """The carve-out's chosen Office 365 E3 keeps the MDM tool its parent's Business
     Premium retires: flagged, and nothing is changed for it."""
@@ -444,40 +362,6 @@ def test_chosen_plans_that_decide_a_tool_differently_are_flagged(client):
     assert (row["plan_keeps"], row["plan_retires"], row["missing_tools"]) == (["MDM"], [], [])
     s = next(s for s in client.get(f"/api/engagements/{eid}/scenarios").json() if s["persona_id"] == child["id"])
     assert s["target_sku_reference"] == "Office 365 E3"
-
-
-def test_the_readout_card_review_and_split_offer_count_seats_the_same_way(client):
-    """One definition of Business seats in the future state (D27). 280 people move
-    onto Business Premium and 40 others keep the Business Premium they hold today:
-    320 seats against a 300 cap. The Readout's licence-limit card, the split offer
-    and Review must all see the same 20-seat overage. (Before the counts were
-    unified, the card counted only the 280 moving and said "within cap" while
-    Review flagged the breach.)"""
-    client.post("/api/catalog/import-csv", files={"file": ("p.csv", _PRICED_CSV, "text/csv")})
-    eid = client.post("/api/engagements", json={"customer_name": "One Count Co"}).json()["id"]
-    movers = client.post(f"/api/engagements/{eid}/personas",
-                         json={"name": "Movers", "headcount": 280}).json()
-    keepers = client.post(f"/api/engagements/{eid}/personas",
-                          json={"name": "Keepers", "headcount": 40}).json()
-    client.post(f"/api/engagements/{eid}/current-licenses", json={
-        "sku_reference": "Office 365 E3", "quantity_assigned": 280,
-        "unit_price_paid_annual": 432, "persona_ids": [movers["id"]]})
-    client.post(f"/api/engagements/{eid}/current-licenses", json={
-        "sku_reference": "Microsoft 365 Business Premium", "quantity_assigned": 40,
-        "unit_price_paid_annual": 264, "persona_ids": [keepers["id"]]})
-    _plan(client, eid, movers["id"], "Microsoft 365 Business Premium", 264)
-
-    card = next(l for l in client.get(f"/api/engagements/{eid}/result").json()["license_limits"]
-                if l["key"] == "m365-business-seat-cap")
-    assert card["target_seats"] == 320 and card["target_over_by"] == 20 and card["violated"]
-
-    offer = next(o for o in client.get(f"/api/engagements/{eid}/seat-cap-splits").json()
-                 if o["persona_id"] == movers["id"])
-    assert offer["used_elsewhere"] == 40 and offer["seats_left"] == 260
-    assert offer["headcount"] - offer["seats_left"] == card["target_over_by"]
-
-    codes = [c["code"] for c in client.get(f"/api/engagements/{eid}/review").json()["checks"]]
-    assert "seat_cap_exceeded" in codes
 
 
 def test_the_recommender_reads_untagged_licences_as_org_wide(client):
@@ -496,3 +380,142 @@ def test_the_recommender_reads_untagged_licences_as_org_wide(client):
     assert res["current_microsoft_annual"] == 30000.0
     assert res["required_outcomes"], "the untagged line's outcomes must be kept"
     assert all("licence" in o["sources"] for o in res["required_outcomes"])
+
+
+# ---- The seat plan (GUIDED_PLAN G22) ---------------------------------------------
+
+def _seat_plan(client, eid):
+    plans = client.get(f"/api/engagements/{eid}/seat-plan").json()
+    return next(p for p in plans if p["cap"] == 300)
+
+
+def _plans(client, eid):
+    return {s["persona_id"]: s["target_sku_reference"] for s in client.get(f"/api/engagements/{eid}/scenarios").json()}
+
+
+def test_seat_plan_keeps_the_cap_and_splits_one_group(client):
+    """400 on Business Premium, 300 seats: Office keeps 300 on Business Premium and
+    the 100 over the cap are carved onto the best uncapped plan (Office 365 E3, what
+    they hold today, once the price sheet lists it)."""
+    client.post("/api/catalog/import-csv", files={"file": ("p.csv", _INTUNE_CSV, "text/csv")})
+    eid, p = _cap_engagement(client, "Split Co", 400)
+    _plan(client, eid, p["id"], "Microsoft 365 Business Premium", 264)
+    sp = _seat_plan(client, eid)
+    [g] = sp["groups"]
+    assert (g["capped_seats"], g["other_seats"], g["changes"]) == (300, 100, True)
+    assert g["other_plan"]["plan"] == "Office 365 E3"
+    assert g["saving_per_seat_annual"] == 276 - 264
+    review = client.get(f"/api/engagements/{eid}/review").json()["checks"]
+    assert any(c["code"] == "seat_cap_exceeded" for c in review)
+
+    client.post(f"/api/engagements/{eid}/seat-plan/apply")
+    personas = {x["name"]: x for x in client.get(f"/api/engagements/{eid}/personas").json()}
+    assert personas["Office"]["headcount"] == 300
+    assert personas["Office (Over Business User Cap)"]["headcount"] == 100
+    plans = _plans(client, eid)
+    assert plans[p["id"]] == "Microsoft 365 Business Premium"
+    assert plans[personas["Office (Over Business User Cap)"]["id"]] == "Office 365 E3"
+    assert not _seat_plan(client, eid)["changes"]
+    assert not any(c["code"] == "seat_cap_exceeded"
+                   for c in client.get(f"/api/engagements/{eid}/review").json()["checks"])
+
+
+def test_seat_plan_larger_uncapped_side_is_the_parent(client):
+    client.post("/api/catalog/import-csv", files={"file": ("p.csv", _INTUNE_CSV, "text/csv")})
+    eid, p = _cap_engagement(client, "Big Split", 2500)
+    _plan(client, eid, p["id"], "Microsoft 365 Business Premium", 264)
+    client.post(f"/api/engagements/{eid}/seat-plan/apply")
+    personas = {x["name"]: x for x in client.get(f"/api/engagements/{eid}/personas").json()}
+    assert personas["Office"]["headcount"] == 2200
+    child = personas["Office (Up to 300 Business User Cap)"]
+    assert child["headcount"] == 300
+    plans = _plans(client, eid)
+    assert plans[p["id"]] == "Office 365 E3" and plans[child["id"]] == "Microsoft 365 Business Premium"
+
+
+def test_a_group_that_fits_changes_nothing(client):
+    eid, p = _cap_engagement(client, "Fits Co", 250)
+    _plan(client, eid, p["id"], "Microsoft 365 Business Premium", 264)
+    sp = _seat_plan(client, eid)
+    assert not sp["changes"] and sp["groups"][0]["capped_seats"] == 250
+
+
+def test_seats_go_where_each_saves_the_most(client):
+    """Two groups both want Business Premium. Tooled (an MDM tool at 120 a seat that
+    Business Premium retires) saves 108 a seat on it; Plain saves 12. Tooled gets
+    all 200 of its seats first; Plain gets the 100 left and is split."""
+    client.post("/api/catalog/import-csv", files={"file": ("p.csv", _INTUNE_CSV, "text/csv")})
+    eid = client.post("/api/engagements", json={"customer_name": "Share Co"}).json()["id"]
+    b = f"/api/engagements/{eid}"
+    dm = next(o for o in client.get(f"{b}/outcomes").json() if o["seed_key"] == "device-management")
+    groups = {}
+    for name in ("Plain", "Tooled"):
+        groups[name] = client.post(f"{b}/personas", json={"name": name, "headcount": 200}).json()
+        client.post(f"{b}/current-licenses", json={"sku_reference": "Office 365 E3", "quantity_assigned": 200,
+                                                   "unit_price_paid_annual": 276, "persona_ids": [groups[name]["id"]]})
+        _plan(client, eid, groups[name]["id"], "Microsoft 365 Business Premium", 264)
+    tool = client.post(f"{b}/third-party", json={"name": "MDM", "raw_cost": 200 * 120, "cost_period": "Annual",
+                                                 "persona_ids": [groups["Tooled"]["id"]]}).json()
+    client.post(f"{b}/coverage", json={"outcome_id": dm["id"], "product_kind": "ThirdParty",
+                                       "third_party_product_id": tool["id"], "ratified": True})
+    sp = _seat_plan(client, eid)
+    rows = {g["persona_name"]: g for g in sp["groups"]}
+    assert rows["Tooled"]["saving_per_seat_annual"] > rows["Plain"]["saving_per_seat_annual"]
+    assert (rows["Tooled"]["capped_seats"], rows["Plain"]["capped_seats"]) == (200, 100)
+    assert sp["seats_used"] == 300
+    client.post(f"{b}/seat-plan/apply")
+    people = {x["name"]: x["headcount"] for x in client.get(f"{b}/personas").json()}
+    assert people["Tooled"] == 200 and people["Plain"] + people["Plain (Over Business User Cap)"] == 200
+    lim = next(l for l in client.get(f"{b}/result").json()["license_limits"] if l["key"] == "m365-business-seat-cap")
+    assert lim["target_seats"] == 300 and not lim["violated"]
+
+
+def test_the_split_rest_follows_the_capped_sides_tool_decision(client):
+    """D29: Business Premium retires the MDM tool, so the people over the cap get
+    Office 365 E3 + Intune (retiring it too), even though keeping a 50-a-seat tool
+    would be cheaper for them alone."""
+    eid, p, dm = _with_mdm_tool(client, "Follow Split", 326, per_seat=50)
+    _plan(client, eid, p["id"], "Microsoft 365 Business Premium", 264)
+    [g] = _seat_plan(client, eid)["groups"]
+    assert (g["capped_seats"], g["other_seats"]) == (300, 26)
+    assert g["other_plan"]["plan"] == "Office 365 E3"
+    assert [a["name"] for a in g["other_plan"]["addons"]] == ["Microsoft Intune Plan 1"]
+
+
+def test_seats_held_elsewhere_count_against_the_cap(client):
+    """40 Keepers hold Business Premium licences with no plan being decided: the
+    seat plan leaves 260 for Movers, the same count the readout card uses."""
+    client.post("/api/catalog/import-csv", files={"file": ("p.csv", _PRICED_CSV, "text/csv")})
+    eid = client.post("/api/engagements", json={"customer_name": "One Count Co"}).json()["id"]
+    movers = client.post(f"/api/engagements/{eid}/personas", json={"name": "Movers", "headcount": 280}).json()
+    keepers = client.post(f"/api/engagements/{eid}/personas", json={"name": "Keepers", "headcount": 40}).json()
+    client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "Office 365 E3", "quantity_assigned": 280,
+        "unit_price_paid_annual": 432, "persona_ids": [movers["id"]]})
+    client.post(f"/api/engagements/{eid}/current-licenses", json={
+        "sku_reference": "Microsoft 365 Business Premium", "quantity_assigned": 40,
+        "unit_price_paid_annual": 264, "persona_ids": [keepers["id"]]})
+    _plan(client, eid, movers["id"], "Microsoft 365 Business Premium", 264)
+    card = next(l for l in client.get(f"/api/engagements/{eid}/result").json()["license_limits"]
+                if l["key"] == "m365-business-seat-cap")
+    assert card["target_seats"] == 320 and card["target_over_by"] == 20
+    sp = _seat_plan(client, eid)
+    assert sp["used_elsewhere"] == 40
+    [g] = sp["groups"]
+    assert g["capped_seats"] == 260 and g["other_seats"] == 20
+
+
+
+def test_a_whole_group_on_the_cap_folds_its_carve_out_back(client):
+    """A group split earlier that now fits entirely on the capped plan: applying
+    puts everyone on it and the carve-out folds back into its parent."""
+    client.post("/api/catalog/import-csv", files={"file": ("p.csv", _INTUNE_CSV, "text/csv")})
+    eid, p = _cap_engagement(client, "Fold Co", 264)
+    _plan(client, eid, p["id"], "Microsoft 365 Business Premium", 264)
+    client.post(f"/api/engagements/{eid}/personas/{p['id']}/carve", json={
+        "seats": 44, "name": "Leftover", "target_sku_reference": "Microsoft 365 E3", "target_unit_price_annual": 432})
+    assert _seat_plan(client, eid)["changes"]
+    client.post(f"/api/engagements/{eid}/seat-plan/apply")
+    personas = client.get(f"/api/engagements/{eid}/personas").json()
+    assert [(x["name"], x["headcount"]) for x in personas] == [("Office", 264)]
+    assert _plans(client, eid) == {p["id"]: "Microsoft 365 Business Premium"}

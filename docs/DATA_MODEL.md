@@ -551,11 +551,13 @@ linked to the first by `parent_persona_id`:
   that persona's own seats. Caps are matched to a plan by member bundle id (base or
   add-on), never by a display name. The best-bundle optimizer always uses it:
   with no seats left a capped plan isn't recommended; with too few, the plan stays
-  recommended and `services/seat_cap.split_offer` offers a split — the seats left on
-  the capped plan, the rest on the best uncapped plan, the larger side the parent —
-  shown on the Future state row (`GET …/seat-cap-splits`) and confirmed by a person
-  (`POST …/personas/{id}/seat-cap-split`, a carve-out). Until then Review raises
-  `seat_cap_exceeded`. There is no setting.
+  recommended. `services/seat_plan` then shares the cap across every group (GUIDED_PLAN
+  G22): each group (parent + carve-outs) priced on its best capped and best uncapped
+  plan, tools included; seats to the largest saving per seat first. Shown as one
+  card on Future state (`GET …/seat-plan`) and applied by a person
+  (`POST …/seat-plan/apply`): plans set, at most one group split into a parent and
+  one carve-out (extra carve-outs of a split group fold back into it). Until then
+  Review raises `seat_cap_exceeded`. There is no setting.
 - **CRUD:** `GET/POST/PATCH/DELETE /api/admin/license-limits` +
   `PUT …/{id}/members` (replace the member set), edited in Settings → License
   limits. `key` is immutable; `limit_type` validated against `LIMIT_TYPES`; members

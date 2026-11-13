@@ -316,8 +316,6 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
   const [analyzePersona, setAnalyzePersona] = useState(null)
   const [carvePersona, setCarvePersona] = useState(null)
   const [tracePersona, setTracePersona] = useState(null)   // the persona whose numbers are traced
-  const [splits, setSplits] = useState([])        // seat-cap split offers (D27)
-  const [dismissed, setDismissed] = useState({})   // "Not now", this visit only
 
   // Raw rows and the split offers, reloaded after every write anywhere; the
   // calculated columns come from the shared result (useResult), so nothing here
@@ -330,7 +328,6 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
     const latest = (set) => (v) => { if (n === loadSeq.current) set(v) }
     api.get(`/api/engagements/${eid}/personas`).then(latest(setPersonas))
     api.get(`/api/engagements/${eid}/scenarios`).then(latest(setScenarios))
-    api.get(`/api/engagements/${eid}/seat-cap-splits`).then(latest(setSplits)).catch(latest(() => setSplits([])))
   }
   useEffect(() => { load() }, [eid, version])
   // Quote autofill prices at THIS engagement's pricing basis — refetched when
@@ -412,19 +409,6 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
                   onCarve={p.parent_persona_id ? null
                     : () => setCarvePersona(carvePersona?.id === p.id ? null : p)}
                   parentName={personas.find((x) => x.id === p.parent_persona_id)?.name} />
-                {(() => {
-                  const o = splits.find((x) => x.persona_id === p.id)
-                  return o && !dismissed[p.id] && (
-                    <tr className="detail-row">
-                      <td></td>
-                      <td colSpan={9} style={{ background: 'var(--panel2)' }}>
-                        <SplitOffer eid={eid} offer={o}
-                          onLater={() => setDismissed({ ...dismissed, [p.id]: true })}
-                          />
-                      </td>
-                    </tr>
-                  )
-                })()}
                 {carvePersona?.id === p.id && (
                   <tr className="detail-row">
                     <td></td>
@@ -480,48 +464,3 @@ export default function Scenarios({ engagement, meta, moneyUnit = 'mo' }) {
 // The Business seat cap split (TARGET_SCHEMA D27). Shown under a persona whose plan
 // needs more Business seats than the future state has left. The offer comes from
 // the server; confirming re-derives it there, so what is split is what is shown.
-function SplitOffer({ eid, offer: o, onLater, onDone }) {
-  const [name, setName] = useState(o.carve_out_name || '')
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-  const elsewhere = o.used_elsewhere
-    ? ` (the rest of the future state uses ${o.used_elsewhere.toLocaleString()} of ${o.cap.toLocaleString()})` : ''
-  const head = (
-    <><b>Over the {o.cap.toLocaleString()}-seat limit</b> — {o.cap_name}. {o.headcount.toLocaleString()} people on{' '}
-      {o.plan}, {o.seats_left.toLocaleString()} seats left{elsewhere}.</>
-  )
-  if (o.kind !== 'split') {
-    const why = {
-      no_seats: `${o.cap_name} has no seats left, so there is nothing to split — choose another plan for this persona.`,
-      nested: 'This is a carve-out; reduce its seats, or split its parent instead.',
-      no_alternative: `No priced plan outside ${o.cap_name} covers what these people need, so the rest can\u2019t be placed.`,
-    }[o.kind]
-    return <div className="popcheck warn-box">{head} <span className="muted">{why}</span></div>
-  }
-  const capped = `${o.capped_seats.toLocaleString()} on ${o.plan}`
-  const other = `${o.other_seats.toLocaleString()} on ${o.other_plan}`
-  async function split() {
-    setBusy(true); setErr('')
-    try {
-      await api.post(`/api/engagements/${eid}/personas/${o.persona_id}/seat-cap-split`, { name })
-      onDone?.()
-    } catch (e) { setErr(e.message) } finally { setBusy(false) }
-  }
-  return (
-    <div className="popcheck">
-      <div>{head}</div>
-      <div style={{ margin: '.35rem 0' }}>
-        Split it: <b>{o.persona_name}</b> keeps {o.parent_side === 'capped' ? capped : other}; a carve-out
-        takes {o.parent_side === 'capped' ? other : capped} — {o.other_plan} is the best plan for them
-        outside {o.cap_name}. The carve-out keeps their licences, tools and requirements.
-      </div>
-      <div style={{ display: 'flex', gap: '.5rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-        <div style={{ minWidth: 280 }}><label>Carve-out name</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} /></div>
-        <button onClick={split} disabled={busy}>{busy ? 'Splitting…' : 'Split'}</button>
-        <button className="ghost" onClick={onLater} disabled={busy}>Not now</button>
-      </div>
-      {err && <div className="err">{err}</div>}
-    </div>
-  )
-}

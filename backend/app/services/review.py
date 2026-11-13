@@ -143,13 +143,13 @@ def review(db: Session, engagement_id: str) -> dict:
             if x["kind"] == "no_seats":
                 msg = (f"{x['persona_name']}: {x['headcount']:,} people on {x['plan']}, but {x['cap_name']} has no "
                        f"seats left ({x['used_elsewhere']:,} of {x['cap']:,} are used by other personas). "
-                       f"Choose another plan on Future state.")
+                       f"Use the Business seats card on Future state.")
             elif x["kind"] == "nested":
                 msg = (f"{x['persona_name']}: {x['headcount']:,} people on {x['plan']}, but {x['cap_name']} "
-                       f"has only {x['seats_left']:,} seats left. Reduce this carve-out on Future state.")
+                       f"has only {x['seats_left']:,} seats left. Use the Business seats card on Future state.")
             else:
                 msg = (f"{x['persona_name']}: {x['headcount']:,} people on {x['plan']}, but {x['cap_name']} "
-                       f"has only {x['seats_left']:,} seats left. Split it on Future state.")
+                       f"has only {x['seats_left']:,} seats left. The Business seats card on Future state shares the seats out.")
             check(f.code, f.step, msg)
         elif f.code == "license_unread":
             check(f.code, f.step,
