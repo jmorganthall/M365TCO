@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
-from ..services import bundles, compute, inspector, library_updates, licence_names, lineage, raw, seat_cap
+from ..services import bundles, compute, inspector, library_updates, licence_names, lineage, raw, seat_cap, seat_plan
 from ..services import personas as persona_order
 
 router = APIRouter(prefix="/api/engagements/{engagement_id}", tags=["entities"])
@@ -321,13 +321,14 @@ def match_parent(engagement_id: str, persona_id: str, db: Session = Depends(get_
     return child
 
 
-# ---- The Business seat cap split (TARGET_SCHEMA D27) -------------------------
-@router.get("/seat-cap-splits")
-def list_seat_cap_splits(engagement_id: str, db: Session = Depends(get_db)):
-    """Every persona whose plan is over a seat cap's seats left in the future state, with
-    its split offer (services/seat_cap). A pure read."""
+# ---- The Business seat plan (GUIDED_PLAN G22, TARGET_SCHEMA D27) ---------------
+@router.get("/seat-plan")
+def get_seat_plan(engagement_id: str, db: Session = Depends(get_db)):
+    """How the seat-capped plans (Microsoft 365 Business, 300 seats) are best shared
+    across every group: seats go where each saves the most (services/seat_plan).
+    A pure read."""
     _require_engagement(db, engagement_id)
-    return seat_cap.split_offers(db, engagement_id)
+    return seat_plan.plan(db, engagement_id)
 
 
 def _set_plan(db: Session, s: models.PersonaScenario, ref: str, price, addons: list[dict],
@@ -347,56 +348,109 @@ def _set_plan(db: Session, s: models.PersonaScenario, ref: str, price, addons: l
                                     unit_price_annual=a["unit_price_annual"]))
 
 
-@router.post("/personas/{persona_id}/seat-cap-split", response_model=schemas.PersonaOut,
-             status_code=201)
-def split_for_seat_cap(engagement_id: str, persona_id: str,
-                       payload: schemas.SeatCapSplitIn, db: Session = Depends(get_db)):
-    """Confirm a persona's seat-cap split: the seats left stay on the capped plan,
-    the rest move to the recommender's best uncapped plan, and the larger side is
-    the parent. The offer is recomputed here, never taken from the client, so it is
-    the split the GUI showed only if nothing changed in between. Returns the
-    carve-out."""
+def _holds_own(db: Session, child: models.Persona) -> list[str]:
+    """What a carve-out holds that its parent doesn't (licences and tools, by name)."""
+    pid = child.parent_persona_id
+    own = [l.sku_reference or "a licence" for l in db.execute(select(models.CurrentMicrosoftLicense).where(
+        models.CurrentMicrosoftLicense.engagement_id == child.engagement_id)).scalars()
+        if child.id in l.persona_ids and pid not in l.persona_ids]
+    own += [t.name or "a tool" for t in db.execute(select(models.ThirdPartyProduct).where(
+        models.ThirdPartyProduct.engagement_id == child.engagement_id)).scalars()
+        if child.id in t.persona_ids and pid not in t.persona_ids]
+    return own
+
+
+def _merge_into_parent(db: Session, child: models.Persona) -> None:
+    """Fold a carve-out back into its parent: its seats return, and its own rows
+    (tags, plan, answers) go with it. Refused when it holds something its parent
+    doesn't (code never drops what a person entered)."""
+    parent = db.get(models.Persona, child.parent_persona_id)
+    own = _holds_own(db, child)
+    if own:
+        raise HTTPException(409, f"{child.name} holds {', '.join(own)} that {parent.name} doesn't; "
+                            f"match it to {parent.name} or remove it first.")
+    parent.headcount += child.headcount
+    for model in (models.CurrentLicensePersona, models.ThirdPartyPersona):
+        for link in db.execute(select(model).where(model.persona_id == child.id)).scalars():
+            db.delete(link)
+    for sc in db.execute(select(models.PersonaScenario).where(
+            models.PersonaScenario.persona_id == child.id)).scalars():
+        db.delete(sc)
+    for n in db.execute(select(models.ScenarioNarrative).where(
+            models.ScenarioNarrative.persona_id == child.id)).scalars():
+        n.persona_id = None
+    db.delete(child)
+    db.flush()
+
+
+def _put_on(db: Session, persona: models.Persona, option: dict) -> None:
+    """Give a group a plan from the seat plan (a new scenario when it has none). A
+    negotiated price was for its old plan, so it ends."""
+    s = seat_plan._scenario(db, persona.id)
+    if s is None:
+        s = models.PersonaScenario(engagement_id=persona.engagement_id, persona_id=persona.id,
+                                   target_sku_reference=option["plan"], in_scope=True)
+        db.add(s)
+        db.flush()
+    if s.target_sku_reference == option["plan"] and s.bundle_id == option["bundle_id"] \
+            and sorted(a.bundle_id for a in s.addons) == sorted(a["bundle_id"] for a in option["addons"]):
+        return
+    s.price_override = False
+    _set_plan(db, s, option["plan"], option["base_price_annual"], option["addons"], option["bundle_id"])
+
+
+@router.post("/seat-plan/apply")
+def apply_seat_plan(engagement_id: str, db: Session = Depends(get_db)):
+    """Apply the seat plan, recomputed here (never taken from the client): each
+    group that changes gets its capped and uncapped plans, and a group split
+    between them is one parent and one carve-out (the larger side the parent).
+    Extra carve-outs of a split group fold back into it; a new carve-out is made
+    when needed. Groups the plan doesn't change are left as they are."""
     _require_engagement(db, engagement_id)
-    offer = seat_cap.split_offer(db, engagement_id, persona_id)
-    if offer is None:
-        raise HTTPException(409, "This persona now fits the capped seats left; nothing to split.")
-    if offer["kind"] != "split":
-        raise HTTPException(422, {
-            "no_seats": f"{offer['cap_name']} has no seats left, so there is nothing to split: "
-                        "choose another plan for this persona.",
-            "nested": "This is a carve-out; split its parent instead.",
-            "no_alternative": f"No priced plan outside {offer['cap_name']} covers what these "
-                              "people need, so the rest can't be placed.",
-        }[offer["kind"]])
-    parent = db.get(models.Persona, persona_id)
-    s = seat_cap._scenario(db, persona_id)
-    name = (payload.name or "").strip() or offer["carve_out_name"]
-    capped = {"ref": s.target_sku_reference, "bundle_id": s.bundle_id,
-              "price": s.target_unit_price_annual,
-              "addons": [{"bundle_id": a.bundle_id, "unit_price_annual": a.unit_price_annual}
-                         for a in s.addons]}
-    other = {"ref": offer["other_plan"], "bundle_id": offer.get("other_bundle_id"),
-             "price": offer["other_price_annual"],
-             "addons": offer["other_addons"]}
-    if offer["parent_side"] == "capped":
-        # The parent keeps its plan; the people over the cap are carved onto the other.
-        child = _carve(db, engagement_id, parent, offer["other_seats"], name, other["ref"], other["price"])
-        child_plan = other
-    else:
-        # The people over the cap are the larger side: the parent moves to the other
-        # plan (its negotiated price was for the capped plan, so it no longer
-        # applies), and the seats left are carved onto the capped plan.
-        s.price_override = False
-        _set_plan(db, s, other["ref"], other["price"], other["addons"], other["bundle_id"])
-        child = _carve(db, engagement_id, parent, offer["capped_seats"], name, capped["ref"], capped["price"])
-        child_plan = capped
-    cs = seat_cap._scenario(db, child.id)
-    if cs is not None:
-        _set_plan(db, cs, child_plan["ref"], child_plan["price"], child_plan["addons"],
-                  child_plan["bundle_id"])
+    plans = seat_plan.plan(db, engagement_id)
+    for cap in plans:
+        for g in cap["groups"]:
+            if not g["changes"]:
+                continue
+            if g["status"] != "ok":
+                raise HTTPException(422, f"No priced plan outside {cap['cap_name']} covers what "
+                                    f"{g['persona_name']} needs, so its other people can't be placed.")
+            root = db.get(models.Persona, g["persona_id"])
+            children = [db.get(models.Persona, i) for i in g["member_ids"] if i != root.id]
+            c, o = g["capped_seats"], g["other_seats"]
+            if o == 0:
+                # The whole group on the capped plan: a carve-out is no longer a
+                # split, so it folds back (kept when it holds something of its own).
+                for m in [root] + children:
+                    _put_on(db, m, g["capped_plan"])
+                    if m is not root and not _holds_own(db, m):
+                        _merge_into_parent(db, m)
+                continue
+            if c == 0:
+                for m in [root] + children:
+                    s = seat_plan._scenario(db, m.id)
+                    if s is not None and seat_plan._on_cap(s, set(cap["member_references"]),
+                                                           cap["member_bundle_ids"]):
+                        _put_on(db, m, g["other_plan"])
+                continue
+            # Split: one parent (the larger side) and one carve-out.
+            for extra in children[1:]:
+                _merge_into_parent(db, extra)
+            big, small = (g["capped_plan"], g["other_plan"]) if c >= o else (g["other_plan"], g["capped_plan"])
+            if children:
+                child = children[0]
+                root.headcount = max(c, o)
+                child.headcount = min(c, o)
+            else:
+                name = (seat_cap.over_name(root.name) if c >= o
+                        else seat_cap.capped_name(root.name, cap["cap"]))
+                root.headcount = g["people"]
+                child = _carve(db, engagement_id, root, min(c, o), name, small["plan"],
+                               small["base_price_annual"])
+            _put_on(db, root, big)
+            _put_on(db, child, small)
     db.commit()
-    db.refresh(child)
-    return child
+    return seat_plan.plan(db, engagement_id)
 
 
 @router.delete("/personas/{persona_id}", status_code=204)

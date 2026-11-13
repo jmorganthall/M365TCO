@@ -64,7 +64,7 @@ def _min_cost_cover(closeable: frozenset[str], options: list[dict]) -> list[dict
 def analyze_persona_bundles(
     db: Session, engagement_id: str, persona_id: str, prices: dict | None = None,
     *, headcount: int | None = None, exclude_capped: bool = False,
-    follow_own_plan: bool = False,
+    follow_own_plan: bool = False, follow_cover: frozenset[str] | None = None,
 ) -> dict:
     """Recommend a path for this persona: compose each staple base bundle with the
     cheapest add-ons that close its capability gaps, then rank the composed
@@ -75,7 +75,9 @@ def analyze_persona_bundles(
     `headcount` analyses part of the persona (the remainder of a split) and
     `exclude_capped` drops every seat-capped plan — together, "the best plan for
     the people over the cap". `follow_own_plan` makes that plan decide each tool
-    the way the persona's own chosen plan does (the split's other side, D29).
+    the way the persona's own chosen plan does (the split's other side, D29), or
+    the way a plan covering `follow_cover` does when that is given (the seat plan's
+    split, before any plan is chosen).
 
     A persona in a carve-out family (a parent and its carve-outs) is recommended
     the plan the family's shared tool decision gives it (TARGET_SCHEMA D29); its
@@ -262,7 +264,7 @@ def analyze_persona_bundles(
     # Seat cap (D27): tell the optimizer how many seats each capped family (e.g.
     # M365 Business ≤ 300) has left in the future state of everyone else. With none
     # left the family isn't recommended; with too few, the recommendation stands and
-    # the persona is offered a split (seat_cap.split_offer).
+    # the seat plan shares the seats across groups (services/seat_plan).
     cap_headroom_by_reference: dict[str, int] = {}
     cap_name_by_reference: dict[str, str] = {}    # the limit's own name, for wording
     seat_caps = limits.seat_cap_context(db, engagement_id, exclude_persona_id=persona_id,
@@ -490,7 +492,7 @@ def analyze_persona_bundles(
     rows = [_row(b) for b in analyses]
     family = None
     if follow_own_plan:
-        own = _scenario_cover(persona.id)
+        own = set(follow_cover) if follow_cover is not None else _scenario_cover(persona.id)
         if own is not None:
             want = {t.id for t in held_eng if t.delivered_outcome_ids <= own}
             plan = _plan_fitting(persona.id, n, required, held_eng, want,

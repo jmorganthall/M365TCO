@@ -5,6 +5,7 @@ import Scenarios from './Scenarios.jsx'
 import ExtraSeats from './ExtraSeats.jsx'
 import { MdrPanel, Sections, ServicePicker } from './PracticeServices.jsx'
 import CarveOutDrift from './CarveOutDrift.jsx'
+import SeatPlan from './SeatPlan.jsx'
 import { PlanTable, WhatsNew } from './PlanCards.jsx'
 
 // Step 4 — Future state per persona (docs/WALKTHROUGH.md §3): fill in the
@@ -20,6 +21,7 @@ export default function FutureState({ engagement, meta, moneyUnit }) {
       <RecommendPlans engagement={engagement} />
       <PlanTable engagement={engagement} />
       <Scenarios engagement={engagement} meta={meta} moneyUnit={moneyUnit} />
+      <SeatPlan engagement={engagement} moneyUnit={moneyUnit} />
       <WhatsNew engagement={engagement} />
       <ExtraSeats engagement={engagement} moneyUnit={moneyUnit} />
       <div className="card">
