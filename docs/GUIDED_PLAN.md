@@ -18,6 +18,9 @@ persona's share of the tool goes away; if it doesn't, the share stays. Nothing a
 the future is asked of the customer except one thing: when a tool that is being
 replaced covers **more seats than the personas who hold it**, are the extra seats
 just extra (the whole cost goes) or people who will stay on the tool?
+Microsoft licensing is read the same way (G23–G25): a move replaces a licence only as
+far as the future plan replaces what it delivers, and a licence no persona holds is a
+one-off that is carried forward.
 
 ## 2. Decisions
 
@@ -26,7 +29,7 @@ just extra (the whole cost goes) or people who will stay on the tool?
 | G1 | **Persona-first.** Every licence and every tool is answered in terms of the personas defined first. "Everyone" is stored as Org-wide (`applies_to = OrgWide`, shown as "All groups"), so a group added later is included. |
 | G2 | **One splitting rule.** A tool's cost lands on the personas that hold it, by headcount, exactly as a licence line's does. The only exception is the answer in G4. Its seat count no longer silently leaves part of the cost on nobody. |
 | G3 | **A baseline per persona.** The interpreter returns, for every persona and with no future state needed: Microsoft annual, tools annual, total annual and cost per user per month. Screens and the PDF read it; none computes it. |
-| G4 | **The seat-mismatch question** is the only future-facing question. It is asked once per tool, only when the tool covers more seats than its personas hold **and** at least one persona's future plan replaces it. Answers: *extra seats* (spread the cost over the personas; the whole cost can go) or *people who stay* (cost per seat on the full count; those seats' cost stays). Unanswered is read as *people who stay*, so a saving is never overstated, and is listed in Review. The answer describes today, so it is stored on the tool. |
+| G4 | **The seat-mismatch question** is the only future-facing question about a tool (G24 and G25 ask about Microsoft licences). It is asked once per tool, only when the tool covers more seats than its personas hold **and** at least one persona's future plan replaces it. Answers: *extra seats* (spread the cost over the personas; the whole cost can go) or *people who stay* (cost per seat on the full count; those seats' cost stays). Unanswered is read as *people who stay*, so a saving is never overstated, and is listed in Review. The answer describes today, so it is stored on the tool. |
 | G5 | **Fewer seats than people** (a tool covering 1,000 tagged to a group of 1,200) is not asked. The cost is spread over the group, and Review notes that the figure follows the cost-per-user method but the tool's seat count does not match the group. |
 | G6 | **A tool with no seat count** covers its personas (all personas when Org-wide). The seat count is a confirmation the AE gives, never written back by code. |
 | G7 | **No keep-or-retire decision.** Displacement is like for like. The per-tool forced retirement and intended residual (`product_dispositions`) are retired; G4 replaces the one real question they asked. A tool that does something the customer doesn't use is corrected by unticking that outcome on the tool. |
@@ -45,6 +48,9 @@ just extra (the whole cost goes) or people who will stay on the tool?
 | G20 | **A licence covers the whole group.** In the guided flow every Microsoft licence line is for all of the group's people (seats = headcount); people who get something extra are a separate group. The detail view still takes a typed seat count (bought but unassigned seats, or an Org-wide line), and Review flags any mismatch. |
 | G21 | **The guided flow only collects data.** It ends with "Check the data": Review's checks for groups, licences and tools that the customer answers, each with a button to the screen that fixes it (the tool's own pricing screen for a tool), then "Continue to recommendations". Checks about reading the data (what a licence includes, what's set aside) are for the SA team on the detail view's Review; the guided step only counts them. The recommendation, "What's new", the seats question, practice services and the summary live in the detail view (Future state, Summary & PDF). |
 | G22 | **One seat plan for the Business cap.** The 300 Business seats are shared across every group where each seat saves the most (cost per seat on the best capped plan vs the best uncapped plan, tools included), not offered group by group. One card on Future state shows each group's seats on each plan and the saving; one Apply sets the plans and splits at most one group. Every cost is per person, so handing seats out in order of saving per seat is the cheapest split. |
+| G23 | **One-off Microsoft licences** (TARGET_SCHEMA D31). On the current licensing step a licence can be marked *one-off: not part of any persona* (shared mailboxes, service accounts, a single specialist seat). A line with more seats than its personas asks the G4 question in Microsoft's words: do these people hold all of it (the extra seats go with them) or are the extra seats one-off licences? An Org-wide or untagged per-user line with fewer seats than the people asks the same question of the whole line, or which groups hold it. Unanswered is read as one-off. A one-off costs the same before and after, so it never changes a delta; the result shows it in an *expected total Microsoft spend* line, today and after. |
+| G24 | **Microsoft add-ons are replaced like for like** (D31). An add-on or standalone licence a persona holds (Copilot, Teams Phone, Power BI and the like) goes with the move only when the future plan covers everything it delivers. Otherwise it is kept and carried forward, unless the customer answers that it goes. Fewer people on it is a carve-out. |
+| G25 | **A dropped capability is asked** (D31). When a persona's future base plan delivers less than its current one, each outcome it loses is asked: *not needed* (the saving stands, shown as a trade-off) or *keep*. Keep, or no answer, prices the cheapest eligible add-on that restores it as a remaining cost of the plan; nothing is added to the plan itself. A recommended plan never drops anything, so it is never asked. |
 | G19 | **Later** (a carve-out's needs already follow its parent; it is shown indented under it with └): a carve-out linked to its parent that inherits everything except what it adds ("this sub-group gets Visio too"), so shared licensing is entered once; a phased recommendation driven by tool renewal dates; customer self-service; a session file the customer downloads and uploads; custom outcomes in the walk. |
 
 ## 3. Changes to the agreed walkthrough
@@ -128,3 +134,7 @@ Each phase is one pull request to `main`, with its tests.
 | 6 | Contracts and cost lines (G12) | done |
 | 7 | Practice services and result sections, steps 11–12 (G13–G15) | done |
 | 8 | Service quotes and "Replacing your MDR" (G13a) | done |
+| 9 | Microsoft licences like for like: this contract change (D31, G23–G25) | in review |
+| 10 | One-off licences and the extra-seats question for Microsoft lines; expected total Microsoft spend (G23) | planned |
+| 11 | Add-on and standalone lines replaced like for like, with the keep-or-go answer (G24) | planned |
+| 12 | Dropped capabilities asked, restoring add-ons priced; the trade-offs view and exports follow (G25) | planned |
