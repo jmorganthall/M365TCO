@@ -235,6 +235,13 @@ class RollupResult:
     # over-licensing, each timed by the renewal that unlocks it and summed over
     # the horizon. Computed here once; every surface displays it, none computes it.
     headline: Optional[Headline] = None
+    # Expected total Microsoft spend (TARGET_SCHEMA D31): every in-scope licence
+    # line's cost today, and after the in-scope moves. One-off licences are in
+    # both at the same amount, so they never change a delta. By construction:
+    #   after − today = target_microsoft_annual − existing_microsoft_annual
+    expected_microsoft_today_annual: Decimal = Decimal("0")
+    expected_microsoft_after_annual: Decimal = Decimal("0")
+    one_off_microsoft_annual: Decimal = Decimal("0")
 
 
 @dataclass
@@ -323,7 +330,7 @@ def _quick_win_seats(
         key=lambda l: (len(l.persona_ids) or len(pop) + 1, sorted(l.persona_ids)),
     )
     for line in per_user:
-        seats = max(line.quantity_assigned, 0)
+        seats = line.held_seats             # one-off seats are no persona's (D31)
         for pid in applies_to(line):
             if seats <= 0:
                 break
@@ -443,9 +450,10 @@ def compute(engagement: Engagement) -> EngineResult:
         outs = product.delivered_outcome_ids
         if not outs:
             continue
+        # A one-off line (D31) is held by no persona, so it covers nobody's seats.
         covering_lines = [
             line for line in engagement.current_licenses
-            if set(outs) <= set(line.covered_outcome_ids)
+            if not line.one_off and set(outs) <= set(line.covered_outcome_ids)
         ]
         if not covering_lines:
             continue
@@ -532,8 +540,9 @@ def compute(engagement: Engagement) -> EngineResult:
     # A single-persona line counts in full; a shared line is never double-counted;
     # with no headcount among them the line splits evenly so no cost is lost.
     hc = {pid: p.headcount for pid, p in personas.items()}
+    # A one-off line (D31) applies to no persona; one-off seats are in no share.
     line_shares = [
-        headcount_shares(list(line.persona_ids) or list(personas), hc)
+        {} if line.one_off else headcount_shares(list(line.persona_ids) or list(personas), hc)
         for line in engagement.current_licenses
     ]
 
@@ -545,9 +554,9 @@ def compute(engagement: Engagement) -> EngineResult:
 
         current_ms = Decimal("0")
         for line, shares in zip(engagement.current_licenses, line_shares):
-            if not applies_to(line.persona_ids, persona.id):
+            if line.one_off or not applies_to(line.persona_ids, persona.id):
                 continue
-            line_total = Decimal(line.quantity_assigned) * line.unit_price_paid_annual
+            line_total = Decimal(line.held_seats) * line.unit_price_paid_annual
             current_ms += line_total * shares.get(persona.id, Decimal(0))
 
         # Linear-by-user offset, capped at the covered population (Sections
@@ -733,6 +742,16 @@ def compute(engagement: Engagement) -> EngineResult:
         else Decimal("0.00")
     )
 
+    # Expected total Microsoft spend (D31, ENGINE_SPEC 6.8): the whole bill today
+    # and after. Everything a move doesn't retire (one-off licences, personas that
+    # don't move) is on both sides, so after − today = target_MS − existing_MS.
+    expected_ms_today = _money(sum(
+        (Decimal(line.quantity_assigned) * line.unit_price_paid_annual
+         for line in engagement.current_licenses), Decimal("0")))
+    one_off_ms = _money(sum(
+        (line.one_off_annual for line in engagement.current_licenses), Decimal("0")))
+    expected_ms_after = _money(expected_ms_today - existing_microsoft + target_microsoft)
+
     rollup = RollupResult(
         net_tco_delta_annual=net_delta,
         fully_eliminated_tools=fully_eliminated_names,
@@ -758,6 +777,9 @@ def compute(engagement: Engagement) -> EngineResult:
         ecif_funding_low=ecif_low,
         ecif_funding_high=ecif_high,
         headline=timed_headline(engagement, scenario_results, quick_wins),
+        expected_microsoft_today_annual=expected_ms_today,
+        expected_microsoft_after_annual=expected_ms_after,
+        one_off_microsoft_annual=one_off_ms,
     )
 
     return EngineResult(

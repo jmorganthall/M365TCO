@@ -74,6 +74,19 @@ function LicenseRow({ l, il, eng, meta, personas, catalog, update, post, remove,
     <span key="u" className={`badge ${l.unused_seats_answer ? 'muted' : 'warn'}`}
       title="Unused seats: bought but not assigned">
       {unused} unused · {UNUSED_WORD[l.unused_seats_answer || '']}</span>)
+  // Seats no persona holds (TARGET_SCHEMA D31): one-off licences are carried
+  // forward at the same cost, outside the comparison. The interpreter decides
+  // which seats they are; the row says so, and asks until it's answered.
+  const oneOffSeats = il ? il.one_off_seats : 0
+  if (l.one_off) chips.push(
+    <span key="oo" className="badge muted" title="Not part of any persona: carried forward at the same cost, outside the comparison. Shown in the expected total Microsoft spend.">
+      one-off — carried forward</span>)
+  else if (il?.seats_question) chips.push(
+    <span key="oo" className={`badge ${l.seats_answer ? 'muted' : 'warn'}`}
+      title="Seats no persona is shown to hold. Expand ▸ to answer who holds them.">
+      {l.seats_answer === 'HeldByPersonas'
+        ? (il.seats_question === 'holders' ? 'held by everyone' : 'extra seats held by the personas')
+        : `${oneOffSeats} one-off seat${oneOffSeats === 1 ? '' : 's'}${l.seats_answer ? '' : ' · not answered'}`}</span>)
   if (l.renewal_date) chips.push(<span key="r" className="badge muted" title="This line's own Microsoft renewal">renews {l.renewal_date}</span>)
   if (l.price_override) chips.push(
     <span key="ov" className="badge" title={`Custom price · list ${usd(list)}/seat/yr`}>
@@ -87,7 +100,7 @@ function LicenseRow({ l, il, eng, meta, personas, catalog, update, post, remove,
   tagNames.forEach((n, i) => chips.push(<span key={`p${i}`} className="badge muted">{n}</span>))
   // No persona tag → the engine treats the line as an org-wide pool (spread
   // across all personas that have a scenario). Say so, so it never looks lost.
-  if (tagIds.length === 0) chips.push(<span key="orgwide" className="badge muted" title={tenantWide
+  if (tagIds.length === 0 && !l.one_off) chips.push(<span key="orgwide" className="badge muted" title={tenantWide
     ? 'Not tagged to a persona — cost is spread across all scenario personas by headcount, and the entitlement covers every user. Expand ▸ to tag specific personas.'
     : `Not tagged to a persona — cost is spread across all scenario personas by headcount, but only ${l.quantity_assigned} per-user seats are entitled. Expand ▸ to tag personas or mark the line tenant-wide.`}>applies org-wide</span>)
   // Out of scope (TARGET_SCHEMA D23): the line stays listed but is in no number,
@@ -225,6 +238,34 @@ function LicenseRow({ l, il, eng, meta, personas, catalog, update, post, remove,
                 </label>
                 <small className="src">For licences no plan includes (Visio, Project, Teams Rooms…).
                   The line stays listed but is in no number; the PDF names it.</small></div>
+              <div><label>Seats no persona holds <Help k="licences.seats_answer" /></label>
+                <label className="src" style={{ display: 'flex', alignItems: 'center', gap: '.4rem' }}>
+                  <input type="checkbox" style={{ width: 'auto' }} checked={!!l.one_off}
+                    onChange={(e) => update(l.id, { one_off: e.target.checked })} />
+                  One-off licence, not part of any persona
+                </label>
+                {!l.one_off && il?.seats_question && (
+                  <select value={l.seats_answer || ''}
+                    onChange={(e) => update(l.id, { seats_answer: e.target.value || null })}>
+                    <option value="">Not answered yet (one-off)</option>
+                    <option value="HeldByPersonas">{il.seats_question === 'holders'
+                      ? 'Everyone holds it' : 'These personas hold all of it'}</option>
+                    <option value="OneOff">{il.seats_question === 'holders'
+                      ? 'One-off licences' : 'The extra seats are one-off'}</option>
+                  </select>
+                )}
+                <small className="src">
+                  {l.one_off
+                    ? <>Shared mailboxes, service accounts, a specialist seat: carried forward
+                      at {usd(il?.one_off_annual)}/yr before and after, so it never changes the comparison.</>
+                    : il?.seats_question === 'holders'
+                      ? <>{l.quantity_assigned} seats but {il.people} people, and no persona tagged, so we
+                        can't tell who holds it. Tag the personas that do, or answer here.</>
+                      : il?.seats_question === 'extra'
+                        ? <>{l.quantity_assigned} seats for {il.people} people. One-off seats
+                          ({usd(il.one_off_annual)}/yr) are carried forward, outside the comparison.</>
+                        : <>Every seat is held by the personas given this licence.</>}
+                </small></div>
             </div>
             <div className="grid c4" style={{ padding: '.4rem 0' }}>
               <div><label>Segment</label>

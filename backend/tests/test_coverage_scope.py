@@ -40,12 +40,19 @@ def test_line_defaults_to_per_user_scope(client):
 
 def test_untagged_per_user_line_credits_only_its_seats(client):
     """46 org-wide Microsoft 365 E3 seats make 46 people redundant for the MFA
-    tool — not all 3,150 who use it."""
+    tool — not all 3,150 who use it — once the customer says the people hold
+    them. Unanswered, the 46 seats are one-off (D31) and cover nobody."""
     eid, _ = _setup(client)
-    client.post(f"/api/engagements/{eid}/current-licenses", json={
+    lic = client.post(f"/api/engagements/{eid}/current-licenses", json={
         "sku_reference": "Microsoft 365 E3", "quantity_purchased": 46,
-        "quantity_assigned": 46, "unit_price_paid_annual": 491.40})
+        "quantity_assigned": 46, "unit_price_paid_annual": 491.40}).json()
 
+    rollup = client.post(f"/api/engagements/{eid}/compute").json()["rollup"]
+    assert rollup["quick_wins"] == []
+    assert rollup["one_off_microsoft_annual"] == 22604.40   # 46 × 491.40
+
+    client.patch(f"/api/engagements/{eid}/current-licenses/{lic['id']}",
+                 json={"seats_answer": "HeldByPersonas"})
     qw = client.post(f"/api/engagements/{eid}/compute").json()["rollup"]["quick_wins"]
     assert len(qw) == 1
     assert qw[0]["displaced_today"] == 46

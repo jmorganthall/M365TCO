@@ -47,6 +47,11 @@ UNUSED_SEATS_ANSWERS = ("Intended", "NotNeeded")
 # The customer's answer about a tool's seats beyond the personas who hold it
 # (GUIDED_PLAN G4, ENGINE_SPEC 6.0a).
 EXTRA_SEATS_ANSWERS = ("ExtraSeats", "PeopleWhoStay")
+# The customer's answer about a Microsoft line's seats that no persona is shown to
+# hold (TARGET_SCHEMA §4.4, D31): held by the personas after all, or one-off
+# seats carried forward outside the comparison. NULL = not answered (read as
+# one-off).
+LICENCE_SEATS_ANSWERS = ("HeldByPersonas", "OneOff")
 # The kinds of service the practice sells (GUIDED_PLAN G13): each has its own
 # result section. Generic types only; the services' names are runtime data.
 PRACTICE_SERVICE_KINDS = ("ManagedSecurity", "Calling", "Other")
@@ -572,6 +577,19 @@ class CurrentMicrosoftLicense(Base):
     # export. The line stays visible but is in no number: not today's spend, not
     # replaced by any move, delivering nothing. The PDF's method page lists it.
     out_of_scope: Mapped[bool] = mapped_column(Boolean, default=False)
+    # A one-off licence (TARGET_SCHEMA §4.4 `applies_to = OneOff`, D31): a seat
+    # or two held outside any persona. Carried forward as is: counted in the
+    # expected total Microsoft spend, in no persona's cost and never in the delta.
+    one_off: Mapped[bool] = mapped_column(Boolean, default=False)
+    # The customer's answer about this line's seats that no persona is shown to
+    # hold (the seats beyond the people of its personas, or every seat of an
+    # untagged line with fewer seats than people). "HeldByPersonas" = the people
+    # do hold them (the old reading); "OneOff" = carried forward outside the
+    # comparison. NULL = not answered: read as one-off and asked on the
+    # licensing step.
+    seats_answer: Mapped[str | None] = mapped_column(
+        SAEnum(*LICENCE_SEATS_ANSWERS, name="licence_seats_answer"), nullable=True
+    )
     # "It's the same as" this library plan (TARGET_SCHEMA §4.4 `bundle_key`, D23):
     # a person's explicit link, answered on the unknown-licence card. Wins over
     # resolving the typed name, so the customer's wording is kept and the line

@@ -630,6 +630,21 @@ linked to the first by `parent_persona_id`:
   review's `license_out_of_scope` note, the HTML readout's and PDF's "Not part of
   this workshop" line and the Excel licence sheet. GUI surface: the line's
   expander ("Out of scope for this workshop") and its row chip.
+- **One-off licences (first-class, D31):** `one_off` (bool, default false) — today's
+  form of TARGET_SCHEMA §4.4 `applies_to = OneOff`: a licence held outside any
+  persona (a shared mailbox, a service account, one specialist seat). And
+  `seats_answer` ∈ {`HeldByPersonas`, `OneOff`, NULL} — who holds the seats no
+  persona is shown to hold: the seats beyond the people of the line's personas, or
+  every seat of an untagged per-user line with fewer seats than the people. NULL =
+  not answered, read as one-off. The interpreter derives `one_off_seats` and
+  `one_off_annual` (ENGINE_SPEC 6.0); a one-off part is in no persona's share and no
+  delta, only in the rollup's `expected_microsoft_today_annual`,
+  `expected_microsoft_after_annual` and `one_off_microsoft_annual`. Readers: the
+  interpreter (shares, seat caps, the `licence_extra_seats_unanswered` and
+  `licence_holders_unknown` findings), the engine and the readouts' expected total
+  Microsoft spend line. GUI surface: the line's expander ("Seats no persona holds":
+  the one-off tick and the seats question), its row chip, the Review step and the
+  Data Inspector.
 - **"Same as" a library plan (first-class):** `bundle_id` (FK `Bundle`, nullable;
   TARGET_SCHEMA §4.4 `bundle_key`, D23) — a person's explicit link, answered on the
   unknown-licence card. The customer's `sku_reference` is kept for display; the

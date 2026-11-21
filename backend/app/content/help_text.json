@@ -99,6 +99,14 @@
       "ask": "These seats are paid for but not assigned. Are they kept on purpose, for example for quick onboarding, or are they not needed?",
       "why": "Seats you don't need are counted as a saving from this licence's renewal. Seats kept on purpose are noted and not counted. Unanswered seats are left out."
     },
+    "licences.one_off": {
+      "ask": "Is this a one-off licence that isn't part of any persona? For example a shared mailbox, a service account or a single specialist seat.",
+      "why": "A one-off licence is carried forward at the same cost before and after, so it never changes the comparison. The result shows it in the expected total Microsoft spend."
+    },
+    "licences.seats_answer": {
+      "ask": "Some of these seats aren't held by the personas given this licence. Do those people hold all of it, or are the rest one-off licences?",
+      "why": "Seats the personas hold go with them when they move. One-off seats are carried forward at the same cost, outside the comparison, and shown in the expected total Microsoft spend. Unanswered seats are read as one-off."
+    },
     "licences.renewal": {
       "ask": "Does this licence renew on a different date from the main agreement?",
       "why": "Reductions on this line are counted from its own renewal date. Blank uses the agreement's date."

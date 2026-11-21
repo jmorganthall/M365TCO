@@ -107,6 +107,22 @@ def review(db: Session, engagement_id: str) -> dict:
             check(f.code, f.step,
                   f"{x['name']} isn't assigned to any persona, so it is counted across every persona. "
                   f"Say which personas get it.")
+        elif f.code == "licence_extra_seats_unanswered":
+            check(f.code, f.step,
+                  f"{x['name']} has {x['assigned']:,} seats; the personas given it have {x['people']:,} people. "
+                  f"Do those people hold all of it, or are the other {x['extra']:,} one-off licences "
+                  f"(shared mailboxes, service accounts, a specialist seat)? Until answered they are "
+                  f"one-off: carried forward at the same cost, outside the comparison.")
+            leave_out(f"{x['extra']:,} extra {x['name']} seats",
+                      "not yet answered who holds them — carried forward as one-off", "groups")
+        elif f.code == "licence_holders_unknown":
+            check(f.code, f.step,
+                  f"{x['name']} has {x['assigned']:,} seats but isn't given to any persona, and the "
+                  f"personas have {x['people']:,} people, so we can't tell who holds it. Say which personas "
+                  f"hold it, or answer that everyone does. Until then it is a one-off: carried forward at "
+                  f"the same cost, outside the comparison.")
+            leave_out(f"{x['name']} ({x['assigned']:,} seats)",
+                      "not yet answered who holds it — carried forward as one-off", "groups")
         elif f.code == "seats_vs_headcount":
             check(f.code, f.step,
                   f"{x['name']}: {x['assigned']:,} seats are assigned, but the personas that get "

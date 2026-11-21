@@ -339,6 +339,18 @@ export default function Readout({ engagement }) {
             </table></div>
           )
         })()}
+        {/* Expected total Microsoft spend (TARGET_SCHEMA D31): the whole bill,
+            today and after. One-off licences are in both at the same cost, so the
+            net change above is unaffected. Every figure is the engine's. */}
+        {r.expected_microsoft_today_annual > 0 && (
+          <p className="hint" style={{ marginTop: '.6rem' }}>
+            <b>Expected total Microsoft spend:</b> {usd0(r.expected_microsoft_today_annual)}/yr today,{' '}
+            {usd0(r.expected_microsoft_after_annual)}/yr after the move.
+            {r.one_off_microsoft_annual > 0 && <> Both include {usd0(r.one_off_microsoft_annual)}/yr of
+              one-off licences held outside any persona, carried forward unchanged, so they don't change
+              the net change above.</>}
+          </p>
+        )}
         {engagement.managed_ms_account && r.msft_uplift_annual > 0 && (
           <p className="hint" style={{ marginTop: '.6rem' }}>
             🤝 <b>Microsoft ECIF (managed account).</b> This move lifts annual Microsoft spend by{' '}

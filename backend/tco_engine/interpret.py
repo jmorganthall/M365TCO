@@ -74,6 +74,12 @@ class RawLicenseLine:
     renewal_date: Optional[date] = None
     unused_seats_answer: Optional[str] = None
     out_of_scope: bool = False
+    # A one-off licence held outside any persona (D31, TARGET_SCHEMA §4.4
+    # `applies_to = OneOff`): carried forward, in no share and no delta.
+    one_off: bool = False
+    # Who holds the seats no persona is shown to hold: "HeldByPersonas" |
+    # "OneOff" | None (not answered, read as OneOff) (D31).
+    seats_answer: Optional[str] = None
     linked_bundle_id: Optional[str] = None            # a person's "same as" link
     mapped_outcome_ids: frozenset[str] = frozenset()  # a person's ratified ticks
     # Catalog fact from the loader: the plan the typed name resolves to (aliases
@@ -254,6 +260,23 @@ class ILicenseLine:
     # False when it costs $0 only because no price was found: not from the price
     # list, not negotiated, nothing typed. A $0 price-list plan is known (free).
     price_known: bool = True
+    # D31 (ENGINE_SPEC 6.0): the people the line's personas hold, and the part of
+    # the line no persona holds. A one-off part is carried forward: in the expected
+    # total Microsoft spend, in no persona's share and never in a delta.
+    people: int = 0
+    one_off: bool = False               # the whole line is one-off (marked, or holders unknown)
+    one_off_seats: int = 0
+    one_off_annual: Decimal = ZERO
+    seats_answer: Optional[str] = None
+    # The open question on the licensing step, if any: "extra" (more seats than
+    # the people) | "holders" (untagged, fewer seats than the people) | None.
+    # Asked whether or not it has been answered; unanswered reads as one-off.
+    seats_question: Optional[str] = None
+
+    @property
+    def held_annual(self) -> Decimal:
+        """The part of the line's cost its personas hold (what their shares split)."""
+        return self.annual_cost - self.one_off_annual
 
     @property
     def in_scope(self) -> bool:
@@ -643,9 +666,27 @@ def interpret(raw: RawEngagement) -> Interpreted:
         state, outcomes, bundle_id = _read_line(line, raw.microsoft_coverage)
         overridden = line.price_override and line.overridden_price_annual is not None
         effective = line.overridden_price_annual if overridden else line.list_price_annual
-        assumed = not line.persona_ids
+        assumed = not line.persona_ids and not line.one_off
         applies = everyone if assumed else tuple(p for p in line.persona_ids if p in known)
         unused = max((line.quantity_purchased or 0) - (line.quantity_assigned or 0), 0)
+        # D31: the seats no persona holds (ENGINE_SPEC 6.0).
+        assigned = line.quantity_assigned or 0
+        people = 0 if line.one_off else sum(headcount.get(pid, 0) for pid in applies)
+        per_user = (line.coverage_scope or "PerUser") != "TenantWide"
+        question = None
+        if line.one_off:
+            one_off_seats = assigned
+        elif per_user and assumed and assigned < people:
+            question = "holders"
+            one_off_seats = 0 if line.seats_answer == "HeldByPersonas" else assigned
+        elif per_user and applies and assigned > people:
+            question = "extra"
+            one_off_seats = 0 if line.seats_answer == "HeldByPersonas" else assigned - people
+        else:
+            one_off_seats = 0
+        wholly = line.one_off or (assigned > 0 and one_off_seats >= assigned)
+        if wholly:
+            applies = ()                # held by no persona: delivers to none
         il = ILicenseLine(
             id=line.id, read_state=state, outcomes=outcomes, bundle_id=bundle_id,
             list_price_annual=line.list_price_annual, effective_price_annual=effective,
@@ -655,11 +696,14 @@ def interpret(raw: RawEngagement) -> Interpreted:
             pct_off_list=_pct_off(line.list_price_annual, effective),
             unused_seats=unused, unused_annual=Decimal(unused) * effective,
             price_known=bool(overridden or effective > 0 or line.price_from_catalog),
+            people=people, one_off=wholly, one_off_seats=one_off_seats,
+            one_off_annual=Decimal(one_off_seats) * effective,
+            seats_answer=line.seats_answer, seats_question=question,
         )
         lines.append(il)
-        if il.in_scope:
+        if il.in_scope and not il.one_off:
             for pid, frac in headcount_shares(list(applies), headcount).items():
-                licence_shares[(line.id, pid)] = il.annual_cost * frac
+                licence_shares[(line.id, pid)] = il.held_annual * frac
 
     # ---- Tools --------------------------------------------------------------
     tools: list[ITool] = []
@@ -846,7 +890,12 @@ def _seat_caps(raw: RawEngagement, lines: list[ILicenseLine],
             if _plan_bundles(s) & members:
                 usage[pid] = usage.get(pid, 0.0) + headcount.get(pid, 0)
         for l in member_lines:
-            assigned = raw_lines[l.id].quantity_assigned
+            # D31: one-off seats are carried forward, so they hold cap seats today
+            # and after, held by nobody who moves.
+            unattributed += l.one_off_seats
+            assigned = raw_lines[l.id].quantity_assigned - l.one_off_seats
+            if assigned <= 0:
+                continue
             total = sum(headcount.get(pid, 0) for pid in l.applies_to)
             if not total:
                 unattributed += assigned
@@ -886,9 +935,20 @@ def _findings(raw, lines, tools, scenarios, tables, seat_caps, contracts=(), quo
     for l in in_scope:
         rl = raw_lines[l.id]
         name = rl.sku_reference or "A licence line"
-        if l.assumed:
+        # D31: seats no persona is shown to hold are asked about; unanswered they
+        # are carried forward as one-off.
+        if l.seats_question == "extra" and not rl.seats_answer:
+            f.append(IFinding("licence_extra_seats_unanswered", "groups", licence_id=l.id, facts={
+                "name": name, "assigned": rl.quantity_assigned, "people": l.people,
+                "extra": rl.quantity_assigned - l.people}))
+        elif l.seats_question == "holders" and not rl.seats_answer:
+            f.append(IFinding("licence_holders_unknown", "groups", licence_id=l.id, facts={
+                "name": name, "assigned": rl.quantity_assigned, "people": l.people}))
+        if l.one_off:
+            pass                        # held by no persona: nothing to tag or count
+        elif l.assumed:
             f.append(IFinding("licence_untagged", "groups", licence_id=l.id, facts={"name": name}))
-        elif rl.coverage_scope != "TenantWide":
+        elif rl.coverage_scope != "TenantWide" and not l.seats_question:
             hc = sum(headcount[pid] for pid in l.applies_to)
             if rl.quantity_assigned != hc:
                 f.append(IFinding("seats_vs_headcount", "groups", "info", licence_id=l.id,
@@ -1215,6 +1275,8 @@ def to_engine(i: Interpreted) -> Engagement:
             renewal_date=rl.renewal_date,
             unused_seats_answer=(UnusedSeatsAnswer(rl.unused_seats_answer)
                                  if rl.unused_seats_answer else None),
+            one_off=il.one_off,
+            one_off_seats=0 if il.one_off else il.one_off_seats,
         ))
 
     tools = []

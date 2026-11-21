@@ -134,7 +134,7 @@ Each phase is one pull request to `main`, with its tests.
 | 6 | Contracts and cost lines (G12) | done |
 | 7 | Practice services and result sections, steps 11–12 (G13–G15) | done |
 | 8 | Service quotes and "Replacing your MDR" (G13a) | done |
-| 9 | Microsoft licences like for like: this contract change (D31, G23–G25) | in review |
-| 10 | One-off licences and the extra-seats question for Microsoft lines; expected total Microsoft spend (G23) | planned |
+| 9 | Microsoft licences like for like: this contract change (D31, G23–G25) | done |
+| 10 | One-off licences and the extra-seats question for Microsoft lines; expected total Microsoft spend (G23) | in review |
 | 11 | Add-on and standalone lines replaced like for like, with the keep-or-go answer (G24) | planned |
 | 12 | Dropped capabilities asked, restoring add-ons priced; the trade-offs view and exports follow (G25) | planned |
