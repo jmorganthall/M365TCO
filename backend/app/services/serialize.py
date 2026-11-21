@@ -115,6 +115,10 @@ def result_to_dict(result: EngineResult) -> dict:
                 result.rollup.move_incremental_delta_annual
             ),
             "msft_uplift_annual": _num(result.rollup.msft_uplift_annual),
+            # Expected total Microsoft spend (TARGET_SCHEMA D31).
+            "expected_microsoft_today_annual": _num(result.rollup.expected_microsoft_today_annual),
+            "expected_microsoft_after_annual": _num(result.rollup.expected_microsoft_after_annual),
+            "one_off_microsoft_annual": _num(result.rollup.one_off_microsoft_annual),
             "target_services_annual": _num(result.rollup.target_services_annual),
             "ecif_funding_low": _num(result.rollup.ecif_funding_low),
             "ecif_funding_high": _num(result.rollup.ecif_funding_high),

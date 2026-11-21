@@ -261,6 +261,8 @@ def duplicate_engagement(engagement_id: str, db: Session = Depends(get_db)):
             renewal_date=lic.renewal_date,
             unused_seats_answer=lic.unused_seats_answer,
             out_of_scope=lic.out_of_scope,
+            one_off=lic.one_off,
+            seats_answer=lic.seats_answer,
             bundle_id=lic.bundle_id,
         )
         # Carry the persona tags across, remapped to the cloned personas.

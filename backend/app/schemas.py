@@ -358,6 +358,12 @@ class CurrentLicenseIn(BaseModel):
     unused_seats_answer: Optional[Literal["Intended", "NotNeeded"]] = None
     # Not part of this workshop: in no number (TARGET_SCHEMA §4.4, D23).
     out_of_scope: bool = False
+    # A one-off licence held outside any persona: carried forward, never in the
+    # delta (TARGET_SCHEMA §4.4, D31).
+    one_off: bool = False
+    # Who holds the seats no persona is shown to hold: "HeldByPersonas" |
+    # "OneOff" | None (not answered, read as one-off).
+    seats_answer: Optional[Literal["HeldByPersonas", "OneOff"]] = None
     # Personas this line applies to (many-to-many tags).
     persona_ids: list[str] = []
     source_tag: str = "CustomerStated"
@@ -381,6 +387,8 @@ class CurrentLicenseOut(ORMModel):
     renewal_date: Optional[date] = None
     unused_seats_answer: Optional[str] = None
     out_of_scope: bool = False
+    one_off: bool = False
+    seats_answer: Optional[str] = None
     # "It's the same as" this library plan, answered on the unknown-licence card
     # (read-only here: written by PUT /licence-names/answer).
     bundle_id: Optional[str] = None

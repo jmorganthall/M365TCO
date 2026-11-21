@@ -1028,6 +1028,7 @@ is in the engagement. Operational, short-lived.
 | `…unit_price_paid_annual` | `price_override_annual` or live list | `source_tag = ListPrice` → follow the live list; anything else → kept as an explicit override |
 | `…persona_id` (legacy) | removed | |
 | untagged licence and tool rows | `applies_to = 'Unspecified'` | read as Org-wide, labelled assumed |
+| `current_microsoft_licenses.one_off`, `.seats_answer` *(walkthrough, D31)* | `applies_to = 'OneOff'`; `seats_answer` as-is | a line with `one_off` set becomes `OneOff` whatever its tags |
 | `third_party_products` derived columns, `unit_basis` | removed | derived values move to `i_tools` |
 | `third_party_products.tooling_pct`, engagement defaults | kept as explicit values | today's data can't tell chosen from inherited, so nothing changes; the operator can clear any to inherit |
 | `persona_scenarios` | under a new **Primary** proposal per engagement | stored base price → live list if it equals the catalog price at its basis, else an override; spend caches removed |

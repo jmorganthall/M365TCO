@@ -446,6 +446,53 @@ def check(case: Case) -> list[str]:
         fail("current-ms-conservation",
              f"attributed {attributed} > actual licence spend {line_total}")
 
+    # ---- Expected total Microsoft spend (D31) ----
+    if r.expected_microsoft_today_annual != _money(line_total):
+        fail("ms-total-today", f"{r.expected_microsoft_today_annual} != licence spend {line_total}")
+    moved = r.expected_microsoft_after_annual - r.expected_microsoft_today_annual
+    if abs(moved - (r.target_microsoft_annual - r.existing_microsoft_annual)) > CENT:
+        fail("ms-total-bridge", f"after − today {moved} != target − existing "
+             f"{r.target_microsoft_annual - r.existing_microsoft_annual}")
+
+    return bad
+
+
+def _money(v: Decimal) -> Decimal:
+    return v.quantize(CENT)
+
+
+def check_one_off_neutral(case: Case) -> list[str]:
+    """D31: one-off spend adds nothing to any delta. (1) A wholly one-off line
+    changes no delta and no headline, and raises both expected totals by its cost.
+    (2) One-off seats on a line give the same deltas as the line without them."""
+    eng = case.engagement
+    base = compute(eng).rollup
+    bad: list[str] = []
+    extra = CurrentLicenseLine(quantity_assigned=3, unit_price_paid_annual=D("180"),
+                               sku_reference="one-off", persona_ids=(), id="one-off",
+                               covered_outcome_ids=frozenset({OUT_A, OUT_B}),
+                               quantity_purchased=3, one_off=True)
+    r = compute(replace(eng, current_licenses=list(eng.current_licenses) + [extra])).rollup
+    if (r.net_tco_delta_annual != base.net_tco_delta_annual
+            or r.headline.run_rate_annual != base.headline.run_rate_annual
+            or r.headline.amount != base.headline.amount):
+        bad.append(f"one-off-neutral: a one-off line moved net {base.net_tco_delta_annual} → "
+                   f"{r.net_tco_delta_annual} or the headline")
+    for got, was in ((r.expected_microsoft_today_annual, base.expected_microsoft_today_annual),
+                     (r.expected_microsoft_after_annual, base.expected_microsoft_after_annual)):
+        if got - was != D("540.00"):
+            bad.append(f"one-off-neutral: expected total moved {got - was}, not 540.00")
+    lines = list(eng.current_licenses)
+    if lines and lines[0].quantity_assigned > 1:
+        first = lines[0]
+        marked = compute(replace(eng, current_licenses=[replace(first, one_off_seats=1)] + lines[1:])).rollup
+        fewer = compute(replace(eng, current_licenses=[replace(
+            first, quantity_assigned=first.quantity_assigned - 1,
+            quantity_purchased=max(first.quantity_purchased - 1, 0))] + lines[1:])).rollup
+        if (marked.net_tco_delta_annual != fewer.net_tco_delta_annual
+                or marked.existing_microsoft_annual != fewer.existing_microsoft_annual):
+            bad.append(f"one-off-neutral: one-off seat gave net {marked.net_tco_delta_annual}, "
+                       f"the line without it {fewer.net_tco_delta_annual}")
     return bad
 
 
@@ -492,6 +539,7 @@ def run(level: str = "full", check_order: bool = True) -> dict:
         problems = check(case)
         if check_order:
             problems += check_order_independence(case)
+        problems += check_one_off_neutral(case)
         for p in problems:
             name, _, detail = p.partition(": ")
             failures.setdefault(name, []).append((case.label, detail))

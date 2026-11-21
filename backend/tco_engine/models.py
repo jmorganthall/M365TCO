@@ -87,6 +87,22 @@ class CurrentLicenseLine:
     quantity_purchased: int = 0
     renewal_date: Optional[date] = None
     unused_seats_answer: Optional[UnusedSeatsAnswer] = None
+    # One-off licences (TARGET_SCHEMA D31, ENGINE_SPEC 6.0). `one_off_seats` are
+    # seats no persona holds: carried forward at the same cost before and after,
+    # in no persona's share and no delta. `one_off` = the whole line is one-off and
+    # applies to no persona (an untagged line is otherwise Org-wide).
+    one_off_seats: int = 0
+    one_off: bool = False
+
+    @property
+    def held_seats(self) -> int:
+        """The seats the personas hold: assigned less the one-off seats."""
+        return 0 if self.one_off else max(self.quantity_assigned - self.one_off_seats, 0)
+
+    @property
+    def one_off_annual(self) -> Decimal:
+        seats = self.quantity_assigned if self.one_off else min(self.one_off_seats, self.quantity_assigned)
+        return Decimal(max(seats, 0)) * self.unit_price_paid_annual
 
 
 @dataclass

@@ -77,6 +77,8 @@ def persona_trace(db: Session, engagement_id: str, persona_id: str) -> dict:
                 "applies_to": [names.get(p, p) for p in line.applies_to],
                 "applies_to_assumed": line.assumed,
                 "share": f"{headcount.get(persona_id, 0):,} of {pool:,} people",
+                # D31: seats no persona holds, carried forward outside the share.
+                "one_off_annual": _f(line.one_off_annual),
                 "read_state": line.read_state,
             },
             "raw": {

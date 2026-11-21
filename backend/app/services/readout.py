@@ -695,8 +695,24 @@ class _Context:
             + (", persona by persona" if cols else "")
             + f". It ends on the run rate behind the headline: {_amt(rr, cls=False)} a year. "
             "Savings are shown plain, costs in brackets.</p>"
-            f"<table class='bridge'>{thead}<tbody>{rows}</tbody></table></section>"
+            f"<table class='bridge'>{thead}<tbody>{rows}</tbody></table>"
+            + self._expected_microsoft()
+            + "</section>"
         )
+
+    def _expected_microsoft(self) -> str:
+        """The expected total Microsoft spend (TARGET_SCHEMA D31), today and after.
+        One-off licences are in both at the same cost, so they never change the
+        bridge above. Every figure is the engine's rollup."""
+        r = self.rollup
+        today = _f(r.get("expected_microsoft_today_annual"))
+        if not today:
+            return ""
+        one_off = _f(r.get("one_off_microsoft_annual"))
+        tail = (f" Both include {_usd0(one_off)} a year of one-off licences held outside any persona, "
+                "carried forward unchanged, so they are not in the bridge.") if one_off else ""
+        return (f"<p class='muted small'>Expected total Microsoft spend: {_usd0(today)} a year today, "
+                f"{_usd0(_f(r.get('expected_microsoft_after_annual')))} a year after the move.{tail}</p>")
 
     # ---- 6. Third-party tools --------------------------------------------------
     def sections(self) -> str:

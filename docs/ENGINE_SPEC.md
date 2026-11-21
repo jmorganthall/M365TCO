@@ -864,7 +864,7 @@ properties below on every result. ~1.27M engagements:
 | `offset-units` / `offset-dollars` | allocated units/dollars stay within the covered population and cost |
 | `disposition-displaced` | displaced users = the displacing personas' headcount |
 | `current-ms-conservation` | attributed Microsoft spend never exceeds actual licence spend |
-| `one-off-neutral` *(D31)* | marking a line, or its extra seats, one-off changes no delta and no headline, only the expected total Microsoft spend |
+| `one-off-neutral` *(D31)* | a one-off line changes no delta and no headline, only the expected total Microsoft spend; one-off seats on a line give the same deltas as the line without them |
 | `ms-total-bridge` *(D31)* | expected Microsoft after − expected Microsoft today = target_MS − existing_MS |
 | `ms-retire-like-for-like` *(D31)* | no non-base line is retired for a persona whose plan doesn't cover it, unless its answer is Drop |
 | `restore-covers` *(D31)* | every kept dropped outcome is covered by the plan plus its restoring add-ons, or the scenario is incomplete |

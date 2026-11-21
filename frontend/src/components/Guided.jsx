@@ -343,7 +343,9 @@ function MicrosoftQ({ engagement, base, personas, interp, call }) {
         // A line applies to this group when it's tagged to it, or untagged (Org-wide:
         // every group). One shared with other groups is shown, never rewritten from
         // this row: changing it here would change every group on it.
-        const applies = (l) => (l.persona_ids || []).length === 0 || l.persona_ids.includes(p.id)
+        // A one-off line (D31) is no group's: it is listed once, below the groups.
+        const applies = (l) => !interp.licence[l.id]?.one_off
+          && ((l.persona_ids || []).length === 0 || l.persona_ids.includes(p.id))
         const mine = lines.filter(applies)
         const shared = mine.filter((l) => interp.licence[l.id]?.applies_to?.length > 1)
         const own = mine.filter((l) => !shared.includes(l))
@@ -375,6 +377,8 @@ function MicrosoftQ({ engagement, base, personas, interp, call }) {
           </div>
         )
       })}
+      <OneOffLicences lines={lines.filter((l) => interp.licence[l.id]?.one_off)} interp={interp}
+        base={base} call={call} />
     </Ask>
   )
 }
@@ -399,10 +403,59 @@ function LicenceLine({ l, il, first, base, call, remove, seatsFix }) {
             quantity_assigned: seatsFix.facts.headcount, quantity_purchased: seatsFix.facts.headcount }))}>
             Make it the whole group</button> If only some of them have it, they are a group of their own.</div>
       )}
+      {/* D31: seats beyond the group's people. Until answered they are one-off:
+          carried forward at the same cost, outside the comparison. */}
+      {il?.seats_question === 'extra' && !l.seats_answer && (
+        <div className="err lic-note">{l.sku_reference} has {l.quantity_assigned.toLocaleString()} seats
+          for {il.people.toLocaleString()} people. Do they hold all of it, or are the other{' '}
+          {il.one_off_seats.toLocaleString()} one-off licences (shared mailboxes, service accounts)?{' '}
+          <button className="ghost sm" onClick={() => call(() => api.patch(`${base}/current-licenses/${l.id}`,
+            { seats_answer: 'HeldByPersonas' }))}>They hold all of it</button>{' '}
+          <button className="ghost sm" onClick={() => call(() => api.patch(`${base}/current-licenses/${l.id}`,
+            { seats_answer: 'OneOff' }))}>The extra seats are one-off</button></div>
+      )}
+      {il?.seats_question === 'extra' && l.seats_answer === 'OneOff' && (
+        <div className="muted lic-note">{il.one_off_seats.toLocaleString()} one-off seats, carried forward
+          at {money(il.one_off_annual, 'yr')} outside the comparison.</div>
+      )}
       {il && !il.price_known && (
         <div className="err lic-note">No price found for {l.sku_reference}, so it counts as $0. Load the price list in Settings, or enter the price in the detail view.</div>
       )}
     </>
+  )
+}
+
+// One-off licences (TARGET_SCHEMA D31): held outside any group, carried forward at
+// the same cost before and after, so they never change the comparison. An untagged
+// line with fewer seats than the people is asked who holds it, and is one-off
+// until answered.
+function OneOffLicences({ lines, interp, base, call }) {
+  if (!lines.length) return null
+  const answer = (l, seats_answer) => call(() => api.patch(`${base}/current-licenses/${l.id}`, { seats_answer }))
+  return (
+    <div className="lic-group">
+      <div className="lic-head"><div><div className="lic-name">Not part of any group</div>
+        <div className="muted">One-off licences: carried forward at the same cost, so they don't change the comparison.</div></div></div>
+      {lines.map((l) => {
+        const il = interp.licence[l.id]
+        return (
+          <React.Fragment key={l.id}>
+            <div className="lic-row">
+              <div>{l.sku_reference || 'A licence'} <span className="muted">· {l.quantity_assigned.toLocaleString()} seats</span></div>
+              <div className="num">{money(il.one_off_annual, 'yr')}</div>
+              <div />
+            </div>
+            {il.seats_question === 'holders' && !l.seats_answer && (
+              <div className="err lic-note">{l.sku_reference} isn't given to any group and has fewer seats than the
+                {' '}{il.people.toLocaleString()} people, so we can't tell who holds it. Give it to the groups that do in the
+                {' '}detail view, or:{' '}
+                <button className="ghost sm" onClick={() => answer(l, 'HeldByPersonas')}>Everyone holds it</button>{' '}
+                <button className="ghost sm" onClick={() => answer(l, 'OneOff')}>It's one-off</button></div>
+            )}
+          </React.Fragment>
+        )
+      })}
+    </div>
   )
 }
 
