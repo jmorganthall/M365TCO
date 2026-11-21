@@ -63,10 +63,21 @@ read_state = out_of_scope   if line.out_of_scope                  (delivers noth
            | unread          otherwise                           (cost counts; outcomes unknown)
 effective_price = overridden_price  if price_override and overridden_price is set   (source "override")
                 | list_price                                                         (source "list")
-applies_to      = persona_ids, or EVERY persona when untagged (assumed = true, D12)
+applies_to      = persona_ids, or EVERY persona when untagged (assumed = true, D12),
+                  or NO persona when applies_to = OneOff (D31)
 annual_cost     = quantity_assigned × effective_price
-share(line, p)  = annual_cost × headcount(p) / Σ headcount(applies_to)
-                  (even split when that total is 0; out-of-scope lines have no shares)
+people          = Σ headcount(applies_to)
+one_off_seats   = quantity_assigned        if applies_to = OneOff                     (D31, 6.2b)
+                | quantity_assigned        if per-user, Org-wide or untagged,
+                                              quantity_assigned < people
+                                              and seats_answer ≠ HeldByPersonas       (holders unknown)
+                | quantity_assigned − people  if per-user and quantity_assigned > people
+                                              and seats_answer ≠ HeldByPersonas       (NULL = OneOff)
+                | 0                        otherwise (tenant-wide lines are never one-off)
+one_off_annual  = one_off_seats × effective_price            # carried forward, in no share
+share(line, p)  = (annual_cost − one_off_annual) × headcount(p) / people
+                  (even split when people is 0; out-of-scope lines have no shares;
+                  a line that is wholly one-off has no shares)
 
 # Tool
 annual_cost     = raw_cost × 12 if cost_period = Monthly, else raw_cost
@@ -97,6 +108,9 @@ needed(o)          = o ∈ p's declared requirements, or — with none declared 
 retired(tool, p)   = p has a plan and (the plan covers every outcome the tool
                      delivers [6.6, tco_engine/rules.covers_tool] or the operator
                      forced it); the tool applies to p [6.3a, rules.applies_to]
+retired(line, p)   = 6.2b: p has an in-scope plan, the line applies to p and is read,
+                     and it is p's base plan, or the plan covers every outcome it
+                     delivers, or p's answer for it is Drop (D31)
 quick_win(tool, p) = p's current Microsoft lines deliver every outcome the tool does
 delivered_after(o) = with no plan: delivered_today(o); else the plan covers o, or
                      a tool p keeps delivers o, or o is covered outside the inventory
@@ -117,6 +131,8 @@ usage(L, p)       = headcount(p)                 if p's in-scope plan (base or a
                   | Σ over member lines applying to p of assigned × headcount(p) / Σ headcount(line's personas)
                                                  if p has no in-scope plan
 unattributed(L)   = assigned seats on member lines whose personas have no headcount
+                    + one_off_seats on member lines (D31: carried forward, so they
+                      hold cap seats today and after)
 future_seats(L)   = round(Σ usage + unattributed);  seats_left(L, p) = cap − round(Σ usage of others + unattributed)
 seat_cap_exceeded(p) when p's in-scope plan is under a cap and headcount(p) > seats_left
                   (the tightest cap decides; kind no_seats | nested | split)
@@ -219,6 +235,40 @@ the kind of service that delivers what Microsoft doesn't. When a managed tool is
 retired by a managed-security service, the managed share of its price
 (`annual × (1 − tooling_pct)` per person covered, never counted in 6.5) is credited
 to that section too. Without that share the sections add up to `net_tco_delta`.
+
+## Microsoft licensing like for like (6.2b, D31)
+
+TARGET_SCHEMA D31, §5.6, §5.7, §6.3 definitions 7 to 9. A move replaces a persona's
+Microsoft licensing only as far as the future plan replaces what it delivers, the
+same test a third-party tool passes (6.6). What no persona holds, and what a move
+keeps, is carried forward: the same amount on both sides, in no delta.
+
+```
+# Per in-scope scenario s of persona p, for each in-scope line L that applies to p:
+base(L)        = L is read and linked to a base bundle (the persona's full plan)
+covered(s)     = the covered set a tool is tested against (base ∪ add-ons ∪ services)
+retires(s, L)  = L is read (D23) and (base(L)
+                                     or covers_tool(outcomes(L), covered(s))
+                                     or answer(s, L) = Drop)       # NULL = Keep
+kept(s, L)     = not retires(s, L)        # carried forward: p's share on both sides
+
+# Outcomes p's base plan delivers that the plan doesn't, each answered or not:
+dropped(s)     = ∪ over L with base(L) and retires(s, L) of outcomes(L) − covered(s)
+keep(s)        = {o ∈ dropped(s) : capability_answer(s, o) ≠ NotNeeded}  # NULL = Keep
+restore(s)     = the cheapest set of priced add-ons eligible for s's base that covers
+                 keep(s) and that s does not already hold        (the recommender's
+                 gap-closing composition, D28, over keep(s); none needed when empty)
+incomplete(s) |= keep(s) is not empty and no such set exists    (capability_unrestorable)
+
+restore_unit_price_annual(s) = Σ list price of restore(s) × (1 − discount_pct)
+                               (a price override covers the target a person chose, not
+                               the restore, so the restore is priced on top of it)
+```
+
+`restore(s)` is derived on every read and never written to `scenario_addons`; the
+readout names each restoring add-on and the outcome it keeps. A recommended plan
+(D28) covers what the persona has today, so for it `dropped(s)` is empty and every
+non-base line it covers retires: its numbers don't change.
 
 ## Derived per-product cost (6.5 managed split)
 
@@ -344,14 +394,20 @@ it.
 # UNTAGGED lines (empty persona_ids) are ORG-WIDE (TARGET_SCHEMA D12): the pool is
 # EVERY persona, distributed by headcount — the same reading the quick-win
 # coverage (6.10), the seat cap (6.13), the recommender and Review use. A persona
-# with a scenario carries its share as current spend and retires it when it moves;
-# a persona without one keeps its share (it isn't moving), so that share is in no
-# scenario and in no delta. (The pool used to be only personas with a scenario,
+# with a scenario carries its share as current spend and retires it when its move
+# retires the line (6.2b; an untagged per-user line with fewer seats than the people
+# is one-off until someone says who holds it, D31); a persona without one keeps its
+# share (it isn't moving), so that share is in no scenario and in no delta. (The pool used to be only personas with a scenario,
 # which credited the movers with retiring seats held by people who stay.)
-current_microsoft = Σ over lines whose pool includes this persona of
+current_microsoft = Σ over lines whose pool includes this persona
+                      AND retires(scenario, line) (6.2b, D31) of
       line_total * (persona.headcount / Σ headcount of the line's pool)
-    where line_total = line.quantity_assigned * effective price (Interpretation, 6.0)
-      and pool = line.persona_ids if set, else all personas with a scenario
+    where line_total = (line.quantity_assigned * effective price) − one_off_annual
+                       (Interpretation, 6.0)
+      and pool = line.persona_ids if set, else every persona
+# A line the move keeps (6.2b) is carried forward: its share is on both sides and
+# cancels, so it is in neither current_microsoft nor target_spend, exactly like a
+# tool the persona keeps. One-off parts are in no persona's share at all.
 # effective price = the line's explicit price override when set
 # (price_override + overridden_price_annual), else the catalog list baseline
 # (unit_price_paid_annual). An override is a negotiated rate on the SAME SKU, so it
@@ -394,7 +450,8 @@ current_spend_annual = current_microsoft + offset
 # effective target for whole personas under the 300-seat Business cap; because a
 # persona is the licensing unit, any persona over 300 could never move, so on a real
 # engagement the feature was inert.)
-target_spend_annual  = persona.headcount * scenario.target_unit_price_annual
+target_spend_annual  = persona.headcount * (scenario.target_unit_price_annual
+                                            + restore_unit_price_annual)   # 6.2b
 delta_annual         = target_spend_annual - current_spend_annual   # +cost / -saving
 ```
 
@@ -497,6 +554,14 @@ population_check = {
 existing_microsoft_annual   = Σ current_microsoft_annual   over in-scope scenarios
 existing_third_party_annual = Σ current_third_party_offset over in-scope scenarios
 target_microsoft_annual     = Σ target_spend_annual        over in-scope scenarios
+
+# Expected total Microsoft spend (D31): the whole Microsoft bill, before and after.
+# Carried-forward amounts (one-off parts, kept lines, personas that don't move) are
+# on both sides, so the difference is exactly the Microsoft part of the net change.
+expected_microsoft_today_annual = Σ annual_cost over in-scope lines
+one_off_microsoft_annual        = Σ one_off_annual over in-scope lines
+expected_microsoft_after_annual = expected_microsoft_today_annual
+                                  − existing_microsoft_annual + target_microsoft_annual
 
 net_tco_delta_annual = target_microsoft_annual
                      - existing_microsoft_annual
@@ -683,8 +748,8 @@ for r in in-scope scenarios:
         item(−ms_change, min(start(tool(o).renewal_date)
                              for o in r.offsets if o.move_unlocked_annual > 0) or 0)
     if ms_change < 0:    # a REDUCTION waits for every line it touches to renew
-        lines = the licence lines that apply to r's persona (6.2's rule: tagged to it,
-                or untagged = Org-wide, every persona)
+        lines = the licence lines r's move retires (6.2b): one it keeps, or a
+                one-off part, changes nothing and waits for nothing
         item(−ms_change, max(start(L.renewal_date or microsoft_renewal_date) for L in lines))
 
 # 3. Over-licensing — unused seats the customer confirmed are not needed.
@@ -799,6 +864,11 @@ properties below on every result. ~1.27M engagements:
 | `offset-units` / `offset-dollars` | allocated units/dollars stay within the covered population and cost |
 | `disposition-displaced` | displaced users = the displacing personas' headcount |
 | `current-ms-conservation` | attributed Microsoft spend never exceeds actual licence spend |
+| `one-off-neutral` *(D31)* | marking a line, or its extra seats, one-off changes no delta and no headline, only the expected total Microsoft spend |
+| `ms-total-bridge` *(D31)* | expected Microsoft after − expected Microsoft today = target_MS − existing_MS |
+| `ms-retire-like-for-like` *(D31)* | no non-base line is retired for a persona whose plan doesn't cover it, unless its answer is Drop |
+| `restore-covers` *(D31)* | every kept dropped outcome is covered by the plan plus its restoring add-ons, or the scenario is incomplete |
+| `recommended-unchanged` *(D31)* | for a recommended plan (D28), retiring Microsoft lines like for like changes no delta |
 | `order-dependence` | shuffling the input lists changes no output |
 | `timed-runrate` | untimed, the headline is the quick wins plus the moves' own value (§6.11) |
 | `timed-sum` | the headline is the sum of its sub-lines, each the sum of its timed items |

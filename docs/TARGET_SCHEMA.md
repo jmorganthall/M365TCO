@@ -25,6 +25,8 @@
   together) may be built ahead the same way.
   Decision D30 (workshop value) and the pieces marked *(value)* may be built on
   today's schema ahead of the rebuild, in exactly the shape given here.
+  Decision D31 (Microsoft licensing is replaced like for like) and the pieces marked
+  *(D31)* may be built ahead the same way.
 
 ---
 
@@ -43,7 +45,7 @@
 | D9 | **List prices are live; a typed price is a fixed override.** | §4.4, §5.2 |
 | D10 | **"Changed since workshop"**, measured against a snapshot marked Presented, explained change by change. | §8 |
 | D11 | **Personas are uniform.** Everyone in a persona holds the same licences and tools; differences are split out with carve-out. | §4.2 |
-| D12 | **Org-wide is an explicit choice.** Legacy untagged rows are read as Org-wide and labelled "assumed". | §4.4, §6.1 |
+| D12 | **Org-wide is an explicit choice.** Legacy untagged rows are read as Org-wide and labelled "assumed". *(A per-user Microsoft line read as Org-wide with fewer seats than the people is asked who holds it, D31.)* | §4.4, §6.1 |
 | D13 | **Everything is per person.** No device or unit pricing. | §4.5 |
 | D14 | **Proposals.** An engagement holds one or more proposals; each owns its future state. One is primary. | §5 |
 | D15 | **Delete means archive.** Archived rows leave the math and can be restored. Seeding never resurrects them. | §1.3 |
@@ -54,7 +56,7 @@
 | D20 | **Unused seats are answered, not assumed.** Seats the customer confirms are not needed are over-licensing; seats kept on purpose are noted and counted nowhere; unanswered seats are left out. | §4.4, §7 |
 | D21 | **A new outcome is a confirmed gap.** An outcome is claimed as gained only when the customer confirms nothing delivers it today; "covered outside this inventory" is never claimed or costed; an unanswered gap is not claimed. | §4.8, §6.3 |
 | D22 | **AI is optional.** Nothing the engine, the interpreter or an export needs depends on an AI call. | §13 |
-| D23 | **Every Microsoft licence line is read or set aside.** A line is linked to a library plan, mapped to outcomes for this engagement, or marked out of scope (in no number at all). Until one of those, its cost still counts but its personas' outcome changes are left out. | §4.4, §6.3 |
+| D23 | **Every Microsoft licence line is read or set aside.** A line is linked to a library plan, mapped to outcomes for this engagement, or marked out of scope (in no number at all). Until one of those, its cost still counts but its personas' outcome changes are left out. *(Revised by D31: until then no move retires it, so its cost is carried forward.)* | §4.4, §6.3 |
 | D24 | **The library learns from the workshop.** Licence names that engagements had to link or map by hand are listed, with counts and never customer names, for an admin to add to the library as a plan or a name alias. | §3.1, §3.4 |
 | D25 | **The practice brands the readout once.** The practice's logo, colours and fixed wording (tagline, cover subtitle, closing block, footer disclaimer) are one install-wide record entered in the GUI, never hard-coded. An engagement holds only its customer's logo. | §3.5, §4.1 |
 | D26 | **One readout design.** The HTML readout and the customer PDF are one document rendered from one template; the PDF is that document printed. | §7 |
@@ -62,6 +64,7 @@
 | D28 | **A recommended plan keeps what the persona has today, the cheapest way.** *(Revised.)* A plan must deliver what the persona's Microsoft licences deliver today and what it declares it needs. An outcome a third-party tool delivers is kept either by that tool (it stays and keeps costing) or by Microsoft (the plan, with add-ons, covers everything the tool does, so the tool retires). An add-on is added to retire a tool only when that lowers the persona's total cost. The cheapest result wins, and the recommender says which tools each option keeps and which add-on retires which tool. The split's other side (D27) is chosen the same way. | §7 |
 | D29 | **A carve-out family decides each tool together.** A persona and its carve-outs are the same people (D11), so for each third-party tool they hold, either every member's plan retires it or none does. The family takes whichever costs the whole family less, summed over every member; on a tie, the tool retires (Microsoft). Each member then gets its cheapest plan within that decision, and that is its recommendation. A member's own cheapest plan is still shown beside it when it costs less and decides differently. Personas outside a family are unchanged (D28). Plans already chosen are never changed; a member whose chosen plan decides a tool differently from the rest of its family is flagged. | §7 |
 | D30 | **Workshop value is read from delivered workshops, never named.** A person marks a workshop delivered on Summary & PDF, the last step; that records who and when and freezes the results as a snapshot. The Workshop value page rolls every delivered workshop up into totals and headlines — by workshop, never by persona — and never shows a customer's name or id. Each figure is shown two ways, as completed (the frozen snapshot) and if completed today (a read-only recompute), led by the stronger. It stores nothing. | §4.1, §7.2, §8 |
+| D31 | **Microsoft licensing is replaced like for like; spend no persona holds is carried forward.** A move retires a persona's share of a current Microsoft licence line only when what the line delivers goes on after the move, the same test a third-party tool passes (§6.3 definition 9). (a) **One-off licences:** a line, or seats on a line, that no persona holds (a line marked one-off, seats beyond the people the line applies to, or an Org-wide or untagged per-user line with fewer seats than the people) is asked about on the current licensing step and, until answered, read as a one-off: carried forward at the same cost before and after, so it never changes any delta. The readout shows it in the expected total Microsoft spend, never in a saving. (b) **Add-on and standalone lines** (Copilot, Teams Phone, Power BI and the like) retire for a persona only when its future plan covers every outcome they deliver; otherwise they are kept and carried forward unless the customer answers that they go. (c) **The persona's base plan** always gives way to its future base, but each outcome it delivers that the future plan does not is asked: *not needed* lets the saving stand; *keep*, or no answer, prices the cheapest eligible add-on that restores it as a remaining cost of the future plan, derived and never written to the scenario's add-ons. With no add-on that restores it, the scenario is incomplete (§5.2) until answered. A recommended plan (D28) already keeps everything, so (b) and (c) never change it. | §4.4, §5.6, §5.7, §6.3, §7 |
 
 ---
 
@@ -359,9 +362,24 @@ its headcount exceeds the seats left (§3.1), the GUI offers a split, derived on
   PDF's method page lists it.
 - `quantity_purchased`, `quantity_assigned` (CHECK ≥ 0).
 - `coverage_scope` ∈ {`PerUser`, `TenantWide`} — as today.
-- `applies_to` ∈ {`Personas`, `OrgWide`, `Unspecified`}. New rows must be
-  `Personas` (with ≥ 1 tag) or `OrgWide`. `Unspecified` exists only for migrated
-  legacy rows and is interpreted as Org-wide, labelled **assumed** (D12).
+- `applies_to` ∈ {`Personas`, `OrgWide`, `OneOff`, `Unspecified`}. New rows must be
+  `Personas` (with ≥ 1 tag), `OrgWide` or `OneOff`. `Unspecified` exists only for
+  migrated legacy rows and is interpreted as Org-wide, labelled **assumed** (D12).
+  `OneOff` *(D31)*: a one-off licence that is not part of any persona (for example
+  shared mailboxes, service accounts or a single specialist seat). It applies to no
+  persona, delivers nothing to any persona and is carried forward (§6.3 definition 7).
+- `seats_answer` ∈ {`HeldByPersonas`, `OneOff`}, nullable *(D31)*: the customer's
+  answer when a per-user line's assigned seats don't match the people it applies to
+  in a way that leaves seats no persona holds: more seats than the people, or an
+  Org-wide or untagged line with fewer seats than the people. `HeldByPersonas` = the
+  people the line applies to hold all of it, so its whole cost is spread over them
+  (the extra seats go with them when they move); `OneOff` = the seats no persona holds
+  are one-off licences (the extra seats, or the whole of an Org-wide or untagged line
+  with fewer seats than the people). `NULL` = not answered, read as `OneOff`, and a
+  finding. Asked on the current licensing step beside the seat count, the mirror of
+  the tool's G4 answer; tagging the line to the personas who hold it also answers it.
+  A line tagged to personas with fewer seats than their people is spread over them
+  and not asked (as G5 does for a tool).
 - `segment`, `term_duration`, `billing_plan`: nullable = inherit from the engagement.
 - `price_override_annual` (nullable, CHECK ≥ 0): the negotiated or typed price per
   seat per year. `NULL` = follow the live list price (D9).
@@ -530,6 +548,27 @@ The operator's decision about a tool within one proposal (today's
   the operator's version. Regeneration never touches these. The GUI shows the final
   text when present and offers a newer draft alongside it.
 
+### 5.6 `scenario_licence_answers` *(D31)*
+
+The customer's answer about a current add-on or standalone licence line that a
+persona's future plan does not cover (§6.3 definition 9).
+- PK (`scenario_id`, `license_id`).
+- `answer` ∈ {`Keep`, `Drop`}. `Keep` = the persona keeps the line, so its share is
+  carried forward; `Drop` = the line goes with the move and its saving counts. No row
+  = not answered, read as `Keep`, and a finding.
+- Fewer people on the line is a carve-out (D11), not an answer here.
+- A row whose line the plan now covers has no effect, and the interpreted layer says so.
+
+### 5.7 `scenario_capability_answers` *(D31)*
+
+The customer's answer about an outcome the persona's current base plan delivers that
+its future plan does not.
+- PK (`scenario_id`, `outcome_id`).
+- `answer` ∈ {`NotNeeded`, `Keep`}. `NotNeeded` = the outcome is given up and the
+  saving stands (it is shown as a capability trade-off); `Keep` = the cheapest eligible
+  add-on that restores it is priced into the future plan. No row = not answered, read
+  as `Keep`, and a finding.
+
 ---
 
 ## 6. Interpreted layer
@@ -625,11 +664,31 @@ tool that applies to the persona: `retired`, `quick_win`, `forced` (bools).
    spend no persona's move can retire, and it stays in current and proposed spend.
    A tool is kept or retired per persona, never partly: a tool still needed for any
    outcome keeps that persona's full share. An out-of-scope licence line *(walkthrough)*
-   is in no cost, today or after.
+   is in no cost, today or after. *(D31)* A licence line's one-off part is carried
+   forward: the same amount in today's and the future Microsoft spend, in no persona's
+   share and no delta. It is the whole line when `applies_to = OneOff`, or when the
+   line is per-user, Org-wide or `Unspecified`, has fewer assigned seats than the
+   people and `seats_answer` isn't `HeldByPersonas`; otherwise it is the seats beyond
+   the people the line applies to, unless `seats_answer = HeldByPersonas`. The cost per seat is
+   the line's effective price; the personas share the rest by headcount as above.
 8. **Outcome changes unknown** *(walkthrough)* — a persona with an unread licence
    line (D23) is `outcomes_unknown`. Its capability changes (every `i_proposed` row)
-   are left out of every readout, and `license_unread` says why. Its money is
-   unaffected: the line's cost counts and the move still retires it.
+   are left out of every readout, and `license_unread` says why. Its cost counts,
+   but nobody can say what it delivers, so no move retires it (definition 9): it is
+   carried forward until it is read *(revised by D31; it used to retire with the move)*.
+9. **Licence line retired for a persona** *(D31)* — a persona's share of a current
+   in-scope licence line goes with the persona's in-scope move when:
+   - the line is the persona's **base plan** (linked to a base bundle): always, and
+     each outcome it delivers that the future plan doesn't is a
+     `scenario_capability_answers` question (`NotNeeded`, or `Keep` priced as the
+     cheapest eligible restoring add-on, `NULL` read as `Keep`);
+   - the line is any **other** read line (an add-on, a standalone plan, a mapped
+     line): when the future plan (base, add-ons and practice services, the covered
+     set a tool is tested against) covers every outcome it delivers, or when
+     `scenario_licence_answers` says `Drop`. Otherwise the share is kept and carried
+     forward on both sides, exactly like a kept tool;
+   - an **unread** line (D23) or a one-off part (definition 7): never.
+   A persona without an in-scope scenario keeps every share it has.
 
 With the default in #1, #4 and #5 give the same results as today's tool-replacement
 and quick-win rules; the difference is one definition used everywhere.
@@ -659,6 +718,11 @@ and quick-win rules; the difference is one definition used everywhere.
 | `tool_incomplete` *(walkthrough)* | a tool has no cost, no people covered, or no ratified outcomes, so it is left out of the numbers and the readout |
 | `residual_unanswered` *(walkthrough)* | a tool is partly replaced and its keep-or-retire decision is not made, so it is assumed kept |
 | `headcount_vs_employees` *(walkthrough)* | the personas' total headcount differs from the engagement's `employee_count` |
+| `licence_extra_seats_unanswered` *(D31)* | a per-user line has more seats than the people it applies to and no `seats_answer`, so the extra seats are carried forward as one-off |
+| `licence_holders_unknown` *(D31)* | a per-user Org-wide or untagged line has fewer seats than the people and no `seats_answer`, so the whole line is carried forward as one-off until someone says who holds it |
+| `licence_kept_unanswered` *(D31)* | a persona's future plan doesn't cover an add-on or standalone line it holds and `scenario_licence_answers` has no row, so the line is kept |
+| `capability_kept_unanswered` *(D31)* | a persona's future plan drops an outcome its base plan delivers and `scenario_capability_answers` has no row, so the restoring add-on is priced |
+| `capability_unrestorable` *(D31)* | an outcome is to be kept (answered or not) and no eligible priced add-on restores it, so the scenario is incomplete |
 
 Subjects are typed nullable FKs (`persona_id`, `license_id`, `product_id`,
 `scenario_id`, `outcome_id`), not a free-text reference.
@@ -682,7 +746,7 @@ Written only by the engine from the interpreted layer, per proposal.
 
 | Table | Key | Holds |
 | --- | --- | --- |
-| `c_proposal_results` | `proposal_id` | rollup: current Microsoft and third-party spend, target spend, quick wins, the spend bridge components, net change per year; **the headline** (§7.1): `run_rate_horizon_amount` *(readout)* = `run_rate_annual` × horizon years; `run_rate_annual` and each sub-line's yearly amount and, for a saving sub-line, its share *(readout)* (§7.1) (`duplicate_spend_annual`, `consolidation_annual`, `overlicensing_annual`); the ramp over `headline_months` = horizon × 12 (each sub-line's timed amount `duplicate_spend_amount`, `consolidation_amount`, `overlicensing_amount`; `headline_amount` = their sum; `full_run_rate_month`); `headline_direction` ∈ {`saved`, `added`, `none`}, from the run rate; inputs fingerprint; engine version |
+| `c_proposal_results` | `proposal_id` | rollup: current Microsoft and third-party spend, target spend, quick wins, the spend bridge components, net change per year; **the headline** (§7.1): `run_rate_horizon_amount` *(readout)* = `run_rate_annual` × horizon years; `run_rate_annual` and each sub-line's yearly amount and, for a saving sub-line, its share *(readout)* (§7.1) (`duplicate_spend_annual`, `consolidation_annual`, `overlicensing_annual`); the ramp over `headline_months` = horizon × 12 (each sub-line's timed amount `duplicate_spend_amount`, `consolidation_amount`, `overlicensing_amount`; `headline_amount` = their sum; `full_run_rate_month`); `headline_direction` ∈ {`saved`, `added`, `none`}, from the run rate; *(D31)* `expected_microsoft_today_annual` (every in-scope licence line's cost, one-off parts included), `expected_microsoft_after_annual` (today's, less what the in-scope moves retire, plus their target Microsoft spend and restoring add-ons), `one_off_microsoft_annual` (the one-off parts, carried forward, in both); inputs fingerprint; engine version |
 | `c_headline_years` *(walkthrough)* | (`proposal_id`, `year`) | the ramp per modelled year: that year's amount and the running total |
 | `c_timing_items` *(walkthrough)* | (`proposal_id`, `item_key`) | every timed amount behind the headline: sub-line, subject (`product_id`, `persona_id` or `license_id`), annual amount, start month, the date it was timed by and whether no date was given, months counted, amount over the horizon |
 | `c_scenario_results` | (`proposal_id`, `persona_id`) | current and target spend, delta, offsets |
