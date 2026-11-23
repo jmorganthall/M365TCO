@@ -469,7 +469,11 @@
       "name": "Microsoft Teams Calling Plan",
       "kind": "addon",
       "base": null,
-      "sort_order": 65
+      "sort_order": 65,
+      "aliases": [
+        "Microsoft Teams Domestic Calling Plan",
+        "Teams Domestic Calling Plan"
+      ]
     },
     {
       "key": "power-bi-pro",
