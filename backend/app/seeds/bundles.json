@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-bundles-v4-standalones-no-teams-aliases",
+  "version": "2026-11-bundles-v5-teams-phone-calling-plan",
   "bundles": [
     {
       "key": "exo-kiosk",
@@ -473,6 +473,16 @@
       "aliases": [
         "Microsoft Teams Domestic Calling Plan",
         "Teams Domestic Calling Plan"
+      ]
+    },
+    {
+      "key": "teams-phone-calling-plan",
+      "name": "Microsoft Teams Phone with Calling Plan",
+      "kind": "addon",
+      "base": null,
+      "sort_order": 66,
+      "aliases": [
+        "Teams Phone with Calling Plan"
       ]
     },
     {

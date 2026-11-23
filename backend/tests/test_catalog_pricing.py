@@ -370,3 +370,38 @@ def test_add_on_prices_from_its_exact_name_or_alias_before_loose_matching(db):
     db.commit()
     t = by_key["teams-phone"]
     assert bsvc.catalog_annual_erp(db, t.name, bundle_id=t.id) == Decimal("63")
+
+
+def test_teams_phone_with_calling_plan_closes_both_telephony_gaps_when_cheapest(client, db):
+    """The Teams Phone with Calling Plan add-on delivers the phone system and dial
+    tone together. A group that needs both gets it when it costs less than Teams
+    Phone plus a Calling Plan; a group that needs only the phone system still gets
+    Teams Phone alone."""
+    db.add_all([
+        _sku("Microsoft 365 E3", 491.4, billing="Monthly"),
+        _sku("Teams Phone Standard", 126, billing="Monthly"),
+        _sku("Microsoft Teams Domestic Calling Plan", 151.2, billing="Monthly"),
+        _sku("Teams Phone with Calling Plan", 214.2, billing="Monthly"),
+    ])
+    db.commit()
+    by_key = {b["key"]: b for b in client.get("/api/catalog/bundles").json()}
+    combo = by_key["teams-phone-calling-plan"]
+    assert (combo["kind"], combo["alacarte"], combo["list_price_annual"]) == ("addon", True, 214.2)
+
+    eid = client.post("/api/engagements", json={"customer_name": "Dial Tone Co"}).json()["id"]
+    outs = {o["seed_key"]: o["id"] for o in client.get(f"/api/engagements/{eid}/outcomes").json()}
+    cov = client.get(f"/api/engagements/{eid}/coverage").json()
+    assert {c["outcome_id"] for c in cov if c["microsoft_sku_reference"] == combo["name"]} == \
+        {outs["telephony-pbx"], outs["telephony-pstn"]}
+
+    def addons(needs):
+        p = client.post(f"/api/engagements/{eid}/personas", json={"name": "+".join(needs), "headcount": 50}).json()
+        client.patch(f"/api/engagements/{eid}/personas/{p['id']}",
+                     json={"required_outcome_ids": [outs[k] for k in needs]})
+        res = client.post(f"/api/engagements/{eid}/personas/{p['id']}/bundle-analysis").json()
+        e3 = next(b for b in res["bundles"] if b["sku_reference"] == "Microsoft 365 E3")
+        return sorted(a["name"] for a in e3["addons"])
+
+    assert addons(["telephony-pbx", "telephony-pstn"]) == ["Microsoft Teams Phone with Calling Plan"]
+    assert addons(["telephony-pbx"]) == ["Microsoft Teams Phone"]
+    client.delete(f"/api/engagements/{eid}", params={"confirm_name": "Dial Tone Co"})
