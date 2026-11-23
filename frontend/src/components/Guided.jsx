@@ -480,6 +480,8 @@ const groupsWord = (k) => `${k} group${k === 1 ? '' : 's'}`
 function OutcomeRow({ o, mine, ms, notMs, total, lacking, others, tools, dont, canSayDont, onDont, onUndo, onAdd, onRemove, onNew }) {
   const toolName = (id) => tools.find((t) => t.id === id)?.name || 'A tool'
   const everyone = total > 0 && ms.length === total
+  // A tool named means there is one: the "no tool" answer shows only with none.
+  const noTool = dont && mine.length === 0
   const noneLabel = ms.length ? 'No other tool' : 'Not delivered today'
   return (
     <div className="guide-block">
@@ -506,7 +508,7 @@ function OutcomeRow({ o, mine, ms, notMs, total, lacking, others, tools, dont, c
               <span key={c.id} className="badge">{toolName(c.third_party_product_id)}
                 <button className="chip-x" title="Not used for this" aria-label={`Remove ${toolName(c.third_party_product_id)}`} onClick={() => onRemove(c.id)}>✕</button></span>
             ))}
-            {dont
+            {noTool
               ? <span className="badge">✓ {noneLabel}
                   <button className="chip-x" title="Undo" aria-label={`Undo ${noneLabel.toLowerCase()}`} onClick={onUndo}>↺</button></span>
               : <>
@@ -514,8 +516,8 @@ function OutcomeRow({ o, mine, ms, notMs, total, lacking, others, tools, dont, c
                   {canSayDont && <button className="ghost sm" onClick={onDont}>{noneLabel}</button>}
                 </>}
           </div>
-          {dont && ms.length > 0 && (
-            <div className="muted deliver-note">So {lacking.join(', ')} {lacking.length === 1 ? "doesn't" : "don't"} get it today.</div>
+          {noTool && ms.length > 0 && (
+            <div className="muted deliver-note">Not delivered today for: {lacking.join(', ')}</div>
           )}
         </section>
       </div>
