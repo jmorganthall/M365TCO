@@ -539,6 +539,16 @@ button.badge.licence-flag { background: transparent; padding: .12rem .45rem; fon
 .guide-chips { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
 .guide-chips .badge { display: inline-flex; align-items: center; gap: 4px; font-size: .85rem; padding: 4px 8px; }
 .chip-x { background: transparent; border: 0; color: var(--muted); padding: 0 4px; font-size: .8rem; }
+.deliver-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px; }
+.deliver-col { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; min-width: 0; line-height: 1.5; }
+.deliver-head { font-weight: 600; font-size: .9rem; margin-bottom: 8px; }
+.deliver-head .muted { font-weight: 400; font-size: .75rem; }
+.deliver-status.pos { color: var(--pos); font-size: .9rem; }
+.deliver-list { margin: 4px 0 0; padding-left: 24px; font-size: .88rem; }
+.deliver-note { font-size: .8rem; margin-top: 8px; max-width: 65ch; }
+.deliver-col .guide-chips { margin-top: 0; }
+.deliver-col .combo { max-width: 100%; }
+@media (max-width: 700px) { .deliver-cols { grid-template-columns: 1fr; } }
 .guide-count { font-size: 1rem; margin-top: 16px; }
 .guide-nav { display: flex; justify-content: space-between; margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); }
 .guide-nav button { font-size: 1rem; padding: 8px 24px; }
