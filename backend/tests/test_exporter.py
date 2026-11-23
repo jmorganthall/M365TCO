@@ -248,3 +248,31 @@ def test_engagement_currency_and_market_are_validated(client):
     r = client.patch(f"/api/engagements/{eng['id']}",
                      json={"market": ok_market, "currency": ok_currency})
     assert r.status_code == 200
+
+
+def test_readout_shows_what_each_person_costs_today(client):
+    """The guided "what each person costs you today" table is in the customer
+    document, with the interpreter's figures (GUIDED_PLAN G3) — one per group with
+    people, and the Everyone row from the summary."""
+    eid = client.post("/api/engagements", json={"customer_name": "Today Co"}).json()["id"]
+    a = client.post(f"/api/engagements/{eid}/personas", json={"name": "Office staff", "headcount": 100}).json()
+    b = client.post(f"/api/engagements/{eid}/personas", json={"name": "Frontline", "headcount": 40}).json()
+    client.post(f"/api/engagements/{eid}/personas", json={"name": "Nobody yet", "headcount": 0})
+    for p, price in ((a, 360), (b, 96)):
+        client.post(f"/api/engagements/{eid}/current-licenses", json={
+            "sku_reference": "Some plan", "quantity_purchased": p["headcount"],
+            "quantity_assigned": p["headcount"], "unit_price_paid_annual": price,
+            "price_override": True, "overridden_price_annual": price, "persona_ids": [p["id"]]})
+
+    html = client.get(f"/api/engagements/{eid}/readout.html").text
+    interp = client.get(f"/api/engagements/{eid}/interpreted").json()
+
+    assert "What Each Person Costs Today" in html
+    section = html.split("What Each Person Costs Today", 1)[1].split("</section>", 1)[0]
+    by_pid = {r["persona_id"]: r for r in interp["baselines"]}
+    for p in (a, b):
+        row = section.split(f"<td>{p['name']}</td>", 1)[1].split("</tr>", 1)[0]
+        assert f"${float(by_pid[p['id']]['per_user_monthly']):,.2f}" in row
+    assert "Nobody yet" not in section      # a group with no people has no cost to show
+    assert "<td>Everyone</td><td class='num'>140</td>" in section
+    assert f"${float(interp['summary']['baseline_per_user_monthly']):,.2f}" in section
