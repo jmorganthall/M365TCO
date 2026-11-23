@@ -185,11 +185,18 @@ These are shared by every engagement.
 **`microsoft_skus`** — priced catalog variants from the price sheet.
 - Natural key (`product_id`, `sku_id`, `term_duration`, `billing_plan`, `market`),
   prices, `segment`, `currency`, `catalog_version`, as today.
-- `bundle_key` (FK `bundles`, nullable): the ratified mapping of this variant onto
-  a bundle. `suggested_bundle_key` + `suggestion_reason`: the unratified AI proposal.
+- `bundle_key` (FK `bundles`, nullable): the mapping a person ratified for this
+  SKU onto a bundle, set on every term and payment row of the SKU.
+  `suggested_bundle_key` + `suggestion_reason`: the unratified AI proposal.
+- **Library links** (`seeds/sku_links.json`): the library's default mapping, keyed
+  by Microsoft's (`product_id`, `sku_id`) and reviewed against the price list it
+  names. Like every default it is stored as NULL on the row and read at lookup
+  time; a person's `bundle_key` overrides it, and clearing that restores it. The
+  link that applies is shown in Settings, labelled library or set here.
 - **List price lookup** is a single deterministic function of
-  (`bundle_key`, segment, term, billing, market) over rows with a ratified
-  `bundle_key`. No title matching, no aliases.
+  (bundle, segment, term, billing, market) over the rows linked to the bundle: a
+  person's `bundle_key`, else the library's link. No title matching, no aliases. A
+  bundle with no linked row has no price and is shown as not priced.
 
 **`bundle_aliases`** *(walkthrough)* — other names a bundle goes by in customer
 exports ("Exchange Online (Plan 2)", "Office 365 E3 (no Teams)").
