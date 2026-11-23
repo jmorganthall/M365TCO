@@ -70,6 +70,12 @@ def _usd(v) -> str:
     return f"−${abs(v):,.0f}" if v < 0 else f"${v:,.0f}"
 
 
+def _usd2(v) -> str:
+    """Per-person amounts keep their cents ($32.29), as the guided screen shows them."""
+    v = _f(v)
+    return f"−${abs(v):,.2f}" if v < 0 else f"${v:,.2f}"
+
+
 def _amt(v, *, cls=True) -> str:
     """Savings-positive finance notation: a saving plain (green), an added cost in
     brackets — never a minus sign next to the word savings."""
@@ -184,7 +190,7 @@ def build_html(eng: models.Engagement, result: dict, gaps: list[dict],
     ctx = _Context(eng, result, gaps, brand, prepared, interpreted)
     body = "".join([
         ctx.footer("running-footer"), ctx.cover(), ctx.opportunity(), ctx.quick_wins(),
-        ctx.persona_pages(), ctx.bridge(), ctx.sections(), ctx.mdr(), ctx.third_party(), ctx.assumptions(),
+        ctx.today_costs(), ctx.persona_pages(), ctx.bridge(), ctx.sections(), ctx.mdr(), ctx.third_party(), ctx.assumptions(),
         ctx.next_steps(), ctx.footer("screen-footer"),
     ])
     title = f"{eng.customer_name or 'Customer'} — Microsoft 365 TCO"
@@ -465,6 +471,41 @@ class _Context:
                          f" <span class='muted'>via {lic}</span></div>")
         return (f"<tr class='qw-who'><td></td><td colspan='4'><div class='who-label'>Already covered for</div>"
                 f"{''.join(parts)}</td></tr>")
+
+    # ---- 3b. What each person costs today ---------------------------------------
+    def today_costs(self) -> str:
+        """Each group's all-in cost today, per person per month: its share of its
+        Microsoft licences and of every tool it has — the interpreter's baselines and
+        summary, the same figures as the guided "what each person costs you today"
+        screen (GUIDED_PLAN G3). Nothing is added up here."""
+        rows = [b for b in self.interp.baselines if b.headcount > 0]
+        if not rows:
+            return ""
+        s = self.interp.summary
+        body = "".join(
+            f"<tr><td>{E(getattr(self.personas.get(b.persona_id), 'name', '') or 'Group')}</td>"
+            f"<td class='num'>{b.headcount:,}</td>"
+            f"<td class='num'>{_usd2(b.microsoft_per_user_monthly)}</td>"
+            f"<td class='num'>{_usd2(b.tools_per_user_monthly)}</td>"
+            f"<td class='num'><b>{_usd2(b.per_user_monthly)}</b></td>"
+            f"<td class='num'>{_usd(b.total_annual)}</td></tr>" for b in rows)
+        total = (f"<tr class='total'><td>Everyone</td><td class='num'>{int(s['groups_headcount']):,}</td>"
+                 f"<td class='num'>{_usd(s['baseline_microsoft_annual'])} / yr</td>"
+                 f"<td class='num'>{_usd(s['baseline_tools_annual'])} / yr</td>"
+                 f"<td class='num'>{_usd2(s['baseline_per_user_monthly'])}</td>"
+                 f"<td class='num'>{_usd(s['baseline_total_annual'])}</td></tr>")
+        standing = _f(s.get("standing_annual"))
+        note = (f"<p class='muted small'>Plus {_usd(standing)} a year for tool seats held by people "
+                "outside these groups.</p>") if standing > 0 else ""
+        return (
+            "<section class='block keep'><div class='eyebrow'>Today</div>"
+            "<h1>What Each Person Costs Today</h1>"
+            "<p class='lede'>Each group's share of its Microsoft licences and of every tool it has, "
+            "per person per month.</p>"
+            "<table class='data'><thead><tr><th>Group</th><th class='num'>People</th>"
+            "<th class='num'>Microsoft</th><th class='num'>Other tools</th>"
+            "<th class='num'>Per user / mo</th><th class='num'>Per year</th></tr></thead>"
+            f"<tbody>{body}{total}</tbody></table>{note}</section>")
 
     # ---- 4. One page per persona ----------------------------------------------
     def persona_pages(self) -> str:
