@@ -864,18 +864,23 @@ function AiInstructions({ onMsg, onErr }) {
 function BundleLibrary({ onMsg, onErr }) {
   const [bundles, setBundles] = useState([])
   const [unmapped, setUnmapped] = useState([])
+  // Searches every unmapped SKU (the API filters the whole catalog), not just the
+  // first page: a price sheet has thousands, and the one an add-on needs can sort
+  // far down the alphabet.
+  const [q, setQ] = useState('')
   const [allSkus, setAllSkus] = useState([])
   const [busy, setBusy] = useState(false)
   const byId = (id) => bundles.find((b) => b.id === id)?.name || id
 
-  function load() {
+  function load(query = q) {
     api.get('/api/catalog/bundles').then(setBundles).catch(() => {})
-    api.get('/api/catalog/skus?unmapped=true&limit=500').then(setUnmapped).catch(() => {})
+    api.get(`/api/catalog/skus?unmapped=true&limit=500${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ''}`)
+      .then(setUnmapped).catch(() => {})
     // Every priced SKU (mapped + unmapped) so we can show how the catalog buckets
     // onto the bundle spine.
     api.get('/api/catalog/skus?limit=2000').then(setAllSkus).catch(() => {})
   }
-  useEffect(load, [])
+  useEffect(() => load(), [])
   if (bundles.length === 0) return null
 
   // Group mapped catalog SKUs by their bundle — the "which priced variants collapse
@@ -1003,8 +1008,16 @@ function BundleLibrary({ onMsg, onErr }) {
         </details>
       )}
 
+      <div className="guide-field" style={{ maxWidth: 420, margin: '8px 0' }}>
+        <label htmlFor="unmapped-q">Search unmapped SKUs</label>
+        <input id="unmapped-q" defaultValue={q} placeholder="e.g. Teams Phone Standard"
+          onKeyDown={(e) => { if (e.key === 'Enter') { setQ(e.target.value); load(e.target.value) } }}
+          onBlur={(e) => { if (e.target.value !== q) { setQ(e.target.value); load(e.target.value) } }} />
+      </div>
       {unmapped.length === 0 ? (
-        <div className="muted" style={{ fontSize: '.82rem' }}>Every catalog SKU is mapped to a bundle. 🎉</div>
+        <div className="muted" style={{ fontSize: '.82rem' }}>{q.trim()
+          ? `No unmapped SKU matches "${q.trim()}".`
+          : 'Every catalog SKU is mapped to a bundle. 🎉'}</div>
       ) : (
         <>
           <div className="muted" style={{ fontSize: '.82rem', marginBottom: '.3rem' }}>

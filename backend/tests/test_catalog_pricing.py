@@ -339,3 +339,34 @@ def test_price_catalog_picks_the_same_row_as_a_per_call_lookup(client, db):
             one = svc.catalog_price_row(db, name, bundle_id=bid, segment=segment)
             shared = svc.catalog_price_row(db, name, bundle_id=bid, segment=segment, catalog=catalog)
             assert (one.id if one else None) == (shared.id if shared else None), (name, segment)
+
+
+def test_add_on_prices_from_its_exact_name_or_alias_before_loose_matching(db):
+    """With nothing mapped, an add-on is priced from a row titled exactly as its
+    name or one of its aliases before loose title matching, which let a variant
+    answer for the plain product: the frontline Teams Phone, a pay-as-you-go
+    calling zone with no minutes, the Defender P2 add-on for P1 holders."""
+    from app import models
+    from app.services import bundles as bsvc
+    db.add_all([
+        _sku("Microsoft Teams Phone Standard FLW", 63, billing="Monthly"),
+        _sku("Teams Phone Standard", 126, billing="Monthly"),
+        _sku("Microsoft Teams Calling Plan pay-as-you-go (country zone 1 - US/CA/PR)", 37.8, billing="Monthly"),
+        _sku("Microsoft Teams Domestic Calling Plan", 151.2, billing="Monthly"),
+        _sku("Microsoft Defender for Office 365 P2 Add-On for P1 and Business Premium", 37.8, billing="Monthly"),
+        _sku("Microsoft Defender for Office 365 (Plan 2)", 63, billing="Monthly"),
+    ])
+    db.commit()
+    by_key = {b.key: b for b in db.query(models.Bundle).all()}
+    want = {"teams-phone": "126", "calling-plan": "151.2", "defender-office-p2": "63"}
+    catalog = bsvc.PriceCatalog(db)
+    for key, price in want.items():
+        b = by_key[key]
+        assert bsvc.catalog_annual_erp(db, b.name, bundle_id=b.id) == Decimal(price), key
+        assert bsvc.catalog_annual_erp(db, b.name, bundle_id=b.id, catalog=catalog) == Decimal(price), key
+    # A row mapped onto the bundle still outranks every title.
+    db.query(models.MicrosoftSku).filter_by(sku_title="Microsoft Teams Phone Standard FLW").one() \
+        .bundle_id = by_key["teams-phone"].id
+    db.commit()
+    t = by_key["teams-phone"]
+    assert bsvc.catalog_annual_erp(db, t.name, bundle_id=t.id) == Decimal("63")

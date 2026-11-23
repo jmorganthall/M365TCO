@@ -308,6 +308,7 @@ class PriceCatalog:
             if r.bundle_id is not None:
                 self.by_bundle.setdefault(r.bundle_id, []).append(r)
         self.titled = _titled(rows)
+        self.aliases = aliases_by_bundle(db)
 
 
 def engagement_price_basis(eng) -> dict:
@@ -336,7 +337,9 @@ def catalog_price_row(
 
     Selection: rows RATIFIED onto the bundle (MicrosoftSku.bundle_id — the
     first-class SKU → Bundle mapping) when any exist; otherwise tolerant title
-    matching (_title_candidates). The winner is then ranked: priced rows beat
+    matching (_title_candidates), joined — for a bundle — by rows titled exactly
+    as its name or one of its aliases (BundleAlias), which outrank a loose match
+    at the same basis. The winner is then ranked: priced rows beat
     $0/trial rows, the requested segment beats other segments (the sheet ships
     Commercial/Education/Charity variants of the same title; 'Nonprofit' matches
     the sheet's Charity rows — models.sheet_segment), the requested
@@ -347,16 +350,28 @@ def catalog_price_row(
     'Unattended' superstrings). Returns None when nothing matches. Pass a
     PriceCatalog when pricing many references in one request."""
     rows: list[models.MicrosoftSku] = []
+    names: set[str] = set()
     if bundle_id is not None:
         rows = catalog.by_bundle.get(bundle_id, []) if catalog else db.execute(
             select(models.MicrosoftSku).where(models.MicrosoftSku.bundle_id == bundle_id)
         ).scalars().all()
     if not rows:
-        rows = _title_candidates(
-            catalog.titled if catalog
-            else _titled(db.execute(select(models.MicrosoftSku)).scalars().all()),
-            sku_reference,
-        )
+        titled = catalog.titled if catalog else _titled(
+            db.execute(select(models.MicrosoftSku)).scalars().all())
+        rows = _title_candidates(titled, sku_reference)
+        if bundle_id is not None:
+            # Rows titled exactly as the bundle or one of its aliases (the names
+            # Settings → Staple bundles lists) join the candidates and outrank a
+            # loose match at the same basis. Loose matching alone let a variant
+            # answer for the plain product: 'Teams Phone Standard FLW' for Teams
+            # Phone, a pay-as-you-go zone for the Calling Plan, the add-on for P1
+            # holders for Defender for Office 365 P2.
+            aliases = (catalog.aliases.get(bundle_id, []) if catalog
+                       else aliases_by_bundle(db).get(bundle_id, []))
+            names = {_norm(sku_reference)} | {_norm(x) for x in aliases}
+            have = {id(r) for r in rows}
+            rows = list(rows) + [r for r, titles in titled
+                                 if id(r) not in have and any(t in names for t in titles)]
     if not rows:
         return None
 
@@ -369,6 +384,7 @@ def catalog_price_row(
             0 if models.sheet_segment(r.segment) == want else 1,
             _pref_rank(r.term_duration or "", term, _TERM_FALLBACK),
             _pref_rank(r.billing_plan or "", billing, _BILLING_FALLBACK),
+            0 if _norm(r.sku_title or "") in names or _norm(r.product_title or "") in names else 1,
             0 if _norm(r.sku_title or "") == ref else 1,
             0 if _norm(r.product_title or "") == ref else 1,
             len(r.sku_title or r.product_title or ""),
