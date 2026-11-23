@@ -40,11 +40,11 @@ D = Decimal
 # one. Listing monthly numbers here would price Business Premium at $22/year and
 # make every comparison in this sweep meaningless.
 CATALOG_CSV = """ProductTitle,ProductId,SkuId,SkuTitle,TermDuration,BillingPlan,Market,Currency,UnitPrice,ERP Price,Segment,EffectiveStartDate,EffectiveEndDate,LastUpdatedDate
-Microsoft 365 Business Premium,P1,S1,Microsoft 365 Business Premium,P1Y,Monthly,US,USD,211.20,264.00,Commercial,2026-01-01,,2026-01-01
-Microsoft 365 E3,P2,S1,Microsoft 365 E3,P1Y,Monthly,US,USD,393.12,491.40,Commercial,2026-01-01,,2026-01-01
-Microsoft 365 E5,P3,S1,Microsoft 365 E5,P1Y,Monthly,US,USD,547.20,684.00,Commercial,2026-01-01,,2026-01-01
-Office 365 E3,P4,S1,Office 365 E3,P1Y,Monthly,US,USD,262.08,327.60,Commercial,2026-01-01,,2026-01-01
-Office 365 E1,P5,S1,Office 365 E1,P1Y,Monthly,US,USD,100.80,126.00,Commercial,2026-01-01,,2026-01-01
+Microsoft 365 Business Premium,CFQ7TTC0LCHC,0002,Microsoft 365 Business Premium,P1Y,Monthly,US,USD,211.20,264.00,Commercial,2026-01-01,,2026-01-01
+Microsoft 365 E3,CFQ7TTC0LFLX,0001,Microsoft 365 E3,P1Y,Monthly,US,USD,393.12,491.40,Commercial,2026-01-01,,2026-01-01
+Microsoft 365 E5,CFQ7TTC0LFLZ,0003,Microsoft 365 E5,P1Y,Monthly,US,USD,547.20,684.00,Commercial,2026-01-01,,2026-01-01
+Office 365 E3,CFQ7TTC0LF8R,0001,Office 365 E3,P1Y,Monthly,US,USD,262.08,327.60,Commercial,2026-01-01,,2026-01-01
+Office 365 E1,CFQ7TTC0LF8Q,0001,Office 365 E1,P1Y,Monthly,US,USD,100.80,126.00,Commercial,2026-01-01,,2026-01-01
 """
 
 

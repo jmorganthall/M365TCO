@@ -878,7 +878,7 @@ function BundleLibrary({ onMsg, onErr }) {
       .then(setUnmapped).catch(() => {})
     // Every priced SKU (mapped + unmapped) so we can show how the catalog buckets
     // onto the bundle spine.
-    api.get('/api/catalog/skus?limit=2000').then(setAllSkus).catch(() => {})
+    api.get('/api/catalog/skus').then(setAllSkus).catch(() => {})
   }
   useEffect(() => load(), [])
   if (bundles.length === 0) return null
@@ -886,7 +886,8 @@ function BundleLibrary({ onMsg, onErr }) {
   // Group mapped catalog SKUs by their bundle — the "which priced variants collapse
   // onto this staple" rollup (all the E5 variants → E5, etc.).
   const skusByBundle = {}
-  for (const s of allSkus) if (s.bundle_id) (skusByBundle[s.bundle_id] ||= []).push(s)
+  // Grouped by the link that prices each row: a person's, else the library's.
+  for (const s of allSkus) if (s.effective_bundle_id) (skusByBundle[s.effective_bundle_id] ||= []).push(s)
 
   // Suggestions first, then the rest of the unmapped work-list.
   const rows = [...unmapped].sort((a, b) => (b.suggested_bundle_id ? 1 : 0) - (a.suggested_bundle_id ? 1 : 0))
@@ -954,7 +955,7 @@ function BundleLibrary({ onMsg, onErr }) {
         seeded staple re-creates it on restart — delete is for operator-added bundles.</p>
       <table style={{ marginBottom: '.5rem' }}>
         <thead><tr>
-          <th>Name</th><th>Also called</th><th>Kind</th><th>Base</th><th>Eligible bases (add-ons)</th>
+          <th>Name</th><th className="num">List $/user/yr</th><th>Also called</th><th>Kind</th><th>Base</th><th>Eligible bases (add-ons)</th>
           <th className="num">Sort</th><th></th>
         </tr></thead>
         <tbody>
@@ -974,12 +975,12 @@ function BundleLibrary({ onMsg, onErr }) {
       {allSkus.length > 0 && (
         <details style={{ marginTop: '.8rem' }}>
           <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
-            How catalog SKUs bucket into bundles ({allSkus.filter((s) => s.bundle_id).length} mapped)
+            How catalog SKUs bucket into bundles ({allSkus.filter((s) => s.effective_bundle_id).length} linked)
           </summary>
-          <p className="hint">Each staple bundle collapses many priced catalog variants (terms, segments,
-            with/without Teams calling, unattended, …). This is that mapping — the "strata" the SKU intake
-            resolves into. Telephony is modeled as two capabilities (Cloud PBX vs PSTN dial-tone), so a
-            calling variant maps to the base bundle and the telephony layer is an add-on.</p>
+          <p className="hint">A plan or add-on is priced only from the price-list SKUs linked to it. The
+            library links SKUs by Microsoft's product and SKU IDs (<b>library</b>, read-only); a link you set
+            here overrides it (<b>set here</b>), and undoing yours puts the library's back. Terms, payment
+            options and segments of one SKU are picked at pricing time.</p>
           {bundles.filter((b) => (skusByBundle[b.id] || []).length).map((b) => (
             <details key={b.id} className="card" style={{ background: 'var(--panel2)', marginBottom: '.4rem' }}>
               <summary style={{ cursor: 'pointer' }}>
@@ -987,7 +988,8 @@ function BundleLibrary({ onMsg, onErr }) {
                 {b.kind === 'addon' && <span className="muted" style={{ fontSize: '.75rem' }}> · add-on</span>}
               </summary>
               <table style={{ marginTop: '.4rem' }}>
-                <thead><tr><th>Product / SKU</th><th>Term</th><th className="num">List $/yr</th></tr></thead>
+                <thead><tr><th>Product / SKU</th><th>Term</th><th className="num">List $/yr</th>
+                  <th>Linked by</th><th>Move to</th></tr></thead>
                 <tbody>
                   {skusByBundle[b.id].map((s) => (
                     <tr key={s.id}>
@@ -995,7 +997,19 @@ function BundleLibrary({ onMsg, onErr }) {
                         {s.sku_title && s.sku_title !== s.product_title &&
                           <small className="muted"> · {s.sku_title}</small>}</td>
                       <td className="muted" style={{ fontSize: '.8rem' }}>{s.term_duration} / {s.billing_plan}</td>
-                      <td className="num">{s.annual_unit_price ? usd(s.annual_unit_price) : '—'}</td>
+                      <td className="num">{s.annual_erp_price ? usd(s.annual_erp_price) : '—'}</td>
+                      <td style={{ fontSize: '.8rem' }}>{s.bundle_id
+                        ? <>set here{s.library_bundle_id && s.library_bundle_id !== s.bundle_id
+                            && <span className="muted"> (library: {byId(s.library_bundle_id)})</span>}{' '}
+                            <button className="ghost sm" onClick={() => accept(s, null)}>Undo</button></>
+                        : <span className="muted">library · derived</span>}</td>
+                      <td>
+                        <select value="" aria-label={`Link ${s.sku_title} to another plan or add-on`}
+                          onChange={(e) => e.target.value && accept(s, e.target.value)} style={{ maxWidth: 180 }}>
+                          <option value="">Move to…</option>
+                          {bundles.filter((x) => x.id !== b.id).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                        </select>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1003,7 +1017,7 @@ function BundleLibrary({ onMsg, onErr }) {
             </details>
           ))}
           {bundles.every((b) => !(skusByBundle[b.id] || []).length) && (
-            <div className="muted" style={{ fontSize: '.82rem' }}>No SKUs mapped yet — map some below to see the buckets.</div>
+            <div className="muted" style={{ fontSize: '.82rem' }}>No SKUs linked yet. Link some below to see the buckets.</div>
           )}
         </details>
       )}
@@ -1080,6 +1094,12 @@ function BundleEditRow({ b, baseBundles, onSave, onDelete, onEligibility, onAlia
       <td>
         <input defaultValue={b.name} style={{ minWidth: 180 }}
           onBlur={(e) => e.target.value !== b.name && onSave({ name: e.target.value })} />
+      </td>
+      <td className="num">
+        {/* Derived: from the price-list SKUs linked to this plan, at the default basis. */}
+        {b.list_price_annual > 0
+          ? usd(b.list_price_annual)
+          : <span className="muted" title="Link a price-list SKU to it below">No SKU linked: not priced</span>}
       </td>
       <td>
         <div className="pill-list" style={{ gap: '.25rem', maxWidth: 240 }}>

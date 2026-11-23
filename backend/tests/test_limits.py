@@ -114,8 +114,8 @@ def test_license_limit_crud_and_validation(client):
 _PRICED_CSV = (
     "ProductTitle,ProductId,SkuId,SkuTitle,TermDuration,BillingPlan,Market,"
     "Currency,UnitPrice,EffectiveStartDate,EffectiveEndDate,ERP Price,Segment\n"
-    "Microsoft 365 E3,P1,001,M365 E3,P1Y,Annual,US,USD,384,2026-01-01,2026-12-31,432,Commercial\n"
-    "Microsoft 365 Business Premium,P2,002,M365 BP,P1Y,Annual,US,USD,264,2026-01-01,2026-12-31,264,Commercial\n"
+    "Microsoft 365 E3,CFQ7TTC0LFLX,0001,M365 E3,P1Y,Annual,US,USD,384,2026-01-01,2026-12-31,432,Commercial\n"
+    "Microsoft 365 Business Premium,CFQ7TTC0LCHC,0002,M365 BP,P1Y,Annual,US,USD,264,2026-01-01,2026-12-31,264,Commercial\n"
 )
 
 
@@ -190,8 +190,8 @@ def test_no_business_seats_left_recommends_the_next_best_plan(client):
 
 # Adds Intune Plan 1 to the price sheet so device management can be bought on its own.
 _INTUNE_CSV = _PRICED_CSV + (
-    "Office 365 E3,P3,003,O365 E3,P1Y,Annual,US,USD,276,2026-01-01,2026-12-31,276,Commercial\n"
-    "Microsoft Intune Plan 1,P4,004,Intune P1,P1Y,Annual,US,USD,96,2026-01-01,2026-12-31,96,Commercial\n"
+    "Office 365 E3,CFQ7TTC0LF8R,0001,O365 E3,P1Y,Annual,US,USD,276,2026-01-01,2026-12-31,276,Commercial\n"
+    "Microsoft Intune Plan 1,CFQ7TTC0LCH4,0009,Intune P1,P1Y,Annual,US,USD,96,2026-01-01,2026-12-31,96,Commercial\n"
 )
 
 

@@ -10,11 +10,12 @@ This replaced the automatic Business Premium swap, which moved WHOLE personas
 under a 300-seat tenant cap and so could never fire on a persona larger than 300.
 """
 
+# Real Microsoft product and SKU IDs: plans price only from the rows linked to them.
 _CSV = (
     "ProductTitle,ProductId,SkuId,SkuTitle,TermDuration,BillingPlan,Market,"
     "Currency,UnitPrice,EffectiveStartDate,EffectiveEndDate,ERP Price,Segment\n"
-    "Microsoft 365 E3,C1,001,Microsoft 365 E3,P1Y,Annual,US,USD,384,2026-01-01,2026-12-31,432,Commercial\n"
-    "Microsoft 365 Business Premium,C2,002,Microsoft 365 Business Premium,P1Y,Annual,US,USD,264,2026-01-01,2026-12-31,264,Commercial\n"
+    "Microsoft 365 E3,CFQ7TTC0LFLX,0001,Microsoft 365 E3,P1Y,Annual,US,USD,384,2026-01-01,2026-12-31,432,Commercial\n"
+    "Microsoft 365 Business Premium,CFQ7TTC0LCHC,0002,Microsoft 365 Business Premium,P1Y,Annual,US,USD,264,2026-01-01,2026-12-31,264,Commercial\n"
 )
 
 

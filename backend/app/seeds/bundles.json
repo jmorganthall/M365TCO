@@ -1,5 +1,5 @@
 {
-  "version": "2026-11-bundles-v5-teams-phone-calling-plan",
+  "version": "2026-11-bundles-v6-price-list-links",
   "bundles": [
     {
       "key": "exo-kiosk",
@@ -193,7 +193,10 @@
       "bases": [
         "m365-f3-no-teams"
       ],
-      "sort_order": 22
+      "sort_order": 22,
+      "aliases": [
+        "Microsoft Defender Suite Add-on FLW"
+      ]
     },
     {
       "key": "f5-compliance",
@@ -203,7 +206,10 @@
       "bases": [
         "m365-f3-no-teams"
       ],
-      "sort_order": 23
+      "sort_order": 23,
+      "aliases": [
+        "Microsoft Purview Suite Add-on FLW"
+      ]
     },
     {
       "key": "o365-e1",
@@ -290,7 +296,10 @@
       "bases": [
         "m365-e3-no-teams"
       ],
-      "sort_order": 31
+      "sort_order": 31,
+      "aliases": [
+        "Microsoft Defender Suite"
+      ]
     },
     {
       "key": "e5-compliance",
@@ -300,7 +309,10 @@
       "bases": [
         "m365-e3-no-teams"
       ],
-      "sort_order": 32
+      "sort_order": 32,
+      "aliases": [
+        "Microsoft Purview Suite"
+      ]
     },
     {
       "key": "o365-e1-no-teams",
@@ -623,6 +635,135 @@
         "Copilot for Microsoft 365",
         "Microsoft Copilot for Microsoft 365",
         "M365 Copilot"
+      ]
+    },
+    {
+      "key": "m365-e7-no-teams",
+      "name": "Microsoft 365 E7 (no Teams)",
+      "kind": "bundle",
+      "base": null,
+      "sort_order": 51,
+      "aliases": [
+        "Microsoft 365 E7 no Teams",
+        "M365 E7 (no Teams)",
+        "M365 E7 no Teams"
+      ]
+    },
+    {
+      "key": "f5-security-compliance",
+      "name": "Microsoft 365 F5 Security + Compliance",
+      "kind": "addon",
+      "base": "m365-f3",
+      "bases": [
+        "m365-f3-no-teams"
+      ],
+      "sort_order": 24,
+      "aliases": [
+        "Microsoft Defender + Purview Suite Add-on for FLW",
+        "Defender + Purview Suite Add-on for FLW"
+      ]
+    },
+    {
+      "key": "defender-endpoint-p2-e3-addon",
+      "name": "Defender for Endpoint P2 Add-on for Microsoft 365 E3",
+      "kind": "addon",
+      "base": "m365-e3",
+      "bases": [
+        "m365-e3-no-teams"
+      ],
+      "sort_order": 79,
+      "aliases": [
+        "Defender for Endpoint P2 Add On for Microsoft 365 E3"
+      ]
+    },
+    {
+      "key": "entra-id-p2-e3-addon",
+      "name": "Entra ID P2 Add-on for Microsoft 365 E3",
+      "kind": "addon",
+      "base": "m365-e3",
+      "bases": [
+        "m365-e3-no-teams"
+      ],
+      "sort_order": 80,
+      "aliases": [
+        "Entra P2 Add On"
+      ]
+    },
+    {
+      "key": "defender-office-p2-addon",
+      "name": "Defender for Office 365 P2 Add-on for Business Premium",
+      "kind": "addon",
+      "base": "m365-business-premium",
+      "bases": [
+        "m365-business-premium-no-teams"
+      ],
+      "sort_order": 81,
+      "aliases": [
+        "Defender for Office 365 P2 Add On"
+      ]
+    },
+    {
+      "key": "teams-phone-flw",
+      "name": "Microsoft Teams Phone Standard for Frontline Workers",
+      "kind": "addon",
+      "base": "m365-f3",
+      "bases": [
+        "m365-f3-no-teams",
+        "m365-f1",
+        "m365-f1-no-teams"
+      ],
+      "sort_order": 82,
+      "aliases": [
+        "Teams Phone Standard FLW",
+        "Teams Phone Standard for Frontline Workers"
+      ]
+    },
+    {
+      "key": "bp-defender-suite",
+      "name": "Microsoft Defender Suite for Business Premium",
+      "kind": "addon",
+      "base": "m365-business-premium",
+      "bases": [
+        "m365-business-premium-no-teams"
+      ],
+      "sort_order": 83
+    },
+    {
+      "key": "bp-purview-suite",
+      "name": "Microsoft Purview Suite for Business Premium",
+      "kind": "addon",
+      "base": "m365-business-premium",
+      "bases": [
+        "m365-business-premium-no-teams"
+      ],
+      "sort_order": 84
+    },
+    {
+      "key": "bp-defender-purview-suite",
+      "name": "Microsoft Defender and Purview Suites for Business Premium",
+      "kind": "addon",
+      "base": "m365-business-premium",
+      "bases": [
+        "m365-business-premium-no-teams"
+      ],
+      "sort_order": 85
+    },
+    {
+      "key": "copilot-business",
+      "name": "Microsoft 365 Copilot Business",
+      "kind": "addon",
+      "base": "m365-business-basic",
+      "bases": [
+        "m365-business-standard",
+        "m365-business-premium",
+        "m365-business-basic-no-teams",
+        "m365-business-standard-no-teams",
+        "m365-business-premium-no-teams"
+      ],
+      "sort_order": 86,
+      "aliases": [
+        "Microsoft 365 Copilot Business (add-on)",
+        "Copilot Business"
       ]
     }
   ]

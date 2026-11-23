@@ -32,8 +32,10 @@ def test_map_catalog_sku_to_bundle(client):
     files = {"file": ("price.csv", csv_text, "text/csv")}
     client.post("/api/catalog/import-csv", files=files)
     skus = client.get("/api/catalog/skus").json()
-    sku = next(s for s in skus if s["sku_id"] == "0001")
+    sku = next(s for s in skus if s["product_id"] == "CFQ7BUNDLE01" and s["sku_id"] == "0001")
     assert sku["bundle_id"] is None  # unmapped until classified
+    # Not a SKU the library links either, so nothing prices from it yet.
+    assert sku["library_bundle_id"] is None and sku["effective_bundle_id"] is None
 
     # The SKU carries the suggested-mapping fields (unset until the AI mapper runs).
     assert sku["suggested_bundle_id"] is None

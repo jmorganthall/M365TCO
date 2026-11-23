@@ -213,12 +213,12 @@ FK, UUID PK, cascade-deleted with the engagement.
   catalog variant a picked SKU or quoted bundle resolves to. All three inherit
   GlobalDefaults while NULL and are editable on the Customer Info tab.
   The same basis drives recommend-a-path and price autofill
-  (`services/bundles.catalog_price_row` — deterministic: ratified SKU→Bundle
-  rows first, then tolerant title match joined by rows titled exactly as the
-  bundle or one of its aliases, ranked segment → term → billing plan → exact
-  name/alias → plainest title, $0/trial rows last). The title and alias steps are
-  interim: TARGET_SCHEMA §3.1 prices from ratified rows only, and Settings →
-  Staple bundles searches every unmapped SKU so they can be mapped. A Nonprofit customer sets
+  (`services/bundles.catalog_price_row` — deterministic: a bundle prices only
+  from the rows linked to it, a person's `bundle_id` else the library's link in
+  `seeds/sku_links.json` by ProductId + SkuId (TARGET_SCHEMA §3.1); ranked
+  segment → term → billing plan → plainest title, $0/trial rows last. A bundle
+  with no linked row is not priced, and Settings → Staple bundles says so; a
+  free-text reference with no bundle still matches titles). A Nonprofit customer sets
   `default_segment` to Nonprofit once — Microsoft's sheet labels those rows
   `Segment = Charity`, so the picker offers them as "Nonprofit (Charity)" and a
   stored `Nonprofit` matches the Charity rows at resolve time
@@ -986,9 +986,9 @@ existing first-class objects** — it stores no new state, which is the correct
 - **Added outcomes**: bundle coverage minus everything the persona has today
   (MS + third-party) — the upside story.
 - **Prices**: catalog annual ERP (the customer-facing retail baseline), resolved
-  deterministically at the engagement's pricing basis (§4.1) — ratified
-  SKU→Bundle rows first, then tolerant title match (exact name or alias first at
-  the same basis) — overridable per request.
+  deterministically at the engagement's pricing basis (§4.1) from the rows
+  linked to each bundle (a person's link, else the library's) — overridable per
+  request.
 The chosen bundle is applied by writing a normal `PersonaScenario` (§4.8); the
 analysis itself is transient.
 

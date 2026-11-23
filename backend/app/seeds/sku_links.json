@@ -1,0 +1,822 @@
+{
+  "version": "2026-11-sku-links-v1",
+  "note": "The library's default link from each price-list SKU (Microsoft ProductId + SkuId) to the plan or add-on it prices. Reviewed against the November 2026 NCE license-based price list (US). A link set in Settings → Staple bundles overrides it; a SKU with no link prices nothing.",
+  "links": [
+    {
+      "product_id": "CFQ7TTC10RSN",
+      "sku_id": "0003",
+      "bundle": "bp-defender-purview-suite",
+      "title": "Microsoft Defender and Purview Suites for Microsoft 365 Business Premium"
+    },
+    {
+      "product_id": "CFQ7TTC10RSN",
+      "sku_id": "0009",
+      "bundle": "bp-defender-purview-suite",
+      "title": "Microsoft Defender and Purview Suites for Microsoft 365 Business Premium (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC10RSN",
+      "sku_id": "0001",
+      "bundle": "bp-defender-suite",
+      "title": "Microsoft Defender Suite for Microsoft 365 Business Premium"
+    },
+    {
+      "product_id": "CFQ7TTC10RSN",
+      "sku_id": "0008",
+      "bundle": "bp-defender-suite",
+      "title": "Microsoft Defender Suite for Microsoft 365 Business Premium (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC10RSN",
+      "sku_id": "0002",
+      "bundle": "bp-purview-suite",
+      "title": "Microsoft Purview Suite for Microsoft 365 Business Premium"
+    },
+    {
+      "product_id": "CFQ7TTC10RSN",
+      "sku_id": "0007",
+      "bundle": "bp-purview-suite",
+      "title": "Microsoft Purview Suite for Microsoft 365 Business Premium (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0MM8R",
+      "sku_id": "0002",
+      "bundle": "copilot",
+      "title": "Microsoft 365 Copilot (add-on)"
+    },
+    {
+      "product_id": "CFQ7TTC0MM8R",
+      "sku_id": "000T",
+      "bundle": "copilot",
+      "title": "Microsoft 365 Copilot (Non-Profit Pricing) (add-on)"
+    },
+    {
+      "product_id": "CFQ7TTC0MM8R",
+      "sku_id": "00D1",
+      "bundle": "copilot",
+      "title": "Microsoft 365 Copilot - 3 year (add-on)"
+    },
+    {
+      "product_id": "CFQ7TTC0MM8R",
+      "sku_id": "001P",
+      "bundle": "copilot-business",
+      "title": "Microsoft 365 Copilot Business (add-on)"
+    },
+    {
+      "product_id": "CFQ7TTC0MM8R",
+      "sku_id": "006Z",
+      "bundle": "copilot-business",
+      "title": "Microsoft 365 Copilot Business (add-on)"
+    },
+    {
+      "product_id": "CFQ7TTC0HX56",
+      "sku_id": "0002",
+      "bundle": "defender-business",
+      "title": "Microsoft Defender for Business"
+    },
+    {
+      "product_id": "CFQ7TTC0HX56",
+      "sku_id": "0003",
+      "bundle": "defender-business",
+      "title": "Microsoft Defender for Business (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0J1GB",
+      "sku_id": "0003",
+      "bundle": "defender-endpoint-p1",
+      "title": "Microsoft Defender for Endpoint P1"
+    },
+    {
+      "product_id": "CFQ7TTC0J1GB",
+      "sku_id": "0007",
+      "bundle": "defender-endpoint-p1",
+      "title": "Microsoft Defender for Endpoint P1 (Education Faculty Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0J1GB",
+      "sku_id": "0009",
+      "bundle": "defender-endpoint-p1",
+      "title": "Microsoft Defender for Endpoint P1 (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0J1GB",
+      "sku_id": "000C",
+      "bundle": "defender-endpoint-p1",
+      "title": "Microsoft Defender for Endpoint P1 (Education Student Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LGV0",
+      "sku_id": "0001",
+      "bundle": "defender-endpoint-p2",
+      "title": "Microsoft Defender for Endpoint P2"
+    },
+    {
+      "product_id": "CFQ7TTC0LGV0",
+      "sku_id": "000X",
+      "bundle": "defender-endpoint-p2",
+      "title": "Microsoft Defender for Endpoint P2 (Education Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LGV0",
+      "sku_id": "000Z",
+      "bundle": "defender-endpoint-p2",
+      "title": "Microsoft Defender for Endpoint P2 (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LFLX",
+      "sku_id": "009T",
+      "bundle": "defender-endpoint-p2-e3-addon",
+      "title": "Defender for Endpoint P2 Add On for Microsoft 365 E3"
+    },
+    {
+      "product_id": "CFQ7TTC0LFLX",
+      "sku_id": "009V",
+      "bundle": "defender-endpoint-p2-e3-addon",
+      "title": "Defender for Endpoint P2 Add On for Microsoft 365 E3"
+    },
+    {
+      "product_id": "CFQ7TTC0LH04",
+      "sku_id": "0001",
+      "bundle": "defender-office-p1",
+      "title": "Microsoft Defender for Office 365 (Plan 1)"
+    },
+    {
+      "product_id": "CFQ7TTC0LH04",
+      "sku_id": "000V",
+      "bundle": "defender-office-p1",
+      "title": "Microsoft Defender for Office 365 (Plan 1) (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LH04",
+      "sku_id": "000W",
+      "bundle": "defender-office-p1",
+      "title": "Microsoft Defender for Office 365 (Plan 1) (Education Student Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LH04",
+      "sku_id": "000X",
+      "bundle": "defender-office-p1",
+      "title": "Microsoft Defender for Office 365 (Plan 1) (Education Faculty Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LHXH",
+      "sku_id": "0001",
+      "bundle": "defender-office-p2",
+      "title": "Microsoft Defender for Office 365 (Plan 2)"
+    },
+    {
+      "product_id": "CFQ7TTC0LHXH",
+      "sku_id": "000P",
+      "bundle": "defender-office-p2",
+      "title": "Microsoft Defender for Office 365 (Plan 2) (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LHXH",
+      "sku_id": "000R",
+      "bundle": "defender-office-p2",
+      "title": "Microsoft Defender for Office 365 (Plan 2) (Education Faculty Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LHXH",
+      "sku_id": "002J",
+      "bundle": "defender-office-p2-addon",
+      "title": "Defender for Office 365 P2 Add On"
+    },
+    {
+      "product_id": "CFQ7TTC0LHR4",
+      "sku_id": "0001",
+      "bundle": "e5-compliance",
+      "title": "Microsoft Purview Suite"
+    },
+    {
+      "product_id": "CFQ7TTC0LHR4",
+      "sku_id": "000Q",
+      "bundle": "e5-compliance",
+      "title": "Microsoft Purview Suite (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LHR4",
+      "sku_id": "001J",
+      "bundle": "e5-compliance",
+      "title": "Microsoft Purview Suite - 3 year"
+    },
+    {
+      "product_id": "CFQ7TTC0LHQB",
+      "sku_id": "0001",
+      "bundle": "e5-security",
+      "title": "Microsoft Defender Suite"
+    },
+    {
+      "product_id": "CFQ7TTC0LHQB",
+      "sku_id": "0007",
+      "bundle": "e5-security",
+      "title": "Microsoft Defender Suite (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LHQB",
+      "sku_id": "000C",
+      "bundle": "e5-security",
+      "title": "Microsoft Defender Suite - 3 year"
+    },
+    {
+      "product_id": "CFQ7TTC0LFJ2",
+      "sku_id": "000N",
+      "bundle": "ems-e3",
+      "title": "Enterprise Mobility + Security E3 (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LHT4",
+      "sku_id": "0001",
+      "bundle": "ems-e3",
+      "title": "Enterprise Mobility + Security E3"
+    },
+    {
+      "product_id": "CFQ7TTC0LFJ1",
+      "sku_id": "0001",
+      "bundle": "ems-e5",
+      "title": "Enterprise Mobility + Security E5"
+    },
+    {
+      "product_id": "CFQ7TTC0LFJ1",
+      "sku_id": "0009",
+      "bundle": "ems-e5",
+      "title": "Enterprise Mobility + Security E5"
+    },
+    {
+      "product_id": "CFQ7TTC0LFJ1",
+      "sku_id": "000L",
+      "bundle": "ems-e5",
+      "title": "Enterprise Mobility + Security E5 (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LFLS",
+      "sku_id": "0002",
+      "bundle": "entra-id-p1",
+      "title": "Microsoft Entra ID P1"
+    },
+    {
+      "product_id": "CFQ7TTC0LFLS",
+      "sku_id": "0014",
+      "bundle": "entra-id-p1",
+      "title": "Microsoft Entra ID P1 (Education Faculty Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LFLS",
+      "sku_id": "001B",
+      "bundle": "entra-id-p1",
+      "title": "Microsoft Entra ID P1 (Education Student Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LFLS",
+      "sku_id": "001P",
+      "bundle": "entra-id-p1",
+      "title": "Microsoft Entra ID P1 (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LFK5",
+      "sku_id": "0001",
+      "bundle": "entra-id-p2",
+      "title": "Microsoft Entra ID P2"
+    },
+    {
+      "product_id": "CFQ7TTC0LFK5",
+      "sku_id": "0018",
+      "bundle": "entra-id-p2",
+      "title": "Microsoft Entra ID P2 (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LFK5",
+      "sku_id": "001H",
+      "bundle": "entra-id-p2",
+      "title": "Microsoft Entra ID P2 (Education Student Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LFLX",
+      "sku_id": "009W",
+      "bundle": "entra-id-p2-e3-addon",
+      "title": "Entra P2 Add On"
+    },
+    {
+      "product_id": "CFQ7TTC0LFLX",
+      "sku_id": "009X",
+      "bundle": "entra-id-p2-e3-addon",
+      "title": "Entra P2 Add On"
+    },
+    {
+      "product_id": "CFQ7TTC0LH0J",
+      "sku_id": "0001",
+      "bundle": "exo-archiving",
+      "title": "Exchange Online Archiving for Exchange Online"
+    },
+    {
+      "product_id": "CFQ7TTC0LH0J",
+      "sku_id": "000M",
+      "bundle": "exo-archiving",
+      "title": "Exchange Online Archiving for Exchange Online (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LHQ5",
+      "sku_id": "0001",
+      "bundle": "exo-archiving",
+      "title": "Exchange Online Archiving for Exchange Server"
+    },
+    {
+      "product_id": "CFQ7TTC0LH0L",
+      "sku_id": "0001",
+      "bundle": "exo-kiosk",
+      "title": "Exchange Online Kiosk"
+    },
+    {
+      "product_id": "CFQ7TTC0LH16",
+      "sku_id": "0001",
+      "bundle": "exo-p1",
+      "title": "Exchange Online (Plan 1)"
+    },
+    {
+      "product_id": "CFQ7TTC0LH1P",
+      "sku_id": "0001",
+      "bundle": "exo-p2",
+      "title": "Exchange Online (Plan 2)"
+    },
+    {
+      "product_id": "CFQ7TTC0MBMD",
+      "sku_id": "0005",
+      "bundle": "f5-compliance",
+      "title": "Microsoft Purview Suite Add-on FLW"
+    },
+    {
+      "product_id": "CFQ7TTC0MBMD",
+      "sku_id": "002R",
+      "bundle": "f5-compliance",
+      "title": "Microsoft Purview Suite Add-on FLW (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0MBMD",
+      "sku_id": "0006",
+      "bundle": "f5-security",
+      "title": "Microsoft Defender Suite Add-on FLW"
+    },
+    {
+      "product_id": "CFQ7TTC0MBMD",
+      "sku_id": "0025",
+      "bundle": "f5-security",
+      "title": "Microsoft Defender Suite Add-on FLW (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0MBMD",
+      "sku_id": "0007",
+      "bundle": "f5-security-compliance",
+      "title": "Microsoft Defender + Purview Suite Add-on for FLW"
+    },
+    {
+      "product_id": "CFQ7TTC0MBMD",
+      "sku_id": "0024",
+      "bundle": "f5-security-compliance",
+      "title": "Microsoft Defender + Purview Suite Add-on for FLW (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LCH4",
+      "sku_id": "0009",
+      "bundle": "intune-p1",
+      "title": "Microsoft Intune Plan 1"
+    },
+    {
+      "product_id": "CFQ7TTC0LCH4",
+      "sku_id": "001K",
+      "bundle": "intune-p1",
+      "title": "Microsoft Intune (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LH1G",
+      "sku_id": "0001",
+      "bundle": "m365-apps-business",
+      "title": "Microsoft 365 Apps for business"
+    },
+    {
+      "product_id": "CFQ7TTC0LGZT",
+      "sku_id": "0001",
+      "bundle": "m365-apps-enterprise",
+      "title": "Microsoft 365 Apps for enterprise"
+    },
+    {
+      "product_id": "CFQ7TTC0LGZT",
+      "sku_id": "001B",
+      "bundle": "m365-apps-enterprise",
+      "title": "Microsoft 365 Apps for enterprise (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LGZT",
+      "sku_id": "0024",
+      "bundle": "m365-apps-enterprise",
+      "title": "Microsoft 365 Apps for enterprise (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LH18",
+      "sku_id": "0001",
+      "bundle": "m365-business-basic",
+      "title": "Microsoft 365 Business Basic"
+    },
+    {
+      "product_id": "CFQ7TTC0LH18",
+      "sku_id": "000P",
+      "bundle": "m365-business-basic-no-teams",
+      "title": "Microsoft 365 Business Basic (no Teams)"
+    },
+    {
+      "product_id": "CFQ7TTC0LCHC",
+      "sku_id": "0002",
+      "bundle": "m365-business-premium",
+      "title": "Microsoft 365 Business Premium"
+    },
+    {
+      "product_id": "CFQ7TTC0LCHC",
+      "sku_id": "0003",
+      "bundle": "m365-business-premium",
+      "title": "Microsoft 365 Business Premium"
+    },
+    {
+      "product_id": "CFQ7TTC0LCHC",
+      "sku_id": "000J",
+      "bundle": "m365-business-premium",
+      "title": "Microsoft 365 Business Premium (Nonprofit Staff Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LCHC",
+      "sku_id": "000M",
+      "bundle": "m365-business-premium",
+      "title": "Microsoft 365 Business Premium (Nonprofit Staff Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LCHC",
+      "sku_id": "000N",
+      "bundle": "m365-business-premium-no-teams",
+      "title": "Microsoft 365 Business Premium (no Teams)"
+    },
+    {
+      "product_id": "CFQ7TTC0LCHC",
+      "sku_id": "000P",
+      "bundle": "m365-business-premium-no-teams",
+      "title": "Microsoft 365 Business Premium (no Teams)"
+    },
+    {
+      "product_id": "CFQ7TTC0LDPB",
+      "sku_id": "0001",
+      "bundle": "m365-business-standard",
+      "title": "Microsoft 365 Business Standard"
+    },
+    {
+      "product_id": "CFQ7TTC0LDPB",
+      "sku_id": "0005",
+      "bundle": "m365-business-standard",
+      "title": "Microsoft 365 Business Standard"
+    },
+    {
+      "product_id": "CFQ7TTC0LDPB",
+      "sku_id": "000M",
+      "bundle": "m365-business-standard",
+      "title": "Microsoft 365 Business Standard (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LDPB",
+      "sku_id": "000Q",
+      "bundle": "m365-business-standard",
+      "title": "Microsoft 365 Business Standard (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LDPB",
+      "sku_id": "0011",
+      "bundle": "m365-business-standard-no-teams",
+      "title": "Microsoft 365 Business Standard (no Teams)"
+    },
+    {
+      "product_id": "CFQ7TTC0LDPB",
+      "sku_id": "0012",
+      "bundle": "m365-business-standard-no-teams",
+      "title": "Microsoft 365 Business Standard (no Teams)"
+    },
+    {
+      "product_id": "CFQ7TTC0LFLX",
+      "sku_id": "0001",
+      "bundle": "m365-e3",
+      "title": "Microsoft 365 E3"
+    },
+    {
+      "product_id": "CFQ7TTC0LFLX",
+      "sku_id": "001G",
+      "bundle": "m365-e3",
+      "title": "Microsoft 365 E3 (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LFLX",
+      "sku_id": "002Q",
+      "bundle": "m365-e3",
+      "title": "Microsoft 365 E3 - 3 year"
+    },
+    {
+      "product_id": "CFQ7TTC0LFLX",
+      "sku_id": "0114",
+      "bundle": "m365-e3",
+      "title": "Microsoft 365 E3 (Non-Profit Pricing) - 3 Year"
+    },
+    {
+      "product_id": "CFQ7TTC0LFLX",
+      "sku_id": "0021",
+      "bundle": "m365-e3-no-teams",
+      "title": "Microsoft 365 E3 (no Teams)"
+    },
+    {
+      "product_id": "CFQ7TTC0LFLX",
+      "sku_id": "002K",
+      "bundle": "m365-e3-no-teams",
+      "title": "Microsoft 365 E3 (no Teams) - 3 year"
+    },
+    {
+      "product_id": "CFQ7TTC0LFLZ",
+      "sku_id": "0003",
+      "bundle": "m365-e5",
+      "title": "Microsoft 365 E5 without Audio Conferencing"
+    },
+    {
+      "product_id": "CFQ7TTC0LFLZ",
+      "sku_id": "001C",
+      "bundle": "m365-e5",
+      "title": "Microsoft 365 E5 without Audio Conferencing (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LFLZ",
+      "sku_id": "002V",
+      "bundle": "m365-e5",
+      "title": "Microsoft 365 E5 without Audio Conferencing - 3 year"
+    },
+    {
+      "product_id": "CFQ7TTC0LFLZ",
+      "sku_id": "001P",
+      "bundle": "m365-e5-no-teams",
+      "title": "Microsoft 365 E5 (no Teams) without Audio Conferencing"
+    },
+    {
+      "product_id": "CFQ7TTC0LFLZ",
+      "sku_id": "002Q",
+      "bundle": "m365-e5-no-teams",
+      "title": "Microsoft 365 E5 (no Teams) without Audio Conferencing - 3 year"
+    },
+    {
+      "product_id": "CFQ7TTBZZR6H",
+      "sku_id": "000Z",
+      "bundle": "m365-e7",
+      "title": "Microsoft 365 E7 without Audio Conferencing"
+    },
+    {
+      "product_id": "CFQ7TTBZZR6H",
+      "sku_id": "001K",
+      "bundle": "m365-e7",
+      "title": "Microsoft 365 E7 without Audio Conferencing - 3 year"
+    },
+    {
+      "product_id": "CFQ7TTBZZR6H",
+      "sku_id": "000S",
+      "bundle": "m365-e7-no-teams",
+      "title": "Microsoft 365 E7 (no Teams) without Audio Conferencing"
+    },
+    {
+      "product_id": "CFQ7TTBZZR6H",
+      "sku_id": "0017",
+      "bundle": "m365-e7-no-teams",
+      "title": "Microsoft 365 E7 (no Teams) without Audio Conferencing - 3 year"
+    },
+    {
+      "product_id": "CFQ7TTC0MBMD",
+      "sku_id": "0002",
+      "bundle": "m365-f1",
+      "title": "Microsoft 365 F1"
+    },
+    {
+      "product_id": "CFQ7TTC0MBMD",
+      "sku_id": "0003",
+      "bundle": "m365-f1",
+      "title": "Microsoft 365 F1"
+    },
+    {
+      "product_id": "CFQ7TTC0MBMD",
+      "sku_id": "001V",
+      "bundle": "m365-f1",
+      "title": "Microsoft 365 F1 (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0MBMD",
+      "sku_id": "002T",
+      "bundle": "m365-f1-no-teams",
+      "title": "Microsoft 365 F1 (no Teams)"
+    },
+    {
+      "product_id": "CFQ7TTC0MBMD",
+      "sku_id": "002V",
+      "bundle": "m365-f1-no-teams",
+      "title": "Microsoft 365 F1 (no Teams)"
+    },
+    {
+      "product_id": "CFQ7TTC0LH05",
+      "sku_id": "0001",
+      "bundle": "m365-f3",
+      "title": "Microsoft 365 F3"
+    },
+    {
+      "product_id": "CFQ7TTC0LH05",
+      "sku_id": "000W",
+      "bundle": "m365-f3",
+      "title": "Microsoft 365 F3 (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LH05",
+      "sku_id": "0013",
+      "bundle": "m365-f3-no-teams",
+      "title": "Microsoft 365 F3 (no Teams)"
+    },
+    {
+      "product_id": "CFQ7TTC0LF8Q",
+      "sku_id": "0001",
+      "bundle": "o365-e1",
+      "title": "Office 365 E1"
+    },
+    {
+      "product_id": "CFQ7TTC0LF8Q",
+      "sku_id": "0019",
+      "bundle": "o365-e1",
+      "title": "Office 365 E1 (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LF8Q",
+      "sku_id": "001S",
+      "bundle": "o365-e1-no-teams",
+      "title": "Office 365 E1 (no Teams)"
+    },
+    {
+      "product_id": "CFQ7TTC0LF8R",
+      "sku_id": "0001",
+      "bundle": "o365-e3",
+      "title": "Office 365 E3"
+    },
+    {
+      "product_id": "CFQ7TTC0LF8R",
+      "sku_id": "0008",
+      "bundle": "o365-e3",
+      "title": "Office 365 E3"
+    },
+    {
+      "product_id": "CFQ7TTC0LF8R",
+      "sku_id": "0014",
+      "bundle": "o365-e3",
+      "title": "Office 365 E3 (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LF8R",
+      "sku_id": "001S",
+      "bundle": "o365-e3",
+      "title": "Office 365 E3 (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LF8R",
+      "sku_id": "0020",
+      "bundle": "o365-e3-no-teams",
+      "title": "Office 365 E3 (no Teams)"
+    },
+    {
+      "product_id": "CFQ7TTC0LF8R",
+      "sku_id": "0021",
+      "bundle": "o365-e3-no-teams",
+      "title": "Office 365 E3 (no Teams)"
+    },
+    {
+      "product_id": "CFQ7TTC0LF8S",
+      "sku_id": "0001",
+      "bundle": "o365-e5",
+      "title": "Office 365 E5 without Audio Conferencing"
+    },
+    {
+      "product_id": "CFQ7TTC0LF8S",
+      "sku_id": "000B",
+      "bundle": "o365-e5",
+      "title": "Office 365 E5 without Audio Conferencing"
+    },
+    {
+      "product_id": "CFQ7TTC0LF8S",
+      "sku_id": "0013",
+      "bundle": "o365-e5",
+      "title": "Office 365 E5 without Audio Conferencing (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LF8S",
+      "sku_id": "001G",
+      "bundle": "o365-e5-no-teams",
+      "title": "Office 365 E5 (no Teams) without Audio Conferencing"
+    },
+    {
+      "product_id": "CFQ7TTC0LF8S",
+      "sku_id": "001H",
+      "bundle": "o365-e5-no-teams",
+      "title": "Office 365 E5 (no Teams) without Audio Conferencing"
+    },
+    {
+      "product_id": "CFQ7TTC0LSGZ",
+      "sku_id": "0001",
+      "bundle": "power-automate-premium",
+      "title": "Power Automate Premium"
+    },
+    {
+      "product_id": "CFQ7TTC0LSGZ",
+      "sku_id": "000M",
+      "bundle": "power-automate-premium",
+      "title": "Power Automate Premium (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LSGZ",
+      "sku_id": "000N",
+      "bundle": "power-automate-premium",
+      "title": "Power Automate Premium (Education Faculty Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LSGZ",
+      "sku_id": "000P",
+      "bundle": "power-automate-premium",
+      "title": "Power Automate Premium (Education Student Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0H9MP",
+      "sku_id": "0008",
+      "bundle": "power-bi-pro",
+      "title": "Power BI Pro (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LHSF",
+      "sku_id": "0001",
+      "bundle": "power-bi-pro",
+      "title": "Power BI Pro"
+    },
+    {
+      "product_id": "CFQ7TTC0LHSF",
+      "sku_id": "0011",
+      "bundle": "power-bi-pro",
+      "title": "Power BI Pro (Education Faculty Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LHSF",
+      "sku_id": "0013",
+      "bundle": "power-bi-pro",
+      "title": "Power BI Pro (Education Student Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0MZJF",
+      "sku_id": "0009",
+      "bundle": "teams-enterprise",
+      "title": "Microsoft Teams Enterprise"
+    },
+    {
+      "product_id": "CFQ7TTC0MZJF",
+      "sku_id": "000B",
+      "bundle": "teams-enterprise",
+      "title": "Microsoft Teams Enterprise"
+    },
+    {
+      "product_id": "CFQ7TTC0MZJF",
+      "sku_id": "000P",
+      "bundle": "teams-enterprise",
+      "title": "Microsoft Teams Enterprise - 3 year"
+    },
+    {
+      "product_id": "CFQ7TTC0JN4R",
+      "sku_id": "0001",
+      "bundle": "teams-essentials",
+      "title": "Microsoft Teams Essentials"
+    },
+    {
+      "product_id": "CFQ7TTC0JN4R",
+      "sku_id": "0002",
+      "bundle": "teams-essentials",
+      "title": "Microsoft Teams Essentials"
+    },
+    {
+      "product_id": "CFQ7TTC0LH0T",
+      "sku_id": "0001",
+      "bundle": "teams-phone",
+      "title": "Microsoft Teams Phone Standard"
+    },
+    {
+      "product_id": "CFQ7TTC0LH0T",
+      "sku_id": "000R",
+      "bundle": "teams-phone",
+      "title": "Microsoft Teams Phone Standard (Non-Profit Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LH0T",
+      "sku_id": "000S",
+      "bundle": "teams-phone",
+      "title": "Microsoft Teams Phone Standard (Education Faculty Pricing)"
+    },
+    {
+      "product_id": "CFQ7TTC0LH0T",
+      "sku_id": "001D",
+      "bundle": "teams-phone-flw",
+      "title": "Teams Phone Standard FLW"
+    }
+  ]
+}

@@ -2,7 +2,9 @@
 
 Global, editable, seeded from seeds/bundles.json. Bundles are the stable
 identities that coverage, scenarios, and licenses resolve to; the many priced
-catalog SKUs collapse onto a bundle via MicrosoftSku.bundle_id.
+catalog SKUs collapse onto a bundle by their link (effective_bundle_id): the one a
+person set (MicrosoftSku.bundle_id), else the library's (seeds/sku_links.json, by
+Microsoft ProductId + SkuId).
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ import json
 import os
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from tco_engine.interpret import normalize_name
@@ -37,6 +39,28 @@ def _seed_base_keys(entry: dict) -> list[str]:
     # De-dup, preserve order.
     seen: set[str] = set()
     return [k for k in keys if not (k in seen or seen.add(k))]
+
+
+@functools.lru_cache(maxsize=None)
+def _seed_links() -> dict[tuple[str, str], str]:
+    """The library's default SKU → bundle links, (ProductId, SkuId) → bundle key."""
+    with open(os.path.join(SEED_DIR, "sku_links.json"), encoding="utf-8") as fh:
+        data = json.load(fh)
+    return {(x["product_id"], x["sku_id"]): x["bundle"] for x in data["links"]}
+
+
+def library_links(db: Session) -> dict[tuple[str, str], str]:
+    """The library's links as (ProductId, SkuId) → bundle id, for the bundles this
+    install has (a link to a deleted custom key is dropped)."""
+    ids = {b.key: b.id for b in db.execute(select(models.Bundle)).scalars()}
+    return {k: ids[v] for k, v in _seed_links().items() if v in ids}
+
+
+def effective_bundle_id(row: models.MicrosoftSku, links: dict) -> str | None:
+    """The bundle a price-list row prices: the link a person set, else the
+    library's. A library link is a default, so it is read here and never written
+    onto the row (a person's link is the only thing stored)."""
+    return row.bundle_id or links.get((row.product_id, row.sku_id))
 
 
 def seed_bundles(db: Session) -> None:
@@ -232,14 +256,17 @@ def resolve_bundle(db: Session, ref: str) -> str | None:
         if normalize_alias(b.name) == r:
             return b.id
     like = f"%{ref}%"
-    row = db.execute(
+    links = library_links(db)
+    for row in db.execute(
         select(models.MicrosoftSku).where(
-            models.MicrosoftSku.bundle_id.isnot(None),
             (models.MicrosoftSku.sku_title.ilike(like))
             | (models.MicrosoftSku.product_title.ilike(like)),
         )
-    ).scalars().first()
-    return row.bundle_id if row else None
+    ).scalars():
+        bid = effective_bundle_id(row, links)
+        if bid:
+            return bid
+    return None
 
 
 # Deterministic price-row ranking (see catalog_price_row). The requested quoting
@@ -303,12 +330,13 @@ class PriceCatalog:
 
     def __init__(self, db: Session):
         rows = db.execute(select(models.MicrosoftSku)).scalars().all()
+        links = library_links(db)
         self.by_bundle: dict[str, list] = {}
         for r in rows:
-            if r.bundle_id is not None:
-                self.by_bundle.setdefault(r.bundle_id, []).append(r)
+            bid = effective_bundle_id(r, links)
+            if bid is not None:
+                self.by_bundle.setdefault(bid, []).append(r)
         self.titled = _titled(rows)
-        self.aliases = aliases_by_bundle(db)
 
 
 def engagement_price_basis(eng) -> dict:
@@ -325,6 +353,18 @@ def engagement_price_basis(eng) -> dict:
             "billing": st["default_billing_plan"]}
 
 
+def linked_rows(db: Session, bundle_id: str) -> list[models.MicrosoftSku]:
+    """The price-list rows linked to a bundle: by a person, or by the library
+    where no person has linked the row."""
+    pairs = [k for k, v in library_links(db).items() if v == bundle_id]
+    cond = models.MicrosoftSku.bundle_id == bundle_id
+    if pairs:
+        lib = or_(*[and_(models.MicrosoftSku.product_id == p, models.MicrosoftSku.sku_id == k)
+                    for p, k in pairs])
+        cond = or_(cond, and_(models.MicrosoftSku.bundle_id.is_(None), lib))
+    return db.execute(select(models.MicrosoftSku).where(cond)).scalars().all()
+
+
 def catalog_price_row(
     db: Session, sku_reference: str, *,
     bundle_id: str | None = None, segment: str = "Commercial",
@@ -335,11 +375,10 @@ def catalog_price_row(
     engagement/scenario's effective basis; the out-of-box default is the typical
     customer case, a 1-year commit paid monthly).
 
-    Selection: rows RATIFIED onto the bundle (MicrosoftSku.bundle_id — the
-    first-class SKU → Bundle mapping) when any exist; otherwise tolerant title
-    matching (_title_candidates), joined — for a bundle — by rows titled exactly
-    as its name or one of its aliases (BundleAlias), which outrank a loose match
-    at the same basis. The winner is then ranked: priced rows beat
+    Selection: for a bundle, only the rows linked to it (linked_rows: a person's
+    link, else the library's) — no link, no price (TARGET_SCHEMA §3.1). For a
+    free-text reference with no bundle, tolerant title matching
+    (_title_candidates). The winner is then ranked: priced rows beat
     $0/trial rows, the requested segment beats other segments (the sheet ships
     Commercial/Education/Charity variants of the same title; 'Nonprofit' matches
     the sheet's Charity rows — models.sheet_segment), the requested
@@ -349,29 +388,17 @@ def catalog_price_row(
     the shortest title wins remaining ties (the plain variant over '(no Teams)' /
     'Unattended' superstrings). Returns None when nothing matches. Pass a
     PriceCatalog when pricing many references in one request."""
-    rows: list[models.MicrosoftSku] = []
-    names: set[str] = set()
     if bundle_id is not None:
-        rows = catalog.by_bundle.get(bundle_id, []) if catalog else db.execute(
-            select(models.MicrosoftSku).where(models.MicrosoftSku.bundle_id == bundle_id)
-        ).scalars().all()
-    if not rows:
-        titled = catalog.titled if catalog else _titled(
-            db.execute(select(models.MicrosoftSku)).scalars().all())
-        rows = _title_candidates(titled, sku_reference)
-        if bundle_id is not None:
-            # Rows titled exactly as the bundle or one of its aliases (the names
-            # Settings → Staple bundles lists) join the candidates and outrank a
-            # loose match at the same basis. Loose matching alone let a variant
-            # answer for the plain product: 'Teams Phone Standard FLW' for Teams
-            # Phone, a pay-as-you-go zone for the Calling Plan, the add-on for P1
-            # holders for Defender for Office 365 P2.
-            aliases = (catalog.aliases.get(bundle_id, []) if catalog
-                       else aliases_by_bundle(db).get(bundle_id, []))
-            names = {_norm(sku_reference)} | {_norm(x) for x in aliases}
-            have = {id(r) for r in rows}
-            rows = list(rows) + [r for r, titles in titled
-                                 if id(r) not in have and any(t in names for t in titles)]
+        # A plan or add-on prices only from the rows linked to it. No link, no
+        # price: guessing by title let variants (frontline, pay-as-you-go, the
+        # add-on for P1 holders) price the plain product.
+        rows = catalog.by_bundle.get(bundle_id, []) if catalog else linked_rows(db, bundle_id)
+    else:
+        rows = _title_candidates(
+            catalog.titled if catalog
+            else _titled(db.execute(select(models.MicrosoftSku)).scalars().all()),
+            sku_reference,
+        )
     if not rows:
         return None
 
@@ -384,7 +411,6 @@ def catalog_price_row(
             0 if models.sheet_segment(r.segment) == want else 1,
             _pref_rank(r.term_duration or "", term, _TERM_FALLBACK),
             _pref_rank(r.billing_plan or "", billing, _BILLING_FALLBACK),
-            0 if _norm(r.sku_title or "") in names or _norm(r.product_title or "") in names else 1,
             0 if _norm(r.sku_title or "") == ref else 1,
             0 if _norm(r.product_title or "") == ref else 1,
             len(r.sku_title or r.product_title or ""),

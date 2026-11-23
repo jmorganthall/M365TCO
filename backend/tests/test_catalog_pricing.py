@@ -129,9 +129,10 @@ def test_recommend_a_path_prices_at_engagement_basis(client, db):
     (default: Commercial, 1-year commit, pay monthly) — through the API, not
     just the service helper."""
     db.add_all([
-        _sku("Microsoft 365 Business Premium", 277.2, billing="Monthly"),
-        _sku("Microsoft 365 Business Premium", 264),
-        _sku("Microsoft 365 Business Premium (Non-Profit Pricing)", 66, segment="Charity"),
+        _sku("Microsoft 365 Business Premium", 277.2, billing="Monthly", product_id='CFQ7TTC0LCHC', sku_id='0002'),
+        _sku("Microsoft 365 Business Premium", 264, product_id='CFQ7TTC0LCHC', sku_id='0002'),
+        _sku("Microsoft 365 Business Premium (Non-Profit Pricing)", 66, segment="Charity",
+             product_id="CFQ7TTC0LCHC", sku_id="000J"),
     ])
     db.commit()
 
@@ -161,9 +162,9 @@ def test_nonprofit_segment_prices_at_the_sheets_charity_rows(client, db):
     Commercial price because no row is literally labelled 'Nonprofit'."""
     from app.services import bundles as bsvc
     db.add_all([
-        _sku("Microsoft 365 Business Premium", 277.2, billing="Monthly"),
+        _sku("Microsoft 365 Business Premium", 277.2, billing="Monthly", product_id='CFQ7TTC0LCHC', sku_id='0002'),
         _sku("Microsoft 365 Business Premium (Non-Profit Pricing)", 66,
-             billing="Monthly", segment="Charity"),
+             billing="Monthly", segment="Charity", product_id="CFQ7TTC0LCHC", sku_id="000J"),
     ])
     db.commit()
     assert bsvc.catalog_annual_erp(
@@ -208,10 +209,11 @@ def test_scenario_basis_change_requotes_target_and_addons(client, db):
     basis; clearing it requotes back at the engagement default. Prices remain
     hand-editable afterward."""
     db.add_all([
-        _sku("Microsoft 365 E3", 491.4, billing="Monthly"),
-        _sku("Microsoft 365 E3", 468),
-        _sku("Microsoft 365 E5 Security", 144, billing="Monthly"),
-        _sku("Microsoft 365 E5 Security", 137),
+        _sku("Microsoft 365 E3", 491.4, billing="Monthly", product_id="CFQ7TTC0LFLX", sku_id="0001"),
+        _sku("Microsoft 365 E3", 468, product_id="CFQ7TTC0LFLX", sku_id="0001"),
+        # E5 Security is sold as Microsoft Defender Suite.
+        _sku("Microsoft Defender Suite", 144, billing="Monthly", product_id="CFQ7TTC0LHQB", sku_id="0001"),
+        _sku("Microsoft Defender Suite", 137, product_id="CFQ7TTC0LHQB", sku_id="0001"),
     ])
     db.commit()
 
@@ -341,49 +343,77 @@ def test_price_catalog_picks_the_same_row_as_a_per_call_lookup(client, db):
             assert (one.id if one else None) == (shared.id if shared else None), (name, segment)
 
 
-def test_add_on_prices_from_its_exact_name_or_alias_before_loose_matching(db):
-    """With nothing mapped, an add-on is priced from a row titled exactly as its
-    name or one of its aliases before loose title matching, which let a variant
-    answer for the plain product: the frontline Teams Phone, a pay-as-you-go
-    calling zone with no minutes, the Defender P2 add-on for P1 holders."""
+def test_plans_and_add_ons_price_only_from_the_rows_linked_to_them(db):
+    """A plan or add-on prices from the price-list rows linked to it (the library's
+    links by Microsoft ProductId + SkuId, or a person's), never from a title that
+    looks like it: the frontline Teams Phone, a pay-as-you-go calling zone and the
+    Defender P2 add-on for P1 holders each price their own entry, not the plain
+    product. An entry with no linked row has no price."""
     from app import models
     from app.services import bundles as bsvc
     db.add_all([
-        _sku("Microsoft Teams Phone Standard FLW", 63, billing="Monthly"),
-        _sku("Teams Phone Standard", 126, billing="Monthly"),
-        _sku("Microsoft Teams Calling Plan pay-as-you-go (country zone 1 - US/CA/PR)", 37.8, billing="Monthly"),
-        _sku("Microsoft Teams Domestic Calling Plan", 151.2, billing="Monthly"),
-        _sku("Microsoft Defender for Office 365 P2 Add-On for P1 and Business Premium", 37.8, billing="Monthly"),
-        _sku("Microsoft Defender for Office 365 (Plan 2)", 63, billing="Monthly"),
+        _sku("Teams Phone Standard FLW", 63, billing="Monthly", product_id="CFQ7TTC0LH0T", sku_id="001D"),
+        _sku("Microsoft Teams Phone Standard", 126, billing="Monthly", product_id="CFQ7TTC0LH0T", sku_id="0001"),
+        _sku("Microsoft Teams Calling Plan pay-as-you-go (country zone 1 - US/CA/PR)", 37.8,
+             billing="Monthly", product_id="OLD-PAYG", sku_id="0001"),
+        _sku("Defender for Office 365 P2 Add On", 37.8, billing="Monthly", product_id="CFQ7TTC0LHXH", sku_id="002J"),
+        _sku("Microsoft Defender for Office 365 (Plan 2)", 63, billing="Monthly", product_id="CFQ7TTC0LHXH", sku_id="0001"),
     ])
     db.commit()
     by_key = {b.key: b for b in db.query(models.Bundle).all()}
-    want = {"teams-phone": "126", "calling-plan": "151.2", "defender-office-p2": "63"}
+    want = {"teams-phone": "126", "teams-phone-flw": "63", "defender-office-p2": "63",
+            "defender-office-p2-addon": "37.8", "calling-plan": "0"}
     catalog = bsvc.PriceCatalog(db)
     for key, price in want.items():
         b = by_key[key]
         assert bsvc.catalog_annual_erp(db, b.name, bundle_id=b.id) == Decimal(price), key
         assert bsvc.catalog_annual_erp(db, b.name, bundle_id=b.id, catalog=catalog) == Decimal(price), key
-    # A row mapped onto the bundle still outranks every title.
-    db.query(models.MicrosoftSku).filter_by(sku_title="Microsoft Teams Phone Standard FLW").one() \
-        .bundle_id = by_key["teams-phone"].id
-    db.commit()
+
+    # A person's link overrides the library's; clearing it restores the library's.
+    flw = db.query(models.MicrosoftSku).filter_by(product_id="CFQ7TTC0LH0T", sku_id="001D").one()
     t = by_key["teams-phone"]
-    assert bsvc.catalog_annual_erp(db, t.name, bundle_id=t.id) == Decimal("63")
+    flw.bundle_id = t.id
+    db.commit()
+    assert flw in bsvc.linked_rows(db, t.id)
+    assert bsvc.catalog_annual_erp(db, by_key["teams-phone-flw"].name,
+                                   bundle_id=by_key["teams-phone-flw"].id) == Decimal("0")
+    flw.bundle_id = None
+    db.commit()
+    assert bsvc.catalog_annual_erp(db, by_key["teams-phone-flw"].name,
+                                   bundle_id=by_key["teams-phone-flw"].id) == Decimal("63")
+
+
+def test_every_library_link_names_a_library_entry():
+    """Each link in seeds/sku_links.json points at a plan or add-on the library
+    ships, and no SKU is linked twice."""
+    import json
+    from app.services import bundles as bsvc
+    links = json.load(open(bsvc.SEED_DIR + "/sku_links.json", encoding="utf-8"))["links"]
+    keys = {b["key"] for b in json.load(open(bsvc.SEED_DIR + "/bundles.json", encoding="utf-8"))["bundles"]}
+    assert {x["bundle"] for x in links} <= keys
+    pairs = [(x["product_id"], x["sku_id"]) for x in links]
+    assert len(pairs) == len(set(pairs))
 
 
 def test_teams_phone_with_calling_plan_closes_both_telephony_gaps_when_cheapest(client, db):
     """The Teams Phone with Calling Plan add-on delivers the phone system and dial
     tone together. A group that needs both gets it when it costs less than Teams
     Phone plus a Calling Plan; a group that needs only the phone system still gets
-    Teams Phone alone."""
+    Teams Phone alone. The current price list has no SKU for it or for the Calling
+    Plan, so here a person links one row to each."""
+    from app import models
     db.add_all([
-        _sku("Microsoft 365 E3", 491.4, billing="Monthly"),
-        _sku("Teams Phone Standard", 126, billing="Monthly"),
-        _sku("Microsoft Teams Domestic Calling Plan", 151.2, billing="Monthly"),
-        _sku("Teams Phone with Calling Plan", 214.2, billing="Monthly"),
+        _sku("Microsoft 365 E3", 491.4, billing="Monthly", product_id="CFQ7TTC0LFLX", sku_id="0001"),
+        _sku("Microsoft Teams Phone Standard", 126, billing="Monthly", product_id="CFQ7TTC0LH0T", sku_id="0001"),
+        _sku("Domestic Calling Plan", 151.2, billing="Monthly", product_id="TEST-DCP", sku_id="0001"),
+        _sku("Teams Phone with Calling Plan", 214.2, billing="Monthly", product_id="TEST-TPCP", sku_id="0001"),
     ])
     db.commit()
+    by_key = {b["key"]: b for b in client.get("/api/catalog/bundles").json()}
+    for pid, key in (("TEST-DCP", "calling-plan"), ("TEST-TPCP", "teams-phone-calling-plan")):
+        row = db.query(models.MicrosoftSku).filter_by(product_id=pid).one()
+        assert client.patch(f"/api/catalog/skus/{row.id}/bundle",
+                            json={"bundle_id": by_key[key]["id"]}).status_code == 200
     by_key = {b["key"]: b for b in client.get("/api/catalog/bundles").json()}
     combo = by_key["teams-phone-calling-plan"]
     assert (combo["kind"], combo["alacarte"], combo["list_price_annual"]) == ("addon", True, 214.2)
@@ -405,3 +435,21 @@ def test_teams_phone_with_calling_plan_closes_both_telephony_gaps_when_cheapest(
     assert addons(["telephony-pbx", "telephony-pstn"]) == ["Microsoft Teams Phone with Calling Plan"]
     assert addons(["telephony-pbx"]) == ["Microsoft Teams Phone"]
     client.delete(f"/api/engagements/{eid}", params={"confirm_name": "Dial Tone Co"})
+
+
+def test_linking_a_sku_by_hand_links_all_its_term_and_payment_rows(client, db):
+    """Setting or undoing a link from Settings applies to the SKU, not one row of it."""
+    from app import models
+    db.add_all([
+        _sku("Teams Phone Standard FLW", 63, billing="Monthly", product_id="CFQ7TTC0LH0T", sku_id="001D"),
+        _sku("Teams Phone Standard FLW", 60, product_id="CFQ7TTC0LH0T", sku_id="001D"),
+    ])
+    db.commit()
+    tp = next(b for b in client.get("/api/catalog/bundles").json() if b["key"] == "teams-phone")
+    one = db.query(models.MicrosoftSku).filter_by(product_id="CFQ7TTC0LH0T", sku_id="001D").first()
+    client.patch(f"/api/catalog/skus/{one.id}/bundle", json={"bundle_id": tp["id"]})
+    rows = [s for s in client.get("/api/catalog/skus", params={"q": "Teams Phone Standard FLW"}).json()]
+    assert len(rows) == 2 and all(s["bundle_id"] == tp["id"] == s["effective_bundle_id"] for s in rows)
+    client.patch(f"/api/catalog/skus/{one.id}/bundle", json={"bundle_id": None})
+    rows = client.get("/api/catalog/skus", params={"q": "Teams Phone Standard FLW"}).json()
+    assert all(s["bundle_id"] is None and s["effective_bundle_id"] == s["library_bundle_id"] for s in rows)

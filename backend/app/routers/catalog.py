@@ -53,17 +53,18 @@ def list_skus(
         stmt = stmt.where(
             func.lower(models.MicrosoftSku.segment) == models.sheet_segment(segment)
         )
-    if unmapped:  # not yet accepted onto a staple bundle (the mapper's work-list)
-        stmt = stmt.where(models.MicrosoftSku.bundle_id.is_(None))
     if q:  # filter in SQL so search spans the whole catalog, not a fetched page
         like = f"%{q}%"
         stmt = stmt.where(
             models.MicrosoftSku.product_title.ilike(like)
             | models.MicrosoftSku.sku_title.ilike(like)
         )
-    if limit is not None:
-        stmt = stmt.limit(limit)
+    links = bundles_service.library_links(db)
     rows = db.execute(stmt).scalars().all()
+    if unmapped:  # linked to nothing, by a person or the library (the mapper's work-list)
+        rows = [r for r in rows if bundles_service.effective_bundle_id(r, links) is None]
+    if limit is not None:
+        rows = rows[:limit]
     return [
         {
             "id": r.id, "product_id": r.product_id, "sku_id": r.sku_id,
@@ -73,7 +74,11 @@ def list_skus(
             "annual_unit_price": float(r.annual_unit_price),
             "annual_erp_price": float(r.annual_erp_price),
             "catalog_version": r.catalog_version,
+            # The link a person set; the library's default link (derived, read-only);
+            # and the one that prices the row.
             "bundle_id": r.bundle_id,
+            "library_bundle_id": links.get((r.product_id, r.sku_id)),
+            "effective_bundle_id": bundles_service.effective_bundle_id(r, links),
             "suggested_bundle_id": r.suggested_bundle_id,
             "bundle_suggestion_reason": r.bundle_suggestion_reason,
         }
@@ -333,18 +338,27 @@ def delete_bundle(bundle_id: str, db: Session = Depends(get_db)):
 @router.patch("/skus/{sku_id}/bundle")
 def set_sku_bundle(sku_id: str, bundle_id: str | None = Body(None, embed=True),
                    db: Session = Depends(get_db)):
-    """Accept/set a SKU's staple bundle (or clear with null). This is the ratified
-    mapping; accepting resolves and clears any pending AI suggestion."""
+    """Accept/set a SKU's staple bundle, overriding the library's link; null clears
+    the person's link, so the library's (if any) applies again. Applies to every
+    term and payment row of the SKU. Accepting resolves and clears any pending AI
+    suggestion."""
     row = db.get(models.MicrosoftSku, sku_id)
     if row is None:
         raise HTTPException(404, "SKU not found")
     if bundle_id is not None and db.get(models.Bundle, bundle_id) is None:
         raise HTTPException(422, "Unknown bundle.")
-    row.bundle_id = bundle_id
-    row.suggested_bundle_id = None  # a decision was made; suggestion is consumed
-    row.bundle_suggestion_reason = ""
+    # A link belongs to the SKU, so it goes on every term and payment row of it.
+    for r in db.execute(select(models.MicrosoftSku).where(
+            models.MicrosoftSku.product_id == row.product_id,
+            models.MicrosoftSku.sku_id == row.sku_id,
+            models.MicrosoftSku.market == row.market)).scalars():
+        r.bundle_id = bundle_id
+        r.suggested_bundle_id = None  # a decision was made; suggestion is consumed
+        r.bundle_suggestion_reason = ""
     db.commit()
-    return {"id": row.id, "bundle_id": row.bundle_id}
+    return {"id": row.id, "bundle_id": row.bundle_id,
+            "effective_bundle_id": bundles_service.effective_bundle_id(
+                row, bundles_service.library_links(db))}
 
 
 @router.post("/skus/{sku_id}/reject-suggestion")
@@ -368,9 +382,10 @@ def suggest_sku_bundles(limit: int = 150, db: Session = Depends(get_db)):
     Nothing here enters the SKU → Bundle → Outcomes spine until accepted."""
     if not ai.is_enabled():
         raise HTTPException(400, "AI assist disabled: set the OpenRouter API key.")
-    unmapped = db.execute(
+    links = bundles_service.library_links(db)
+    unmapped = [r for r in db.execute(
         select(models.MicrosoftSku).where(models.MicrosoftSku.bundle_id.is_(None))
-    ).scalars().all()
+    ).scalars().all() if bundles_service.effective_bundle_id(r, links) is None]
     total_unmapped = len(unmapped)
     batch = unmapped[:limit]  # cap the prompt size; report the remainder
     if not batch:
