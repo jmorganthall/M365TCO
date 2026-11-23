@@ -574,14 +574,14 @@ function GroupReview({ base, persona, n, of, tools, areas, interp, call }) {
           <div>{label(o)}</div>
           <div className="guide-chips">
             <ToolPicker others={tools} onAdd={(tid) => haveTool(o, tid)} onNew={(name) => newTool(o, name)} />
-            <button className="ghost sm" title="They have it through something not paid for separately"
-              onClick={() => put(o, 'CoveredOutsideInventory')}>Covered at no extra cost</button>
+            <button className="ghost sm" title="They have it some way this analysis doesn't cost"
+              onClick={() => put(o, 'CoveredOutsideInventory')}>Covered outside of this analysis</button>
             <button className="ghost sm" onClick={() => put(o, 'NotDeliveredToday')}>Not currently delivered</button>
           </div>
         </div>
       ))}
       {[['Not currently delivered', confirmedNo],
-        ['Covered at no extra cost', missing.filter((o) => answer[o.id]?.answer === 'CoveredOutsideInventory')]]
+        ['Covered outside of this analysis', missing.filter((o) => answer[o.id]?.answer === 'CoveredOutsideInventory')]]
         .filter(([, list]) => list.length).map(([title, list]) => (
           <details key={title} className="check-notes"><summary>{title} ({list.length})</summary>
             {list.map((o) => (

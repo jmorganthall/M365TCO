@@ -210,7 +210,7 @@ export default function CoverageCheck({ engagement, onNavigate }) {
                           }}>
                             <option value="">Not answered yet</option>
                             <option value="NotDeliveredToday">Not delivered today — a new outcome</option>
-                            <option value="CoveredOutsideInventory">Covered outside this inventory (don't cost it)</option>
+                            <option value="CoveredOutsideInventory">Covered outside of this analysis (don't cost it)</option>
                             {data.third_parties.filter((t) => t.name !== OOS_NAME).map((t) => (
                               <option key={t.id} value={t.id}>Actually covered by: {t.name}</option>
                             ))}
@@ -224,7 +224,7 @@ export default function CoverageCheck({ engagement, onNavigate }) {
               )}
               {p.covered_outside_outcomes?.length > 0 && (
                 <div style={{ marginTop: '.5rem' }}>
-                  <span className="muted" style={{ fontSize: '.82rem' }}>Covered outside this inventory
+                  <span className="muted" style={{ fontSize: '.82rem' }}>Covered outside of this analysis
                     (not costed, not claimed as new):</span>
                   <div className="pill-list" style={{ marginTop: '.3rem' }}>
                     {p.covered_outside_outcomes.map((o) => (
